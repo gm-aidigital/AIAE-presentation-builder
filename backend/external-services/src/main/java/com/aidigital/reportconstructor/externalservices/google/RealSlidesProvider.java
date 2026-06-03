@@ -163,19 +163,22 @@ public class RealSlidesProvider implements SlidesProvider {
      * short-lived Google OAuth access token (sourced from Clerk). The template
      * must be readable by that user for the copy to succeed.
      */
-    private Drive buildDrive(String accessToken) {
+    Drive buildDrive(String accessToken) {
+
         return new Drive.Builder(creds.transport(), creds.jsonFactory(), userInitializer(accessToken))
             .setApplicationName(APPLICATION_NAME)
             .build();
     }
 
-    private Slides buildSlides(String accessToken) {
+    Slides buildSlides(String accessToken) {
+
         return new Slides.Builder(creds.transport(), creds.jsonFactory(), userInitializer(accessToken))
             .setApplicationName(APPLICATION_NAME)
             .build();
     }
 
-    private static HttpRequestInitializer userInitializer(String accessToken) {
+    HttpRequestInitializer userInitializer(String accessToken) {
+
         return new HttpCredentialsAdapter(
             GoogleCredentials.create(new AccessToken(accessToken, null)));
     }

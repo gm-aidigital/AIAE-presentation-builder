@@ -6,6 +6,7 @@ import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
 import com.aidigital.reportconstructor.service.reports.engine.Fmt;
+import com.aidigital.reportconstructor.service.reports.engine.ReportClaudeDefaults;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -51,10 +52,20 @@ public class RealClaudeClient implements ClaudeClient {
     private final String model;
     private final HttpClient http;
     private final ObjectMapper json = new ObjectMapper();
+    private final ClaudeResponseNormalizer normalizer;
+    private final ReportClaudeDefaults claudeDefaults;
+    private final Fmt fmt;
 
-    public RealClaudeClient(AnthropicProperties props) {
+    public RealClaudeClient(
+            AnthropicProperties props,
+            ClaudeResponseNormalizer normalizer,
+            ReportClaudeDefaults claudeDefaults,
+            Fmt fmt) {
         this.apiKey = props.getApiKey();
         this.model = props.getModel();
+        this.normalizer = normalizer;
+        this.claudeDefaults = claudeDefaults;
+        this.fmt = fmt;
         this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
         log.info("[claude] live Anthropic client initialised (model={})", model);
     }
@@ -71,24 +82,24 @@ public class RealClaudeClient implements ClaudeClient {
     public ClaudeStrategic batchStrategic(CampaignData data, String brief) {
         String brf = brief == null ? "" : brief;
         List<String> planLines = new ArrayList<>();
-        if (notBlank(data.client()))       planLines.add("Client:       " + data.client());
-        if (notBlank(data.campaign()))     planLines.add("Campaign:     " + data.campaign());
-        if (notBlank(data.geo()))          planLines.add("Geo:          " + data.geo());
-        if (notBlank(data.goal()))         planLines.add("Goal:         " + data.goal());
-        if (notBlank(data.flightDates()))  planLines.add("Flight:       " + data.flightDates());
-        if (notBlank(data.budget()))       planLines.add("Budget:       " + data.budget());
-        if (notBlank(data.primaryKpis()))  planLines.add("KPIs:         " + data.primaryKpis());
-        if (notBlank(data.tacticsList()))  planLines.add("Tactics:      " + data.tacticsList());
-        if (notBlank(data.audienceAge()))  planLines.add("Audience age: " + data.audienceAge());
+        if (normalizer.notBlank(data.client()))       planLines.add("Client:       " + data.client());
+        if (normalizer.notBlank(data.campaign()))     planLines.add("Campaign:     " + data.campaign());
+        if (normalizer.notBlank(data.geo()))          planLines.add("Geo:          " + data.geo());
+        if (normalizer.notBlank(data.goal()))         planLines.add("Goal:         " + data.goal());
+        if (normalizer.notBlank(data.flightDates()))  planLines.add("Flight:       " + data.flightDates());
+        if (normalizer.notBlank(data.budget()))       planLines.add("Budget:       " + data.budget());
+        if (normalizer.notBlank(data.primaryKpis()))  planLines.add("KPIs:         " + data.primaryKpis());
+        if (normalizer.notBlank(data.tacticsList()))  planLines.add("Tactics:      " + data.tacticsList());
+        if (normalizer.notBlank(data.audienceAge()))  planLines.add("Audience age: " + data.audienceAge());
 
         List<String> tacticLines = new ArrayList<>();
         for (Map.Entry<Integer, CampaignData.Tactic> e : data.tactics().entrySet()) {
             CampaignData.Tactic t = e.getValue();
             StringBuilder line = new StringBuilder("  Tactic " + e.getKey() + " — " + t.name() + ":");
-            if (t.spend() > 0)      line.append(" Spend $").append(Fmt.intGroup(Math.round(t.spend())));
-            if (t.imps() > 0)       line.append(" | Imps ").append(Fmt.intGroup(t.imps()));
-            if (t.ctr() != null)    line.append(" | CTR ").append(Fmt.dec2(t.ctr())).append('%');
-            if (t.vcr() != null)    line.append(" | VCR ").append(Fmt.dec2(t.vcr())).append('%');
+            if (t.spend() > 0)      line.append(" Spend $").append(fmt.intGroup(Math.round(t.spend())));
+            if (t.imps() > 0)       line.append(" | Imps ").append(fmt.intGroup(t.imps()));
+            if (t.ctr() != null)    line.append(" | CTR ").append(fmt.dec2(t.ctr())).append('%');
+            if (t.vcr() != null)    line.append(" | VCR ").append(fmt.dec2(t.vcr())).append('%');
             tacticLines.add(line.toString());
         }
 
@@ -96,8 +107,8 @@ public class RealClaudeClient implements ClaudeClient {
         if (!brf.isEmpty())            ctx.add("=== CAMPAIGN BRIEF ===\n" + brf);
         if (!planLines.isEmpty())      ctx.add("=== CAMPAIGN PLAN ===\n" + String.join("\n", planLines));
         if (!tacticLines.isEmpty())    ctx.add("=== TACTIC PERFORMANCE ===\n" + String.join("\n", tacticLines));
-        if (notBlank(data.audienceTab())) ctx.add("=== AUDIENCE & INVENTORY TAB ===\n" + data.audienceTab());
-        if (ctx.isEmpty()) return ClaudeStrategic.empty();
+        if (normalizer.notBlank(data.audienceTab())) ctx.add("=== AUDIENCE & INVENTORY TAB ===\n" + data.audienceTab());
+        if (ctx.isEmpty()) return claudeDefaults.emptyStrategic();
         String context = String.join("\n\n", ctx);
 
         String prompt =
@@ -138,15 +149,15 @@ public class RealClaudeClient implements ClaudeClient {
           + "Campaign data:\n" + context;
 
         JsonNode parsed = call(prompt, 2000, 60, "BatchA", false);
-        if (parsed == null) return ClaudeStrategic.empty();
+        if (parsed == null) return claudeDefaults.emptyStrategic();
 
-        String age = textOrNull(parsed.get("audience_age"));
+        String age = normalizer.textOrNull(parsed.get("audience_age"));
         if (age != null) {
             age = age.replaceAll("\\s+", " ").trim();
             if ("not specified".equals(age.toLowerCase(Locale.ROOT))) age = null;
         }
 
-        String seg = textOrNull(parsed.get("audience_segments"));
+        String seg = normalizer.textOrNull(parsed.get("audience_segments"));
         if (seg != null) {
             seg = seg.trim();
             if ("not specified".equals(seg.toLowerCase(Locale.ROOT))) {
@@ -158,7 +169,7 @@ public class RealClaudeClient implements ClaudeClient {
             }
         }
 
-        String overview = normalizeProposal(textOrNull(parsed.get("proposal_overview")), 400);
+        String overview = normalizer.normalizeProposal(normalizer.textOrNull(parsed.get("proposal_overview")), 400);
 
         List<ClaudeStrategic.StrategicInsight> insights = new ArrayList<>();
         JsonNode arr = parsed.get("strategic_insights");
@@ -186,16 +197,16 @@ public class RealClaudeClient implements ClaudeClient {
     // ════════════════════════════════════════════════════════════════════════
     @Override
     public ClaudeTactical batchTactical(CampaignData data, String brief) {
-        if (data.tactics() == null || data.tactics().isEmpty()) return ClaudeTactical.empty();
+        if (data.tactics() == null || data.tactics().isEmpty()) return claudeDefaults.emptyTactical();
         String brf = brief == null ? "" : brief;
 
         List<String> contextLines = new ArrayList<>();
-        if (notBlank(data.client()))      contextLines.add("Client:   " + data.client());
-        if (notBlank(data.campaign()))    contextLines.add("Campaign: " + data.campaign());
-        if (notBlank(data.geo()))         contextLines.add("Geo:      " + data.geo());
-        if (notBlank(data.goal()))        contextLines.add("Goal:     " + data.goal());
-        if (notBlank(data.primaryKpis())) contextLines.add("KPIs:     " + data.primaryKpis());
-        if (notBlank(data.audienceAge())) contextLines.add("Audience age: " + data.audienceAge());
+        if (normalizer.notBlank(data.client()))      contextLines.add("Client:   " + data.client());
+        if (normalizer.notBlank(data.campaign()))    contextLines.add("Campaign: " + data.campaign());
+        if (normalizer.notBlank(data.geo()))         contextLines.add("Geo:      " + data.geo());
+        if (normalizer.notBlank(data.goal()))        contextLines.add("Goal:     " + data.goal());
+        if (normalizer.notBlank(data.primaryKpis())) contextLines.add("KPIs:     " + data.primaryKpis());
+        if (normalizer.notBlank(data.audienceAge())) contextLines.add("Audience age: " + data.audienceAge());
 
         StringBuilder contextBlock = new StringBuilder();
         if (!brf.isEmpty())            contextBlock.append("=== CAMPAIGN BRIEF ===\n").append(brf).append("\n\n");
@@ -206,7 +217,7 @@ public class RealClaudeClient implements ClaudeClient {
         for (Map.Entry<Integer, CampaignData.Tactic> e : data.tactics().entrySet()) {
             CampaignData.Tactic t = e.getValue();
             StringBuilder line = new StringBuilder("  Tactic " + e.getKey() + ": " + t.name());
-            if (t.imps() > 0) line.append(" (").append(Fmt.intGroup(t.imps())).append(" imps)");
+            if (t.imps() > 0) line.append(" (").append(fmt.intGroup(t.imps())).append(" imps)");
             tacticLines.add(line.toString());
         }
 
@@ -232,7 +243,7 @@ public class RealClaudeClient implements ClaudeClient {
           + "Example: {\"1\": {\"male\": 38, \"female\": 62, \"weekdays_peak\": \"7 PM – 11 PM\", \"weekends_peak\": \"10 AM – 2 PM\"}}";
 
         JsonNode parsed = call(prompt, 500, 30, "BatchB", false);
-        if (parsed == null) return ClaudeTactical.empty();
+        if (parsed == null) return claudeDefaults.emptyTactical();
 
         Map<Integer, ClaudeTactical.TacticInsight> result = new LinkedHashMap<>();
         var fields = parsed.fields();
@@ -248,8 +259,8 @@ public class RealClaudeClient implements ClaudeClient {
             if (!data.tactics().containsKey(n) || vals == null || !vals.isObject()) continue;
             int male = Math.max(0, Math.min(100, vals.path("male").asInt(50)));
             int female = 100 - male;
-            String weekdays = textOrNull(vals.get("weekdays_peak"));
-            String weekends = textOrNull(vals.get("weekends_peak"));
+            String weekdays = normalizer.textOrNull(vals.get("weekdays_peak"));
+            String weekends = normalizer.textOrNull(vals.get("weekends_peak"));
             if (weekdays != null) weekdays = weekdays.trim();
             if (weekends != null) weekends = weekends.trim();
             result.put(n, new ClaudeTactical.TacticInsight(male, female, weekdays, weekends));
@@ -265,33 +276,33 @@ public class RealClaudeClient implements ClaudeClient {
         String brf = brief == null ? "" : brief;
 
         List<String> planLines = new ArrayList<>();
-        if (notBlank(data.client()))      planLines.add("Client:   " + data.client());
-        if (notBlank(data.campaign()))    planLines.add("Campaign: " + data.campaign());
-        if (notBlank(data.flightDates())) planLines.add("Flight:   " + data.flightDates());
-        if (notBlank(data.goal()))        planLines.add("Goal:     " + data.goal());
-        if (notBlank(data.budget()))      planLines.add("Budget:   " + data.budget());
+        if (normalizer.notBlank(data.client()))      planLines.add("Client:   " + data.client());
+        if (normalizer.notBlank(data.campaign()))    planLines.add("Campaign: " + data.campaign());
+        if (normalizer.notBlank(data.flightDates())) planLines.add("Flight:   " + data.flightDates());
+        if (normalizer.notBlank(data.goal()))        planLines.add("Goal:     " + data.goal());
+        if (normalizer.notBlank(data.budget()))      planLines.add("Budget:   " + data.budget());
 
         CampaignData.Totals tot = data.totals();
         List<String> totalLines = new ArrayList<>();
         if (tot != null) {
-            if (tot.spend() > 0)   totalLines.add("Total Spend: $" + Fmt.intGroup(Math.round(tot.spend())));
-            if (tot.imps() > 0)    totalLines.add("Total Imps:  " + Fmt.intGroup(tot.imps()));
-            if (tot.ctr() != null) totalLines.add("Total CTR:   " + Fmt.dec2(tot.ctr()) + "%");
-            if (tot.vcr() != null) totalLines.add("Total VCR:   " + Fmt.dec2(tot.vcr()) + "%");
+            if (tot.spend() > 0)   totalLines.add("Total Spend: $" + fmt.intGroup(Math.round(tot.spend())));
+            if (tot.imps() > 0)    totalLines.add("Total Imps:  " + fmt.intGroup(tot.imps()));
+            if (tot.ctr() != null) totalLines.add("Total CTR:   " + fmt.dec2(tot.ctr()) + "%");
+            if (tot.vcr() != null) totalLines.add("Total VCR:   " + fmt.dec2(tot.vcr()) + "%");
         }
 
         List<String> tacticLines = new ArrayList<>();
         for (Map.Entry<Integer, CampaignData.Tactic> e : data.tactics().entrySet()) {
             CampaignData.Tactic t = e.getValue();
             StringBuilder line = new StringBuilder("  Tactic " + e.getKey() + " — " + t.name() + ":");
-            if (t.spend() > 0)       line.append(" Actual Spend $").append(Fmt.intGroup(Math.round(t.spend())));
-            if (t.imps() > 0)        line.append(" | Actual Imps ").append(Fmt.intGroup(t.imps()));
-            if (t.ctr() != null)     line.append(" | Actual CTR ").append(Fmt.dec2(t.ctr())).append('%');
-            if (t.vcr() != null)     line.append(" | Actual VCR ").append(Fmt.dec2(t.vcr())).append('%');
-            if (t.planSpend() != null) line.append(" | Plan Spend $").append(Fmt.intGroup(Math.round(t.planSpend())));
-            if (t.planImps() != null)  line.append(" | Plan Imps ").append(Fmt.intGroup(t.planImps()));
-            if (t.planCtr() != null)   line.append(" | Plan CTR ").append(Fmt.dec2(t.planCtr())).append('%');
-            if (t.planVcr() != null)   line.append(" | Plan VCR ").append(Fmt.dec2(t.planVcr())).append('%');
+            if (t.spend() > 0)       line.append(" Actual Spend $").append(fmt.intGroup(Math.round(t.spend())));
+            if (t.imps() > 0)        line.append(" | Actual Imps ").append(fmt.intGroup(t.imps()));
+            if (t.ctr() != null)     line.append(" | Actual CTR ").append(fmt.dec2(t.ctr())).append('%');
+            if (t.vcr() != null)     line.append(" | Actual VCR ").append(fmt.dec2(t.vcr())).append('%');
+            if (t.planSpend() != null) line.append(" | Plan Spend $").append(fmt.intGroup(Math.round(t.planSpend())));
+            if (t.planImps() != null)  line.append(" | Plan Imps ").append(fmt.intGroup(t.planImps()));
+            if (t.planCtr() != null)   line.append(" | Plan CTR ").append(fmt.dec2(t.planCtr())).append('%');
+            if (t.planVcr() != null)   line.append(" | Plan VCR ").append(fmt.dec2(t.planVcr())).append('%');
             tacticLines.add(line.toString());
         }
 
@@ -300,7 +311,7 @@ public class RealClaudeClient implements ClaudeClient {
         if (!planLines.isEmpty())    ctx.add("=== CAMPAIGN PLAN ===\n" + String.join("\n", planLines));
         if (!totalLines.isEmpty())   ctx.add("=== OVERALL RESULTS ===\n" + String.join("\n", totalLines));
         if (!tacticLines.isEmpty())  ctx.add("=== RESULTS BY TACTIC ===\n" + String.join("\n", tacticLines));
-        if (ctx.isEmpty()) return ClaudeResults.empty();
+        if (ctx.isEmpty()) return claudeDefaults.emptyResults();
         String context = String.join("\n\n", ctx);
 
         List<String> nums = new ArrayList<>();
@@ -380,10 +391,10 @@ public class RealClaudeClient implements ClaudeClient {
           + "Campaign data:\n" + context;
 
         JsonNode parsed = call(prompt, 3500, 60, "BatchC", true);
-        if (parsed == null) return ClaudeResults.empty();
+        if (parsed == null) return claudeDefaults.emptyResults();
 
-        String resultsOverview = normalizeC(textOrNull(parsed.get("results_overview")), 380);
-        List<String> thoughts = normalizeThoughts(textOrNull(parsed.get("thoughts_on_performance")));
+        String resultsOverview = normalizer.normalizeC(normalizer.textOrNull(parsed.get("results_overview")), 380);
+        List<String> thoughts = normalizer.normalizeThoughts(normalizer.textOrNull(parsed.get("thoughts_on_performance")));
 
         Map<Integer, String> tacticOverviews = new LinkedHashMap<>();
         JsonNode raw = parsed.get("tactic_overviews");
@@ -398,7 +409,7 @@ public class RealClaudeClient implements ClaudeClient {
                     continue;
                 }
                 if (n <= 0) continue;
-                tacticOverviews.put(n, normalizeC(ent.getValue().asText(""), 210));
+                tacticOverviews.put(n, normalizer.normalizeC(ent.getValue().asText(""), 210));
             }
         }
         return new ClaudeResults(resultsOverview, thoughts, tacticOverviews);
@@ -423,7 +434,7 @@ public class RealClaudeClient implements ClaudeClient {
 
         JsonNode resp = callRaw(prompt, 60, 30, "Geo");
         if (resp == null) return null;
-        String text = extractText(resp);
+        String text = normalizer.extractText(resp);
         if (text == null || text.isBlank()) return null;
         text = text.replaceAll("\\s*[\\r\\n]+\\s*", " ").replaceAll("\\s{2,}", " ").trim();
         if (text.length() > 40) text = text.substring(0, 40).trim();
@@ -433,14 +444,15 @@ public class RealClaudeClient implements ClaudeClient {
     // ── HTTP plumbing ─────────────────────────────────────────────────────────
 
     /** Sends a prompt; returns the parsed JSON object from the model's text, or null. */
-    private JsonNode call(String prompt, int maxTokens, int timeoutSec, String label, boolean allowPartial) {
+    JsonNode call(String prompt, int maxTokens, int timeoutSec, String label, boolean allowPartial) {
+
         JsonNode resp = callRaw(prompt, maxTokens, timeoutSec, label);
         if (resp == null) return null;
         if ("max_tokens".equals(resp.path("stop_reason").asText("")) && !allowPartial) {
             log.warn("[claude:{}] truncated by max_tokens", label);
             return null;
         }
-        String text = extractText(resp);
+        String text = normalizer.extractText(resp);
         if (text == null || text.isBlank()) return null;
         text = FENCE_OPEN.matcher(text.trim()).replaceFirst("");
         text = FENCE_CLOSE.matcher(text).replaceFirst("").trim();
@@ -463,7 +475,8 @@ public class RealClaudeClient implements ClaudeClient {
         return null;
     }
 
-    private JsonNode callRaw(String prompt, int maxTokens, int timeoutSec, String label) {
+    JsonNode callRaw(String prompt, int maxTokens, int timeoutSec, String label) {
+
         try {
             Map<String, Object> body = Map.of(
                 "model", model,
@@ -488,72 +501,5 @@ public class RealClaudeClient implements ClaudeClient {
             log.error("[claude:{}] request failed: {}", label, ex.getMessage());
             return null;
         }
-    }
-
-    private static String extractText(JsonNode resp) {
-        JsonNode content = resp.path("content");
-        if (!content.isArray() || content.isEmpty()) return null;
-        StringBuilder sb = new StringBuilder();
-        for (JsonNode part : content) {
-            if ("text".equals(part.path("type").asText())) sb.append(part.path("text").asText());
-        }
-        return sb.toString();
-    }
-
-    // ── Normalization helpers (ports of the PHP closures) ─────────────────────
-
-    /** Batch A proposal_overview: window limit+120, last '.' threshold limit*0.5. */
-    private static String normalizeProposal(String val, int limit) {
-        if (val == null || val.trim().isEmpty()) return null;
-        val = val.replaceAll("\\s*[\\r\\n]+\\s*", " ").replaceAll("\\s{2,}", " ").trim();
-        if (val.length() > limit) {
-            String window = val.substring(0, Math.min(limit + 120, val.length()));
-            int lp = window.lastIndexOf('.');
-            if (lp >= (int) (limit * 0.5)) {
-                val = val.substring(0, lp + 1).trim();
-            } else {
-                String cut = val.substring(0, limit);
-                int ls = cut.lastIndexOf(' ');
-                val = ls >= 0 ? val.substring(0, ls).trim() : cut.trim();
-            }
-        }
-        return val.isEmpty() ? null : val;
-    }
-
-    /** Batch C normalize: window=limit, last '.'/',' threshold limit*0.75. */
-    private static String normalizeC(String val, int limit) {
-        if (val == null || val.trim().isEmpty()) return null;
-        val = val.replaceAll("\\s*[\\r\\n]+\\s*", " ").replaceAll("\\s{2,}", " ").trim();
-        if (val.length() > limit) {
-            String cut = val.substring(0, limit);
-            int lp = Math.max(cut.lastIndexOf('.'), cut.lastIndexOf(','));
-            val = lp > (int) (limit * 0.75) ? val.substring(0, lp + 1).trim() : cut.trim();
-        }
-        return val.isEmpty() ? null : val;
-    }
-
-    /** Split " | " into exactly 4 elements (null for blanks/missing). */
-    private static List<String> normalizeThoughts(String val) {
-        List<String> out = new ArrayList<>(Arrays.asList(null, null, null, null));
-        if (val == null || val.trim().isEmpty()) return out;
-        val = val.replaceAll("\\s*[\\r\\n]+\\s*", " ").replaceAll("\\s{2,}", " ").trim();
-        String[] parts = val.split(" \\| ", -1);
-        for (int i = 0; i < 4; i++) {
-            if (i < parts.length) {
-                String p = parts[i] == null ? null : parts[i].trim();
-                out.set(i, (p == null || p.isEmpty()) ? null : p);
-            }
-        }
-        return out;
-    }
-
-    private static String textOrNull(JsonNode node) {
-        if (node == null || node.isNull()) return null;
-        String s = node.isTextual() ? node.asText() : node.toString();
-        return s == null || s.isEmpty() ? null : s;
-    }
-
-    private static boolean notBlank(String s) {
-        return s != null && !s.isBlank();
     }
 }

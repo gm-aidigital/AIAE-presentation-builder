@@ -149,4 +149,11 @@ if [ -d frontend/src ]; then
     || fail "frontend/src/features/_template/ missing — copy for new features"
 fi
 
+# --- Strict structure rules (static/private/javadoc in reports + externalservices) ---
+if [ "${SCAFFOLD_MODE}" -eq 0 ] && [ -f scripts/lib/check-structure-strict.py ]; then
+  echo "==> check-structure-strict"
+  python3 scripts/lib/check-structure-strict.py backend \
+    || fail "check-structure-strict failed — convert static utilities to @Component beans"
+fi
+
 echo "==> structure-lint: passed"

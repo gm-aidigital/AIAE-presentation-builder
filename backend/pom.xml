@@ -296,10 +296,6 @@
                                     <exclude>**/api/v1/model/**</exclude>
                                     <exclude>**/api/v1/invoker/**</exclude>
                                     <exclude>**/api/v1/*Api.class</exclude>
-                                    <!-- POC-harvested legacy engine (phased test coverage) -->
-                                    <exclude>**/service/reports/**</exclude>
-                                    <exclude>**/externalservices/**</exclude>
-                                    <exclude>**/reports/**</exclude>
                                 </excludes>
                             </configuration>
                         </execution>

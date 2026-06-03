@@ -25,6 +25,7 @@ public record CampaignData(
     String audienceTab
 ) {
 
+    /** Totals (report engine DTO). */
     public record Totals(
         double spend,
         double imps,
@@ -34,6 +35,7 @@ public record CampaignData(
         Double vcr
     ) {}
 
+    /** Tactic (report engine DTO). */
     public record Tactic(
         String name,
         String channel,

@@ -7,9 +7,5 @@
     <suppress checks="MissingJavadocType" files=".*Application"/>
     <suppress checks="PackageName" files=".*[\\/]com.aidigital.reportconstructor[\\/].*"/>
     <suppress checks=".*" files=".*[\\/]target[\\/]generated-sources[\\/].*"/>
-    <suppress checks="MissingJavadoc.*" files=".*[\\/]reports[\\/].*"/>
-    <suppress checks=".*" files=".*[\\/]externalservices[\\/].*"/>
-    <suppress checks=".*" files=".*[\\/]service[\\/]reports[\\/].*"/>
     <suppress checks="MissingJavadoc.*" files=".*AsyncConfig.*"/>
-    <suppress checks=".*" files=".*[\\/]reports[\\/].*"/>
 </suppressions>

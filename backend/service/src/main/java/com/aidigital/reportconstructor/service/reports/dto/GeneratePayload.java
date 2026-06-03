@@ -2,6 +2,7 @@ package com.aidigital.reportconstructor.service.reports.dto;
 
 import java.util.List;
 
+/** GeneratePayload (report engine DTO). */
 public record GeneratePayload(
     String brief,
     String reportType,
@@ -13,5 +14,6 @@ public record GeneratePayload(
     List<LineItemMapping> lineItemMapping,
     String bqSheetId
 ) {
+    /** LineItemMapping (report engine DTO). */
     public record LineItemMapping(String tactic, String lineItemId, Integer tacticNum) {}
 }

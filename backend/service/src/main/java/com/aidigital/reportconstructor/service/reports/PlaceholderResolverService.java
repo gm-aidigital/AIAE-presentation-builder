@@ -9,6 +9,7 @@ import com.aidigital.reportconstructor.service.reports.dto.Placeholder;
 import com.aidigital.reportconstructor.service.reports.dto.PreviewSection;
 import com.aidigital.reportconstructor.service.reports.engine.CampaignDataCollector;
 import com.aidigital.reportconstructor.service.reports.engine.CampaignResolvers;
+import com.aidigital.reportconstructor.service.reports.engine.ReportClaudeDefaults;
 import com.aidigital.reportconstructor.service.reports.engine.Resolved;
 import com.aidigital.reportconstructor.service.reports.engine.SheetUtils;
 import com.aidigital.reportconstructor.service.reports.engine.TacticResolvers;
@@ -35,7 +36,32 @@ public class PlaceholderResolverService {
 
     private static final String DASH = "\u2014"; // —
 
+    private final CampaignDataCollector campaignDataCollector;
+    private final CampaignResolvers campaignResolvers;
+    private final TacticResolvers tacticResolvers;
+    private final SheetUtils sheetUtils;
+    private final TacticUtils tacticUtils;
+    private final ReportClaudeDefaults claudeDefaults;
+
+    public PlaceholderResolverService(
+            CampaignDataCollector campaignDataCollector,
+            CampaignResolvers campaignResolvers,
+            TacticResolvers tacticResolvers,
+            SheetUtils sheetUtils,
+            TacticUtils tacticUtils,
+            ReportClaudeDefaults claudeDefaults) {
+        this.campaignDataCollector = campaignDataCollector;
+        this.campaignResolvers = campaignResolvers;
+        this.tacticResolvers = tacticResolvers;
+        this.sheetUtils = sheetUtils;
+        this.tacticUtils = tacticUtils;
+        this.claudeDefaults = claudeDefaults;
+    }
+
+    /** Label chips grouped by sheet source for the preview UI. */
     public record Labels(List<LabelChip> sheet, List<LabelChip> adj) {}
+
+    /** Single label/value chip in the preview "all labels" panel. */
     public record LabelChip(String label, String value) {}
 
     /**
@@ -58,7 +84,7 @@ public class PlaceholderResolverService {
         CampaignData data = collectData(payload);
         List<PreviewSection> sections = buildSections(
             payload, data,
-            ClaudeStrategic.empty(), ClaudeTactical.empty(), ClaudeResults.empty(), null
+            claudeDefaults.emptyStrategic(), claudeDefaults.emptyTactical(), claudeDefaults.emptyResults(), null
         );
 
         int total = 0, found = 0;
@@ -91,7 +117,7 @@ public class PlaceholderResolverService {
 
     /** Single-pass campaign aggregation — shared between preview and generate. */
     public CampaignData collectData(GeneratePayload payload) {
-        return CampaignDataCollector.collect(
+        return campaignDataCollector.collect(
             payload.sheetRows(), payload.adjRows(), payload.audienceRows(),
             payload.estimatesRows(), payload.lineItemMapping()
         );
@@ -99,6 +125,7 @@ public class PlaceholderResolverService {
 
     // ── Claude batch gating (port of needA/needB/needC in builder.php) ────────
 
+    /** True when Batch A (strategic) placeholders are still unresolved in sheet/adj. */
     public boolean needStrategic(GeneratePayload payload) {
         List<List<String>> adj = payload.adjRows();
         List<List<String>> sheet = payload.sheetRows();
@@ -112,6 +139,7 @@ public class PlaceholderResolverService {
         return false;
     }
 
+    /** True when Batch B (tactical) placeholders are still unresolved for any tactic. */
     public boolean needTactical(GeneratePayload payload, CampaignData data) {
         if (data == null || data.tactics() == null) return false;
         List<List<String>> adj = payload.adjRows();
@@ -125,6 +153,7 @@ public class PlaceholderResolverService {
         return false;
     }
 
+    /** True when Batch C (results) placeholders are still unresolved. */
     public boolean needResults(GeneratePayload payload, CampaignData data) {
         List<List<String>> adj = payload.adjRows();
         List<List<String>> sheet = payload.sheetRows();
@@ -142,9 +171,9 @@ public class PlaceholderResolverService {
     public boolean needGeoSummary(GeneratePayload payload) {
         List<List<String>> adj = payload.adjRows();
         List<List<String>> sheet = payload.sheetRows();
-        if (SheetUtils.findLabelValue(adj, "Geo locations:") != null) return false;
-        if (SheetUtils.findLabelValue(sheet, "Geo locations:") != null) return false;
-        String below = SheetUtils.findLabelValueBelow(sheet, "Geo");
+        if (sheetUtils.findLabelValue(adj, "Geo locations:") != null) return false;
+        if (sheetUtils.findLabelValue(sheet, "Geo locations:") != null) return false;
+        String below = sheetUtils.findLabelValueBelow(sheet, "Geo");
         if (below == null) return false;
         String lc = below.toLowerCase(java.util.Locale.ROOT);
         return lc.contains("see geo tab") || lc.contains("geo tab");
@@ -159,46 +188,46 @@ public class PlaceholderResolverService {
         List<List<String>> sheet = payload.sheetRows();
         List<List<String>> adj = payload.adjRows();
         String reportType = payload.reportType();
-        List<String> mediaTactics = TacticUtils.extractTacticsFromMedia(sheet);
+        List<String> mediaTactics = tacticUtils.extractTacticsFromMedia(sheet);
 
         List<PreviewSection> sections = new ArrayList<>();
 
         // ── 1. Начало ─────────────────────────────────────────────────────────
         Map<String, Resolved> start = new LinkedHashMap<>();
-        start.put("{{client_name}}", CampaignResolvers.resolve(sheet, adj, "Client name:"));
-        start.put("{{Campaign_name}}", CampaignResolvers.resolve(sheet, adj, "Campaign:"));
+        start.put("{{client_name}}", campaignResolvers.resolve(sheet, adj, "Client name:"));
+        start.put("{{Campaign_name}}", campaignResolvers.resolve(sheet, adj, "Campaign:"));
         if (reportType != null && !reportType.isBlank()) {
             start.put("{{report_type}}", new Resolved("Report type (UI)", reportType, "sheet"));
         } else {
-            start.put("{{report_type}}", CampaignResolvers.resolve(sheet, adj, "Report type:"));
+            start.put("{{report_type}}", campaignResolvers.resolve(sheet, adj, "Report type:"));
         }
-        start.put("{{flight_dates}}", CampaignResolvers.resolveFlightDates(sheet, adj));
-        start.put("{{total_investment}}", CampaignResolvers.resolveTotalInvestment(sheet, adj, data));
-        start.put("{{primary_kpis}}", CampaignResolvers.resolvePrimaryKpis(sheet, adj));
-        start.put("{{audience_age}}", CampaignResolvers.resolveAudienceAge(sheet, adj, ccA.audienceAge()));
-        start.put("{{audience_segments}}", CampaignResolvers.resolveAudienceSegments(sheet, adj, ccA.audienceSegments()));
-        start.put("{{geo_locations}}", CampaignResolvers.resolveGeoLocations(sheet, adj, geoSummary));
-        start.put("{{funnel_stages}}", CampaignResolvers.resolveFunnelStages(sheet, adj));
-        start.put("{{tactics_list}}", CampaignResolvers.resolveTacticsList(sheet, adj));
+        start.put("{{flight_dates}}", campaignResolvers.resolveFlightDates(sheet, adj));
+        start.put("{{total_investment}}", campaignResolvers.resolveTotalInvestment(sheet, adj, data));
+        start.put("{{primary_kpis}}", campaignResolvers.resolvePrimaryKpis(sheet, adj));
+        start.put("{{audience_age}}", campaignResolvers.resolveAudienceAge(sheet, adj, ccA.audienceAge()));
+        start.put("{{audience_segments}}", campaignResolvers.resolveAudienceSegments(sheet, adj, ccA.audienceSegments()));
+        start.put("{{geo_locations}}", campaignResolvers.resolveGeoLocations(sheet, adj, geoSummary));
+        start.put("{{funnel_stages}}", campaignResolvers.resolveFunnelStages(sheet, adj));
+        start.put("{{tactics_list}}", campaignResolvers.resolveTacticsList(sheet, adj));
         sections.add(section("Начало", start));
 
         // ── 2. Обзорные слайды ──────────────────────────────────────────────────
         Map<String, Resolved> overview = new LinkedHashMap<>();
-        overview.put("{{proposal overview}}", CampaignResolvers.resolveProposalOverview(sheet, adj, ccA.proposalOverview()));
-        overview.put("{{Our results overview}}", CampaignResolvers.resolveResultsOverview(sheet, adj, ccC.resultsOverview()));
-        overview.putAll(CampaignResolvers.resolveThoughtsOnPerformance(sheet, adj, ccC.thoughtsOnPerformance()));
+        overview.put("{{proposal overview}}", campaignResolvers.resolveProposalOverview(sheet, adj, ccA.proposalOverview()));
+        overview.put("{{Our results overview}}", campaignResolvers.resolveResultsOverview(sheet, adj, ccC.resultsOverview()));
+        overview.putAll(campaignResolvers.resolveThoughtsOnPerformance(sheet, adj, ccC.thoughtsOnPerformance()));
         sections.add(section("Обзорные слайды", overview));
 
         // ── 3. Стратегические инсайты ────────────────────────────────────────────
         sections.add(section("Стратегические инсайты",
-            CampaignResolvers.resolveStrategicInsights(sheet, adj, ccA.strategicInsights())));
+            campaignResolvers.resolveStrategicInsights(sheet, adj, ccA.strategicInsights())));
 
         // ── 4. Суммарные метрики ─────────────────────────────────────────────────
         Map<String, Resolved> totals = new LinkedHashMap<>();
-        totals.put("{{total imps}}", CampaignResolvers.resolveTotalImps(sheet, adj, data));
-        totals.put("{{total ctr}}", CampaignResolvers.resolveTotalCtr(sheet, adj, data));
-        totals.put("{{total vcr}}", CampaignResolvers.resolveTotalVcr(sheet, adj, data));
-        totals.put("{{total spend}}", CampaignResolvers.resolveTotalInvestment(sheet, adj, data));
+        totals.put("{{total imps}}", campaignResolvers.resolveTotalImps(sheet, adj, data));
+        totals.put("{{total ctr}}", campaignResolvers.resolveTotalCtr(sheet, adj, data));
+        totals.put("{{total vcr}}", campaignResolvers.resolveTotalVcr(sheet, adj, data));
+        totals.put("{{total spend}}", campaignResolvers.resolveTotalInvestment(sheet, adj, data));
         sections.add(section("Суммарные метрики", totals));
 
         // ── 5–10. Тактики 1–6 (полный набор) ─────────────────────────────────────
@@ -213,7 +242,7 @@ public class PlaceholderResolverService {
         return sections;
     }
 
-    private static Map<String, Resolved> tacticFull(
+    Map<String, Resolved> tacticFull(
         int n, List<List<String>> sheet, List<List<String>> adj, CampaignData data,
         ClaudeTactical ccB, ClaudeResults ccC, List<String> mediaTactics
     ) {
@@ -222,27 +251,27 @@ public class PlaceholderResolverService {
 
         Map<String, Resolved> m = new LinkedHashMap<>();
         m.put("{{tactic " + n + "}}", info);
-        m.put("{{tactic " + n + " goal}}", TacticResolvers.resolveTacticGoal(n, sheet, adj));
-        m.put("{{tactic " + n + " overview}}", TacticResolvers.resolveTacticOverview(n, sheet, adj, ccC));
-        m.put("{{tactic " + n + " spend}}", TacticResolvers.resolveTacticSpend(n, tacticName, sheet, adj, data));
-        m.put("{{tactic " + n + " imps}}", TacticResolvers.resolveTacticImps(n, tacticName, sheet, adj, data));
-        m.put("{{tactic " + n + " reach}}", TacticResolvers.resolveTacticReach(n, sheet, adj, data));
-        m.put("{{tactic " + n + " ctr}}", TacticResolvers.resolveTacticCtr(n, tacticName, sheet, adj, data));
-        m.put("{{tactic " + n + " vcr}}", TacticResolvers.resolveTacticVcr(n, tacticName, sheet, adj, data));
-        m.put("{{tactic " + n + " volume}}", CampaignResolvers.resolve(sheet, adj, "Tactic " + n + " volume:"));
-        m.put("{{tactic " + n + " \u2013 bench}}", TacticResolvers.resolveTacticBench(n, tacticName, sheet, adj, data));
-        m.put("{{tactic " + n + " male}}", TacticResolvers.resolveTacticGender(n, "male", sheet, adj, ccB));
-        m.put("{{tactic " + n + " female}}", TacticResolvers.resolveTacticGender(n, "female", sheet, adj, ccB));
-        m.put("{{tactic " + n + " f}}", TacticResolvers.resolveTacticFreq(n, sheet, adj, data));
-        m.put("{{tactic " + n + " weekdays}}", TacticResolvers.resolveTacticDaypart(n, "weekdays", sheet, adj, ccB));
-        m.put("{{tactic " + n + " weekends}}", TacticResolvers.resolveTacticDaypart(n, "weekends", sheet, adj, ccB));
-        m.put("{{tactic " + n + " top creative name}}", TacticResolvers.resolveTacticTopCreativeName(n, sheet, adj, data));
-        m.put("{{tactic " + n + " top creative imps}}", TacticResolvers.resolveTacticTopCreativeImps(n, sheet, adj, data));
-        m.put("{{tactic " + n + " top creative clicks}}", TacticResolvers.resolveTacticTopCreativeClicks(n, sheet, adj, data));
+        m.put("{{tactic " + n + " goal}}", tacticResolvers.resolveTacticGoal(n, sheet, adj));
+        m.put("{{tactic " + n + " overview}}", tacticResolvers.resolveTacticOverview(n, sheet, adj, ccC));
+        m.put("{{tactic " + n + " spend}}", tacticResolvers.resolveTacticSpend(n, tacticName, sheet, adj, data));
+        m.put("{{tactic " + n + " imps}}", tacticResolvers.resolveTacticImps(n, tacticName, sheet, adj, data));
+        m.put("{{tactic " + n + " reach}}", tacticResolvers.resolveTacticReach(n, sheet, adj, data));
+        m.put("{{tactic " + n + " ctr}}", tacticResolvers.resolveTacticCtr(n, tacticName, sheet, adj, data));
+        m.put("{{tactic " + n + " vcr}}", tacticResolvers.resolveTacticVcr(n, tacticName, sheet, adj, data));
+        m.put("{{tactic " + n + " volume}}", campaignResolvers.resolve(sheet, adj, "Tactic " + n + " volume:"));
+        m.put("{{tactic " + n + " \u2013 bench}}", tacticResolvers.resolveTacticBench(n, tacticName, sheet, adj, data));
+        m.put("{{tactic " + n + " male}}", tacticResolvers.resolveTacticGender(n, "male", sheet, adj, ccB));
+        m.put("{{tactic " + n + " female}}", tacticResolvers.resolveTacticGender(n, "female", sheet, adj, ccB));
+        m.put("{{tactic " + n + " f}}", tacticResolvers.resolveTacticFreq(n, sheet, adj, data));
+        m.put("{{tactic " + n + " weekdays}}", tacticResolvers.resolveTacticDaypart(n, "weekdays", sheet, adj, ccB));
+        m.put("{{tactic " + n + " weekends}}", tacticResolvers.resolveTacticDaypart(n, "weekends", sheet, adj, ccB));
+        m.put("{{tactic " + n + " top creative name}}", tacticResolvers.resolveTacticTopCreativeName(n, sheet, adj, data));
+        m.put("{{tactic " + n + " top creative imps}}", tacticResolvers.resolveTacticTopCreativeImps(n, sheet, adj, data));
+        m.put("{{tactic " + n + " top creative clicks}}", tacticResolvers.resolveTacticTopCreativeClicks(n, sheet, adj, data));
         return m;
     }
 
-    private static Map<String, Resolved> tacticShort(
+    Map<String, Resolved> tacticShort(
         int n, List<List<String>> sheet, List<List<String>> adj, CampaignData data,
         ClaudeTactical ccB, ClaudeResults ccC, List<String> mediaTactics
     ) {
@@ -251,37 +280,37 @@ public class PlaceholderResolverService {
 
         Map<String, Resolved> m = new LinkedHashMap<>();
         m.put("{{tactic " + n + "}}", info);
-        m.put("{{tactic " + n + " goal}}", TacticResolvers.resolveTacticGoal(n, sheet, adj));
-        m.put("{{tactic " + n + " overview}}", TacticResolvers.resolveTacticOverview(n, sheet, adj, ccC));
-        m.put("{{tactic " + n + " spend}}", TacticResolvers.resolveTacticSpend(n, tacticName, sheet, adj, data));
-        m.put("{{tactic " + n + " imps}}", TacticResolvers.resolveTacticImps(n, tacticName, sheet, adj, data));
-        m.put("{{tactic " + n + " reach}}", TacticResolvers.resolveTacticReach(n, sheet, adj, data));
-        m.put("{{tactic " + n + " ctr}}", TacticResolvers.resolveTacticCtr(n, tacticName, sheet, adj, data));
-        m.put("{{tactic " + n + " vcr}}", TacticResolvers.resolveTacticVcr(n, tacticName, sheet, adj, data));
-        m.put("{{tactic " + n + " \u2013 bench}}", TacticResolvers.resolveTacticBench(n, tacticName, sheet, adj, data));
-        m.put("{{tactic " + n + " male}}", TacticResolvers.resolveTacticGender(n, "male", sheet, adj, ccB));
-        m.put("{{tactic " + n + " female}}", TacticResolvers.resolveTacticGender(n, "female", sheet, adj, ccB));
-        m.put("{{tactic " + n + " f}}", TacticResolvers.resolveTacticFreq(n, sheet, adj, data));
-        m.put("{{tactic " + n + " weekdays}}", TacticResolvers.resolveTacticDaypart(n, "weekdays", sheet, adj, ccB));
-        m.put("{{tactic " + n + " weekends}}", TacticResolvers.resolveTacticDaypart(n, "weekends", sheet, adj, ccB));
+        m.put("{{tactic " + n + " goal}}", tacticResolvers.resolveTacticGoal(n, sheet, adj));
+        m.put("{{tactic " + n + " overview}}", tacticResolvers.resolveTacticOverview(n, sheet, adj, ccC));
+        m.put("{{tactic " + n + " spend}}", tacticResolvers.resolveTacticSpend(n, tacticName, sheet, adj, data));
+        m.put("{{tactic " + n + " imps}}", tacticResolvers.resolveTacticImps(n, tacticName, sheet, adj, data));
+        m.put("{{tactic " + n + " reach}}", tacticResolvers.resolveTacticReach(n, sheet, adj, data));
+        m.put("{{tactic " + n + " ctr}}", tacticResolvers.resolveTacticCtr(n, tacticName, sheet, adj, data));
+        m.put("{{tactic " + n + " vcr}}", tacticResolvers.resolveTacticVcr(n, tacticName, sheet, adj, data));
+        m.put("{{tactic " + n + " \u2013 bench}}", tacticResolvers.resolveTacticBench(n, tacticName, sheet, adj, data));
+        m.put("{{tactic " + n + " male}}", tacticResolvers.resolveTacticGender(n, "male", sheet, adj, ccB));
+        m.put("{{tactic " + n + " female}}", tacticResolvers.resolveTacticGender(n, "female", sheet, adj, ccB));
+        m.put("{{tactic " + n + " f}}", tacticResolvers.resolveTacticFreq(n, sheet, adj, data));
+        m.put("{{tactic " + n + " weekdays}}", tacticResolvers.resolveTacticDaypart(n, "weekdays", sheet, adj, ccB));
+        m.put("{{tactic " + n + " weekends}}", tacticResolvers.resolveTacticDaypart(n, "weekends", sheet, adj, ccB));
         return m;
     }
 
-    private static Resolved resolveTacticName(
+    Resolved resolveTacticName(
         int n, List<List<String>> sheet, List<List<String>> adj, List<String> mediaTactics
     ) {
-        Resolved manual = CampaignResolvers.resolve(sheet, adj, "Tactic " + n + ":");
+        Resolved manual = campaignResolvers.resolve(sheet, adj, "Tactic " + n + ":");
         if (manual.found()) return manual;
         int idx = n - 1;
         if (mediaTactics != null && idx < mediaTactics.size()
             && mediaTactics.get(idx) != null && !mediaTactics.get(idx).isEmpty()) {
             return new Resolved("Tactic " + n + " (auto: Media column)",
-                TacticUtils.normalizeTacticDisplayName(mediaTactics.get(idx)), "sheet");
+                tacticUtils.normalizeTacticDisplayName(mediaTactics.get(idx)), "sheet");
         }
-        return Resolved.notFound("Tactic " + n + ":");
+        return new Resolved("Tactic " + n + ":", null, "not_found");
     }
 
-    private static PreviewSection section(String title, Map<String, Resolved> entries) {
+    PreviewSection section(String title, Map<String, Resolved> entries) {
         List<Placeholder> phs = new ArrayList<>();
         for (Map.Entry<String, Resolved> e : entries.entrySet()) {
             Resolved r = e.getValue();
@@ -290,17 +319,17 @@ public class PlaceholderResolverService {
         return new PreviewSection(title, phs);
     }
 
-    private static boolean bothNull(List<List<String>> adj, List<List<String>> sheet, String label) {
-        return SheetUtils.findLabelValue(adj, label) == null
-            && SheetUtils.findLabelValue(sheet, label) == null;
+    boolean bothNull(List<List<String>> adj, List<List<String>> sheet, String label) {
+        return sheetUtils.findLabelValue(adj, label) == null
+            && sheetUtils.findLabelValue(sheet, label) == null;
     }
 
     /** Port of collectAllLabels — chips for the preview "all labels" panel. */
-    private static Labels collectAllLabels(GeneratePayload payload) {
+    Labels collectAllLabels(GeneratePayload payload) {
         return new Labels(chips(payload.sheetRows()), chips(payload.adjRows()));
     }
 
-    private static List<LabelChip> chips(List<List<String>> rows) {
+    List<LabelChip> chips(List<List<String>> rows) {
         List<LabelChip> out = new ArrayList<>();
         if (rows == null) return out;
         for (List<String> row : rows) {

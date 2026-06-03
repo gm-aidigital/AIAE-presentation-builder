@@ -1,5 +1,7 @@
 package com.aidigital.reportconstructor.service.reports.engine;
 
+import org.springframework.stereotype.Component;
+
 import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
 
 import java.time.LocalDate;
@@ -25,12 +27,17 @@ import java.util.regex.Pattern;
  * {@code hasCompletions}: display/social tactics have clicks, video/CTV have
  * completions, DOOH/Audio have neither.
  */
-public final class ChartPivot {
+@Component
+public class ChartPivot {
+    private final SheetUtils sheetUtils;
 
-    private ChartPivot() {}
+    public ChartPivot(SheetUtils sheetUtils) {
+        this.sheetUtils = sheetUtils;
+    }
 
     /** Column indices parsed from the BQ header row; {@code -1} when absent. */
     public record Headers(int dateCol, int impsCol, int clicksCol, int completionsCol, int l1NamingCol) {
+        /** Valid. */
         public boolean valid() {
             return dateCol >= 0 && impsCol >= 0;
         }
@@ -50,7 +57,8 @@ public final class ChartPivot {
      * Parses the BQ header row, mirroring PHP {@code parseBqHeaders}. Scans rows
      * until the one containing a {@code Date} column, then records the indices.
      */
-    public static Headers parseBqHeaders(List<List<String>> rows) {
+    public Headers parseBqHeaders(List<List<String>> rows) {
+
         int dateCol = -1, impsCol = -1, clicksCol = -1, completionsCol = -1, l1NamingCol = -1;
         if (rows == null) {
             return new Headers(-1, -1, -1, -1, -1);
@@ -83,7 +91,8 @@ public final class ChartPivot {
      * underscore segment (index 8) and must be all digits. Mirrors PHP
      * {@code extractLiIdFromL1Naming}.
      */
-    public static String extractLiIdFromL1Naming(String naming) {
+    public String extractLiIdFromL1Naming(String naming) {
+
         if (naming == null) {
             return "";
         }
@@ -97,7 +106,7 @@ public final class ChartPivot {
      * filtered by line-item ids (via Level 1 Naming) and the flight window.
      * Mirrors PHP {@code buildPivot}.
      */
-    public static Pivot buildDailyPivot(
+    public Pivot buildDailyPivot(
         List<List<String>> rows,
         List<String> liIds,
         Headers h,
@@ -129,7 +138,7 @@ public final class ChartPivot {
                         continue;
                     }
                 }
-                LocalDate ts = SheetUtils.parseDate(dateRaw);
+                LocalDate ts = sheetUtils.parseDate(dateRaw);
                 if (ts == null) {
                     continue;
                 }
@@ -157,7 +166,7 @@ public final class ChartPivot {
      * campaign spans multiple years) → {@code {imps, clicks, completions}}, kept
      * in chronological order. Mirrors PHP {@code buildMonthlyPivot}.
      */
-    public static Pivot buildMonthlyPivot(
+    public Pivot buildMonthlyPivot(
         List<List<String>> rows,
         List<String> liIds,
         Headers h,
@@ -191,7 +200,7 @@ public final class ChartPivot {
                         continue;
                     }
                 }
-                LocalDate ts = SheetUtils.parseDate(dateRaw);
+                LocalDate ts = sheetUtils.parseDate(dateRaw);
                 if (ts == null) {
                     continue;
                 }
@@ -224,7 +233,8 @@ public final class ChartPivot {
      * Whether the campaign spans more than one calendar year — when it does the
      * monthly labels carry the year. Mirrors PHP {@code _isMultiYear}.
      */
-    public static boolean isMultiYear(List<List<String>> rows, Headers h, FlightDates flightTs) {
+    public boolean isMultiYear(List<List<String>> rows, Headers h, FlightDates flightTs) {
+
         if (flightTs != null) {
             return flightTs.start().getYear() != flightTs.end().getYear();
         }
@@ -244,7 +254,7 @@ public final class ChartPivot {
             if (dateRaw.isEmpty()) {
                 continue;
             }
-            LocalDate ts = SheetUtils.parseDate(dateRaw);
+            LocalDate ts = sheetUtils.parseDate(dateRaw);
             if (ts != null) {
                 years.add(ts.getYear());
                 if (years.size() > 1) {
@@ -255,7 +265,8 @@ public final class ChartPivot {
         return false;
     }
 
-    private static String monthLabel(LocalDate ts, boolean multiYear) {
+    String monthLabel(LocalDate ts, boolean multiYear) {
+
         String name = Month.of(ts.getMonthValue()).getDisplayName(TextStyle.FULL, Locale.ENGLISH);
         return multiYear ? name + " " + ts.getYear() : name;
     }
@@ -263,7 +274,8 @@ public final class ChartPivot {
     // ── numeric cleanup: strip commas + non [0-9.], parse leading number ───────
     private static final Pattern LEADING_NUM = Pattern.compile("^[0-9]*\\.?[0-9]+");
 
-    private static double num(String raw) {
+    double num(String raw) {
+
         if (raw == null) {
             return 0.0;
         }
@@ -279,12 +291,14 @@ public final class ChartPivot {
         return 0.0;
     }
 
-    private static String cell(List<String> row, int idx) {
+    String cell(List<String> row, int idx) {
+
         String v = row.get(idx);
         return v == null ? "" : v.trim();
     }
 
-    private static String cellAt(List<String> row, int idx) {
+    String cellAt(List<String> row, int idx) {
+
         if (row == null || idx < 0 || idx >= row.size()) {
             return "";
         }

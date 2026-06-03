@@ -151,9 +151,11 @@ public class RealChartProvider implements ChartProvider {
     };
 
     private final GoogleCredentialsFactory creds;
+    private final ChartPivot chartPivot;
 
-    public RealChartProvider(GoogleCredentialsFactory creds) {
+    public RealChartProvider(GoogleCredentialsFactory creds, ChartPivot chartPivot) {
         this.creds = creds;
+        this.chartPivot = chartPivot;
         log.info("[charts] live chart provider initialised");
     }
 
@@ -183,7 +185,7 @@ public class RealChartProvider implements ChartProvider {
             log.warn("[charts] could not create chart folder, copies go to root: {}", ex.getMessage());
         }
 
-        Headers headers = ChartPivot.parseBqHeaders(req.bqRows());
+        Headers headers = chartPivot.parseBqHeaders(req.bqRows());
 
         errors.addAll(buildDailyCharts(drive, sheets, slides, req, headers, folderId));
         errors.addAll(buildMonthlyCharts(drive, sheets, slides, req, headers, folderId));
@@ -210,7 +212,7 @@ public class RealChartProvider implements ChartProvider {
         for (int n = 1; n <= req.tacticCount(); n++) {
             List<String> liIds = tacticLineItems.getOrDefault(n, List.of());
             try {
-                Pivot pivot = ChartPivot.buildDailyPivot(req.bqRows(), liIds, headers, req.flightTs());
+                Pivot pivot = chartPivot.buildDailyPivot(req.bqRows(), liIds, headers, req.flightTs());
                 if (pivot.isEmpty()) {
                     errors.add("Tactic " + n + ": no BQ data (line item ids: " + String.join(",", liIds) + ")");
                     continue;
@@ -238,14 +240,14 @@ public class RealChartProvider implements ChartProvider {
             return errors;
         }
         Map<Integer, List<String>> tacticLineItems = tacticLineItems(req.lineItemMapping());
-        boolean multiYear = ChartPivot.isMultiYear(req.bqRows(), headers, req.flightTs());
+        boolean multiYear = chartPivot.isMultiYear(req.bqRows(), headers, req.flightTs());
         // Slides changed after the daily pass — re-read transforms.
         Map<String, Xform> transforms = loadTransforms(slides, req.presentationId(), errors, "Monthly");
 
         for (int n = 1; n <= req.tacticCount(); n++) {
             List<String> liIds = tacticLineItems.getOrDefault(n, List.of());
             try {
-                Pivot pivot = ChartPivot.buildMonthlyPivot(req.bqRows(), liIds, headers, req.flightTs(), multiYear);
+                Pivot pivot = chartPivot.buildMonthlyPivot(req.bqRows(), liIds, headers, req.flightTs(), multiYear);
                 if (pivot.isEmpty()) {
                     errors.add("Monthly Tactic " + n + ": no data (line item ids: " + String.join(",", liIds) + ")");
                     continue;
@@ -351,13 +353,15 @@ public class RealChartProvider implements ChartProvider {
     //  DRIVE
     // ════════════════════════════════════════════════════════════════════════
 
-    private String createFolder(Drive drive, String name) throws IOException {
+    String createFolder(Drive drive, String name) throws IOException {
+
         com.google.api.services.drive.model.File folder = new com.google.api.services.drive.model.File()
             .setName(name).setMimeType("application/vnd.google-apps.folder");
         return drive.files().create(folder).setFields("id").setSupportsAllDrives(true).execute().getId();
     }
 
-    private String copyFile(Drive drive, String fileId, String name, String folderId) throws IOException {
+    String copyFile(Drive drive, String fileId, String name, String folderId) throws IOException {
+
         com.google.api.services.drive.model.File copy = new com.google.api.services.drive.model.File().setName(name);
         if (folderId != null && !folderId.isEmpty()) {
             copy.setParents(List.of(folderId));
@@ -369,7 +373,8 @@ public class RealChartProvider implements ChartProvider {
     //  SHEETS
     // ════════════════════════════════════════════════════════════════════════
 
-    private ChartSpec readChartSpec(Sheets sheets, String spreadsheetId) throws IOException {
+    ChartSpec readChartSpec(Sheets sheets, String spreadsheetId) throws IOException {
+
         Spreadsheet ss = sheets.spreadsheets().get(spreadsheetId)
             .setIncludeGridData(false)
             .setFields("sheets(properties(sheetId,title),charts(chartId,spec))")
@@ -390,7 +395,8 @@ public class RealChartProvider implements ChartProvider {
         return null;
     }
 
-    private String findDataTab(Sheets sheets, String spreadsheetId) throws IOException {
+    String findDataTab(Sheets sheets, String spreadsheetId) throws IOException {
+
         Spreadsheet ss = sheets.spreadsheets().get(spreadsheetId)
             .setIncludeGridData(false)
             .setFields("sheets.properties.title")
@@ -413,7 +419,8 @@ public class RealChartProvider implements ChartProvider {
         return first == null ? CHART_DATA_TAB : first;
     }
 
-    private int sheetIdForTab(Sheets sheets, String spreadsheetId, String tabName) throws IOException {
+    int sheetIdForTab(Sheets sheets, String spreadsheetId, String tabName) throws IOException {
+
         Spreadsheet ss = sheets.spreadsheets().get(spreadsheetId)
             .setIncludeGridData(false)
             .setFields("sheets.properties(sheetId,title)")
@@ -434,7 +441,8 @@ public class RealChartProvider implements ChartProvider {
      * unused C/D columns when neither clicks nor completions exist, relabels
      * CTR→VCR for video, then writes date / impressions / metric columns.
      */
-    private void writePivot(Sheets sheets, String spreadsheetId, String tabName, Pivot pivot) throws IOException {
+    void writePivot(Sheets sheets, String spreadsheetId, String tabName, Pivot pivot) throws IOException {
+
         if (pivot.isEmpty()) {
             return;
         }
@@ -583,7 +591,8 @@ public class RealChartProvider implements ChartProvider {
      * exists, the CTR/VCR rate (line / right axis). Idempotent and fully guarded
      * so reruns and odd specs never blank the slide.
      */
-    private void injectComboSeries(ChartSpec spec, int dataSheetId, boolean withRate) {
+    void injectComboSeries(ChartSpec spec, int dataSheetId, boolean withRate) {
+
         if (spec == null) {
             return;
         }
@@ -632,7 +641,8 @@ public class RealChartProvider implements ChartProvider {
             .setTargetAxis(targetAxis);
     }
 
-    private void applyChartSpec(Sheets sheets, String spreadsheetId, ChartSpec spec) throws IOException {
+    void applyChartSpec(Sheets sheets, String spreadsheetId, ChartSpec spec) throws IOException {
+
         com.google.api.services.sheets.v4.model.Request req =
             new com.google.api.services.sheets.v4.model.Request().setUpdateChartSpec(
                 new UpdateChartSpecRequest().setChartId(CHART_ID_IN_SHEET).setSpec(spec));
@@ -647,7 +657,8 @@ public class RealChartProvider implements ChartProvider {
      * it is set via {@link com.google.api.client.util.GenericData}'s dynamic map.
      */
     @SuppressWarnings("unchecked")
-    private ChartSpec injectPieSliceColors(ChartSpec spec) {
+    ChartSpec injectPieSliceColors(ChartSpec spec) {
+
         PieChartSpec pie = spec.getPieChart();
         if (pie == null) {
             return spec;
@@ -680,7 +691,7 @@ public class RealChartProvider implements ChartProvider {
         return spec;
     }
 
-    private static Map<String, Object> rgb(double[] c) {
+    Map<String, Object> rgb(double[] c) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("red", c[0]);
         m.put("green", c[1]);
@@ -688,7 +699,8 @@ public class RealChartProvider implements ChartProvider {
         return m;
     }
 
-    private List<List<Object>> readValues(Sheets sheets, String spreadsheetId, String range) throws IOException {
+    List<List<Object>> readValues(Sheets sheets, String spreadsheetId, String range) throws IOException {
+
         ValueRange vr = sheets.spreadsheets().values().get(spreadsheetId, range).execute();
         return vr.getValues() == null ? List.of() : vr.getValues();
     }
@@ -754,7 +766,7 @@ public class RealChartProvider implements ChartProvider {
     //  HELPERS
     // ════════════════════════════════════════════════════════════════════════
 
-    private static Map<Integer, List<String>> tacticLineItems(List<LineItemMapping> mapping) {
+    Map<Integer, List<String>> tacticLineItems(List<LineItemMapping> mapping) {
         Map<Integer, List<String>> out = new LinkedHashMap<>();
         if (mapping == null) {
             return out;
@@ -770,7 +782,8 @@ public class RealChartProvider implements ChartProvider {
     }
 
     /** Spreadsheet A1 column letter for a 0-based column index. */
-    private static String colLetter(int col) {
+    String colLetter(int col) {
+
         StringBuilder sb = new StringBuilder();
         int c = col;
         do {
@@ -780,7 +793,8 @@ public class RealChartProvider implements ChartProvider {
         return sb.toString();
     }
 
-    private static String str(Object o) {
+    String str(Object o) {
+
         return o == null ? "" : o.toString();
     }
 
@@ -793,7 +807,8 @@ public class RealChartProvider implements ChartProvider {
      * for this file.") is replaced with a self-explanatory instruction. Anything
      * else falls back to the raw message so nothing is hidden.
      */
-    private static String describeChartError(String tag, IOException ex) {
+    String describeChartError(String tag, IOException ex) {
+
         if (ex instanceof GoogleJsonResponseException gjre) {
             int status = gjre.getStatusCode();
             String reason = null;
@@ -821,7 +836,8 @@ public class RealChartProvider implements ChartProvider {
         return tag + ": " + ex.getMessage();
     }
 
-    private static HttpRequestInitializer userInitializer(String accessToken) {
+    HttpRequestInitializer userInitializer(String accessToken) {
+
         return new HttpCredentialsAdapter(GoogleCredentials.create(new AccessToken(accessToken, null)));
     }
 }

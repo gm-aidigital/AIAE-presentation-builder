@@ -54,14 +54,17 @@ public class GoogleCredentialsFactory {
         }
     }
 
+    /** Transport. */
     public HttpTransport transport() {
         return transport;
     }
 
+    /** Json factory. */
     public GsonFactory jsonFactory() {
         return jsonFactory;
     }
 
+    /** Initializer. */
     public HttpRequestInitializer initializer() {
         return new HttpCredentialsAdapter(credentials);
     }

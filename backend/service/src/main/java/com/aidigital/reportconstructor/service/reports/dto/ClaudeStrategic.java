@@ -14,9 +14,6 @@ public record ClaudeStrategic(
     String proposalOverview,
     List<StrategicInsight> strategicInsights
 ) {
+    /** StrategicInsight (report engine DTO). */
     public record StrategicInsight(String point, String overview) {}
-
-    public static ClaudeStrategic empty() {
-        return new ClaudeStrategic(null, null, null, List.of());
-    }
 }

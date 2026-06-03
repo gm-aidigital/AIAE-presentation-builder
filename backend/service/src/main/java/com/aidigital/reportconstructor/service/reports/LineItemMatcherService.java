@@ -239,10 +239,13 @@ public class LineItemMatcherService {
         m.put("dooh", List.of("DOOH"));
     }
 
+    /** LineItemMeta (report engine DTO). */
     public record LineItemMeta(String id, String naming, String channel, String tactic) {}
 
+    /** TacticSuggestion (report engine DTO). */
     public record TacticSuggestion(String tactic, String lineItemId, String confidence) {}
 
+    /** MatchResult (report engine DTO). */
     public record MatchResult(
         List<TacticSuggestion> tactics,
         List<LineItemMeta> lineItems,
@@ -321,7 +324,8 @@ public class LineItemMatcherService {
         return new MatchResult(suggestions, lineItems, uniqueIds);
     }
 
-    private static String extractLineItemId(String naming) {
+    String extractLineItemId(String naming) {
+
         String[] parts = naming.split("_");
         if (parts.length < 9) return null;
         String id = parts[8].trim();
@@ -329,7 +333,8 @@ public class LineItemMatcherService {
         return id.chars().allMatch(Character::isDigit) ? id : null;
     }
 
-    private static List<String> extractTactics(List<List<String>> planRows) {
+    List<String> extractTactics(List<List<String>> planRows) {
+
         List<String> tactics = new ArrayList<>();
         if (planRows == null || planRows.isEmpty()) return tactics;
 
@@ -363,14 +368,16 @@ public class LineItemMatcherService {
         return tactics;
     }
 
-    private static int indexOfHeader(List<String> headers, java.util.function.Predicate<String> match) {
+    int indexOfHeader(List<String> headers, java.util.function.Predicate<String> match) {
+
         for (int i = 0; i < headers.size(); i++) {
             if (match.test(headers.get(i) == null ? "" : headers.get(i))) return i;
         }
         return -1;
     }
 
-    private static String cell(List<String> row, int idx) {
+    String cell(List<String> row, int idx) {
+
         if (idx < 0 || row == null || idx >= row.size()) return "";
         return row.get(idx) == null ? "" : row.get(idx);
     }

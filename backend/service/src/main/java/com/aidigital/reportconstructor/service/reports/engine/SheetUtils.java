@@ -1,5 +1,7 @@
 package com.aidigital.reportconstructor.service.reports.engine;
 
+import org.springframework.stereotype.Component;
+
 import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
 
 import java.time.LocalDate;
@@ -16,17 +18,16 @@ import java.util.Locale;
  * Sheets API. No dependency on any other engine class. Date handling mirrors
  * the PHP {@code strtotime}/{@code date} behaviour using {@link LocalDate}.
  */
-public final class SheetUtils {
-
-    private SheetUtils() {}
-
+@Component
+public class SheetUtils {
     private static final String[] STOP_WORDS = {"added value", "totals", "please note", "total:"};
 
     /**
      * Finds a label cell and returns the value in the cell to its RIGHT.
      * e.g. label "Client name:" in B3 → value of C3. {@code null} if not found.
      */
-    public static String findLabelValue(List<List<String>> rows, String label) {
+    public String findLabelValue(List<List<String>> rows, String label) {
+
         if (rows == null) return null;
         String needle = label.trim().toLowerCase(Locale.ROOT);
         for (List<String> row : rows) {
@@ -44,7 +45,8 @@ public final class SheetUtils {
      * Finds a label cell and returns the value in the cell BELOW it
      * (same column, next row). {@code null} if not found.
      */
-    public static String findLabelValueBelow(List<List<String>> rows, String label) {
+    public String findLabelValueBelow(List<List<String>> rows, String label) {
+
         if (rows == null) return null;
         String needle = label.trim().toLowerCase(Locale.ROOT);
         for (int i = 0; i < rows.size(); i++) {
@@ -65,7 +67,8 @@ public final class SheetUtils {
      * {@code [minStart, maxEnd]}, or {@code null} when not found.
      * Mirrors PHP {@code _extractFlightTimestampsRaw}.
      */
-    public static FlightDates extractFlightTimestamps(List<List<String>> rows) {
+    public FlightDates extractFlightTimestamps(List<List<String>> rows) {
+
         if (rows == null) return null;
         int headerRowIdx = -1;
         int startCol = -1;
@@ -115,7 +118,8 @@ public final class SheetUtils {
      * Formats a flight date pair into e.g. {@code "Feb 12 – May 9, 2026"}.
      * Same year is written once at the end. Mirrors PHP {@code formatFlightDates}.
      */
-    public static String formatFlightDates(LocalDate minStart, LocalDate maxEnd) {
+    public String formatFlightDates(LocalDate minStart, LocalDate maxEnd) {
+
         if (maxEnd == null || maxEnd.equals(minStart)) {
             return MDY.format(minStart);
         }
@@ -126,7 +130,8 @@ public final class SheetUtils {
     }
 
     /** Mirrors PHP {@code extractFlightDates} — formatted range or {@code null}. */
-    public static String extractFlightDates(List<List<String>> rows) {
+    public String extractFlightDates(List<List<String>> rows) {
+
         FlightDates fd = extractFlightTimestamps(rows);
         return fd == null ? null : formatFlightDates(fd.start(), fd.end());
     }
@@ -136,7 +141,8 @@ public final class SheetUtils {
      * a pair. Supports same-year shorthand, cross-year, and single dates.
      * Mirrors PHP {@code parseFlightDateRange}.
      */
-    public static FlightDates parseFlightDateRange(String dateStr) {
+    public FlightDates parseFlightDateRange(String dateStr) {
+
         if (dateStr == null) return null;
         String s = dateStr
             .replace('\u00A0', ' ')
@@ -167,7 +173,8 @@ public final class SheetUtils {
      * manual "Flight dates:" in adj → in sheet → auto columns in adj → in sheet.
      * Mirrors PHP {@code resolveFlightTimestamps}.
      */
-    public static FlightDates resolveFlightTimestamps(List<List<String>> sheetRows, List<List<String>> adjRows) {
+    public FlightDates resolveFlightTimestamps(List<List<String>> sheetRows, List<List<String>> adjRows) {
+
         String manual = findLabelValue(adjRows, "Flight dates:");
         if (manual != null) {
             FlightDates parsed = parseFlightDateRange(manual);
@@ -188,7 +195,7 @@ public final class SheetUtils {
     private static final DateTimeFormatter MD = DateTimeFormatter.ofPattern("MMM d", Locale.ENGLISH);
     private static final DateTimeFormatter MDY = DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.ENGLISH);
 
-    private static final DateTimeFormatter[] DATE_PATTERNS = {
+    private final DateTimeFormatter[] datePatterns = {
         flexible("MMM d, yyyy"),
         flexible("MMMM d, yyyy"),
         flexible("MMM d yyyy"),
@@ -202,7 +209,7 @@ public final class SheetUtils {
         flexible("M/d/yy"),
     };
 
-    private static DateTimeFormatter flexible(String pattern) {
+    DateTimeFormatter flexible(String pattern) {
         return new DateTimeFormatterBuilder()
             .parseCaseInsensitive()
             .appendPattern(pattern)
@@ -211,11 +218,12 @@ public final class SheetUtils {
     }
 
     /** Parses a single date string, mirroring PHP {@code strtotime}; {@code null} on failure. */
-    public static LocalDate parseDate(String raw) {
+    public LocalDate parseDate(String raw) {
+
         if (raw == null) return null;
         String s = raw.trim().replace('\u00A0', ' ');
         if (s.isEmpty()) return null;
-        for (DateTimeFormatter f : DATE_PATTERNS) {
+        for (DateTimeFormatter f : datePatterns) {
             try {
                 return LocalDate.parse(s, f);
             } catch (Exception ignored) {
@@ -238,16 +246,19 @@ public final class SheetUtils {
         return null;
     }
 
-    private static String cell(List<String> row, int idx) {
+    String cell(List<String> row, int idx) {
+
         String v = row.get(idx);
         return v == null ? "" : v.trim();
     }
 
-    private static String cellAt(List<String> row, int idx) {
+    String cellAt(List<String> row, int idx) {
+
         return idx >= 0 && idx < row.size() ? cell(row, idx) : "";
     }
 
-    private static String joinLower(List<String> row, int n) {
+    String joinLower(List<String> row, int n) {
+
         StringBuilder sb = new StringBuilder();
         int limit = Math.min(n, row.size());
         for (int i = 0; i < limit; i++) {

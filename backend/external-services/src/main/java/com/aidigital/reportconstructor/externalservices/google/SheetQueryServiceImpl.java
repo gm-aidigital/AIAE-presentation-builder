@@ -21,12 +21,14 @@ public class SheetQueryServiceImpl implements SheetQueryService {
 
     @Override
     @LogUsage
+    /** Connection status. */
     public GoogleConnectionStatus connectionStatus(String callerEmail) {
         return new GoogleConnectionStatus(true, !sheets.isLive(), callerEmail, java.util.List.of(), "");
     }
 
     @Override
     @LogUsage
+    /** Fetch tab. */
     public SheetData fetchTab(String spreadsheetUrl, String tab) {
         return sheets.fetchTab(spreadsheetUrl, tab);
     }

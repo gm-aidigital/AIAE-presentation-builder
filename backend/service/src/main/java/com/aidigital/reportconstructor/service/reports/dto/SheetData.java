@@ -2,6 +2,7 @@ package com.aidigital.reportconstructor.service.reports.dto;
 
 import java.util.List;
 
+/** SheetData (report engine DTO). */
 public record SheetData(
     String sheetId,
     String title,

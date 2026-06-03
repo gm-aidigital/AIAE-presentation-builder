@@ -14,7 +14,4 @@ public record ClaudeResults(
     List<String> thoughtsOnPerformance,
     Map<Integer, String> tacticOverviews
 ) {
-    public static ClaudeResults empty() {
-        return new ClaudeResults(null, List.of(), Map.of());
-    }
 }

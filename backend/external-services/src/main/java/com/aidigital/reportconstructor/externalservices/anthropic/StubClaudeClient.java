@@ -5,6 +5,7 @@ import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
+import com.aidigital.reportconstructor.service.reports.engine.ReportClaudeDefaults;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -20,6 +21,12 @@ import java.util.List;
 @Component
 public class StubClaudeClient implements ClaudeClient {
 
+    private final ReportClaudeDefaults claudeDefaults;
+
+    public StubClaudeClient(ReportClaudeDefaults claudeDefaults) {
+        this.claudeDefaults = claudeDefaults;
+    }
+
     @Override
     public boolean isLive() {
         return false;
@@ -27,17 +34,17 @@ public class StubClaudeClient implements ClaudeClient {
 
     @Override
     public ClaudeStrategic batchStrategic(CampaignData data, String brief) {
-        return ClaudeStrategic.empty();
+        return claudeDefaults.emptyStrategic();
     }
 
     @Override
     public ClaudeTactical batchTactical(CampaignData data, String brief) {
-        return ClaudeTactical.empty();
+        return claudeDefaults.emptyTactical();
     }
 
     @Override
     public ClaudeResults batchResults(CampaignData data, String brief) {
-        return ClaudeResults.empty();
+        return claudeDefaults.emptyResults();
     }
 
     @Override

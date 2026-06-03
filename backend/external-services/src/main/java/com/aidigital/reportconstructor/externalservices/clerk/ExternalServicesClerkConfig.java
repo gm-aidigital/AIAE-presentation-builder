@@ -5,5 +5,6 @@ import org.springframework.context.annotation.Configuration;
 
 @Configuration
 @EnableConfigurationProperties(ClerkProperties.class)
+/** ExternalServicesClerkConfig (report engine DTO). */
 public class ExternalServicesClerkConfig {
 }

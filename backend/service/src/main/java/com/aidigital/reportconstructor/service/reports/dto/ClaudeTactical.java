@@ -9,12 +9,10 @@ import java.util.Map;
  */
 public record ClaudeTactical(Map<Integer, TacticInsight> byTactic) {
 
+    /** TacticInsight (report engine DTO). */
     public record TacticInsight(int male, int female, String weekdays, String weekends) {}
 
-    public static ClaudeTactical empty() {
-        return new ClaudeTactical(Map.of());
-    }
-
+    /** Get. */
     public TacticInsight get(int n) {
         return byTactic == null ? null : byTactic.get(n);
     }

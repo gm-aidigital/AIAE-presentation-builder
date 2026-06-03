@@ -1,5 +1,7 @@
 package com.aidigital.reportconstructor.service.reports.engine;
 
+import org.springframework.stereotype.Component;
+
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 
@@ -17,36 +19,49 @@ import java.util.Map;
  * unresolved. Priority is always manual Adjustments → Media Plan → computed /
  * Claude. Claude outputs are passed in (the resolvers never call the API).
  */
-public final class CampaignResolvers {
+@Component
+public class CampaignResolvers {
+    private final SheetUtils sheetUtils;
+    private final Fmt fmt;
+    private final TacticUtils tacticUtils;
 
-    private CampaignResolvers() {}
+    public CampaignResolvers(SheetUtils sheetUtils, Fmt fmt, TacticUtils tacticUtils) {
+        this.sheetUtils = sheetUtils;
+        this.fmt = fmt;
+        this.tacticUtils = tacticUtils;
+    }
 
     /** {@code resolve()} — generic label lookup, adj → sheet → not_found. */
-    public static Resolved resolve(List<List<String>> sheetRows, List<List<String>> adjRows, String label) {
-        String fromSheet = SheetUtils.findLabelValue(sheetRows, label);
-        String fromAdj = SheetUtils.findLabelValue(adjRows, label);
+    public Resolved resolve(List<List<String>> sheetRows, List<List<String>> adjRows, String label) {
+
+        String fromSheet = sheetUtils.findLabelValue(sheetRows, label);
+        String fromAdj = sheetUtils.findLabelValue(adjRows, label);
         if (fromAdj != null) return new Resolved(label, fromAdj, "adj");
         if (fromSheet != null) return new Resolved(label, fromSheet, "sheet");
-        return Resolved.notFound(label);
+        return new Resolved(label, null, "not_found");
     }
 
-    public static Resolved resolveFlightDates(List<List<String>> sheetRows, List<List<String>> adjRows) {
-        String fromAdj = SheetUtils.findLabelValue(adjRows, "Flight dates:");
+    /** Resolve flight dates. */
+    public Resolved resolveFlightDates(List<List<String>> sheetRows, List<List<String>> adjRows) {
+
+        String fromAdj = sheetUtils.findLabelValue(adjRows, "Flight dates:");
         if (fromAdj != null) return new Resolved("Flight dates:", fromAdj, "adj");
-        String fromSheet = SheetUtils.findLabelValue(sheetRows, "Flight dates:");
+        String fromSheet = sheetUtils.findLabelValue(sheetRows, "Flight dates:");
         if (fromSheet != null) return new Resolved("Flight dates:", fromSheet, "sheet");
 
-        String fromAdjAuto = SheetUtils.extractFlightDates(adjRows);
+        String fromAdjAuto = sheetUtils.extractFlightDates(adjRows);
         if (fromAdjAuto != null) return new Resolved("Flight Start / Flight End columns", fromAdjAuto, "adj");
-        String fromSheetAuto = SheetUtils.extractFlightDates(sheetRows);
+        String fromSheetAuto = sheetUtils.extractFlightDates(sheetRows);
         if (fromSheetAuto != null) return new Resolved("Flight Start / Flight End columns", fromSheetAuto, "sheet");
-        return Resolved.notFound("Flight Start / Flight End columns");
+        return new Resolved("Flight Start / Flight End columns", null, "not_found");
     }
 
-    public static Resolved resolvePrimaryKpis(List<List<String>> sheetRows, List<List<String>> adjRows) {
-        String fromAdj = SheetUtils.findLabelValue(adjRows, "Primary KPIs:");
+    /** Resolve primary kpis. */
+    public Resolved resolvePrimaryKpis(List<List<String>> sheetRows, List<List<String>> adjRows) {
+
+        String fromAdj = sheetUtils.findLabelValue(adjRows, "Primary KPIs:");
         if (fromAdj != null) return new Resolved("Primary KPIs:", fromAdj, "adj");
-        String fromSheet = SheetUtils.findLabelValue(sheetRows, "Primary KPIs:");
+        String fromSheet = sheetUtils.findLabelValue(sheetRows, "Primary KPIs:");
         if (fromSheet != null) return new Resolved("Primary KPIs:", fromSheet, "sheet");
 
         int headerRowIdx = -1, channelCol = -1;
@@ -60,14 +75,14 @@ public final class CampaignResolvers {
                 }
             }
         }
-        if (headerRowIdx < 0) return Resolved.notFound("Primary KPIs (auto: Channel)");
+        if (headerRowIdx < 0) return new Resolved("Primary KPIs (auto: Channel)", null, "not_found");
 
         Map<String, Boolean> channels = new LinkedHashMap<>();
         for (int i = headerRowIdx + 1; i < adjRows.size(); i++) {
             String val = cellAt(adjRows.get(i), channelCol).toLowerCase(Locale.ROOT);
             if (!val.isEmpty()) channels.put(val, true);
         }
-        if (channels.isEmpty()) return Resolved.notFound("Primary KPIs (auto: Channel)");
+        if (channels.isEmpty()) return new Resolved("Primary KPIs (auto: Channel)", null, "not_found");
 
         boolean hasDisplay = false, hasVideo = false;
         for (String ch : channels.keySet()) {
@@ -82,35 +97,40 @@ public final class CampaignResolvers {
         return new Resolved("Primary KPIs (auto: Channel)", kpiValue, "adj");
     }
 
-    public static Resolved resolveAudienceAge(List<List<String>> sheetRows, List<List<String>> adjRows, String claudeAge) {
-        String fromAdj = SheetUtils.findLabelValue(adjRows, "Audience age:");
+    /** Resolve audience age. */
+    public Resolved resolveAudienceAge(List<List<String>> sheetRows, List<List<String>> adjRows, String claudeAge) {
+
+        String fromAdj = sheetUtils.findLabelValue(adjRows, "Audience age:");
         if (fromAdj != null) return new Resolved("Audience age:", fromAdj, "adj");
-        String fromSheet = SheetUtils.findLabelValue(sheetRows, "Audience age:");
+        String fromSheet = sheetUtils.findLabelValue(sheetRows, "Audience age:");
         if (fromSheet != null) return new Resolved("Audience age:", fromSheet, "sheet");
         if (claudeAge != null) return new Resolved("Audience age (auto: Claude from brief)", claudeAge, "adj");
-        return Resolved.notFound("Audience age:");
+        return new Resolved("Audience age:", null, "not_found");
     }
 
-    public static Resolved resolveAudienceSegments(List<List<String>> sheetRows, List<List<String>> adjRows, String claudeSegs) {
-        String fromAdj = SheetUtils.findLabelValue(adjRows, "Audience segments:");
+    /** Resolve audience segments. */
+    public Resolved resolveAudienceSegments(List<List<String>> sheetRows, List<List<String>> adjRows, String claudeSegs) {
+
+        String fromAdj = sheetUtils.findLabelValue(adjRows, "Audience segments:");
         if (fromAdj != null) return new Resolved("Audience segments:", fromAdj, "adj");
-        String fromSheet = SheetUtils.findLabelValue(sheetRows, "Audience segments:");
+        String fromSheet = sheetUtils.findLabelValue(sheetRows, "Audience segments:");
         if (fromSheet != null) return new Resolved("Audience segments:", fromSheet, "sheet");
         if (claudeSegs != null) return new Resolved("Audience segments (auto: Claude from Audience&Inventory tab)", claudeSegs, "sheet");
-        return Resolved.notFound("Audience segments:");
+        return new Resolved("Audience segments:", null, "not_found");
     }
 
     /**
      * {@code geoSummary} is the Claude-summarised Geo-tab string, pre-computed by
      * the orchestrator only when the "Geo" cell points at the Geo tab.
      */
-    public static Resolved resolveGeoLocations(List<List<String>> sheetRows, List<List<String>> adjRows, String geoSummary) {
-        String fromAdj = SheetUtils.findLabelValue(adjRows, "Geo locations:");
+    public Resolved resolveGeoLocations(List<List<String>> sheetRows, List<List<String>> adjRows, String geoSummary) {
+
+        String fromAdj = sheetUtils.findLabelValue(adjRows, "Geo locations:");
         if (fromAdj != null) return new Resolved("Geo locations:", fromAdj, "adj");
-        String fromSheet = SheetUtils.findLabelValue(sheetRows, "Geo locations:");
+        String fromSheet = sheetUtils.findLabelValue(sheetRows, "Geo locations:");
         if (fromSheet != null) return new Resolved("Geo locations:", fromSheet, "sheet");
 
-        String below = SheetUtils.findLabelValueBelow(sheetRows, "Geo");
+        String below = sheetUtils.findLabelValueBelow(sheetRows, "Geo");
         if (below != null) {
             String lc = below.toLowerCase(Locale.ROOT);
             if (lc.contains("see geo tab") || lc.contains("geo tab")) {
@@ -121,26 +141,30 @@ public final class CampaignResolvers {
             }
             return new Resolved("Geo (value below)", below, "sheet");
         }
-        return Resolved.notFound("Geo locations:");
+        return new Resolved("Geo locations:", null, "not_found");
     }
 
-    public static Resolved resolveFunnelStages(List<List<String>> sheetRows, List<List<String>> adjRows) {
-        String fromAdj = SheetUtils.findLabelValue(adjRows, "Funnel stages:");
+    /** Resolve funnel stages. */
+    public Resolved resolveFunnelStages(List<List<String>> sheetRows, List<List<String>> adjRows) {
+
+        String fromAdj = sheetUtils.findLabelValue(adjRows, "Funnel stages:");
         if (fromAdj != null) return new Resolved("Funnel stages:", fromAdj, "adj");
-        String fromSheet = SheetUtils.findLabelValue(sheetRows, "Funnel stages:");
+        String fromSheet = sheetUtils.findLabelValue(sheetRows, "Funnel stages:");
         if (fromSheet != null) return new Resolved("Funnel stages:", fromSheet, "sheet");
-        String below = SheetUtils.findLabelValueBelow(sheetRows, "Goal");
+        String below = sheetUtils.findLabelValueBelow(sheetRows, "Goal");
         if (below != null) return new Resolved("Goal (value below)", below, "sheet");
-        return Resolved.notFound("Funnel stages:");
+        return new Resolved("Funnel stages:", null, "not_found");
     }
 
-    public static Resolved resolveTacticsList(List<List<String>> sheetRows, List<List<String>> adjRows) {
-        String fromAdj = SheetUtils.findLabelValue(adjRows, "Tactics list:");
+    /** Resolve tactics list. */
+    public Resolved resolveTacticsList(List<List<String>> sheetRows, List<List<String>> adjRows) {
+
+        String fromAdj = sheetUtils.findLabelValue(adjRows, "Tactics list:");
         if (fromAdj != null) return new Resolved("Tactics list:", fromAdj, "adj");
-        String fromSheet = SheetUtils.findLabelValue(sheetRows, "Tactics list:");
+        String fromSheet = sheetUtils.findLabelValue(sheetRows, "Tactics list:");
         if (fromSheet != null) return new Resolved("Tactics list:", fromSheet, "sheet");
 
-        Map<String, String> known = TacticUtils.knownTacticsWhitelist();
+        Map<String, String> known = tacticUtils.knownTacticsWhitelist();
         int mediaRowIdx = -1, mediaColIdx = -1;
         outer:
         for (int i = 0; i < sheetRows.size(); i++) {
@@ -152,7 +176,7 @@ public final class CampaignResolvers {
                 }
             }
         }
-        if (mediaRowIdx < 0) return Resolved.notFound("Tactics list (auto: 20 rows below \"Media\")");
+        if (mediaRowIdx < 0) return new Resolved("Tactics list (auto: 20 rows below \"Media\")", null, "not_found");
 
         Map<String, Boolean> seen = new LinkedHashMap<>();
         List<String> result = new ArrayList<>();
@@ -166,20 +190,22 @@ public final class CampaignResolvers {
             String canonicalKey = canonical.toLowerCase(Locale.ROOT);
             if (!seen.containsKey(canonicalKey)) {
                 seen.put(canonicalKey, true);
-                result.add(TacticUtils.normalizeTacticDisplayName(canonical));
+                result.add(tacticUtils.normalizeTacticDisplayName(canonical));
             }
         }
-        if (result.isEmpty()) return Resolved.notFound("Tactics list (auto: 20 rows below \"Media\")");
+        if (result.isEmpty()) return new Resolved("Tactics list (auto: 20 rows below \"Media\")", null, "not_found");
         return new Resolved("Tactics list (auto: 20 rows below \"Media\")", String.join(", ", result), "sheet");
     }
 
-    public static Resolved resolveProposalOverview(List<List<String>> sheetRows, List<List<String>> adjRows, String claudeOverview) {
-        String fromAdj = SheetUtils.findLabelValue(adjRows, "Proposal overview:");
+    /** Resolve proposal overview. */
+    public Resolved resolveProposalOverview(List<List<String>> sheetRows, List<List<String>> adjRows, String claudeOverview) {
+
+        String fromAdj = sheetUtils.findLabelValue(adjRows, "Proposal overview:");
         if (fromAdj != null) return new Resolved("Proposal overview:", fromAdj, "adj");
-        String fromSheet = SheetUtils.findLabelValue(sheetRows, "Proposal overview:");
+        String fromSheet = sheetUtils.findLabelValue(sheetRows, "Proposal overview:");
         if (fromSheet != null) return new Resolved("Proposal overview:", fromSheet, "sheet");
         if (claudeOverview != null) return new Resolved("Proposal overview (auto: Claude from brief + media plan)", claudeOverview, "adj");
-        return Resolved.notFound("Proposal overview:");
+        return new Resolved("Proposal overview:", null, "not_found");
     }
 
     /** Returns the 8 {@code {{Strategic point/overview N}}} entries. */
@@ -188,10 +214,10 @@ public final class CampaignResolvers {
 
         Map<String, Resolved> result = new LinkedHashMap<>();
         for (int i = 1; i <= 4; i++) {
-            String mPoint = coalesce(SheetUtils.findLabelValue(adjRows, "Strategic point " + i + ":"),
-                                     SheetUtils.findLabelValue(sheetRows, "Strategic point " + i + ":"));
-            String mOver = coalesce(SheetUtils.findLabelValue(adjRows, "Strategic overview " + i + ":"),
-                                    SheetUtils.findLabelValue(sheetRows, "Strategic overview " + i + ":"));
+            String mPoint = coalesce(sheetUtils.findLabelValue(adjRows, "Strategic point " + i + ":"),
+                                     sheetUtils.findLabelValue(sheetRows, "Strategic point " + i + ":"));
+            String mOver = coalesce(sheetUtils.findLabelValue(adjRows, "Strategic overview " + i + ":"),
+                                    sheetUtils.findLabelValue(sheetRows, "Strategic overview " + i + ":"));
             ClaudeStrategic.StrategicInsight ci = claude != null && claude.size() >= i ? claude.get(i - 1) : null;
 
             String pointKey = "{{Strategic point " + i + "}}";
@@ -200,7 +226,7 @@ public final class CampaignResolvers {
             } else if (ci != null && notBlank(ci.point())) {
                 result.put(pointKey, new Resolved("Strategic point " + i + " (auto: Claude)", ci.point(), "adj"));
             } else {
-                result.put(pointKey, Resolved.notFound("Strategic point " + i + ":"));
+                result.put(pointKey, new Resolved("Strategic point " + i + ":", null, "not_found"));
             }
 
             String overKey = "{{Strategic overview " + i + "}}";
@@ -209,19 +235,21 @@ public final class CampaignResolvers {
             } else if (ci != null && notBlank(ci.overview())) {
                 result.put(overKey, new Resolved("Strategic overview " + i + " (auto: Claude)", ci.overview(), "adj"));
             } else {
-                result.put(overKey, Resolved.notFound("Strategic overview " + i + ":"));
+                result.put(overKey, new Resolved("Strategic overview " + i + ":", null, "not_found"));
             }
         }
         return result;
     }
 
-    public static Resolved resolveResultsOverview(List<List<String>> sheetRows, List<List<String>> adjRows, String claudeOverview) {
-        String fromAdj = SheetUtils.findLabelValue(adjRows, "Our results overview:");
+    /** Resolve results overview. */
+    public Resolved resolveResultsOverview(List<List<String>> sheetRows, List<List<String>> adjRows, String claudeOverview) {
+
+        String fromAdj = sheetUtils.findLabelValue(adjRows, "Our results overview:");
         if (fromAdj != null) return new Resolved("Our results overview:", fromAdj, "adj");
-        String fromSheet = SheetUtils.findLabelValue(sheetRows, "Our results overview:");
+        String fromSheet = sheetUtils.findLabelValue(sheetRows, "Our results overview:");
         if (fromSheet != null) return new Resolved("Our results overview:", fromSheet, "sheet");
         if (claudeOverview != null) return new Resolved("Our results overview (auto: Claude)", claudeOverview, "adj");
-        return Resolved.notFound("Our results overview:");
+        return new Resolved("Our results overview:", null, "not_found");
     }
 
     /** Returns the 4 {@code {{thoughts on the performance N}}} entries. */
@@ -231,11 +259,11 @@ public final class CampaignResolvers {
         String[] parts;
         String source;
         String label;
-        String fromAdj = SheetUtils.findLabelValue(adjRows, "Thoughts on the performance:");
+        String fromAdj = sheetUtils.findLabelValue(adjRows, "Thoughts on the performance:");
         if (fromAdj != null) {
             parts = split4(fromAdj); source = "adj"; label = "Thoughts on the performance:";
         } else {
-            String fromSheet = SheetUtils.findLabelValue(sheetRows, "Thoughts on the performance:");
+            String fromSheet = sheetUtils.findLabelValue(sheetRows, "Thoughts on the performance:");
             if (fromSheet != null) {
                 parts = split4(fromSheet); source = "sheet"; label = "Thoughts on the performance:";
             } else if (claudeThoughts != null && !claudeThoughts.isEmpty()) {
@@ -254,49 +282,58 @@ public final class CampaignResolvers {
         return result;
     }
 
-    public static Resolved resolveTotalImps(List<List<String>> sheetRows, List<List<String>> adjRows, CampaignData data) {
-        String fromAdj = SheetUtils.findLabelValue(adjRows, "Total imps:");
+    /** Resolve total imps. */
+    public Resolved resolveTotalImps(List<List<String>> sheetRows, List<List<String>> adjRows, CampaignData data) {
+
+        String fromAdj = sheetUtils.findLabelValue(adjRows, "Total imps:");
         if (fromAdj != null) return new Resolved("Total imps:", fromAdj, "adj");
-        String fromSheet = SheetUtils.findLabelValue(sheetRows, "Total imps:");
+        String fromSheet = sheetUtils.findLabelValue(sheetRows, "Total imps:");
         if (fromSheet != null) return new Resolved("Total imps:", fromSheet, "sheet");
         double imps = data.totals().imps();
-        if (imps > 0) return new Resolved("Total imps (auto: BQ Impressions)", Fmt.intGroup(imps), "adj");
-        return Resolved.notFound("Total imps (auto: BQ Impressions)");
+        if (imps > 0) return new Resolved("Total imps (auto: BQ Impressions)", fmt.intGroup(imps), "adj");
+        return new Resolved("Total imps (auto: BQ Impressions)", null, "not_found");
     }
 
-    public static Resolved resolveTotalInvestment(List<List<String>> sheetRows, List<List<String>> adjRows, CampaignData data) {
-        String fromAdj = SheetUtils.findLabelValue(adjRows, "Total investment:");
+    /** Resolve total investment. */
+    public Resolved resolveTotalInvestment(List<List<String>> sheetRows, List<List<String>> adjRows, CampaignData data) {
+
+        String fromAdj = sheetUtils.findLabelValue(adjRows, "Total investment:");
         if (fromAdj != null) return new Resolved("Total investment:", fromAdj, "adj");
-        String fromSheet = SheetUtils.findLabelValue(sheetRows, "Total investment:");
+        String fromSheet = sheetUtils.findLabelValue(sheetRows, "Total investment:");
         if (fromSheet != null) return new Resolved("Total investment:", fromSheet, "sheet");
         double spend = data.totals().spend();
-        if (spend > 0) return new Resolved("Total investment (auto: BQ spend)", Fmt.money(spend), "adj");
-        return Resolved.notFound("Total investment (auto: BQ spend)");
+        if (spend > 0) return new Resolved("Total investment (auto: BQ spend)", fmt.money(spend), "adj");
+        return new Resolved("Total investment (auto: BQ spend)", null, "not_found");
     }
 
-    public static Resolved resolveTotalCtr(List<List<String>> sheetRows, List<List<String>> adjRows, CampaignData data) {
-        String fromAdj = SheetUtils.findLabelValue(adjRows, "Total CTR:");
+    /** Resolve total ctr. */
+    public Resolved resolveTotalCtr(List<List<String>> sheetRows, List<List<String>> adjRows, CampaignData data) {
+
+        String fromAdj = sheetUtils.findLabelValue(adjRows, "Total CTR:");
         if (fromAdj != null) return new Resolved("Total CTR:", fromAdj, "adj");
-        String fromSheet = SheetUtils.findLabelValue(sheetRows, "Total CTR:");
+        String fromSheet = sheetUtils.findLabelValue(sheetRows, "Total CTR:");
         if (fromSheet != null) return new Resolved("Total CTR:", fromSheet, "sheet");
         Double ctr = data.totals().ctr();
-        if (ctr != null) return new Resolved("Total CTR (auto: Clicks / Imps)", Fmt.pctOrDash(ctr), "adj");
-        return Resolved.notFound("Total CTR (auto: Clicks / Imps)");
+        if (ctr != null) return new Resolved("Total CTR (auto: Clicks / Imps)", fmt.pctOrDash(ctr), "adj");
+        return new Resolved("Total CTR (auto: Clicks / Imps)", null, "not_found");
     }
 
-    public static Resolved resolveTotalVcr(List<List<String>> sheetRows, List<List<String>> adjRows, CampaignData data) {
-        String fromAdj = SheetUtils.findLabelValue(adjRows, "Total VCR:");
+    /** Resolve total vcr. */
+    public Resolved resolveTotalVcr(List<List<String>> sheetRows, List<List<String>> adjRows, CampaignData data) {
+
+        String fromAdj = sheetUtils.findLabelValue(adjRows, "Total VCR:");
         if (fromAdj != null) return new Resolved("Total VCR:", fromAdj, "adj");
-        String fromSheet = SheetUtils.findLabelValue(sheetRows, "Total VCR:");
+        String fromSheet = sheetUtils.findLabelValue(sheetRows, "Total VCR:");
         if (fromSheet != null) return new Resolved("Total VCR:", fromSheet, "sheet");
         Double vcr = data.totals().vcr();
-        if (vcr != null) return new Resolved("Total VCR (auto: Completions / Imps)", Fmt.pctOrDash(vcr), "adj");
-        return Resolved.notFound("Total VCR (auto: Completions / Imps)");
+        if (vcr != null) return new Resolved("Total VCR (auto: Completions / Imps)", fmt.pctOrDash(vcr), "adj");
+        return new Resolved("Total VCR (auto: Completions / Imps)", null, "not_found");
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
-    private static String[] split4(String raw) {
+    String[] split4(String raw) {
+
         String[] out = new String[4];
         if (raw == null || raw.trim().isEmpty()) return out;
         String[] parts = raw.split(" \\| ");
@@ -307,20 +344,24 @@ public final class CampaignResolvers {
         return out;
     }
 
-    private static String coalesce(String a, String b) {
+    String coalesce(String a, String b) {
+
         return a != null ? a : b;
     }
 
-    private static boolean notBlank(String s) {
+    boolean notBlank(String s) {
+
         return s != null && !s.isBlank();
     }
 
-    private static String cell(List<String> row, int idx) {
+    String cell(List<String> row, int idx) {
+
         String v = row.get(idx);
         return v == null ? "" : v.trim();
     }
 
-    private static String cellAt(List<String> row, int idx) {
+    String cellAt(List<String> row, int idx) {
+
         if (row == null || idx < 0 || idx >= row.size()) return "";
         return cell(row, idx);
     }

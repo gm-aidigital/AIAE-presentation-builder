@@ -12,6 +12,7 @@ import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
 import com.aidigital.reportconstructor.service.reports.dto.ProgressView;
+import com.aidigital.reportconstructor.service.reports.engine.ReportClaudeDefaults;
 import com.aidigital.reportconstructor.service.reports.engine.TacticUtils;
 import com.aidigital.reportconstructor.service.reports.ports.ChartProvider;
 import com.aidigital.reportconstructor.service.reports.ports.ClaudeClient;
@@ -38,6 +39,7 @@ import java.util.regex.Pattern;
 @Slf4j
 @Service
 @RequiredArgsConstructor
+/** ReportGenerationServiceImpl (report engine DTO). */
 public class ReportGenerationServiceImpl implements ReportGenerationService {
 
     private final ReportJobRepository jobs;
@@ -48,11 +50,14 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
     private final ObjectProvider<UserGoogleTokenProvider> userGoogleTokens;
     private final ObjectMapper objectMapper;
     private final ObjectProvider<ReportGenerationService> self;
+    private final ReportClaudeDefaults claudeDefaults;
+    private final TacticUtils tacticUtils;
 
     private static final Pattern PRESENTATION_ID = Pattern.compile("/d/([a-zA-Z0-9_-]+)");
 
     @Override
     @LogUsage
+    /** Start. */
     public ReportJobEntity start(String userId, String clerkUserId, GeneratePayload payload) {
         if (payload.brief() == null || payload.brief().isBlank()) {
             throw new AppException(ErrorReason.C002, "Brief is required");
@@ -65,6 +70,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
     @Override
     @Transactional
     @LogUsage
+    /** Enqueue. */
     public ReportJobEntity enqueue(String userId, GeneratePayload payload) {
         ReportJobEntity job = new ReportJobEntity();
         job.setOwnerUserId(userId);
@@ -82,6 +88,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
     @Override
     @Async
     @LogUsage
+    /** Run. */
     public void run(Long jobId, GeneratePayload payload, String clerkUserId) {
         log.info("[report] starting job {}", jobId);
         try {
@@ -95,15 +102,15 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 
             advance(jobId, 3, "Claude — campaign batch (A)");
             ClaudeStrategic ccA = (live && placeholders.needStrategic(payload))
-                ? claude.batchStrategic(data, brief) : ClaudeStrategic.empty();
+                ? claude.batchStrategic(data, brief) : claudeDefaults.emptyStrategic();
 
             advance(jobId, 4, "Claude — tactics batch (B)");
             ClaudeTactical ccB = (live && placeholders.needTactical(payload, data))
-                ? claude.batchTactical(data, brief) : ClaudeTactical.empty();
+                ? claude.batchTactical(data, brief) : claudeDefaults.emptyTactical();
 
             advance(jobId, 5, "Claude — executive batch (C)");
             ClaudeResults ccC = (live && placeholders.needResults(payload, data))
-                ? claude.batchResults(data, brief) : ClaudeResults.empty();
+                ? claude.batchResults(data, brief) : claudeDefaults.emptyResults();
 
             String geoSummary = (live && placeholders.needGeoSummary(payload))
                 ? claude.summarizeGeo(payload.geoRows()) : null;
@@ -143,6 +150,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
     @Override
     @Transactional(readOnly = true)
     @LogUsage
+    /** Progress. */
     public ProgressView progress(String userId, Long jobId) {
         ReportJobEntity job = jobs.findById(jobId)
             .filter(j -> userId != null && userId.equals(j.getOwnerUserId()))
@@ -158,7 +166,8 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
         );
     }
 
-    private List<String> parseWarnings(String warningsJson) {
+    List<String> parseWarnings(String warningsJson) {
+
         if (warningsJson == null || warningsJson.isBlank()) {
             return List.of();
         }
@@ -170,6 +179,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
         }
     }
 
+    /** Advance. */
     public void advance(Long jobId, int step, String label) {
         ReportJobEntity job = mustLoad(jobId);
         job.setStatus("running");
@@ -179,7 +189,8 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
         jobs.save(job);
     }
 
-    private ReportJobEntity mustLoad(Long jobId) {
+    ReportJobEntity mustLoad(Long jobId) {
+
         return jobs.findById(jobId).orElseThrow(() ->
             new IllegalStateException("Report job not found: " + jobId));
     }
@@ -197,7 +208,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
             return List.of("Charts skipped — could not determine presentation id from " + slideUrl);
         }
 
-        int tacticCount = Math.clamp(TacticUtils.countTacticsInMediaPlan(payload.sheetRows()), 1, 7);
+        int tacticCount = Math.clamp(tacticUtils.countTacticsInMediaPlan(payload.sheetRows()), 1, 7);
         String campaignTitle = firstNonBlank(all.get("{{Campaign_name}}"), all.get("{{client_name}}"), "Campaign");
 
         Map<Integer, String> distNames = new LinkedHashMap<>();
@@ -227,12 +238,13 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
         }
     }
 
-    private void trimUnusedTactics(String slideUrl, GeneratePayload payload, String userGoogleToken) {
+    void trimUnusedTactics(String slideUrl, GeneratePayload payload, String userGoogleToken) {
+
         String presentationId = extractPresentationId(slideUrl);
         if (presentationId == null) {
             return;
         }
-        int tacticCount = Math.clamp(TacticUtils.countTacticsInMediaPlan(payload.sheetRows()), 1, 7);
+        int tacticCount = Math.clamp(tacticUtils.countTacticsInMediaPlan(payload.sheetRows()), 1, 7);
         try {
             slides.trimTactics(presentationId, tacticCount, userGoogleToken);
         } catch (RuntimeException ex) {
@@ -240,7 +252,8 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
         }
     }
 
-    private static String extractPresentationId(String slideUrl) {
+    String extractPresentationId(String slideUrl) {
+
         if (slideUrl == null) {
             return null;
         }
@@ -248,7 +261,8 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
         return m.find() ? m.group(1) : null;
     }
 
-    private String toWarningsJson(List<String> warnings) {
+    String toWarningsJson(List<String> warnings) {
+
         if (warnings == null || warnings.isEmpty()) {
             return null;
         }
@@ -260,7 +274,8 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
         }
     }
 
-    private static double parseNum(String raw) {
+    double parseNum(String raw) {
+
         if (raw == null) {
             return 0.0;
         }
@@ -276,7 +291,8 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
         return 0.0;
     }
 
-    private static String firstNonBlank(String... values) {
+    String firstNonBlank(String... values) {
+
         for (String v : values) {
             if (v != null && !v.isBlank() && !"—".equals(v.trim())) {
                 return v.trim();

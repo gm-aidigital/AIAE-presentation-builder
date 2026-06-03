@@ -1,5 +1,7 @@
 package com.aidigital.reportconstructor.service.reports.engine;
 
+import org.springframework.stereotype.Component;
+
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload.LineItemMapping;
@@ -22,9 +24,18 @@ import java.util.regex.Pattern;
  * top delivery creative; plus a parse of the Estimates tab for planned KPIs. The
  * result mirrors the PHP array consumed by the resolvers and Claude batches.
  */
-public final class CampaignDataCollector {
+@Component
+public class CampaignDataCollector {
+    private final SheetUtils sheetUtils;
+    private final TacticUtils tacticUtils;
+    private final CampaignResolvers campaignResolvers;
 
-    private CampaignDataCollector() {}
+    public CampaignDataCollector(
+            SheetUtils sheetUtils, TacticUtils tacticUtils, CampaignResolvers campaignResolvers) {
+        this.sheetUtils = sheetUtils;
+        this.tacticUtils = tacticUtils;
+        this.campaignResolvers = campaignResolvers;
+    }
 
     private static final String[] STOP_WORDS = {"added value", "totals", "please note", "total:"};
 
@@ -39,7 +50,7 @@ public final class CampaignDataCollector {
         boolean hasCompletions;
     }
 
-    public static CampaignData collect(
+    public CampaignData collect(
         List<List<String>> sheetRows,
         List<List<String>> adjRows,
         List<List<String>> audienceRows,
@@ -53,41 +64,41 @@ public final class CampaignDataCollector {
         if (lineItemMapping == null) lineItemMapping = List.of();
 
         // ── 1. Campaign fields: adj overrides sheet ───────────────────────────
-        String client   = coalesce(SheetUtils.findLabelValue(adjRows, "Client name:"), SheetUtils.findLabelValue(sheetRows, "Client name:"));
-        String campaign = coalesce(SheetUtils.findLabelValue(adjRows, "Campaign:"), SheetUtils.findLabelValue(sheetRows, "Campaign:"));
-        String geo      = coalesce(SheetUtils.findLabelValue(adjRows, "Geo locations:"),
-                          coalesce(SheetUtils.findLabelValue(sheetRows, "Geo locations:"),
-                                   SheetUtils.findLabelValueBelow(sheetRows, "Geo")));
-        String goal     = coalesce(SheetUtils.findLabelValue(adjRows, "Funnel stages:"),
-                          coalesce(SheetUtils.findLabelValue(sheetRows, "Funnel stages:"),
-                                   SheetUtils.findLabelValueBelow(sheetRows, "Goal")));
-        String budget   = coalesce(SheetUtils.findLabelValue(adjRows, "Total investment:"), SheetUtils.findLabelValue(sheetRows, "Total investment:"));
-        String kpis     = coalesce(SheetUtils.findLabelValue(adjRows, "Primary KPIs:"), SheetUtils.findLabelValue(sheetRows, "Primary KPIs:"));
+        String client   = coalesce(sheetUtils.findLabelValue(adjRows, "Client name:"), sheetUtils.findLabelValue(sheetRows, "Client name:"));
+        String campaign = coalesce(sheetUtils.findLabelValue(adjRows, "Campaign:"), sheetUtils.findLabelValue(sheetRows, "Campaign:"));
+        String geo      = coalesce(sheetUtils.findLabelValue(adjRows, "Geo locations:"),
+                          coalesce(sheetUtils.findLabelValue(sheetRows, "Geo locations:"),
+                                   sheetUtils.findLabelValueBelow(sheetRows, "Geo")));
+        String goal     = coalesce(sheetUtils.findLabelValue(adjRows, "Funnel stages:"),
+                          coalesce(sheetUtils.findLabelValue(sheetRows, "Funnel stages:"),
+                                   sheetUtils.findLabelValueBelow(sheetRows, "Goal")));
+        String budget   = coalesce(sheetUtils.findLabelValue(adjRows, "Total investment:"), sheetUtils.findLabelValue(sheetRows, "Total investment:"));
+        String kpis     = coalesce(sheetUtils.findLabelValue(adjRows, "Primary KPIs:"), sheetUtils.findLabelValue(sheetRows, "Primary KPIs:"));
 
         // ── 2. Flight ─────────────────────────────────────────────────────────
-        FlightDates flightTs = SheetUtils.resolveFlightTimestamps(sheetRows, adjRows);
-        String flightDates = flightTs != null ? SheetUtils.formatFlightDates(flightTs.start(), flightTs.end()) : null;
+        FlightDates flightTs = sheetUtils.resolveFlightTimestamps(sheetRows, adjRows);
+        String flightDates = flightTs != null ? sheetUtils.formatFlightDates(flightTs.start(), flightTs.end()) : null;
 
         // ── 3. Tactics list ───────────────────────────────────────────────────
-        String tacticsList = CampaignResolvers.resolveTacticsList(sheetRows, adjRows).value();
+        String tacticsList = campaignResolvers.resolveTacticsList(sheetRows, adjRows).value();
 
         // ── 4. Explicit audience fields ───────────────────────────────────────
-        String audienceAge  = coalesce(SheetUtils.findLabelValue(adjRows, "Audience age:"), SheetUtils.findLabelValue(sheetRows, "Audience age:"));
-        String audienceSegs = coalesce(SheetUtils.findLabelValue(adjRows, "Audience segments:"), SheetUtils.findLabelValue(sheetRows, "Audience segments:"));
+        String audienceAge  = coalesce(sheetUtils.findLabelValue(adjRows, "Audience age:"), sheetUtils.findLabelValue(sheetRows, "Audience age:"));
+        String audienceSegs = coalesce(sheetUtils.findLabelValue(adjRows, "Audience segments:"), sheetUtils.findLabelValue(sheetRows, "Audience segments:"));
 
         // ── 5. Estimates tab → planned KPIs by tactic ─────────────────────────
         Map<String, double[]> estimatesByTactic = parseEstimates(estimatesRows);
         // double[] layout: {spend, imps, ctr, vcr, maxFreq}; NaN = null
 
         // ── 6. Tactics & channel mapping ──────────────────────────────────────
-        List<String> mediaTactics = TacticUtils.extractTacticsFromMedia(sheetRows);
+        List<String> mediaTactics = tacticUtils.extractTacticsFromMedia(sheetRows);
         Map<Integer, String[]> tacticMap = new LinkedHashMap<>(); // N -> [name, channel|null]
         for (int n = 1; n <= 7; n++) {
-            String name = coalesce(SheetUtils.findLabelValue(adjRows, "Tactic " + n + ":"),
-                          coalesce(SheetUtils.findLabelValue(sheetRows, "Tactic " + n + ":"),
+            String name = coalesce(sheetUtils.findLabelValue(adjRows, "Tactic " + n + ":"),
+                          coalesce(sheetUtils.findLabelValue(sheetRows, "Tactic " + n + ":"),
                                    n - 1 < mediaTactics.size() ? mediaTactics.get(n - 1) : null));
             if (name == null) continue;
-            tacticMap.put(n, new String[]{name, TacticUtils.getTacticChannelFilter(name)});
+            tacticMap.put(n, new String[]{name, tacticUtils.getTacticChannelFilter(name)});
         }
 
         // Join line items to tactics by tactic_num carried in the mapping payload,
@@ -162,7 +173,7 @@ public final class CampaignDataCollector {
 
                 String dateVal = cellAt(row, colDt);
                 if (dateVal.isEmpty()) continue;
-                LocalDate ts = SheetUtils.parseDate(dateVal);
+                LocalDate ts = sheetUtils.parseDate(dateVal);
                 if (ts == null) continue;
                 if (dayStart != null && (ts.isBefore(dayStart) || ts.isAfter(dayEnd))) continue;
 
@@ -339,7 +350,7 @@ public final class CampaignDataCollector {
 
     // ── Estimates parser ──────────────────────────────────────────────────────
 
-    private static Map<String, double[]> parseEstimates(List<List<String>> estimatesRows) {
+    Map<String, double[]> parseEstimates(List<List<String>> estimatesRows) {
         Map<String, double[]> out = new LinkedHashMap<>();
         if (estimatesRows.isEmpty()) return out;
 
@@ -390,13 +401,15 @@ public final class CampaignDataCollector {
     }
 
     /** Cleans then parses a cell to a numeric, returning {@code NaN} when blank/non-numeric. */
-    private static double parseNum(String raw, int col, boolean allowMinus) {
+    double parseNum(String raw, int col, boolean allowMinus) {
+
         if (col < 0) return Double.NaN;
         String c = cleanNum(raw, allowMinus);
         return !c.isEmpty() && isNumeric(c) ? toFloat(c) : Double.NaN;
     }
 
-    private static Double nan(double v) {
+    Double nan(double v) {
+
         return Double.isNaN(v) ? null : v;
     }
 
@@ -404,13 +417,15 @@ public final class CampaignDataCollector {
 
     private static final Pattern LEADING_NUM = Pattern.compile("^[-+]?\\d*\\.?\\d+");
 
-    private static String cleanNum(String raw, boolean allowMinus) {
+    String cleanNum(String raw, boolean allowMinus) {
+
         if (raw == null) return "";
         String s = raw.replace(",", "");
         return s.replaceAll(allowMinus ? "[^0-9.\\-]" : "[^0-9.]", "");
     }
 
-    private static double toFloat(String s) {
+    double toFloat(String s) {
+
         if (s == null) return 0.0;
         Matcher m = LEADING_NUM.matcher(s.trim());
         if (m.find()) {
@@ -423,27 +438,32 @@ public final class CampaignDataCollector {
         return 0.0;
     }
 
-    private static boolean isNumeric(String s) {
+    boolean isNumeric(String s) {
+
         return s != null && s.matches("[-+]?\\d*\\.?\\d+");
     }
 
     // ── cell helpers ──────────────────────────────────────────────────────────
 
-    private static String coalesce(String a, String b) {
+    String coalesce(String a, String b) {
+
         return a != null ? a : b;
     }
 
-    private static String cell(List<String> row, int idx) {
+    String cell(List<String> row, int idx) {
+
         String v = row.get(idx);
         return v == null ? "" : v.trim();
     }
 
-    private static String cellAt(List<String> row, int idx) {
+    String cellAt(List<String> row, int idx) {
+
         if (row == null || idx < 0 || idx >= row.size()) return "";
         return cell(row, idx);
     }
 
-    private static String joinLower(List<String> row, int n) {
+    String joinLower(List<String> row, int n) {
+
         StringBuilder sb = new StringBuilder();
         int limit = Math.min(n, row.size());
         for (int i = 0; i < limit; i++) {

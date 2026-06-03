@@ -8,10 +8,7 @@ package com.aidigital.reportconstructor.service.reports.engine;
  */
 public record Resolved(String label, String value, String source) {
 
-    public static Resolved notFound(String label) {
-        return new Resolved(label, null, "not_found");
-    }
-
+    /** True when a resolver found a value (source is not {@code not_found}). */
     public boolean found() {
         return !"not_found".equals(source);
     }

@@ -57,7 +57,8 @@ public class StubGoogleSheetsProvider implements GoogleSheetsProvider {
         );
     }
 
-    private List<List<String>> sampleRowsFor(String tab) {
+    List<List<String>> sampleRowsFor(String tab) {
+
         return switch (tab) {
             case "Basic", "Workspace" -> bigQueryFixture();
             case "Audience&Inventory" -> audienceFixture();
@@ -67,7 +68,8 @@ public class StubGoogleSheetsProvider implements GoogleSheetsProvider {
         };
     }
 
-    private List<List<String>> proposalFixture() {
+    List<List<String>> proposalFixture() {
+
         List<List<String>> rows = new ArrayList<>();
         rows.add(List.of("Client", "Campaign", "Flight", "Budget", "KPI"));
         rows.add(List.of("Demo Client", "Awareness Q2", "May 1 – Jun 30", "$120,000", "Impressions"));
@@ -79,7 +81,8 @@ public class StubGoogleSheetsProvider implements GoogleSheetsProvider {
         return rows;
     }
 
-    private List<List<String>> bigQueryFixture() {
+    List<List<String>> bigQueryFixture() {
+
         List<List<String>> rows = new ArrayList<>();
         rows.add(List.of("Level 1 Naming", "Tactic", "Channel", "Impressions", "Clicks", "Spend"));
         rows.add(List.of("DEMO_CLIENT_AWARE_Q2_CTV_2025_05_ROKU_PREM_1001_NA",      "Premium CTV",          "CTV",     "1,840,221", "—",      "$45,000"));
@@ -89,7 +92,8 @@ public class StubGoogleSheetsProvider implements GoogleSheetsProvider {
         return rows;
     }
 
-    private List<List<String>> audienceFixture() {
+    List<List<String>> audienceFixture() {
+
         return List.of(
             List.of("Segment", "Reach", "Frequency"),
             List.of("A18-34", "1,200,000", "3.2"),
@@ -97,7 +101,8 @@ public class StubGoogleSheetsProvider implements GoogleSheetsProvider {
         );
     }
 
-    private List<List<String>> estimatesFixture() {
+    List<List<String>> estimatesFixture() {
+
         return List.of(
             List.of("Line", "Planned Impr", "Planned Spend"),
             List.of("CTV",     "1,800,000", "$45,000"),
@@ -105,7 +110,8 @@ public class StubGoogleSheetsProvider implements GoogleSheetsProvider {
         );
     }
 
-    private List<List<String>> geoFixture() {
+    List<List<String>> geoFixture() {
+
         return List.of(
             List.of("DMA", "Share"),
             List.of("New York",    "32%"),
