@@ -122,6 +122,15 @@ external:
     slides-target-folder-id: ${SLIDES_TARGET_FOLDER_ID:}
     summary-table-object-id: ${GOOGLE_SUMMARY_TABLE_OBJECT_ID:}
     tactic-slide-object-ids: {}
+    charts:
+      chart-id-in-sheet: ${GOOGLE_CHART_ID_IN_SHEET:0}
+      daily-template-sheet-ids: {}
+      daily-slide-object-ids: {}
+      monthly-template-sheet-ids: {}
+      monthly-slide-object-ids: {}
+      dist-template-sheet-ids: {}
+      dist-slide-object-ids: {}
+      pie-default-colors: []
   anthropic:
     api-key: ${ANTHROPIC_API_KEY:}
     model:   ${ANTHROPIC_MODEL:claude-sonnet-4-6}

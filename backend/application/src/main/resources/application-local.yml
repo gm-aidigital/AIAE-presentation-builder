@@ -18,3 +18,64 @@ spring:
 
 server:
   port: ${PORT:8080}
+
+# Legacy POC chart helper ids (same as PHP chart_builder.php). Override per environment.
+external:
+  google:
+    charts:
+      chart-id-in-sheet: 1087145314
+      daily-template-sheet-ids:
+        1: "17da8GFAFRYt5JT6MvPV-qSi6KEd2tmI8xZMGFU-pkK4"
+        2: "1bWjf8IlKzZk9TTyHinQ2LWvpUuV9OnT58MXmi8LF5bk"
+        3: "1BUaf4mYlxRqHUyoCKJZEUX-Rhdx4wnVQg7ngE7cpUjw"
+        4: "1fCNzy7TFCDs4-cgi_6w4lHi8i_N5Hqqz9r07We12elE"
+        5: "1ZPVH6LM23phYgSpd-f2u_aP-8xer7gBE6hge4-QVsKM"
+        6: "1tgYtK4bXqsSdyRVrF8JNzX2uRsicc95ZM1ReR4hlbcA"
+        7: "1Ly2du2g45Hoi0Ad6ej5ZrxONa4yB_DUIeuhAlEMR1Zo"
+      daily-slide-object-ids:
+        1: "g3e2b29c26c1_0_0"
+        2: "g3e2b29c26c1_0_8"
+        3: "g3e2b29c26c1_0_9"
+        4: "g3e2b29c26c1_0_10"
+        5: "g3e2b29c26c1_0_11"
+        6: "g3e2b29c26c1_0_12"
+        7: "g3e2b29c26c1_0_14"
+      monthly-template-sheet-ids:
+        1: "1k8O_reSRTjSNdvQzawfm6kRjCq1G8dy--9bv1B79P1I"
+        2: "1YKj5k7juIoZpuuxWA5afr31UK444eTQMx-DEKHSYn8I"
+        3: "1TzjEYRwiD6ixTt9H_J8CBI-yGiAQxk9LNMiTEsue3XY"
+        4: "1y1BFnlcPcSPCOYHMYZ_DjbeqbLluuLJe7TL6YK9VjLQ"
+        5: "1WAcGjCwqQ4OsayGwytaJeXE_1krkt4PMVxWq7BGNA7I"
+        6: "1VRsvWp1JULRblQgU0MaHurAxUkM9m0GE34UPTAxq6nI"
+        7: "1KWyRqg1FknQBpj0ahgvavZiK1mLlhkvKN8-gU_7FVbI"
+      monthly-slide-object-ids:
+        1: "g3e2bb781e03_1_0"
+        2: "g3e2bb781e03_1_1"
+        3: "g3e2bb781e03_1_2"
+        4: "g3e2bb781e03_1_3"
+        5: "g3e2bb781e03_1_6"
+        6: "g3e2bb781e03_1_7"
+        7: "g3e2bb781e03_1_8"
+      dist-template-sheet-ids:
+        1: "1yVZmgYkjH-pZofd87fOLUOESZYFJLOYOlHI2va-2Ego"
+        2: "14UC6wUdeEeWYaEtwX5h3e9kta7mvZVgWpx260nKBhp0"
+        3: "1mk1F0I6CmXoHs_X726fXZaOHMsQbfQ7uwykZGndlGY4"
+        4: "1Um-9cFk85isdCzyoIDh4uxklMN4gHlmG_eCDz_VpELA"
+        5: "12PE8dv6iXvQYe1vdp5RNUmnFUvhWQMziKLj_j9qlxzw"
+        6: "1W6pyTiwO_bz0ssvYAyMxLx24ry-xGw5SST3ieAOQaBw"
+        7: "1ezXCDyelmD0vQK6p-70WQKL4xUmqQNOjF7HfEzVSSos"
+      dist-slide-object-ids:
+        1: "g3e3101095f6_0_0"
+        2: "g3e3101095f6_0_1"
+        3: "g3e3101095f6_0_2"
+        4: "g3e3101095f6_0_3"
+        5: "g3e3101095f6_0_4"
+        6: "g3e3101095f6_0_5"
+        7: "g3e3101095f6_0_6"
+      pie-default-colors:
+        - red: 0.173
+          green: 0.490
+          blue: 0.502
+        - red: 0.937
+          green: 0.490
+          blue: 0.133
