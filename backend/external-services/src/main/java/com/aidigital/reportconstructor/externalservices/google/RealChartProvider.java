@@ -80,10 +80,6 @@ public class RealChartProvider implements ChartProvider {
 
     /** Same in-sheet chart id across every helper template (daily/monthly/dist). */
     private static final int CHART_ID_IN_SHEET = 1087145314;
-    // COMBO data-tab layout: A=Date(0) B=Impressions(1) C=CTR/VCR rate(2) D=Clicks/Completions(3).
-    private static final int IMPS_COL = 1;
-    private static final int RATE_COL = 2;
-
     private static final Map<Integer, String> DAILY_TEMPLATE_SHEET_IDS = Map.of(
         1, "17da8GFAFRYt5JT6MvPV-qSi6KEd2tmI8xZMGFU-pkK4",
         2, "1bWjf8IlKzZk9TTyHinQ2LWvpUuV9OnT58MXmi8LF5bk",
@@ -152,10 +148,13 @@ public class RealChartProvider implements ChartProvider {
 
     private final GoogleCredentialsFactory creds;
     private final ChartPivot chartPivot;
+    private final ChartSheetWriter chartSheetWriter;
 
-    public RealChartProvider(GoogleCredentialsFactory creds, ChartPivot chartPivot) {
+    public RealChartProvider(
+            GoogleCredentialsFactory creds, ChartPivot chartPivot, ChartSheetWriter chartSheetWriter) {
         this.creds = creds;
         this.chartPivot = chartPivot;
+        this.chartSheetWriter = chartSheetWriter;
         log.info("[charts] live chart provider initialised");
     }
 
@@ -284,7 +283,7 @@ public class RealChartProvider implements ChartProvider {
                     "Distribution Chart Tactic " + n + " — " + req.campaignTitle(), folderId);
                 ChartSpec spec = readChartSpec(sheets, templateId);
                 String tab = findDataTab(sheets, copiedId);
-                writeDistribution(sheets, copiedId, tab, tacticName, tacticImp, otherImps);
+                chartSheetWriter.writeDistribution(sheets, copiedId, tab, tacticName, tacticImp, otherImps);
                 if (spec != null) {
                     // PHP fires applyChartSpec(_injectPieSliceColors(...)) without
                     // checking the result: the non-standard "slices" field is
@@ -326,7 +325,7 @@ public class RealChartProvider implements ChartProvider {
         String copiedId = copyFile(drive, templateId, copyName, folderId);
         ChartSpec spec = readChartSpec(sheets, templateId);
         String tab = findDataTab(sheets, copiedId);
-        writePivot(sheets, copiedId, tab, pivot);
+        chartSheetWriter.writePivot(sheets, copiedId, tab, pivot);
         if (spec != null) {
             // PHP ignores applyChartSpec's return value, so a failed re-apply of
             // the template spec (e.g. a 400 on an output-only field) must NOT
@@ -339,7 +338,7 @@ public class RealChartProvider implements ChartProvider {
                 // chart. Retarget the series/domain at the copy's data tab and
                 // ensure Impressions (bars) + the rate (line) series exist.
                 boolean withRate = pivot.hasClicks() || pivot.hasCompletions();
-                injectComboSeries(spec, sheetIdForTab(sheets, copiedId, tab), withRate);
+                injectComboSeries(spec, chartSheetWriter.sheetIdForTab(sheets, copiedId, tab), withRate);
                 applyChartSpec(sheets, copiedId, spec);
             } catch (IOException ex) {
                 log.warn("[charts] {}: chart spec re-apply failed, placing chart anyway — {}",
@@ -419,171 +418,6 @@ public class RealChartProvider implements ChartProvider {
         return first == null ? CHART_DATA_TAB : first;
     }
 
-    int sheetIdForTab(Sheets sheets, String spreadsheetId, String tabName) throws IOException {
-
-        Spreadsheet ss = sheets.spreadsheets().get(spreadsheetId)
-            .setIncludeGridData(false)
-            .setFields("sheets.properties(sheetId,title)")
-            .execute();
-        if (ss.getSheets() != null) {
-            for (Sheet s : ss.getSheets()) {
-                if (s.getProperties() != null && tabName.equals(s.getProperties().getTitle())) {
-                    return s.getProperties().getSheetId() == null ? 0 : s.getProperties().getSheetId();
-                }
-            }
-        }
-        return 0;
-    }
-
-    /**
-     * Writes the pivot into the copied helper sheet, mirroring PHP
-     * {@code writePivotToSheet}: locates placeholder/header rows, drops the
-     * unused C/D columns when neither clicks nor completions exist, relabels
-     * CTR→VCR for video, then writes date / impressions / metric columns.
-     */
-    void writePivot(Sheets sheets, String spreadsheetId, String tabName, Pivot pivot) throws IOException {
-
-        if (pivot.isEmpty()) {
-            return;
-        }
-        boolean hasClicks = pivot.hasClicks();
-        boolean hasCompletions = pivot.hasCompletions();
-
-        List<List<Object>> rows = readValues(sheets, spreadsheetId, tabName + "!A1:ZZ3");
-
-        int dataStartRow = -1, dateCol = -1, impsCol = -1, metricCol = -1, ctrHeaderCol = -1, headerRow = -1;
-        java.util.regex.Pattern metricPattern = java.util.regex.Pattern.compile(
-            hasClicks ? "\\{\\{tactic\\s+\\d+\\s+clicks?\\}\\}" : "\\{\\{tactic\\s+\\d+\\s+completions?\\}\\}",
-            java.util.regex.Pattern.CASE_INSENSITIVE);
-        java.util.regex.Pattern datePattern = java.util.regex.Pattern.compile(
-            "\\{\\{tactic\\s+\\d+\\s+date\\}\\}", java.util.regex.Pattern.CASE_INSENSITIVE);
-        java.util.regex.Pattern impsPattern = java.util.regex.Pattern.compile(
-            "\\{\\{tactic\\s+\\d+\\s+impressions?\\}\\}", java.util.regex.Pattern.CASE_INSENSITIVE);
-
-        for (int ri = 0; ri < rows.size(); ri++) {
-            List<Object> row = rows.get(ri);
-            for (int ci = 0; ci < row.size(); ci++) {
-                String cell = str(row.get(ci));
-                String upper = cell.trim().toUpperCase(Locale.ROOT);
-                if (datePattern.matcher(cell).find()) { dateCol = ci; dataStartRow = ri; }
-                if (impsPattern.matcher(cell).find()) { impsCol = ci; dataStartRow = ri; }
-                if (metricPattern.matcher(cell).find()) { metricCol = ci; dataStartRow = ri; }
-                if (upper.equals("CTR") || upper.equals("VCR")) { ctrHeaderCol = ci; headerRow = ri; }
-            }
-            if (dataStartRow >= 0 && dateCol >= 0) {
-                break;
-            }
-        }
-
-        if (dataStartRow < 0) { dataStartRow = 1; }
-        if (dateCol < 0) { dateCol = 0; }
-        if (impsCol < 0) { impsCol = 1; }
-        if (metricCol < 0) { metricCol = 3; }
-
-        boolean noCdCols = !hasClicks && !hasCompletions;
-
-        // No clicks and no completions → drop columns C and D (delete D first).
-        if (noCdCols) {
-            int sid = sheetIdForTab(sheets, spreadsheetId, tabName);
-            List<com.google.api.services.sheets.v4.model.Request> del = List.of(
-                new com.google.api.services.sheets.v4.model.Request().setDeleteDimension(new DeleteDimensionRequest()
-                    .setRange(new DimensionRange().setSheetId(sid).setDimension("COLUMNS").setStartIndex(3).setEndIndex(4))),
-                new com.google.api.services.sheets.v4.model.Request().setDeleteDimension(new DeleteDimensionRequest()
-                    .setRange(new DimensionRange().setSheetId(sid).setDimension("COLUMNS").setStartIndex(2).setEndIndex(3)))
-            );
-            sheets.spreadsheets().batchUpdate(spreadsheetId,
-                new BatchUpdateSpreadsheetRequest().setRequests(del)).execute();
-        }
-
-        // No clicks but completions → relabel CTR header cell to VCR.
-        if (!hasClicks && hasCompletions && ctrHeaderCol >= 0 && headerRow >= 0) {
-            String hdrRange = tabName + "!" + colLetter(ctrHeaderCol) + (headerRow + 1);
-            sheets.spreadsheets().values().update(spreadsheetId, hdrRange,
-                    new ValueRange().setValues(List.of(List.of("VCR"))))
-                .setValueInputOption("RAW").execute();
-        }
-
-        int startRow = dataStartRow + 1; // 1-based
-        int endRow = startRow + pivot.data().size() - 1;
-
-        List<List<Object>> dates = new ArrayList<>();
-        List<List<Object>> imps = new ArrayList<>();
-        for (double[] v : pivot.data().values()) {
-            imps.add(List.of(Math.round(v[0])));
-        }
-        for (String date : pivot.data().keySet()) {
-            dates.add(List.of(date));
-        }
-
-        List<ValueRange> data = new ArrayList<>();
-        data.add(new ValueRange()
-            .setRange(tabName + "!" + colLetter(dateCol) + startRow + ":" + colLetter(dateCol) + endRow)
-            .setValues(dates));
-        data.add(new ValueRange()
-            .setRange(tabName + "!" + colLetter(impsCol) + startRow + ":" + colLetter(impsCol) + endRow)
-            .setValues(imps));
-
-        if (!noCdCols) {
-            List<List<Object>> metrics = new ArrayList<>();
-            for (double[] v : pivot.data().values()) {
-                metrics.add(List.of(Math.round(hasClicks ? v[1] : v[2])));
-            }
-            data.add(new ValueRange()
-                .setRange(tabName + "!" + colLetter(metricCol) + startRow + ":" + colLetter(metricCol) + endRow)
-                .setValues(metrics));
-
-            // Populate the rate column (CTR/VCR, %) so the COMBO chart's line
-            // series has values to plot — the template ships it empty. Skipped
-            // when noCdCols (DOOH/Audio: C/D deleted), matching PHP.
-            int rateCol = ctrHeaderCol >= 0 ? ctrHeaderCol : RATE_COL;
-            List<List<Object>> rates = new ArrayList<>();
-            for (double[] v : pivot.data().values()) {
-                double num = hasClicks ? v[1] : v[2];
-                double rate = v[0] > 0 ? (num / v[0]) * 100.0 : 0.0;
-                rates.add(List.of(Math.round(rate * 100.0) / 100.0));
-            }
-            data.add(new ValueRange()
-                .setRange(tabName + "!" + colLetter(rateCol) + startRow + ":" + colLetter(rateCol) + endRow)
-                .setValues(rates));
-        }
-
-        sheets.spreadsheets().values().batchUpdate(spreadsheetId,
-            new BatchUpdateValuesRequest().setValueInputOption("RAW").setData(data)).execute();
-    }
-
-    /**
-     * Writes the two-row distribution series, mirroring PHP
-     * {@code writeDistributionToSheet}: tactic row + "Other" row, located by
-     * scanning column A (fallback rows 2 and 3).
-     */
-    private void writeDistribution(Sheets sheets, String spreadsheetId, String tabName,
-                                   String tacticName, double tacticImps, double otherImps) throws IOException {
-        List<List<Object>> rows = readValues(sheets, spreadsheetId, tabName + "!A1:B5");
-
-        int tacticRow = 2;
-        int otherRow = 3;
-        for (int ri = 0; ri < rows.size(); ri++) {
-            String cellA = rows.get(ri).isEmpty() ? "" : str(rows.get(ri).get(0)).trim();
-            if (cellA.toLowerCase(Locale.ROOT).matches("(?s).*\\{\\{tactic.*")) {
-                tacticRow = ri + 1;
-            }
-            String lower = cellA.toLowerCase(Locale.ROOT);
-            if (lower.equals("total") || lower.equals("other") || lower.equals("rest")) {
-                otherRow = ri + 1;
-            }
-        }
-
-        List<ValueRange> data = List.of(
-            new ValueRange().setRange(tabName + "!A" + tacticRow + ":B" + tacticRow)
-                .setValues(List.of(List.of(tacticName, Math.round(tacticImps)))),
-            new ValueRange().setRange(tabName + "!A" + otherRow + ":B" + otherRow)
-                .setValues(List.of(List.of("Other", Math.round(otherImps))))
-        );
-
-        sheets.spreadsheets().values().batchUpdate(spreadsheetId,
-            new BatchUpdateValuesRequest().setValueInputOption("RAW").setData(data)).execute();
-    }
-
     /**
      * Re-creates the data series the COMBO templates are missing. Reuses the
      * template domain's row range, retargets every source range at the copy's
@@ -617,9 +451,9 @@ public class RealChartProvider implements ChartProvider {
             }
         }
         List<BasicChartSeries> series = new ArrayList<>();
-        series.add(comboSeries(dataSheetId, rowStart, rowEnd, IMPS_COL, "COLUMN", "LEFT_AXIS"));
+        series.add(comboSeries(dataSheetId, rowStart, rowEnd, ChartSheetWriter.IMPS_COL, "COLUMN", "LEFT_AXIS"));
         if (withRate) {
-            series.add(comboSeries(dataSheetId, rowStart, rowEnd, RATE_COL, "LINE", "RIGHT_AXIS"));
+            series.add(comboSeries(dataSheetId, rowStart, rowEnd, ChartSheetWriter.RATE_COL, "LINE", "RIGHT_AXIS"));
         }
         bc.setSeries(series);
         if (bc.getHeaderCount() == null) {
@@ -699,12 +533,6 @@ public class RealChartProvider implements ChartProvider {
         return m;
     }
 
-    List<List<Object>> readValues(Sheets sheets, String spreadsheetId, String range) throws IOException {
-
-        ValueRange vr = sheets.spreadsheets().values().get(spreadsheetId, range).execute();
-        return vr.getValues() == null ? List.of() : vr.getValues();
-    }
-
     // ════════════════════════════════════════════════════════════════════════
     //  SLIDES
     // ════════════════════════════════════════════════════════════════════════
@@ -779,23 +607,6 @@ public class RealChartProvider implements ChartProvider {
             }
         }
         return out;
-    }
-
-    /** Spreadsheet A1 column letter for a 0-based column index. */
-    String colLetter(int col) {
-
-        StringBuilder sb = new StringBuilder();
-        int c = col;
-        do {
-            sb.insert(0, (char) ('A' + (c % 26)));
-            c = c / 26 - 1;
-        } while (c >= 0);
-        return sb.toString();
-    }
-
-    String str(Object o) {
-
-        return o == null ? "" : o.toString();
     }
 
     /**
