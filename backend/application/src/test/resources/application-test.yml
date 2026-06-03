@@ -1,0 +1,32 @@
+# application-test.yml — test profile config.
+# Activated by `@ActiveProfiles("test")` in ApplicationSmokeTest and any
+# @SpringBootTest that needs a deterministic environment without external
+# infra (DB / Clerk / env vars). LiquibaseChangelogSmokeTest uses
+# @DataJpaTest + Testcontainers and bypasses this file.
+
+spring:
+  # Test-only datasource override — H2 in-memory via auto-config. JPA
+  # ddl-auto=create so entities materialize without Liquibase running.
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+  liquibase:
+    enabled: false
+  datasource:
+    url: jdbc:h2:mem:testdb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+
+server:
+  servlet:
+    context-path: ""
+
+app:
+  # SSO config intentionally omitted — tests supply a stub JwtDecoder bean
+  # (see ApplicationSmokeTest / AuthControllerTest) instead of hitting a real
+  # Clerk JWKS endpoint. SecurityConfig.jwtDecoder is @ConditionalOnMissingBean.
+  auth:
+    authorized-parties: http://localhost:5173
+  usage-logging:
+    enabled: false       # keeps PostgresUsageLogger out of test context

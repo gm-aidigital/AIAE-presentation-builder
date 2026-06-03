@@ -1,0 +1,20 @@
+# application-local.yml
+#
+# Spring profile for docker-compose / local-dev. Standard datasource config
+# from env vars set by docker-compose. Hikari pool can be full baseline
+# because the local DB is yours alone.
+
+spring:
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:app}
+    username: ${POSTGRES_USER:app}
+    password: ${POSTGRES_PASSWORD:app}
+    hikari:
+      maximum-pool-size: 50
+      minimum-idle: 1
+      idle-timeout: 60000
+      connection-timeout: 2000
+      auto-commit: false
+
+server:
+  port: ${PORT:8080}

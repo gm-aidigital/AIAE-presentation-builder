@@ -1,0 +1,51 @@
+/*
+ * `app` block — the root layout block. Notice:
+ *   - only class selectors,
+ *   - no nested selectors,
+ *   - no margin on the block itself (parent #root has no other children to
+ *     worry about anyway),
+ *   - modifiers live as separate classes (.app__status--error etc).
+ */
+
+.app {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    padding: var(--space-6);
+    max-width: 1265px;
+    margin: 0 auto;
+    background: var(--surface-default);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-soft);
+}
+
+.app__title {
+    margin: 0;
+    font-size: var(--text-page-title);
+    font-weight: 700;
+    color: var(--text-heading);
+}
+
+.app__status {
+    margin: 0;
+    font-size: var(--text-base);
+    color: var(--text-muted);
+}
+
+.app__status--ok {
+    color: var(--text-default);
+}
+
+.app__status--error {
+    color: var(--accent-danger);
+}
+
+.app__email {
+    color: var(--accent-primary);
+}
+
+.app__hint {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}

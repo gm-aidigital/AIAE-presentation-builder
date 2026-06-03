@@ -1,0 +1,37 @@
+{
+  "name": "reportconstructor-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 5173",
+    "typecheck": "tsc --noEmit",
+    "generate:api": "openapi-typescript ../backend/application/src/main/resources/api/v1/specs/openapi.yaml -o src/shared/api/generated/schema.d.ts",
+    "check:api": "npm run generate:api && tsc --noEmit",
+    "test": "vitest run --environment jsdom"
+  },
+  "dependencies": {
+    "@clerk/clerk-react": "^5.20.0",
+    "@tanstack/react-query": "^5.62.0",
+    "openapi-fetch": "^0.13.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.0.0"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.1.0",
+    "@testing-library/user-event": "^14.5.2",
+    "@types/node": "^22.0.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "jsdom": "^25.0.1",
+    "openapi-typescript": "^7.4.0",
+    "typescript": "^5.7.0",
+    "vite": "^5.4.0",
+    "vitest": "^2.1.0"
+  }
+}

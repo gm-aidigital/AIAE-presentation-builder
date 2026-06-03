@@ -1,0 +1,101 @@
+# <APP-NAME>
+
+<one-line summary of the MVP — who uses it, what it does, replaces what>
+
+## Owner
+- Product owner: <name / Slack>
+- Tech contact:  <name / Slack>
+
+## What this is
+
+MVP demo. NOT production-grade. See "MVP limitations" below.
+
+Describe the actual product flow here in business language:
+- who opens the app,
+- what work they complete,
+- what data they see or upload,
+- what decisions/actions the app supports,
+- what is mocked for the MVP.
+
+## How to run
+
+### On Replit (recommended for demos)
+1. Fork from the Custom Template.
+2. Open the workspace; the `postgresql-16` module provisions a Postgres
+   database and Replit injects `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`,
+   and `PGPASSWORD` as Secrets.
+3. Set `CLERK_SECRET_KEY`, `VITE_CLERK_PUBLISHABLE_KEY`, and `AUTH_ISSUER_URI`
+   in Secrets — Clerk SSO is REQUIRED; the backend fails fast at startup
+   without it (there is no mock fallback).
+4. Click **Run**. Backend on port 5000, Vite dev server on 5173.
+5. To deploy: click **Deploy** → choose **Reserved VM** (not Autoscale).
+
+### On a local developer machine
+1. `cp .env.example .env` and fill in values.
+2. `docker compose --profile local up --build -d`
+3. Backend at `http://localhost:8080/<context-path>/`, frontend at
+   `http://localhost:5173/` (dev) or under the backend in built mode.
+4. `docker compose --profile local down -v` to clean up.
+
+## Data sources
+
+- <e.g. PostgreSQL `usage_events` table — usage telemetry>
+- <e.g. mocked CSV fixture for product data>
+- <e.g. BigQuery `<project>.<dataset>.<table>` — when applicable>
+
+## API
+
+Base URLs:
+- Replit / deployment: `https://<replit-host>/<context-path>/api/v1`
+- Local backend: `http://localhost:8080/<context-path>/api/v1`
+
+Documentation:
+- Swagger UI: `/<context-path>/swagger-ui/index.html`
+- OpenAPI YAML: `/<context-path>/api/v1/specs/openapi.yaml`
+
+Main endpoints:
+
+| Method | Path | Purpose | Auth |
+|---|---|---|---|
+| `GET` | `/api/v1/auth/me` | Returns the current authenticated user. | Bearer JWT |
+| `<METHOD>` | `<PATH>` | `<business endpoint description>` | `<Public/Bearer JWT>` |
+
+Keep this table synchronized with `backend/application/src/main/resources/api/v1/specs/openapi.yaml`.
+
+## Required env vars
+
+See `.env.example`. Real values live in Replit Secrets / local `.env` (gitignored).
+
+## MVP limitations
+
+- <e.g. uses a demo Clerk tenant; provision a production Clerk tenant for launch>
+- <e.g. usage events written to the app's own DB; switch to BigQuery sink
+   when cross-service aggregation is required>
+- <e.g. demo dataset only; no real customer data>
+- <e.g. no rate limiting, no per-tenant scoping>
+
+## What engineering must replace before production
+
+- Demo Clerk tenant → production Clerk/Google SSO tenant + production keys.
+- Replit-managed DB → company-managed Postgres (RDS / CloudSQL).
+- Replit Secrets → company secret manager.
+- `.replit` Reserved VM target → company infrastructure.
+- README placeholders and `<context-path>` strings.
+
+## CI
+
+`.github/workflows/ci.yml` runs the MVP safety test suite, Checkstyle, JaCoCo,
+the OpenAPI generator check, frontend tests/build, secret hygiene and the
+docker-compose local-dev dry run.
+
+Integration tests run on `workflow_dispatch` with `run_integration_tests=true`.
+
+## Architecture
+
+- Backend: Java 21 LTS + Spring Boot 3.x, multi-module Maven.
+- Java package root: `com.aidigital.<app-name-package>`.
+- Frontend: React + TypeScript + Vite, typed via `openapi-typescript`.
+- Auth: Clerk SSO only (required) — Clerk + Google; backend validates JWTs vs Clerk JWKS.
+- Persistence: PostgreSQL (Replit SQL Database on workspace, docker-compose locally).
+- Observability: JSON logs to stdout, Actuator (`health`, `prometheus`),
+  Logbook HTTP request/response logs with masking, Postgres `usage_events` table.

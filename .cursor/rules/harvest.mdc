@@ -1,0 +1,41 @@
+---
+description: Report Constructor — harvest execution rules (stack lock, module boundaries, green gate). Always on.
+alwaysApply: true
+---
+
+# Project rules — Report Constructor (POC harvest)
+
+You are implementing a migration by **harvesting** a working POC onto this clean scaffold. The full,
+authoritative spec lives in the workspace — **read and follow it, do not improvise**:
+- `reporting tool/migration-plan/EXECUTE-HARVEST.md` — the execution brief (start here).
+- `reporting tool/migration-plan/92-poc-harvest-plan.md` — the 10 ordered steps (your task list).
+- `reporting tool/migration-plan/CLAUDE.md` — the full ruleset.
+- `reporting tool/migration-plan/90-decisions-and-risks.md` (L1–L5) and `91-fidelity-rules-legacy-behaviors.md`.
+
+## Workspace layout (multi-root)
+- **TARGET (edit here):** `report-constructor/` — package `com.aidigital.reportconstructor`.
+- **SOURCE (read-only):** `Presentation-Builder-POC/` — package `com.aidigital.reportingtool`.
+- **PLAN + LEGACY (read-only):** `reporting tool/migration-plan/` and `reporting tool/public_html/`.
+
+## Non-negotiable rules
+- **Stack lock:** Java 21 + Spring Boot 3 + Maven multi-module + PostgreSQL/Liquibase; React/TS/Vite; Clerk SSO only. No Python/Node-backend/other DB.
+- **Build with Java 21.** The default `java` here is 17. Always `source report-constructor/scripts/harvest-bootstrap.sh` first and build via `mvnc` (it sets `JAVA_HOME` to Corretto 21 and `-Dskip.frontend=true`).
+- **Keep the scaffold's auth stack** (`SecurityConfig`, `ClerkJwtClaimsValidator`, `CompanyEmailDomainAuthorizationManager`, `AppUserFactory`, `AuthProperties`, error stack, usage-logging, `IdAwareEntity`, MapStruct configs). **Discard the POC's versions.**
+- **Module boundaries:** external HTTP/SDK calls only in `external-services`; controllers `implements <Tag>Api` (`@Override` only, no `@GetMapping`/`@RequestMapping`); entities only in `domain`; `AppException`/`ErrorReason` in `service/common/error`; all Liquibase XML in `backend/db`; plural folder names (`controllers/ services/ mappers/`).
+- **Config/code:** never `@Value` (use `@ConfigurationProperties`); helpers are instance beans, not statics; enums are standalone `$ref` `*V1` schemas; `@LogUsage` on `*ServiceImpl` public methods.
+- **OpenAPI is the source of truth:** edit `backend/application/src/main/resources/api/v1/specs/openapi.yaml`, regenerate, then implement the generated interfaces. Don't hand-write routes.
+- **Don't carry POC residue:** no mock-auth env (`AUTH_MODE=auto`, `AUTH_MOCK_*`); externalize all hardcoded Google template/object IDs to config (default empty); keep the deterministic frequency (do not revert to `rand`); don't commit secrets/service-account JSON.
+
+## Working loop (mandatory)
+1. Do the steps **in order** (1→10 in `92-…`); the orchestrator can't compile until all its ports exist.
+2. After every step run the **green gate** and only advance when it passes:
+   - `verify_module backend/<module>` (fast) and/or `verify_full` (full reactor, excludes the Docker-only Liquibase test)
+   - `verify_gates` (structure-lint + verify-gates)
+3. Port files with `port_file <poc-relpath> <new-relpath>` (copies + renames `reportingtool`→`reportconstructor`).
+4. Checkpoint (git commit) after each green step. **Never advance on a red build.**
+5. Known-env: Node is broken (frontend codegen/build skipped this pass); Docker off (the Liquibase Testcontainers test is the one expected failure — exclude it, don't "fix" it).
+
+## Definition of done (backend)
+`mvnc -f backend/pom.xml verify` green (Liquibase smoke needs Docker), `structure-lint` + `verify-gates` pass,
+`check_no_old_package` clean, controllers implement the generated `*Api`, `/api/v1/google/status` added,
+no hardcoded Google IDs/secrets in source. Frontend re-pointing is a separate follow-up.

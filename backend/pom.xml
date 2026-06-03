@@ -1,0 +1,423 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Backend parent POM at `backend/pom.xml` (NOT project root).
+  Java 21 LTS + Spring Boot 3.4.0. All versions + plugin config centralised
+  in <dependencyManagement> + <pluginManagement>; children reference by
+  <artifactId> only. Extend here, never re-pin in children.
+  Replace <groupId> with com.aidigital.<app-name-package> (lowercase
+  alphanumeric app name; e.g. Employee Directory -> com.aidigital.employeedirectory).
+  Replace <artifactId>, <name>/<description>.
+  Modules: required 4 (application/service/domain/db). Add external-services
+  only when real external integrations exist; never keep empty Maven modules.
+  Build: `mvn -f backend/pom.xml ...` or `cd backend && mvn ...`.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.aidigital.reportconstructor</groupId>
+    <artifactId>app-parent</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>Replit MVP — parent</name>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.4.0</version>
+        <relativePath/>
+    </parent>
+
+    <!-- Paths relative to backend/. No `common` Maven module and no empty
+         modules. Add `external-services` only with real external client code.
+         AppException family lives in service/<base>/service/common/error/.
+         `event-logging-to-db-feature` is the self-contained usage-logging
+         feature (annotation + aspect + entity + repo + Liquibase changelog);
+         drop it from this list to fully remove the feature from the build. -->
+    <modules>
+        <module>domain</module>
+        <module>db</module>
+        <module>event-logging-to-db-feature</module>
+        <module>service</module>
+        <module>external-services</module>
+        <module>application</module>
+    </modules>
+
+    <properties>
+        <java.version>21</java.version>
+        <maven.compiler.release>21</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <!-- Versions centralised. Spring Boot starters managed by parent. -->
+
+        <!-- Lombok JDK matrix (stale → `TypeTag :: UNKNOWN` build crash):
+             1.18.30+ JDK 21, 1.18.36+ JDK 23, 1.18.40+ JDK 24. -->
+        <lombok.version>1.18.40</lombok.version>
+        <mapstruct.version>1.6.3</mapstruct.version>
+        <openapi-generator.version>7.10.0</openapi-generator.version>
+        <frontend-maven-plugin.version>1.15.1</frontend-maven-plugin.version>
+        <node.version>v22.13.0</node.version>
+        <npm.version>10.9.2</npm.version>
+
+        <springdoc.version>2.8.3</springdoc.version>
+        <logstash-logback-encoder.version>8.0</logstash-logback-encoder.version>
+        <logbook.version>3.10.0</logbook.version>
+        <commons-csv.version>1.12.0</commons-csv.version>
+        <testcontainers.version>1.20.4</testcontainers.version>
+
+        <!-- Quality gates -->
+        <jacoco.version>0.8.12</jacoco.version>
+        <checkstyle.version>10.21.0</checkstyle.version>
+        <!-- JaCoCo gate. Phased — see testing-policy.md. -->
+        <jacoco.line.coverage>0.80</jacoco.line.coverage>
+        <jacoco.branch.coverage>0.70</jacoco.branch.coverage>
+
+        <!-- OpenAPI packages. Version (v1, v2) in BOTH package name AND
+             schema names in openapi.yaml. NO modelNameSuffix — partial V2
+             breaks need explicit schema-level versioning. -->
+        <openapi.api.package>${project.groupId}.api.v1</openapi.api.package>
+        <openapi.model.package>${project.groupId}.api.v1.model</openapi.model.package>
+        <openapi.invoker.package>${project.groupId}.api.v1.invoker</openapi.invoker.package>
+
+        <!-- Skip git-commit-id when running from a workspace without .git -->
+        <git-commit-id.skip>false</git-commit-id.skip>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+
+            <!-- Internal modules. -->
+            <dependency>
+                <groupId>${project.groupId}</groupId>
+                <artifactId>domain</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>${project.groupId}</groupId>
+                <artifactId>db</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>${project.groupId}</groupId>
+                <artifactId>service</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>${project.groupId}</groupId>
+                <artifactId>external-services</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>${project.groupId}</groupId>
+                <artifactId>event-logging-to-db-feature</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- Spring Boot starters NOT listed here — versions inherited
+                 from spring-boot-starter-parent. -->
+
+            <!-- Lombok / MapStruct -->
+            <dependency>
+                <groupId>org.projectlombok</groupId>
+                <artifactId>lombok</artifactId>
+                <version>${lombok.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.mapstruct</groupId>
+                <artifactId>mapstruct</artifactId>
+                <version>${mapstruct.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.mapstruct</groupId>
+                <artifactId>mapstruct-processor</artifactId>
+                <version>${mapstruct.version}</version>
+                <scope>provided</scope>
+            </dependency>
+
+            <!-- Observability -->
+            <dependency>
+                <groupId>net.logstash.logback</groupId>
+                <artifactId>logstash-logback-encoder</artifactId>
+                <version>${logstash-logback-encoder.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.zalando</groupId>
+                <artifactId>logbook-spring-boot-starter</artifactId>
+                <version>${logbook.version}</version>
+            </dependency>
+
+            <!-- OpenAPI / SpringDoc -->
+            <dependency>
+                <groupId>org.springdoc</groupId>
+                <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+                <version>${springdoc.version}</version>
+            </dependency>
+
+            <!-- CSV (export endpoints) -->
+            <dependency>
+                <groupId>org.apache.commons</groupId>
+                <artifactId>commons-csv</artifactId>
+                <version>${commons-csv.version}</version>
+            </dependency>
+
+            <!-- Testcontainers (integration tests with real Postgres) -->
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>testcontainers-bom</artifactId>
+                <version>${testcontainers.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+
+                <!-- Spring Boot repackage: only `application` activates it
+                     (sets <start-class>); other modules never try to repackage. -->
+                <plugin>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-maven-plugin</artifactId>
+                    <configuration>
+                        <mainClass>${start-class}</mainClass>
+                        <excludes>
+                            <exclude>
+                                <groupId>org.projectlombok</groupId>
+                                <artifactId>lombok</artifactId>
+                            </exclude>
+                        </excludes>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <id>repackage</id>
+                            <goals><goal>repackage</goal></goals>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <configuration>
+                        <release>${maven.compiler.release}</release>
+                        <annotationProcessorPaths>
+                            <path>
+                                <groupId>org.projectlombok</groupId>
+                                <artifactId>lombok</artifactId>
+                                <version>${lombok.version}</version>
+                            </path>
+                            <path>
+                                <groupId>org.mapstruct</groupId>
+                                <artifactId>mapstruct-processor</artifactId>
+                                <version>${mapstruct.version}</version>
+                            </path>
+                            <path>
+                                <groupId>org.springframework.boot</groupId>
+                                <artifactId>spring-boot-configuration-processor</artifactId>
+                            </path>
+                        </annotationProcessorPaths>
+                    </configuration>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-checkstyle-plugin</artifactId>
+                    <version>3.6.0</version>
+                    <configuration>
+                        <!-- ${maven.multiModuleProjectDirectory} resolves to backend/. -->
+                        <configLocation>${maven.multiModuleProjectDirectory}/config/checkstyle.xml</configLocation>
+                        <suppressionsLocation>${maven.multiModuleProjectDirectory}/config/checkstyle-suppressions.xml</suppressionsLocation>
+                        <consoleOutput>true</consoleOutput>
+                        <failOnViolation>true</failOnViolation>
+                        <violationSeverity>warning</violationSeverity>
+                        <includeTestSourceDirectory>false</includeTestSourceDirectory>
+                    </configuration>
+                    <dependencies>
+                        <dependency>
+                            <groupId>com.puppycrawl.tools</groupId>
+                            <artifactId>checkstyle</artifactId>
+                            <version>${checkstyle.version}</version>
+                        </dependency>
+                    </dependencies>
+                    <executions>
+                        <execution>
+                            <id>checkstyle-check</id>
+                            <phase>verify</phase>
+                            <goals><goal>check</goal></goals>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.jacoco</groupId>
+                    <artifactId>jacoco-maven-plugin</artifactId>
+                    <version>${jacoco.version}</version>
+                    <executions>
+                        <execution>
+                            <id>jacoco-prepare</id>
+                            <goals><goal>prepare-agent</goal></goals>
+                        </execution>
+                        <execution>
+                            <id>jacoco-report</id>
+                            <phase>test</phase>
+                            <goals><goal>report</goal></goals>
+                        </execution>
+                        <execution>
+                            <id>jacoco-check</id>
+                            <phase>verify</phase>
+                            <goals><goal>check</goal></goals>
+                            <configuration>
+                                <rules>
+                                    <rule>
+                                        <element>BUNDLE</element>
+                                        <limits>
+                                            <limit>
+                                                <counter>LINE</counter>
+                                                <value>COVEREDRATIO</value>
+                                                <minimum>${jacoco.line.coverage}</minimum>
+                                            </limit>
+                                            <limit>
+                                                <counter>BRANCH</counter>
+                                                <value>COVEREDRATIO</value>
+                                                <minimum>${jacoco.branch.coverage}</minimum>
+                                            </limit>
+                                        </limits>
+                                    </rule>
+                                </rules>
+                                <excludes>
+                                    <!-- Generated OpenAPI types and Lombok-annotated -->
+                                    <exclude>**/api/v1/model/**</exclude>
+                                    <exclude>**/api/v1/invoker/**</exclude>
+                                    <exclude>**/api/v1/*Api.class</exclude>
+                                </excludes>
+                            </configuration>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <plugin>
+                    <groupId>io.github.git-commit-id</groupId>
+                    <artifactId>git-commit-id-maven-plugin</artifactId>
+                    <version>9.0.1</version>
+                    <configuration>
+                        <skip>${git-commit-id.skip}</skip>
+                        <prefix>git-commit-id</prefix>
+                        <skipPoms>false</skipPoms>
+                        <failOnNoGitDirectory>false</failOnNoGitDirectory>
+                        <gitDescribe>
+                            <skip>true</skip>
+                        </gitDescribe>
+                        <offline>true</offline>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <id>git-commit-id</id>
+                            <goals><goal>revision</goal></goals>
+                            <phase>validate</phase>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.openapitools</groupId>
+                    <artifactId>openapi-generator-maven-plugin</artifactId>
+                    <version>${openapi-generator.version}</version>
+                    <executions>
+                        <execution>
+                            <id>generate-openapi-server</id>
+                            <phase>generate-sources</phase>
+                            <goals><goal>generate</goal></goals>
+                            <configuration>
+                                <generatorName>spring</generatorName>
+                                <library>spring-boot</library>
+                                <!-- Spec OUTSIDE static/ (Vite emptyOutDir wipes static/);
+                                     public URL restored by OpenApiSpecConfig. -->
+                                <inputSpec>${project.basedir}/src/main/resources/api/v1/specs/openapi.yaml</inputSpec>
+                                <output>${project.build.directory}/generated-sources/openapi</output>
+                                <apiPackage>${openapi.api.package}</apiPackage>
+                                <modelPackage>${openapi.model.package}</modelPackage>
+                                <invokerPackage>${openapi.invoker.package}</invokerPackage>
+                                <!-- modelNameSuffix omitted — versioned in YAML. -->
+                                <generateApiTests>false</generateApiTests>
+                                <generateModelTests>false</generateModelTests>
+                                <configOptions>
+                                    <interfaceOnly>true</interfaceOnly>
+                                    <useSpringBoot3>true</useSpringBoot3>
+                                    <openApiNullable>false</openApiNullable>
+                                    <skipDefaultInterface>true</skipDefaultInterface>
+                                    <useTags>true</useTags>
+                                    <dateLibrary>java8-localdatetime</dateLibrary>
+                                    <additionalModelTypeAnnotations>@lombok.Generated</additionalModelTypeAnnotations>
+                                </configOptions>
+                            </configuration>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <plugin>
+                    <groupId>com.github.eirslett</groupId>
+                    <artifactId>frontend-maven-plugin</artifactId>
+                    <version>${frontend-maven-plugin.version}</version>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <configuration>
+                        <!-- Mockito inline mock-maker must run as a real Java agent on JDK 21+;
+                             self-attach is flaky/disabled on some runtimes. @{argLine} keeps
+                             JaCoCo's agent injected by jacoco:prepare-agent. -->
+                        <argLine>@{argLine} -javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar</argLine>
+                        <includes><include>**/*Test.java</include></includes>
+                        <excludes><exclude>**/*IT.java</exclude></excludes>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-failsafe-plugin</artifactId>
+                    <configuration>
+                        <argLine>@{argLine} -javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar</argLine>
+                        <includes><include>**/*IT.java</include></includes>
+                    </configuration>
+                </plugin>
+
+            </plugins>
+        </pluginManagement>
+
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-checkstyle-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>io.github.git-commit-id</groupId>
+                <artifactId>git-commit-id-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+
+    <!-- Phased testing — see testing-policy.md.
+         Default = Phase 1/2 gate (0.00 -> ratcheted up over sprints).
+         -Phandoff = Phase 3 strict gates: >=0.80 line, >=0.70 branch. -->
+    <profiles>
+        <profile>
+            <id>handoff</id>
+            <properties>
+                <jacoco.line.coverage>0.80</jacoco.line.coverage>
+                <jacoco.branch.coverage>0.70</jacoco.branch.coverage>
+            </properties>
+        </profile>
+    </profiles>
+
+</project>

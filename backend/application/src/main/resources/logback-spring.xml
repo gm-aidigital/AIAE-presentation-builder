@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  logback-spring.xml — JSON logs to stdout for centralised monitoring.
+
+  Uses logstash-logback-encoder for structured JSON. If the dependency
+  isn't on the classpath, this config falls back to a sane plain pattern
+  so the app still starts.
+
+  Add to backend/application/pom.xml:
+    <dependency>
+      <groupId>net.logstash.logback</groupId>
+      <artifactId>logstash-logback-encoder</artifactId>
+      <version>8.0</version>
+    </dependency>
+-->
+<configuration>
+
+    <springProperty scope="context" name="appName" source="spring.application.name" defaultValue="app"/>
+
+    <!-- JSON on every default profile (local, replit, prod). Readable console logs: spring.profiles.active=local,readable -->
+    <springProfile name="!readable">
+        <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
+                <providers>
+                    <timestamp>
+                        <fieldName>@timestamp</fieldName>
+                    </timestamp>
+                    <pattern>
+                        <pattern>
+                            {
+                              "level": "%level",
+                              "logger": "%logger",
+                              "thread": "%thread",
+                              "service": "${appName}",
+                              "message": "%message"
+                            }
+                        </pattern>
+                    </pattern>
+                    <mdc/>
+                    <stackTrace/>
+                </providers>
+            </encoder>
+        </appender>
+    </springProfile>
+
+    <springProfile name="readable">
+        <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>%d{HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n</pattern>
+            </encoder>
+        </appender>
+    </springProfile>
+
+    <root level="INFO">
+        <appender-ref ref="STDOUT"/>
+    </root>
+
+    <!-- Zalando Logbook: TRACE so HTTP request/response lines are emitted
+         with the configured masking applied. -->
+    <logger name="org.zalando.logbook" level="TRACE"/>
+</configuration>

@@ -1,0 +1,45 @@
+# Generated project .replit — copied by materialize-project.sh into the
+# generated Replit workspace root. Edit here; materialize propagates it.
+#
+# STACK LOCK: Java 21 + Node 22 + PostgreSQL 16. See replit.md.
+
+modules = ["java-21", "nodejs-22", "postgresql-16"]
+hidden  = [".idea", ".vscode", "target", "node_modules", "generated-sources", ".cache"]
+
+# Boot hook — sets up runtime scripts; no-op if already materialized.
+onBoot = "bash scripts/setup-project.sh"
+
+[nix]
+channel = "stable-24_11"
+
+# === Deployment === Reserved VM (`gce`). Build + run wrapped in scripts.
+[deployment]
+deploymentTarget = "gce"
+build = ["bash", "scripts/replit-build.sh"]
+run   = ["bash", "scripts/replit-run.sh"]
+
+# === Ports === Backend 5000 → externalPort 80 is the single public surface.
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+# === Workspace env ===
+[env]
+PORT = "5000"
+SPRING_PROFILES_ACTIVE = "replit"
+
+# === Workflows ===
+[workflows]
+runButton = "Run"
+
+[[workflows.workflow]]
+name = "Run"
+mode = "parallel"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "if [ -f backend/pom.xml ]; then mvn -f backend/pom.xml -DskipTests -Dskip.frontend=true install && mvn -f backend/application/pom.xml -DskipTests -Dskip.frontend=true spring-boot:run; else echo '[backend] Not generated yet — run: bash scripts/materialize-project.sh <app-name-package>'; fi"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "if [ -f frontend/package.json ]; then cd frontend && { [ -f package-lock.json ] && npm ci || npm install; } && npm run generate:api && npm run dev -- --host 0.0.0.0 --port 5173; else echo '[frontend] Not generated yet.'; fi"

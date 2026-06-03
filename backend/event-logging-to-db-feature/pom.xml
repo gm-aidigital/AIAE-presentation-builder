@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Self-contained event-logging-to-db-feature module. Owns the full usage-
+  logging Java surface: @LogUsage, UsageAttributes, UsageEvent, UsageLogger,
+  the aspect, configs, JPA entity + repository. `service` depends on this
+  module so *ServiceImpl classes can carry @LogUsage; `application` picks
+  it up transitively through the service edge.
+
+  Database migrations live in the `db` module — NOT here. Migrations are
+  intentionally single-sourced: `backend/db/src/main/resources/db/changelog/`
+  is the ONE place Liquibase changelogs sit, regardless of which feature
+  module owns the corresponding @Entity. Splitting changelogs across modules
+  hides the table-creation contract from the migration owner and makes
+  cross-module Liquibase classpath includes a long-term footgun.
+
+  Removal flow (in order):
+    - Lightweight kill (no recompile): set `app.usage-logging.enabled=false`
+      → aspect + PostgresUsageLogger drop out, NoOpUsageLogger binds, table
+      stays.
+    - Full removal: drop <module>event-logging-to-db-feature</module> from
+      backend/pom.xml, drop the dependency line from service/pom.xml, delete
+      every @LogUsage import + usage from *ServiceImpl, and remove the
+      <include file="db/changelog/changes/0001-usage-events.xml"/> line from
+      db/src/main/resources/db/changelog/db.changelog-master.xml.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.aidigital.reportconstructor</groupId>
+        <artifactId>app-parent</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+    <artifactId>event-logging-to-db-feature</artifactId>
+    <name>Replit MVP — event-logging-to-db-feature</name>
+
+    <!-- Self-contained, removable feature. Must NOT depend on any other internal
+         module (domain/service/application). ID semantics live in this module. -->
+    <dependencies>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+        </dependency>
+
+        <!-- JPA entity + repository -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+
+        <!-- @Aspect + @Around -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
+
+        <!-- HttpServletRequest + RequestContextHolder for client_ip/user_agent -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- SecurityContextHolder, Authentication, Jwt (Bearer JWT path) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+        </dependency>
+
+        <!-- Test: JUnit 5 + Mockito + AssertJ + Spring test context. Proves the
+             aspect auto-intercepts every public *ServiceImpl method. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

@@ -1,0 +1,112 @@
+# Base application config. Profile-specific overrides:
+#   - application-replit.yml  → Replit workspace + Reserved VM deploy
+#   - application-local.yml   → docker-compose / local-dev
+#
+# REPLACE before use:
+#   - server.servlet.context-path → /<app-name> ONLY if your deployment needs one
+#     (a separate path-prefix beyond /api/v1/). Most Replit MVPs leave it empty.
+#
+# !!! DO NOT add `spring.security.oauth2.resourceserver.jwt.*` properties here !!!
+# Spring Boot's OAuth2 auto-config triggers on ANY of those properties (even
+# empty strings) and tries to fetch JWKS from the empty URL at startup.
+# SecurityConfig provides the JwtDecoder bean directly; that's enough to
+# satisfy the resource-server chain without poking auto-config.
+
+spring:
+  application:
+    # Replace APP_SERVICE_NAME with the generated app's stable slug during
+    # handoff (e.g. employee-directory). The fallback keeps the scaffold
+    # runnable before the first project-specific rename.
+    name: ${APP_SERVICE_NAME:reportconstructor}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        query.in_clause_parameter_padding: true
+        criteria.literal_handling_mode: bind
+        default_batch_fetch_size: 300
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.xml
+
+server:
+  port: ${PORT:8080}
+  # Replit + Reserved VM terminate TLS at the edge and forward X-Forwarded-*
+  # headers. `framework` makes Spring honour them so absolute URLs / Swagger /
+  # CORS resolve to the public https origin rather than http://localhost:5000.
+  forward-headers-strategy: framework
+  servlet:
+    # Default empty (root) — Spring serves /api/v1/... directly. Set a
+    # path-prefix only when a deployment specifically needs one; if you
+    # set it, also set APP_CONTEXT_PATH in docker-compose.yml so the
+    # backend healthcheck and the frontend nginx /api proxy match.
+    context-path: ${APP_CONTEXT_PATH:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,prometheus,info"
+  endpoint:
+    health:
+      show-details: when-authorized
+
+springdoc:
+  swagger-ui:
+    url: /api/v1/specs/openapi.yaml
+
+logging:
+  level:
+    root: INFO
+    org.zalando.logbook: TRACE   # TRACE on the logbook logger → emit req/resp lines
+
+# App-specific config — these become AuthProperties / UsageLoggingProperties
+# via @ConfigurationProperties("app.auth") and ("app.usage-logging").
+app:
+  auth:
+    allowed-email-domain: ${AUTH_ALLOWED_EMAIL_DOMAIN:aidigital.com}
+    publishable-key: ${CLERK_PUBLISHABLE_KEY:}
+    # Comma-separated EXACT trusted browser origins for the JWT azp claim (required).
+    # Never a publishable key. Blank values fail startup (AuthStartupValidator).
+    authorized-parties: ${AUTH_AUTHORIZED_PARTIES:}
+    # Clerk SSO is the ONLY auth mode. Issuer/JWKS derive from publishable-key
+    # when AUTH_ISSUER_URI / AUTH_JWKS_URI are blank.
+    sso:
+      issuer-uri: ${AUTH_ISSUER_URI:}
+      jwk-set-uri: ${AUTH_JWKS_URI:}
+      audience:   ${AUTH_AUDIENCE:}
+  security:
+    cors:
+      allowed-origins: "${APP_SECURITY_CORS_ALLOWED_ORIGINS:https://*.replit.dev,https://*.repl.co,http://localhost:5173,http://localhost:5000}"
+      max-age-seconds: ${APP_SECURITY_CORS_MAX_AGE_SECONDS:3600}
+    csp:
+      frame-ancestors: "${APP_SECURITY_CSP_FRAME_ANCESTORS:'self' https://*.replit.dev https://*.repl.co}"
+  # Logbook HTTP req/resp logging — bound by LogbookConfig. Defaults inline
+  # in LogbookProperties mirror the canonical rules; override here per-app.
+  # See observability/logbook-http-logging-rules.md.
+  logbook:
+    censored-replacement: XXX
+    headers-to-censor: [Authorization, Cookie, Set-Cookie, X-API-Key, AccessKey, Proxy-Authorization]
+    json-fields-to-censor: [".*password.*", ".*token.*", ".*secret.*", ".*key.*", ".*credential.*", ".*authorization.*", privateKey, clientSecret, serviceAccount]
+    excluded:
+      "/**/actuator/**": [GET]
+      "/**/swagger-ui/**": [GET]
+      "/**/specs/**": [GET]
+      "/health": [GET]
+      "/**": [OPTIONS]
+  usage-logging:
+    enabled:      ${USAGE_LOGGING_ENABLED:true}
+    # service-name MUST be non-empty when enabled=true. Default falls back
+    # to spring.application.name so a generated project doesn't silently
+    # bind NoOpUsageLogger because of an unset env var (past sessions
+    # spent hours wondering "why zero usage events?"). Override per-app via
+    # USAGE_LOG_SERVICE_NAME env var with the real stable identifier
+    # (e.g. `employee-directory`, NOT `replit-mvp-template`).
+    service-name: ${USAGE_LOG_SERVICE_NAME:${spring.application.name}}
+    environment:  ${USAGE_LOG_ENVIRONMENT:dev}
+    executor-core-pool-size: ${USAGE_LOG_EXECUTOR_CORE_POOL_SIZE:1}
+    executor-max-pool-size: ${USAGE_LOG_EXECUTOR_MAX_POOL_SIZE:2}
+    executor-queue-capacity: ${USAGE_LOG_EXECUTOR_QUEUE_CAPACITY:200}
+    max-error-message-length: ${USAGE_LOG_MAX_ERROR_MESSAGE_LENGTH:500}
+    max-user-agent-length: ${USAGE_LOG_MAX_USER_AGENT_LENGTH:500}

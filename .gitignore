@@ -1,0 +1,110 @@
+# .gitignore for the GENERATED PROJECT (not the template repo itself).
+#
+# Replace the generated project's root .gitignore with this file as part of
+# the first scaffold step. Two purposes:
+#
+#  1. Standard ignores for Java/Node build output and IDE files.
+#  2. **Exclude the template control plane** so that when the user does
+#     `git init` + `git remote add origin <company-repo>` + `git push`, the
+#     template-only files (rules, skills, canonical scaffolds, embedded
+#     docs) do not pollute the company repository.
+#
+#     The control-plane files stay in the Replit workspace because Replit
+#     Agent reads them on every conversation; they're how this template
+#     keeps governing the generated app over time. But they belong to the
+#     template, not the app. Git history of the app must not contain them.
+
+# ====================================================================
+# Template control plane — DO NOT COMMIT TO COMPANY REPO
+# ====================================================================
+# Replit Agent reads these from the workspace; the company repo never needs them.
+.agents/
+templates/
+custom_instruction/
+AGENTS.md
+replit.md
+# Note: .replit and replit.nix DO get committed — they're part of the runnable
+# app (define how Replit launches it). Only the rule-set files are excluded.
+
+# ====================================================================
+# Replit auto-injected Python files — never wanted in a Java/React app
+# ====================================================================
+# Replit's default workspace bootstrap drops Python scaffolding even when
+# the user picks a Java template. Delete + gitignore so it can't leak.
+main.py
+pyproject.toml
+uv.lock
+poetry.lock
+requirements.txt
+Pipfile
+Pipfile.lock
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# ====================================================================
+# Secrets / env
+# ====================================================================
+.env
+.env.*
+!.env.example
+*service-account*.json
+*credentials*.json
+
+# ====================================================================
+# IDE / OS
+# ====================================================================
+.idea/
+.claude/
+*.iml
+.vscode/
+.DS_Store
+
+# ====================================================================
+# Java / Maven
+# ====================================================================
+target/
+*.class
+*.jar
+*.war
+*.ear
+hs_err_pid*
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# ====================================================================
+# Node / frontend
+# ====================================================================
+node_modules/
+dist/
+.cache/
+*.tsbuildinfo
+backend/application/src/main/resources/static/
+
+# ====================================================================
+# Generated sources (OpenAPI codegen, etc.)
+# ====================================================================
+generated-sources/
+generated/
+frontend/src/shared/api/generated/*
+!frontend/src/shared/api/generated/.gitkeep
+
+# ====================================================================
+# Replit workspace local state
+# ====================================================================
+.config/
+.local/
+.upm/
+.cache/
+.breakpoints
+.replit.local
+
+# ====================================================================
+# Replit Agent's Node/Express bias — empty server/ at project root
+# ====================================================================
+# Replit Agent's default for "server" mode is a Node/Express scaffold
+# that lives at `server/`. This template forbids Node backends; if
+# the directory shows up empty after generation, it's an artifact —
+# delete and keep ignored so Agent doesn't repopulate it.
+server/

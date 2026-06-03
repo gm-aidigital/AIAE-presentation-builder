@@ -1,0 +1,13 @@
+.ui-state {
+    margin: var(--space-md, 1rem) 0;
+    font-size: var(--font-size-md, 1rem);
+    color: var(--color-text-muted, #5c6370);
+}
+
+.ui-state--error {
+    color: var(--color-danger, #c0392b);
+}
+
+.ui-state--empty {
+    font-style: italic;
+}

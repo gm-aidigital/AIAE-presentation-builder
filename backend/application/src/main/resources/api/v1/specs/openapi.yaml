@@ -1,0 +1,551 @@
+openapi: 3.0.3
+info:
+  title: Report Constructor API
+  version: 1.0.0
+  description: |
+    Report Constructor — turns a marketing-campaign Google Sheet into a generated
+    Google Slides deck (campaign/tactic placeholder resolution, line-item matching,
+    Claude-generated copy, native Sheets-linked charts). Migrated from the legacy
+    PHP app onto the AI Digital locked stack.
+
+    Contract-first: backend interfaces and frontend types are generated from this
+    file. Schemas are versioned explicitly in their names (UserV1, SheetReadResultV1).
+    Enums are standalone `<Noun>V1` `$ref` schemas. Every path key carries the
+    literal `/api/v1/` prefix (the generator ignores `servers[].url`).
+
+    Auth: Clerk SSO only — every operation requires a Bearer JWT validated against
+    the Clerk JWKS. The backend reads identity from the `user_id` claim and email
+    from the `email` claim. Sheet/line-item/placeholder endpoints are stateless per
+    request (the client holds the 2-D sheet rows in wizard state and re-POSTs them);
+    only report generation is persisted (an async job polled by id).
+servers:
+  - url: /api/v1
+    description: V1 base path (DOCUMENTATION ONLY — the openapi-generator-maven-plugin
+      does NOT prepend this to generated Spring routes. Path keys below carry the
+      `/api/v1/` prefix verbatim. See canonical-openapi-rules.md → "/api/v1 prefix").
+
+tags:
+  - name: auth
+    description: Authentication bootstrap (Clerk SSO)
+  - name: DataSource
+    description: Read a tab of a Google Sheet as the service account
+  - name: LineItemMatching
+    description: Auto-map media-plan tactics to BigQuery line-item IDs (rules engine)
+  - name: Placeholders
+    description: Compute the campaign placeholder→value map (dry-run; no Drive writes)
+  - name: ReportJobs
+    description: Persisted async Google Slides report generation jobs
+
+paths:
+  /api/v1/auth/me:
+    get:
+      tags: [auth]
+      operationId: getCurrentUser
+      summary: Returns the authenticated user (Clerk SSO)
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Authenticated user payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserV1"
+              examples:
+                demo:
+                  value:
+                    user_id: "user_123"
+                    email: "demo-user@example.com"
+                    full_name: "Demo User"
+        "401":
+          $ref: "#/components/responses/UnauthorizedV1"
+        "403":
+          $ref: "#/components/responses/ForbiddenV1"
+
+  /api/v1/sheets/read:
+    post:
+      tags: [DataSource]
+      operationId: readSheet
+      summary: Read one tab of a Google Sheet (A1:Z) as the service account
+      description: |
+        Reads a single tab (range `'<tab>'!A1:Z`, 26-column cap) and returns its
+        raw 2-D rows plus a small preview and tab metadata. The service account must
+        have read access to the spreadsheet (shared with it or link-readable). When
+        the requested tab does not exist, returns 200 with `ok=false` and
+        `error="tab_not_found"` so the client can apply its Estimates→Proposal fallback.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SheetReadRequestV1"
+      responses:
+        "200":
+          description: Tab read result (check `ok`/`error` for per-tab outcome).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SheetReadResultV1"
+        "400":
+          $ref: "#/components/responses/BadRequestV1"
+        "401":
+          $ref: "#/components/responses/UnauthorizedV1"
+        "403":
+          $ref: "#/components/responses/ForbiddenV1"
+        "500":
+          $ref: "#/components/responses/InternalServerErrorV1"
+
+  /api/v1/line-items/match:
+    post:
+      tags: [LineItemMatching]
+      operationId: matchLineItems
+      summary: Auto-map media-plan tactics to BigQuery line-item IDs (rules only)
+      description: |
+        Pure rules engine (no LLM). Extracts line-item IDs from the BQ rows
+        (`Level 1 Naming` underscore-segment index 8, digit-only), groups IDs by
+        channel, and accepts a tactic↔ID match only when the tactic's expected
+        channel maps to exactly one ID. Unmatched tactics are left for manual
+        drag-and-drop in the UI.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LineItemMatchRequestV1"
+      responses:
+        "200":
+          description: Match result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LineItemMatchResultV1"
+        "400":
+          $ref: "#/components/responses/BadRequestV1"
+        "401":
+          $ref: "#/components/responses/UnauthorizedV1"
+        "403":
+          $ref: "#/components/responses/ForbiddenV1"
+        "500":
+          $ref: "#/components/responses/InternalServerErrorV1"
+
+  /api/v1/placeholders/preview:
+    post:
+      tags: [Placeholders]
+      operationId: previewPlaceholders
+      summary: Compute the campaign placeholder→value map (dry-run, no Drive writes)
+      description: |
+        Collects campaign/tactic metrics from the BQ rows, resolves the full
+        placeholder catalog (precedence adj → sheet → auto/Claude), and groups the
+        result into sections for the preview panel. Claude-derived fields are gated
+        on `CLAUDE_ENABLED`; when disabled they fall back to manual/"—". Touches no
+        Google Drive/Slides.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PreviewRequestV1"
+      responses:
+        "200":
+          description: Placeholder map grouped into sections.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreviewResultV1"
+        "400":
+          $ref: "#/components/responses/BadRequestV1"
+        "401":
+          $ref: "#/components/responses/UnauthorizedV1"
+        "403":
+          $ref: "#/components/responses/ForbiddenV1"
+        "500":
+          $ref: "#/components/responses/InternalServerErrorV1"
+
+  /api/v1/report-jobs:
+    post:
+      tags: [ReportJobs]
+      operationId: createReportJob
+      summary: Enqueue an async Google Slides report-generation job
+      description: |
+        Persists a generation job (owner = the caller's Clerk `user_id`) and starts
+        the 7-step pipeline in the background (clone template → fill → trim → charts →
+        share with the caller's email). Returns the job id immediately; poll
+        `GET /api/v1/report-jobs/{jobId}` for progress and the final deck URL.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateRequestV1"
+      responses:
+        "202":
+          description: Job accepted and enqueued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportJobCreatedV1"
+        "400":
+          $ref: "#/components/responses/BadRequestV1"
+        "401":
+          $ref: "#/components/responses/UnauthorizedV1"
+        "403":
+          $ref: "#/components/responses/ForbiddenV1"
+        "500":
+          $ref: "#/components/responses/InternalServerErrorV1"
+
+  /api/v1/report-jobs/{jobId}:
+    get:
+      tags: [ReportJobs]
+      operationId: getReportJob
+      summary: Poll a report-generation job by id
+      description: |
+        Returns the current status/step/label and, when done, the generated deck
+        URL and any non-fatal warnings. Authorized to the owner only; a job owned by
+        another user returns 404.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: jobId
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Job identifier returned by createReportJob.
+      responses:
+        "200":
+          description: Current job state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportJobV1"
+        "401":
+          $ref: "#/components/responses/UnauthorizedV1"
+        "403":
+          $ref: "#/components/responses/ForbiddenV1"
+        "404":
+          $ref: "#/components/responses/NotFoundV1"
+        "500":
+          $ref: "#/components/responses/InternalServerErrorV1"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  responses:
+    UnauthorizedV1:
+      description: Missing or invalid token
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorV1"
+          examples:
+            missingToken:
+              value: { code: "C005", message: "Authentication required", timestamp: "2026-05-24T10:00:00Z", correlationId: "abc-123" }
+    ForbiddenV1:
+      description: Authenticated but lacking permission
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorV1"
+    BadRequestV1:
+      description: Invalid request payload or parameters
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorV1"
+    NotFoundV1:
+      description: Resource not found (or not owned by the caller)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorV1"
+    InternalServerErrorV1:
+      description: Unexpected server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorV1"
+
+  schemas:
+    # ── Identity & shared error (scaffold — keep verbatim) ──────────────────────
+    UserV1:
+      type: object
+      required: [user_id, email]
+      # Baseline payload carries identity only. Add a roles array here ONLY when
+      # the product introduces server-side role authorization.
+      properties:
+        user_id:   { type: string, description: "Clerk user id (sub/user_id claim)" }
+        email:     { type: string, format: email }
+        full_name: { type: string }
+
+    ApiErrorV1:
+      type: object
+      required: [code, message, timestamp]
+      properties:
+        code:          { type: string, description: "Machine-readable error code" }
+        message:       { type: string, description: "Human-readable message" }
+        timestamp:     { type: string, format: date-time }
+        correlationId: { type: string }
+        parameters:
+          type: array
+          items: { $ref: "#/components/schemas/ValidationParameterV1" }
+
+    ValidationParameterV1:
+      type: object
+      required: [code, value]
+      properties:
+        code:  { type: string }
+        value: { type: string }
+
+    # ── Enums (standalone $ref schemas — never inline) ──────────────────────────
+    SourceV1:
+      type: string
+      description: |
+        Provenance of a resolved placeholder value. Note (legacy fidelity): many
+        auto/Claude-derived values are tagged `adj` to match the legacy UI; only the
+        geo summary and thoughts/strategic fields use `claude`. `ui` = the report-type
+        value; `not_found` = unresolved.
+      enum: [adj, sheet, ui, claude, not_found]
+
+    ReportJobStatusV1:
+      type: string
+      description: Lifecycle of a report-generation job (mirrors the report_job_status dictionary table).
+      enum: [queued, running, done, error]
+
+    ReportTypeV1:
+      type: string
+      description: |
+        Report type. COSMETIC ONLY — fills the single `{{report_type}}` placeholder;
+        the section/placeholder catalog is identical for both values.
+      enum: [EOC, EOM]
+
+    # ── DataSource ──────────────────────────────────────────────────────────────
+    SheetReadRequestV1:
+      type: object
+      required: [url, tab]
+      properties:
+        url: { type: string, description: "Full Google Sheets URL (the spreadsheet id is parsed out)." }
+        tab: { type: string, description: "Exact tab name, e.g. Proposal, Audience&Inventory, Estimates, Geo, Basic." }
+
+    SheetReadResultV1:
+      type: object
+      required: [ok, tab, rows, cols, tabs, headers, preview, rawRows]
+      properties:
+        ok:       { type: boolean, description: "True when the tab was read; false with `error` set otherwise." }
+        error:    { type: string, description: "Error code when ok=false, e.g. tab_not_found." }
+        sheetId:  { type: string }
+        title:    { type: string, description: "Spreadsheet title." }
+        tab:      { type: string, description: "Tab that was read." }
+        tabs:
+          type: array
+          description: All tab titles in the spreadsheet.
+          items: { type: string }
+        rows:     { type: integer, format: int32 }
+        cols:     { type: integer, format: int32 }
+        headers:
+          type: array
+          description: First row (header cells).
+          items: { type: string }
+        preview:
+          type: array
+          description: First few data rows for display.
+          items:
+            type: array
+            items: { type: string }
+        rawRows:
+          type: array
+          description: All rows of the tab (ragged-tolerant 2-D grid, A1:Z).
+          items:
+            type: array
+            items: { type: string }
+
+    # ── LineItemMatching ─────────────────────────────────────────────────────────
+    LineItemMatchRequestV1:
+      type: object
+      required: [bqRows, planRows]
+      properties:
+        bqRows:
+          type: array
+          description: Rows of the Elevate/BigQuery-export tab (Basic).
+          items:
+            type: array
+            items: { type: string }
+        planRows:
+          type: array
+          description: Rows of the media-plan tab (Proposal).
+          items:
+            type: array
+            items: { type: string }
+
+    IdNamingV1:
+      type: object
+      required: [naming, channel, tactic]
+      properties:
+        naming:  { type: string }
+        channel: { type: string }
+        tactic:  { type: string }
+
+    MappingEntryV1:
+      type: object
+      required: [tacticNum, tacticName, autoMatched]
+      properties:
+        tacticNum:       { type: integer, format: int32 }
+        tacticName:      { type: string }
+        lineItemId:      { type: string, description: "Matched line-item id, or null when unmatched." }
+        namingSample:    { type: string, description: "Sample Level-1 naming for the matched id (display only)." }
+        autoMatched:     { type: boolean }
+        expectedChannel: { type: string, description: "Channel that needs manual assignment (when ambiguous)." }
+
+    LineItemMatchResultV1:
+      type: object
+      required: [mapping, uniqueIds, idNamings, channelToIds, warnings, autoMatched, autoMatchCount]
+      properties:
+        mapping:
+          type: array
+          items: { $ref: "#/components/schemas/MappingEntryV1" }
+        uniqueIds:
+          type: array
+          items: { type: string }
+        idNamings:
+          type: object
+          description: line-item id → naming/channel/tactic.
+          additionalProperties: { $ref: "#/components/schemas/IdNamingV1" }
+        channelToIds:
+          type: object
+          description: channel (original case) → distinct ids.
+          additionalProperties:
+            type: array
+            items: { type: string }
+        warnings:
+          type: array
+          items: { type: string }
+        autoMatched:     { type: boolean, description: "True only when every entry auto-matched and mapping is non-empty." }
+        autoMatchCount:  { type: integer, format: int32 }
+
+    # ── Placeholders ──────────────────────────────────────────────────────────────
+    PreviewRequestV1:
+      type: object
+      required: [brief, reportType]
+      properties:
+        brief:      { type: string }
+        reportType: { $ref: "#/components/schemas/ReportTypeV1" }
+        sheetRows:      { $ref: "#/components/schemas/Rows2DV1" }
+        adjRows:        { $ref: "#/components/schemas/Rows2DV1" }
+        audienceRows:   { $ref: "#/components/schemas/Rows2DV1" }
+        estimatesRows:  { $ref: "#/components/schemas/Rows2DV1" }
+        geoRows:        { $ref: "#/components/schemas/Rows2DV1" }
+        lineItemMapping:
+          type: array
+          items: { $ref: "#/components/schemas/MappingEntryV1" }
+
+    PlaceholderEntryV1:
+      type: object
+      required: [key, label, value, source]
+      properties:
+        key:    { type: string, description: "Placeholder token, e.g. {{total imps}}." }
+        label:  { type: string, description: "Human label (Russian, verbatim)." }
+        value:  { type: string, description: "Resolved value, or — when unresolved." }
+        source: { $ref: "#/components/schemas/SourceV1" }
+
+    SectionV1:
+      type: object
+      required: [title, placeholders]
+      properties:
+        title: { type: string, description: "Section title (Russian, verbatim — Начало, Обзорные, …)." }
+        placeholders:
+          type: array
+          items: { $ref: "#/components/schemas/PlaceholderEntryV1" }
+
+    LabelPairV1:
+      type: object
+      required: [label, value]
+      properties:
+        label: { type: string }
+        value: { type: string }
+
+    PreviewStatsV1:
+      type: object
+      required: [found, total]
+      properties:
+        found: { type: integer, format: int32 }
+        total: { type: integer, format: int32 }
+
+    PreviewResultV1:
+      type: object
+      required: [sections, allLabels, stats, sheetCount, adjCount]
+      properties:
+        sections:
+          type: array
+          items: { $ref: "#/components/schemas/SectionV1" }
+        allLabels:
+          type: object
+          description: 'Source group ("sheet"/"adj") → label/value pairs found in that sheet.'
+          additionalProperties:
+            type: array
+            items: { $ref: "#/components/schemas/LabelPairV1" }
+        stats:      { $ref: "#/components/schemas/PreviewStatsV1" }
+        sheetCount: { type: integer, format: int32 }
+        adjCount:   { type: integer, format: int32 }
+
+    # ── ReportJobs ────────────────────────────────────────────────────────────────
+    GenerateRequestV1:
+      type: object
+      required: [brief, reportType]
+      properties:
+        brief:      { type: string }
+        reportType: { $ref: "#/components/schemas/ReportTypeV1" }
+        sheetRows:      { $ref: "#/components/schemas/Rows2DV1" }
+        adjRows:        { $ref: "#/components/schemas/Rows2DV1" }
+        audienceRows:   { $ref: "#/components/schemas/Rows2DV1" }
+        estimatesRows:  { $ref: "#/components/schemas/Rows2DV1" }
+        geoRows:        { $ref: "#/components/schemas/Rows2DV1" }
+        lineItemMapping:
+          type: array
+          items: { $ref: "#/components/schemas/MappingEntryV1" }
+        bqSheetId:
+          type: string
+          description: |
+            Spreadsheet id of the Elevate/BQ sheet. PRESENCE-GATE ONLY — gates the
+            chart step; the server does NOT re-read it (BQ pivots read adjRows).
+
+    ReportJobCreatedV1:
+      type: object
+      required: [jobId]
+      properties:
+        jobId: { type: integer, format: int64 }
+
+    ReportJobV1:
+      type: object
+      required: [jobId, status, step, total, warnings]
+      properties:
+        jobId:    { type: integer, format: int64 }
+        status:   { $ref: "#/components/schemas/ReportJobStatusV1" }
+        step:     { type: integer, format: int32 }
+        total:    { type: integer, format: int32, description: "Always 7." }
+        label:    { type: string, description: "Human progress label." }
+        slideUrl: { type: string, description: "Generated deck URL (set when status=done)." }
+        warnings:
+          type: array
+          description: Non-fatal warnings (chart/share failures); the job still completes.
+          items: { type: string }
+        error:    { type: string, description: "Error message when status=error." }
+
+    # ── Shared building block ───────────────────────────────────────────────────
+    Rows2DV1:
+      type: array
+      description: A ragged-tolerant 2-D grid of sheet cell strings (A1:Z).
+      items:
+        type: array
+        items: { type: string }

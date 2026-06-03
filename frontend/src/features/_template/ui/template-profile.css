@@ -1,0 +1,28 @@
+.template-profile {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+.template-profile__text {
+    margin: 0;
+    font-size: var(--text-base);
+    color: var(--text-default);
+}
+
+.template-profile__refresh {
+    align-self: flex-start;
+    padding: var(--space-2) var(--space-4);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    color: hsl(var(--primary-foreground));
+    background: hsl(var(--primary));
+    border: none;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+}
+
+.template-profile__refresh:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}

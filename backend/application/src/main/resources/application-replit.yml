@@ -1,0 +1,41 @@
+# application-replit.yml
+#
+# Replit-specific overrides. Replit's postgresql-16 module exposes individual
+# PG* env vars to the app process. Configure Spring directly from those values;
+# no EnvironmentPostProcessor and no forced sslmode.
+
+spring:
+  # Reserved VM cold-start is slow — Liquibase + Hibernate + JPA scanning
+  # routinely push first-bind past the deployment's port-check window
+  # (~30s), so the container gets killed before Tomcat ever opens 5000.
+  # Lazy-init defers most beans until first request, letting Tomcat bind
+  # within ~10s. Trade-off: first request to a controller is ~1-2s slower.
+  main:
+    lazy-initialization: true
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    properties:
+      hibernate:
+        # Skip Hibernate's slow JDBC metadata round-trip at startup
+        # (multi-second on cold Reserved VM). Required pairing: an
+        # explicit dialect above, otherwise Hibernate fails with
+        # "Unable to determine Dialect without JDBC metadata".
+        boot.allow_jdbc_metadata_access: false
+        temp.use_jdbc_metadata_defaults: false
+  datasource:
+    url: jdbc:postgresql://${PGHOST:${POSTGRES_HOST:localhost}}:${PGPORT:${POSTGRES_PORT:5432}}/${PGDATABASE:${POSTGRES_DB:app}}
+    username: ${PGUSER:${POSTGRES_USER:app}}
+    password: ${PGPASSWORD:${POSTGRES_PASSWORD:app}}
+    hikari:
+      maximum-pool-size: 3       # Replit's managed SQL DB has a low conn ceiling
+      minimum-idle: 0
+      idle-timeout: 30000
+      connection-timeout: 5000
+      auto-commit: false
+
+server:
+  port: ${PORT:5000}
+
+app:
+  usage-logging:
+    environment: ${USAGE_LOG_ENVIRONMENT:dev}

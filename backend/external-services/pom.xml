@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.aidigital.reportconstructor</groupId>
+        <artifactId>app-parent</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+    <artifactId>external-services</artifactId>
+    <name>Report Constructor — external-services</name>
+    <dependencies>
+        <dependency><groupId>${project.groupId}</groupId><artifactId>service</artifactId></dependency>
+        <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter</artifactId></dependency>
+        <dependency><groupId>org.projectlombok</groupId><artifactId>lombok</artifactId></dependency>
+        <dependency><groupId>com.google.apis</groupId><artifactId>google-api-services-sheets</artifactId><version>v4-rev20251110-2.0.0</version></dependency>
+        <dependency><groupId>com.google.apis</groupId><artifactId>google-api-services-slides</artifactId><version>v1-rev20250401-2.0.0</version></dependency>
+        <dependency><groupId>com.google.apis</groupId><artifactId>google-api-services-drive</artifactId><version>v3-rev20260220-2.0.0</version></dependency>
+        <dependency><groupId>com.google.auth</groupId><artifactId>google-auth-library-oauth2-http</artifactId><version>1.30.0</version></dependency>
+        <dependency><groupId>com.google.http-client</groupId><artifactId>google-http-client-gson</artifactId><version>1.45.0</version></dependency>
+        <dependency><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId></dependency>
+    </dependencies>
+</project>
