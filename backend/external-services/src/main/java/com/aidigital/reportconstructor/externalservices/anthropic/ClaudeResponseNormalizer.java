@@ -115,4 +115,66 @@ public class ClaudeResponseNormalizer {
     public boolean notBlank(String s) {
         return s != null && !s.isBlank();
     }
+
+    /** Batch A audience_segments — max 80 chars, cut at last comma when over limit. */
+    public String limitAudienceSegments(String seg) {
+        if (seg == null) {
+            return null;
+        }
+        seg = seg.trim();
+        if ("not specified".equalsIgnoreCase(seg)) {
+            return null;
+        }
+        if (seg.length() > 80) {
+            String cut = seg.substring(0, 80);
+            int lc = cut.lastIndexOf(',');
+            seg = lc >= 0 ? cut.substring(0, lc).trim() : cut.trim();
+        }
+        return seg.isEmpty() ? null : seg;
+    }
+
+    /** Batch A strategic point — hard max 22 characters. */
+    public String limitStrategicPoint(String point) {
+        if (point == null) {
+            return "";
+        }
+        point = point.trim();
+        return point.length() > 22 ? point.substring(0, 22) : point;
+    }
+
+    /** Batch A strategic overview — max 240 chars, cut at last {@code .} or {@code ,} past 180. */
+    public String limitStrategicOverview(String overview) {
+        if (overview == null) {
+            return "";
+        }
+        overview = overview.trim();
+        if (overview.length() > 240) {
+            String cut = overview.substring(0, 240);
+            int lp = Math.max(cut.lastIndexOf('.'), cut.lastIndexOf(','));
+            overview = lp > 180 ? overview.substring(0, lp + 1).trim() : cut.trim();
+        }
+        return overview;
+    }
+
+    /** Batch C results_overview — {@link #normalizeC} with limit 380. */
+    public String limitResultsOverview(String val) {
+        return normalizeC(val, 380);
+    }
+
+    /** Batch C tactic_overview — {@link #normalizeC} with limit 210. */
+    public String limitTacticOverview(String val) {
+        return normalizeC(val, 210);
+    }
+
+    /** Geo tab summary — max 40 characters after whitespace collapse. */
+    public String limitGeoSummary(String text) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        text = text.replaceAll("\\s*[\\r\\n]+\\s*", " ").replaceAll("\\s{2,}", " ").trim();
+        if (text.length() > 40) {
+            text = text.substring(0, 40).trim();
+        }
+        return text.isEmpty() ? null : text;
+    }
 }

@@ -157,17 +157,7 @@ public class RealClaudeClient implements ClaudeClient {
             if ("not specified".equals(age.toLowerCase(Locale.ROOT))) age = null;
         }
 
-        String seg = normalizer.textOrNull(parsed.get("audience_segments"));
-        if (seg != null) {
-            seg = seg.trim();
-            if ("not specified".equals(seg.toLowerCase(Locale.ROOT))) {
-                seg = null;
-            } else if (seg.length() > 80) {
-                String cut = seg.substring(0, 80);
-                int lc = cut.lastIndexOf(',');
-                seg = lc >= 0 ? cut.substring(0, lc).trim() : cut.trim();
-            }
-        }
+        String seg = normalizer.limitAudienceSegments(normalizer.textOrNull(parsed.get("audience_segments")));
 
         String overview = normalizer.normalizeProposal(normalizer.textOrNull(parsed.get("proposal_overview")), 400);
 
@@ -176,14 +166,8 @@ public class RealClaudeClient implements ClaudeClient {
         if (arr != null && arr.isArray()) {
             for (int i = 0; i < arr.size() && i < 4; i++) {
                 JsonNode item = arr.get(i);
-                String point = item.path("point").asText("").trim();
-                String ov = item.path("overview").asText("").trim();
-                if (point.length() > 22) point = point.substring(0, 22);
-                if (ov.length() > 240) {
-                    String cut = ov.substring(0, 240);
-                    int lp = Math.max(cut.lastIndexOf('.'), cut.lastIndexOf(','));
-                    ov = lp > 180 ? ov.substring(0, lp + 1).trim() : cut.trim();
-                }
+                String point = normalizer.limitStrategicPoint(item.path("point").asText(""));
+                String ov = normalizer.limitStrategicOverview(item.path("overview").asText(""));
                 insights.add(new ClaudeStrategic.StrategicInsight(point, ov));
             }
         }
@@ -393,7 +377,7 @@ public class RealClaudeClient implements ClaudeClient {
         JsonNode parsed = call(prompt, 3500, 60, "BatchC", true);
         if (parsed == null) return claudeDefaults.emptyResults();
 
-        String resultsOverview = normalizer.normalizeC(normalizer.textOrNull(parsed.get("results_overview")), 380);
+        String resultsOverview = normalizer.limitResultsOverview(normalizer.textOrNull(parsed.get("results_overview")));
         List<String> thoughts = normalizer.normalizeThoughts(normalizer.textOrNull(parsed.get("thoughts_on_performance")));
 
         Map<Integer, String> tacticOverviews = new LinkedHashMap<>();
@@ -409,7 +393,7 @@ public class RealClaudeClient implements ClaudeClient {
                     continue;
                 }
                 if (n <= 0) continue;
-                tacticOverviews.put(n, normalizer.normalizeC(ent.getValue().asText(""), 210));
+                tacticOverviews.put(n, normalizer.limitTacticOverview(ent.getValue().asText("")));
             }
         }
         return new ClaudeResults(resultsOverview, thoughts, tacticOverviews);
@@ -434,11 +418,7 @@ public class RealClaudeClient implements ClaudeClient {
 
         JsonNode resp = callRaw(prompt, 60, 30, "Geo");
         if (resp == null) return null;
-        String text = normalizer.extractText(resp);
-        if (text == null || text.isBlank()) return null;
-        text = text.replaceAll("\\s*[\\r\\n]+\\s*", " ").replaceAll("\\s{2,}", " ").trim();
-        if (text.length() > 40) text = text.substring(0, 40).trim();
-        return text.isEmpty() ? null : text;
+        return normalizer.limitGeoSummary(normalizer.extractText(resp));
     }
 
     // ── HTTP plumbing ─────────────────────────────────────────────────────────
