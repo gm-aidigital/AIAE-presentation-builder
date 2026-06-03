@@ -45,7 +45,7 @@ public class UsageLoggingConfig {
     /**
      * Primary logger when enabled. Fails fast on empty/placeholder service-name.
      *
-     * @param persistenceService proxied service for async, isolated inserts
+     * @param usageEventSink routing sink for persisted usage events
      * @param props bound app.usage-logging.* properties
      * @return Postgres-backed logger
      * @throws IllegalStateException when service-name is blank or still the placeholder
@@ -81,6 +81,7 @@ public class UsageLoggingConfig {
     /**
      * Executor dedicated to fire-and-forget usage event persistence.
      *
+     * @param props bound app.usage-logging.* properties
      * @return bounded async executor for usage logging writes
      */
     @Bean(name = "usageLoggingExecutor")

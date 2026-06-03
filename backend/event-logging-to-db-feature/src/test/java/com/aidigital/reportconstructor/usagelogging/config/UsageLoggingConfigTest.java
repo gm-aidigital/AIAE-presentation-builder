@@ -50,6 +50,16 @@ class UsageLoggingConfigTest {
     }
 
     @Test
+    void shouldFailFastForNullAndReservedPlaceholderServiceNames() {
+        assertThatThrownBy(() -> config.postgresUsageLogger(sink, props(null)))
+            .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> config.postgresUsageLogger(sink, props("change-me")))
+            .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> config.postgresUsageLogger(sink, props("TODO")))
+            .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
     void shouldProvidePersistenceExecutorAndNoOpBeansTest() {
         // When / Then:
         assertThat(config.usageEventPersistenceService(mock(UsageEventRepository.class))).isNotNull();

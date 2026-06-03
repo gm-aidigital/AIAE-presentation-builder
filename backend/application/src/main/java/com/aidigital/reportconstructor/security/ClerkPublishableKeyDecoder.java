@@ -20,9 +20,9 @@ public class ClerkPublishableKeyDecoder {
 
     private static final Pattern KEY_PATTERN = Pattern.compile("^pk_(test|live)_([A-Za-z0-9_=-]+)$");
     /** Valid bare DNS hostname: labels 1-63 chars, letters/digits/hyphens, no leading/trailing hyphens. */
-    private static final Pattern DNS_LABEL   = Pattern.compile("^[a-zA-Z0-9]([a-zA-Z0-9\\-]{0,61}[a-zA-Z0-9])?$");
-    private static final String  SCHEME      = "https://";
-    private static final String  JWKS_PATH   = "/.well-known/jwks.json";
+    private static final Pattern DNS_LABEL = Pattern.compile("^[a-zA-Z0-9]([a-zA-Z0-9\\-]{0,61}[a-zA-Z0-9])?$");
+    private static final String SCHEME = "https://";
+    private static final String JWKS_PATH = "/.well-known/jwks.json";
 
     /**
      * Decodes the Clerk Frontend API host embedded in a publishable key.

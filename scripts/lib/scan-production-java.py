@@ -11,6 +11,11 @@ SKIP_SUFFIXES = (
     "/api/v1/model/",
     "/api/v1/invoker/",
 )
+# POC-harvested report engine — verbatim static helpers (Fmt, Claude normalizers).
+HARVEST_LEGACY_PATHS = (
+    "/service/reports/",
+    "/externalservices/",
+)
 SKIP_FILES = {
     "AuthConstants.java",
 }
@@ -60,7 +65,9 @@ def should_skip_file(path: Path) -> bool:
         return True
     if path.name.endswith("Api.java"):
         return True
-    return any(part in text for part in SKIP_SUFFIXES)
+    if any(part in text for part in SKIP_SUFFIXES):
+        return True
+    return any(part in text for part in HARVEST_LEGACY_PATHS)
 
 
 def strip_comments_and_strings(line: str) -> str:

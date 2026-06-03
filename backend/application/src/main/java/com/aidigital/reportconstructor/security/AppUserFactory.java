@@ -21,8 +21,8 @@ import java.util.Optional;
 @Component
 public class AppUserFactory {
 
-    private static final String CLAIM_USER_ID  = "user_id";
-    private static final String CLAIM_EMAIL    = "email";
+    private static final String CLAIM_USER_ID = "user_id";
+    private static final String CLAIM_EMAIL = "email";
     private static final String CLAIM_FULLNAME = "full_name";
 
     /**

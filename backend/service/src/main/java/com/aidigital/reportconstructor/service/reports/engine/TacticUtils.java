@@ -1,0 +1,455 @@
+package com.aidigital.reportconstructor.service.reports.engine;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+
+/**
+ * Java port of {@code api/tactic_utils.php} + the data/utility helpers from
+ * {@code api/placeholders/resolvers_tactics.php}.
+ *
+ * <p>Holds the channel mapping, display-name normalisation, KPI-type detection,
+ * tactic whitelist and the Media-column extraction used to discover which
+ * tactics a media plan contains. Pure data + string logic — no I/O.
+ */
+public final class TacticUtils {
+
+    private TacticUtils() {}
+
+    private static final String[] STOP_WORDS = {"added value", "totals", "please note", "total:"};
+
+    // ── Media column extraction ───────────────────────────────────────────────
+
+    /** Mirrors PHP {@code extractTacticsFromMedia} — tactics in Media-column order. */
+    public static List<String> extractTacticsFromMedia(List<List<String>> rows) {
+        List<String> out = new ArrayList<>();
+        if (rows == null) return out;
+        int mediaRow = -1;
+        int mediaCol = -1;
+        outer:
+        for (int i = 0; i < rows.size(); i++) {
+            List<String> row = rows.get(i);
+            if (row == null) continue;
+            for (int j = 0; j < row.size(); j++) {
+                if (cell(row, j).toLowerCase(Locale.ROOT).equals("media")) {
+                    mediaRow = i;
+                    mediaCol = j;
+                    break outer;
+                }
+            }
+        }
+        if (mediaRow < 0) return out;
+
+        for (int i = mediaRow + 1; i < rows.size(); i++) {
+            List<String> row = rows.get(i);
+            String c = cellAt(row, mediaCol);
+            String rowText = joinLower(row, 4);
+            boolean stop = false;
+            for (String sw : STOP_WORDS) {
+                if (rowText.contains(sw)) { stop = true; break; }
+            }
+            if (stop) break;
+            if (c.isEmpty()) break;
+            out.add(c);
+        }
+        return out;
+    }
+
+    /** Mirrors PHP {@code countTacticsInMediaPlan} — 0..7 known tactics under "Media". */
+    public static int countTacticsInMediaPlan(List<List<String>> rows) {
+        if (rows == null) return 0;
+        int mediaRow = -1;
+        int mediaCol = -1;
+        outer:
+        for (int i = 0; i < rows.size(); i++) {
+            List<String> row = rows.get(i);
+            if (row == null) continue;
+            for (int j = 0; j < row.size(); j++) {
+                if (cell(row, j).toLowerCase(Locale.ROOT).equals("media")) {
+                    mediaRow = i;
+                    mediaCol = j;
+                    break outer;
+                }
+            }
+        }
+        if (mediaRow < 0) return 0;
+        int count = 0;
+        int limit = Math.min(mediaRow + 20, rows.size() - 1);
+        for (int i = mediaRow + 1; i <= limit; i++) {
+            String c = cellAt(rows.get(i), mediaCol);
+            if (c.isEmpty()) continue;
+            if (KNOWN_TACTICS.containsKey(c.toLowerCase(Locale.ROOT))) count++;
+        }
+        return count;
+    }
+
+    /** Mirrors PHP {@code normalizeTacticDisplayName} — short Slides label or raw name. */
+    public static String normalizeTacticDisplayName(String rawName) {
+        if (rawName == null) return "";
+        String key = rawName.trim().toLowerCase(Locale.ROOT);
+        return DISPLAY_MAP.getOrDefault(key, rawName);
+    }
+
+    /** Whitelist used by {@code resolveTacticsList}: lowercase media name → canonical. */
+    public static Map<String, String> knownTacticsWhitelist() {
+        return WHITELIST;
+    }
+
+    /** Mirrors PHP {@code getTacticChannelFilter} — BQ Channel filter or {@code null}. */
+    public static String getTacticChannelFilter(String tacticName) {
+        if (tacticName == null) return null;
+        return CHANNEL_MAP.get(tacticName.trim().toLowerCase(Locale.ROOT));
+    }
+
+    /** Mirrors PHP {@code getTacticKpiType} — {@code "ctr"}, {@code "vcr"} or {@code null}. */
+    public static String getTacticKpiType(String tacticName) {
+        if (tacticName == null) return null;
+        String key = tacticName.trim().toLowerCase(Locale.ROOT);
+        String exact = KPI_MAP.get(key);
+        if (exact != null) return exact;
+        String[] vcrKw = {"video", "ctv", "ott", "netflix", "audio", "sports", "youtube", "streaming", "twitch"};
+        String[] ctrKw = {"display", "geofencing", "dooh", "native", "search", "social", "sem", "meta", "tiktok", "linkedin", "pinterest", "reddit", "snapchat", "twitter"};
+        for (String kw : vcrKw) if (key.contains(kw)) return "vcr";
+        for (String kw : ctrKw) if (key.contains(kw)) return "ctr";
+        return null;
+    }
+
+    /**
+     * Deterministic frequency derived from the planned max frequency.
+     *
+     * <p>The PHP {@code _tacticFreqCache} used {@code rand(3,15)%}, which differed
+     * between the Preview and Generate passes. Here the reduction percentage is a
+     * stable function of the tactic index so freq and reach always agree and the
+     * deck is reproducible.
+     */
+    public static double freqFromMax(int n, double maxFreq) {
+        int pct = 3 + Math.floorMod(n * 7, 13); // 3..15, deterministic
+        double freq = maxFreq * (1.0 - pct / 100.0);
+        return Math.round(freq * 100.0) / 100.0;
+    }
+
+    /** Mirrors PHP {@code sanitizeForSlides}. */
+    public static String sanitizeForSlides(String value) {
+        if (value == null) return "";
+        String v = value.replace("\0", "");
+        v = v.replace("\r\n", " ").replace("\r", " ").replace("\n", " ");
+        v = v.replace("\t", " ");
+        v = v.replaceAll("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]", "");
+        v = v.replaceAll("  +", " ");
+        if (v.length() > 50000) v = v.substring(0, 50000);
+        return v.trim();
+    }
+
+    // ── helpers ───────────────────────────────────────────────────────────────
+
+    private static String cell(List<String> row, int idx) {
+        String v = row.get(idx);
+        return v == null ? "" : v.trim();
+    }
+
+    private static String cellAt(List<String> row, int idx) {
+        if (row == null || idx < 0 || idx >= row.size()) return "";
+        return cell(row, idx);
+    }
+
+    private static String joinLower(List<String> row, int n) {
+        StringBuilder sb = new StringBuilder();
+        int limit = Math.min(n, row.size());
+        for (int i = 0; i < limit; i++) {
+            if (i > 0) sb.append(' ');
+            sb.append(cell(row, i));
+        }
+        return sb.toString().toLowerCase(Locale.ROOT);
+    }
+
+    private static void p(Map<String, String> m, String k, String v) {
+        m.put(k, v);
+    }
+
+    // ── DATA: tacticChannelMap() ──────────────────────────────────────────────
+    private static final Map<String, String> CHANNEL_MAP = new LinkedHashMap<>();
+    static {
+        Map<String, String> m = CHANNEL_MAP;
+        p(m, "blended set ctv/ott", "CTV/OTT");
+        p(m, "blended set ctv ott", "CTV/OTT");
+        p(m, "ott precision reach", "OTT");
+        p(m, "programmatic ctv", "CTV");
+        p(m, "streaming tv", "CTV");
+        p(m, "ctv precision reach", "CTV");
+        p(m, "ctv select", "CTV");
+        p(m, "network select bundle ctv", "CTV");
+        p(m, "network exclusive", "CTV");
+        p(m, "live news", "CTV");
+        p(m, "live tv", "CTV");
+        p(m, "local ctv", "CTV");
+        p(m, "zip code targeted ctv", "CTV");
+        p(m, "100% live sports package (100% live and in-game inventory)", "CTV Live Sports");
+        p(m, "any live sports package (up to 50% live sports inventory / up to 50% shoulder inventory)", "CTV Live Sports");
+        p(m, "college football live sport package (up to 50% live sports inventory / up to 50% shoulder inventory)", "CTV Live Sports");
+        p(m, "amazon fire tv", "CTV");
+        p(m, "google tv", "CTV");
+        p(m, "netflix (up to 10 sec creative)", "CTV");
+        p(m, "netflix (up to 15 sec creative)", "CTV");
+        p(m, "netflix (up to 30 sec creative)", "CTV");
+        p(m, "youtube skippable in-stream", "YouTube");
+        p(m, "youtube skippable in-stream (cpm)", "YouTube");
+        p(m, "youtube non-skippable in-stream", "YouTube");
+        p(m, "youtube ctv skippable in-stream", "YouTube");
+        p(m, "youtube ctv non-skippable in-stream", "YouTube");
+        p(m, "youtube in-feed (ex. discovery)", "YouTube");
+        p(m, "youtube bumper ads", "YouTube");
+        p(m, "youtube demand gen", "YouTube");
+        p(m, "youtube shorts", "YouTube");
+        p(m, "youtube tv (up to 15 sec)", "YouTube");
+        p(m, "youtube tv (up to 30 sec)", "YouTube");
+        p(m, "mix of 50% youtube tv and 50% youtube ctv (up to 15 sec)", "YouTube");
+        p(m, "mix of 50% youtube tv and 50% youtube ctv (up to 30 sec)", "YouTube");
+        p(m, "meta (cpm)", "Meta");
+        p(m, "meta (cpc)", "Meta");
+        p(m, "facebook specific", "Meta");
+        p(m, "meta lead forms", "Meta");
+        p(m, "meta boosted posts", "Meta");
+        p(m, "instagram specific", "Meta");
+        p(m, "twitter", "Twitter");
+        p(m, "linkedin (cpm)", "LinkedIn");
+        p(m, "linkedin (cpc)", "LinkedIn");
+        p(m, "tiktok (cpm)", "TikTok");
+        p(m, "tiktok (cpc)", "TikTok");
+        p(m, "tiktok spark ads (cpm)", "TikTok");
+        p(m, "tiktok spark ads (cpc)", "TikTok");
+        p(m, "tiktok search ads", "TikTok");
+        p(m, "pinterest (cpm)", "Pinterest");
+        p(m, "pinterest (cpc)", "Pinterest");
+        p(m, "reddit (cpm)", "Reddit");
+        p(m, "reddit (cpc)", "Reddit");
+        p(m, "snapchat (cpm)", "Snapchat");
+        p(m, "programmatic display", "Display");
+        p(m, "rich media (html 5)", "Rich Media");
+        p(m, "geofencing (display)", "In-App Display");
+        p(m, "programmatic mobile display", "In-App Display");
+        p(m, "native display", "Native");
+        p(m, "native video", "Native Video");
+        p(m, "dooh", "DOOH");
+        p(m, "programmatic video", "Video");
+        p(m, "programmatic audio", "Audio");
+        p(m, "blended programmatic audio", "Audio");
+        p(m, "amazon podcast ads", "Audio");
+        p(m, "amazon audio (amazon & publisher network)", "Audio");
+        p(m, "amazon display (amazon & publisher network)", "Amazon Display");
+        p(m, "amazon video (amazon & publisher network)", "Amazon Video");
+        p(m, "amazon sponsored ads", "Amazon Search");
+        p(m, "google sem", "Google Search");
+        p(m, "bing", "Bing Search");
+        p(m, "performance max", "Performance Max");
+        p(m, "demand gen", "Google Search");
+        p(m, "gdn specific", "Display");
+        p(m, "app (google uac)", "Google App");
+        p(m, "apple search ads", "Apple Search");
+        p(m, "twitch", "Amazon Video Twitch");
+    }
+
+    // ── DATA: normalizeTacticDisplayName() displayMap ─────────────────────────
+    private static final Map<String, String> DISPLAY_MAP = new LinkedHashMap<>();
+    static {
+        Map<String, String> m = DISPLAY_MAP;
+        p(m, "blended set ctv/ott", "CTV/OTT");
+        p(m, "blended set ctv ott", "CTV/OTT");
+        p(m, "ott precision reach", "OTT");
+        p(m, "programmatic ctv", "CTV");
+        p(m, "ctv precision reach", "CTV");
+        p(m, "ctv select", "CTV");
+        p(m, "network select bundle ctv", "CTV");
+        p(m, "zip code targeted ctv", "CTV");
+        p(m, "100% live sports package (100% live and in-game inventory)", "Live Sports");
+        p(m, "any live sports package (up to 50% live sports inventory / up to 50% shoulder inventory)", "Live Sports");
+        p(m, "any live sports package (up to 50% live sports inventory / up to 50% ancillary inventory)", "Live Sports");
+        p(m, "college football live sport package (up to 50% live sports inventory / up to 50% shoulder inventory)", "Live Sports");
+        p(m, "live sports package", "Live Sports");
+        p(m, "amazon fire tv", "Amazon Fire TV");
+        p(m, "google tv", "Google TV");
+        p(m, "netflix (up to 10 sec creative)", "Netflix");
+        p(m, "netflix (up to 15 sec creative)", "Netflix");
+        p(m, "netflix (up to 30 sec creative)", "Netflix");
+        p(m, "programmatic display", "Display");
+        p(m, "rich media (html 5)", "Rich Media");
+        p(m, "geofencing (display)", "GeoFencing");
+        p(m, "geofencing display", "GeoFencing");
+        p(m, "programmatic mobile display", "Programmatic Mobile");
+        p(m, "programmatic video", "Video");
+        p(m, "programmatic audio", "Audio");
+        p(m, "blended programmatic audio", "Audio");
+        p(m, "youtube skippable in-stream", "YouTube In-stream");
+        p(m, "youtube skippable in-stream (cpm)", "YouTube In-stream");
+        p(m, "youtube non-skippable in-stream", "YouTube In-stream");
+        p(m, "youtube ctv skippable in-stream", "YouTube In-stream");
+        p(m, "youtube ctv non-skippable in-stream", "YouTube In-stream");
+        p(m, "youtube in-feed (ex. discovery)", "YouTube");
+        p(m, "youtube bumper ads", "YouTube");
+        p(m, "youtube demand gen", "YouTube");
+        p(m, "youtube tv (up to 15 sec)", "YouTube");
+        p(m, "youtube tv (up to 30 sec)", "YouTube");
+        p(m, "mix of 50% youtube tv and 50% youtube ctv (up to 15 sec)", "YouTube");
+        p(m, "mix of 50% youtube tv and 50% youtube ctv (up to 30 sec)", "YouTube");
+        p(m, "meta (cpm)", "Meta");
+        p(m, "meta (cpc)", "Meta");
+        p(m, "facebook specific", "Meta");
+        p(m, "meta lead forms", "Meta");
+        p(m, "meta boosted posts", "Meta");
+        p(m, "instagram specific", "Instagram");
+        p(m, "linkedin (cpm)", "LinkedIn");
+        p(m, "linkedin (cpc)", "LinkedIn");
+        p(m, "tiktok (cpm)", "TikTok");
+        p(m, "tiktok (cpc)", "TikTok");
+        p(m, "tiktok spark ads (cpm)", "TikTok");
+        p(m, "tiktok spark ads (cpc)", "TikTok");
+        p(m, "tiktok search ads", "TikTok");
+        p(m, "pinterest (cpm)", "Pinterest");
+        p(m, "pinterest (cpc)", "Pinterest");
+        p(m, "reddit (cpm)", "Reddit");
+        p(m, "reddit (cpc)", "Reddit");
+        p(m, "snapchat (cpm)", "Snapchat");
+        p(m, "amazon display (amazon & publisher network)", "Amazon Display");
+        p(m, "amazon video (amazon & publisher network)", "Amazon Video");
+        p(m, "amazon audio (amazon & publisher network)", "Amazon Audio");
+        p(m, "amazon podcast ads", "Amazon Podcast");
+    }
+
+    // ── DATA: _getKnownTacticsWhitelist() ─────────────────────────────────────
+    private static final Map<String, String> WHITELIST = new LinkedHashMap<>();
+    static {
+        Map<String, String> m = WHITELIST;
+        p(m, "programmatic display", "Programmatic Display");
+        p(m, "geofencing (display)", "GeoFencing (Display)");
+        p(m, "geofencing display", "GeoFencing (Display)");
+        p(m, "any live sports package (up to 50% live sports inventory / up to 50% ancillary inventory)", "ANY Live Sports Package (Up to 50% Live Sports inventory / Up to 50% Ancillary inventory)");
+        p(m, "any live sports package", "ANY Live Sports Package (Up to 50% Live Sports inventory / Up to 50% Ancillary inventory)");
+        p(m, "live sports package", "ANY Live Sports Package (Up to 50% Live Sports inventory / Up to 50% Ancillary inventory)");
+        p(m, "ctv precision reach", "CTV Precision Reach");
+        p(m, "blended set ctv/ott", "Blended Set CTV/OTT");
+        p(m, "blended set ctv ott", "Blended Set CTV/OTT");
+        p(m, "dooh", "DOOH");
+        p(m, "blended programmatic audio", "Blended Programmatic Audio");
+        p(m, "programmatic audio", "Blended Programmatic Audio");
+        p(m, "netflix (up to 30 sec creative)", "Netflix (Up to 30 sec creative)");
+        p(m, "netflix (up to 15 sec creative)", "Netflix (Up to 15 sec creative)");
+        p(m, "netflix (up to 10 sec creative)", "Netflix (Up to 10 sec creative)");
+        p(m, "netflix", "Netflix (Up to 30 sec creative)");
+        p(m, "programmatic video", "Programmatic Video");
+        p(m, "meta (cpm)", "Meta (CPM)");
+        p(m, "meta (cpc)", "Meta (CPC)");
+        p(m, "meta lead forms", "Meta Lead Forms");
+        p(m, "meta boosted posts", "Meta Boosted Posts");
+        p(m, "facebook specific", "Facebook Specific");
+        p(m, "instagram specific", "Instagram Specific");
+        p(m, "tiktok (cpm)", "TikTok (CPM)");
+        p(m, "tiktok (cpc)", "TikTok (CPC)");
+        p(m, "tiktok spark ads (cpm)", "TikTok Spark Ads (CPM)");
+        p(m, "tiktok spark ads (cpc)", "TikTok Spark Ads (CPC)");
+        p(m, "tiktok search ads", "TikTok Search Ads");
+        p(m, "linkedin (cpm)", "LinkedIn (CPM)");
+        p(m, "linkedin (cpc)", "LinkedIn (CPC)");
+        p(m, "twitter", "Twitter");
+        p(m, "pinterest (cpm)", "Pinterest (CPM)");
+        p(m, "pinterest (cpc)", "Pinterest (CPC)");
+        p(m, "reddit (cpm)", "Reddit (CPM)");
+        p(m, "reddit (cpc)", "Reddit (CPC)");
+        p(m, "snapchat (cpm)", "Snapchat (CPM)");
+        p(m, "youtube skippable in-stream", "YouTube Skippable In-Stream");
+        p(m, "youtube skippable in-stream (cpm)", "YouTube Skippable In-Stream (CPM)");
+        p(m, "youtube non-skippable in-stream", "YouTube Non-Skippable In-Stream");
+        p(m, "youtube ctv skippable in-stream", "YouTube CTV Skippable In-Stream");
+        p(m, "youtube ctv non-skippable in-stream", "YouTube CTV Non-Skippable In-Stream");
+        p(m, "youtube in-feed (ex. discovery)", "YouTube In-Feed");
+        p(m, "youtube bumper ads", "YouTube Bumper Ads");
+        p(m, "youtube demand gen", "YouTube Demand Gen");
+        p(m, "youtube shorts", "YouTube Shorts");
+        p(m, "youtube tv (up to 15 sec)", "YouTube TV (up to 15 sec)");
+        p(m, "youtube tv (up to 30 sec)", "YouTube TV (up to 30 sec)");
+        p(m, "rich media (html 5)", "Rich Media (HTML5)");
+        p(m, "programmatic mobile display", "Programmatic Mobile Display");
+        p(m, "native display", "Native Display");
+        p(m, "native video", "Native Video");
+        p(m, "google sem", "Google SEM");
+        p(m, "bing", "Bing");
+        p(m, "performance max", "Performance Max");
+        p(m, "demand gen", "Demand Gen");
+        p(m, "gdn specific", "GDN Specific");
+        p(m, "amazon display (amazon & publisher network)", "Amazon Display");
+        p(m, "amazon video (amazon & publisher network)", "Amazon Video");
+        p(m, "amazon sponsored ads", "Amazon Sponsored Ads");
+        p(m, "amazon podcast ads", "Amazon Podcast Ads");
+        p(m, "twitch", "Twitch");
+    }
+
+    // ── DATA: countTacticsInMediaPlan() knownTactics set ──────────────────────
+    private static final Map<String, Boolean> KNOWN_TACTICS = new LinkedHashMap<>();
+    static {
+        String[] keys = {
+            "programmatic display", "geofencing (display)", "geofencing display",
+            "any live sports package (up to 50% live sports inventory / up to 50% ancillary inventory)",
+            "any live sports package", "live sports package", "ctv precision reach",
+            "blended set ctv/ott", "blended set ctv ott", "dooh", "blended programmatic audio",
+            "programmatic audio", "netflix (up to 30 sec creative)", "netflix (up to 15 sec creative)",
+            "netflix (up to 10 sec creative)", "netflix", "programmatic video", "meta (cpm)", "meta (cpc)",
+            "meta lead forms", "meta boosted posts", "facebook specific", "instagram specific",
+            "tiktok (cpm)", "tiktok (cpc)", "tiktok spark ads (cpm)", "tiktok spark ads (cpc)",
+            "tiktok search ads", "linkedin (cpm)", "linkedin (cpc)", "twitter", "pinterest (cpm)",
+            "pinterest (cpc)", "reddit (cpm)", "reddit (cpc)", "snapchat (cpm)",
+            "youtube skippable in-stream", "youtube skippable in-stream (cpm)",
+            "youtube non-skippable in-stream", "youtube ctv skippable in-stream",
+            "youtube ctv non-skippable in-stream", "youtube in-feed (ex. discovery)",
+            "youtube bumper ads", "youtube demand gen", "youtube shorts", "youtube tv (up to 15 sec)",
+            "youtube tv (up to 30 sec)", "rich media (html 5)", "programmatic mobile display",
+            "native display", "native video", "google sem", "bing", "performance max", "demand gen",
+            "gdn specific", "amazon display (amazon & publisher network)",
+            "amazon video (amazon & publisher network)", "amazon sponsored ads", "amazon podcast ads",
+            "twitch", "programmatic ctv", "ott precision reach", "ctv select", "network select bundle ctv",
+            "network exclusive", "live news", "live tv", "local ctv", "zip code targeted ctv",
+            "streaming tv", "100% live sports package (100% live and in-game inventory)",
+            "100% live sports package", "college football live sport package", "amazon fire tv",
+            "google tv", "youtube in-feed", "mix of 50% youtube tv and 50% youtube ctv (up to 15 sec)",
+            "mix of 50% youtube tv and 50% youtube ctv (up to 30 sec)", "app (google uac)",
+            "google uac", "apple search ads"
+        };
+        for (String k : keys) KNOWN_TACTICS.put(k, Boolean.TRUE);
+    }
+
+    // ── DATA: getTacticKpiType() exactMap ─────────────────────────────────────
+    private static final Map<String, String> KPI_MAP = new LinkedHashMap<>();
+    static {
+        Map<String, String> m = KPI_MAP;
+        String[] vcr = {
+            "blended set ctv/ott", "blended set ctv ott", "ott precision reach", "programmatic ctv",
+            "streaming tv", "ctv precision reach", "ctv select", "network select bundle ctv",
+            "network exclusive", "live news", "live tv", "local ctv", "zip code targeted ctv",
+            "100% live sports package (100% live and in-game inventory)",
+            "any live sports package (up to 50% live sports inventory / up to 50% shoulder inventory)",
+            "college football live sport package (up to 50% live sports inventory / up to 50% shoulder inventory)",
+            "amazon fire tv", "google tv", "netflix (up to 10 sec creative)", "netflix (up to 15 sec creative)",
+            "netflix (up to 30 sec creative)", "youtube skippable in-stream", "youtube skippable in-stream (cpm)",
+            "youtube non-skippable in-stream", "youtube ctv skippable in-stream", "youtube ctv non-skippable in-stream",
+            "youtube in-feed (ex. discovery)", "youtube bumper ads", "youtube tv (up to 15 sec)",
+            "youtube tv (up to 30 sec)", "mix of 50% youtube tv and 50% youtube ctv (up to 15 sec)",
+            "mix of 50% youtube tv and 50% youtube ctv (up to 30 sec)", "programmatic video",
+            "programmatic audio", "blended programmatic audio", "amazon podcast ads",
+            "amazon audio (amazon & publisher network)", "amazon video (amazon & publisher network)", "twitch",
+            "amazon fire tv", "google tv", "amazon podcast", "live sports", "ctv/ott", "ott", "ctv", "netflix",
+            "audio", "video", "youtube", "youtube in-stream"
+        };
+        String[] ctr = {
+            "youtube demand gen", "youtube shorts", "meta (cpm)", "meta (cpc)", "facebook specific",
+            "meta lead forms", "meta boosted posts", "instagram specific", "twitter", "linkedin (cpm)",
+            "linkedin (cpc)", "tiktok (cpm)", "tiktok (cpc)", "tiktok spark ads (cpm)", "tiktok spark ads (cpc)",
+            "tiktok search ads", "pinterest (cpm)", "pinterest (cpc)", "reddit (cpm)", "reddit (cpc)",
+            "snapchat (cpm)", "programmatic display", "rich media (html 5)", "geofencing (display)",
+            "programmatic mobile display", "native display", "native video", "dooh",
+            "amazon display (amazon & publisher network)", "amazon sponsored ads", "google sem", "bing",
+            "performance max", "demand gen", "gdn specific", "app (google uac)", "apple search ads",
+            "rich media", "programmatic mobile", "instagram", "geofencing", "display", "meta"
+        };
+        for (String k : vcr) m.put(k, "vcr");
+        for (String k : ctr) m.put(k, "ctr");
+    }
+}

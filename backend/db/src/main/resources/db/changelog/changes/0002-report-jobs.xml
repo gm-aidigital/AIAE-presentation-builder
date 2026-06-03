@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <changeSet id="report-types-and-jobs" author="harvest">
+        <createTable tableName="report_types">
+            <column name="code" type="TEXT">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="label" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <createTable tableName="report_jobs">
+            <column name="id" type="BIGINT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="owner_user_id" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="status" type="TEXT" defaultValue="queued">
+                <constraints nullable="false"/>
+            </column>
+            <column name="step" type="INT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="total" type="INT" defaultValueNumeric="7">
+                <constraints nullable="false"/>
+            </column>
+            <column name="label" type="TEXT"/>
+            <column name="report_type_code" type="TEXT"/>
+            <column name="payload_json" type="JSONB"/>
+            <column name="warnings_json" type="JSONB"/>
+            <column name="slide_url" type="TEXT"/>
+            <column name="error_message" type="TEXT"/>
+            <column name="created_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <createIndex tableName="report_jobs" indexName="idx_report_jobs_owner_created">
+            <column name="owner_user_id"/>
+            <column name="created_at" descending="true"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="report-types-seed" author="harvest">
+        <insert tableName="report_types">
+            <column name="code" value="EOC"/>
+            <column name="label" value="End of Campaign"/>
+        </insert>
+        <insert tableName="report_types">
+            <column name="code" value="EOM"/>
+            <column name="label" value="End of Month"/>
+        </insert>
+    </changeSet>
+
+</databaseChangeLog>

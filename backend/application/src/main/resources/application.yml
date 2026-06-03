@@ -66,6 +66,9 @@ logging:
 app:
   auth:
     allowed-email-domain: ${AUTH_ALLOWED_EMAIL_DOMAIN:aidigital.com}
+  clerk:
+    secret-key: ${CLERK_SECRET_KEY:}
+    google-provider: ${CLERK_GOOGLE_PROVIDER:oauth_google}
     publishable-key: ${CLERK_PUBLISHABLE_KEY:}
     # Comma-separated EXACT trusted browser origins for the JWT azp claim (required).
     # Never a publishable key. Blank values fail startup (AuthStartupValidator).
@@ -113,6 +116,12 @@ app:
 
 # External integrations — Real* beans activate when credentials are non-blank.
 external:
+  google:
+    service-account-json: ${GOOGLE_SERVICE_ACCOUNT_JSON:}
+    slides-template-id: ${SLIDES_TEMPLATE_ID:}
+    slides-target-folder-id: ${SLIDES_TARGET_FOLDER_ID:}
+    summary-table-object-id: ${GOOGLE_SUMMARY_TABLE_OBJECT_ID:}
+    tactic-slide-object-ids: {}
   anthropic:
     api-key: ${ANTHROPIC_API_KEY:}
     model:   ${ANTHROPIC_MODEL:claude-sonnet-4-6}

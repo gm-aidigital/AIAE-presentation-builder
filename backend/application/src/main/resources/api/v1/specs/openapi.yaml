@@ -97,6 +97,25 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerErrorV1"
 
+  /api/v1/google/status:
+    get:
+      tags: [DataSource]
+      operationId: getGoogleConnectionStatus
+      summary: Google connectivity for the signed-in user (service account + mock mode)
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Connection status for sheet read and deck generation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GoogleConnectionStatusV1"
+        "401":
+          $ref: "#/components/responses/UnauthorizedV1"
+        "403":
+          $ref: "#/components/responses/ForbiddenV1"
+
   /api/v1/line-items/match:
     post:
       tags: [LineItemMatching]
@@ -332,6 +351,18 @@ components:
       enum: [EOC, EOM]
 
     # ── DataSource ──────────────────────────────────────────────────────────────
+    GoogleConnectionStatusV1:
+      type: object
+      required: [connected, email, scopes, connectUrl, mockMode]
+      properties:
+        connected:  { type: boolean }
+        email:      { type: string }
+        scopes:
+          type: array
+          items: { type: string }
+        connectUrl: { type: string }
+        mockMode:   { type: boolean }
+
     SheetReadRequestV1:
       type: object
       required: [url, tab]

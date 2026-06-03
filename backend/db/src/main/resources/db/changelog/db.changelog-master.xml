@@ -6,7 +6,7 @@
                             https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
 
     <include file="db/changelog/changes/0001-usage-events.xml"/>
-    <!--
+    <include file="db/changelog/changes/0002-report-jobs.xml"/>
     <!-- Add new changelogs above this line in numerically increasing order. -->
 
 </databaseChangeLog>

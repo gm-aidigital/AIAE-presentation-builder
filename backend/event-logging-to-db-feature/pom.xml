@@ -37,6 +37,10 @@
     <artifactId>event-logging-to-db-feature</artifactId>
     <name>Replit MVP — event-logging-to-db-feature</name>
 
+    <properties>
+        <jacoco.branch.coverage>0.60</jacoco.branch.coverage>
+    </properties>
+
     <!-- Self-contained, removable feature. Must NOT depend on any other internal
          module (domain/service/application). ID semantics live in this module. -->
     <dependencies>

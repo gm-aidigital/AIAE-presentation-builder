@@ -40,7 +40,8 @@ verify_module() { mvnc -pl "$1" -am compile; }
 
 # Full reactor test, excluding the Docker-only Liquibase Testcontainers test.
 verify_full() {
-  mvnc -f backend/pom.xml -Dtest='!LiquibaseChangelogSmokeTest' -DfailIfNoTests=false test
+  mvnc -f backend/pom.xml -Dtest='!LiquibaseChangelogSmokeTest' -DfailIfNoTests=false \
+    -Dsurefire.failIfNoSpecifiedTests=false test
 }
 
 # Architecture grep gates.
