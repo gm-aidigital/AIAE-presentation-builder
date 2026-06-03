@@ -110,3 +110,9 @@ app:
     executor-queue-capacity: ${USAGE_LOG_EXECUTOR_QUEUE_CAPACITY:200}
     max-error-message-length: ${USAGE_LOG_MAX_ERROR_MESSAGE_LENGTH:500}
     max-user-agent-length: ${USAGE_LOG_MAX_USER_AGENT_LENGTH:500}
+
+# External integrations — Real* beans activate when credentials are non-blank.
+external:
+  anthropic:
+    api-key: ${ANTHROPIC_API_KEY:}
+    model:   ${ANTHROPIC_MODEL:claude-sonnet-4-6}

@@ -111,12 +111,13 @@ if grep -rEn '^@Service' backend/application/src/main/java 2>/dev/null | grep -q
 fi
 
 # --- Module edges when external-services exists ---
+# Harvest/POC: application → external-services (runtime scan); external-services → service (ports).
+# service → external-services would create a Maven cycle — do not add that edge.
 if [ -f backend/external-services/pom.xml ]; then
+  grep -q '<artifactId>external-services</artifactId>' backend/service/pom.xml 2>/dev/null \
+    && fail "service/pom.xml must not depend on external-services (Maven cycle with external-services→service)"
   grep -q '<artifactId>external-services</artifactId>' backend/application/pom.xml 2>/dev/null \
-    && fail "application/pom.xml must not depend on external-services — route through service/"
-  [ -f backend/service/pom.xml ] \
-    && grep -q '<artifactId>external-services</artifactId>' backend/service/pom.xml \
-    || fail "service/pom.xml must depend on external-services when that module exists"
+    || fail "application/pom.xml must depend on external-services when that module exists"
 fi
 
 # --- Every *Controller (except web/) should implement a generated *Api ---
