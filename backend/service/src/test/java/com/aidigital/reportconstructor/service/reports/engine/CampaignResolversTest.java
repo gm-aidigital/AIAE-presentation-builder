@@ -15,7 +15,7 @@ class CampaignResolversTest {
 
     @BeforeEach
     void setUp() {
-        resolvers = new CampaignResolvers(new SheetUtils(), new Fmt(), new TacticUtils());
+        resolvers = ReportsEngineTestSupport.campaignResolvers();
     }
 
     @Test

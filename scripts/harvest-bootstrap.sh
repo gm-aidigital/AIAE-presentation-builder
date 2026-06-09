@@ -8,7 +8,8 @@
 
 # Paths (override by exporting before sourcing).
 : "${POC:=/Users/gleb3/Desktop/Presentation-Builder-POC}"
-: "${NEW:=/Users/gleb3/Desktop/report-constructor}"
+_HARVEST_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+: "${NEW:=$(cd "${_HARVEST_SCRIPT_DIR}/.." && pwd)}"
 export POC NEW
 
 # --- Java 21 (Corretto) — the default `java` on this machine is 17 -----------
@@ -36,7 +37,11 @@ port_file() {
 
 # --- verification wrappers ---------------------------------------------------
 # Compile one module + its deps, e.g. verify_module backend/external-services
-verify_module() { mvnc -pl "$1" -am compile; }
+# Parent POM lives at backend/pom.xml; strip the optional backend/ prefix from -pl.
+verify_module() {
+  local module="${1#backend/}"
+  mvnc -f backend/pom.xml -pl "${module}" -am compile
+}
 
 # Full reactor test, excluding the Docker-only Liquibase Testcontainers test.
 verify_full() {

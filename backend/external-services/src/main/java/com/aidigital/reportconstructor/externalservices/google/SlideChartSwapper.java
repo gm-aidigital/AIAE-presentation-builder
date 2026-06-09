@@ -30,9 +30,25 @@ public class SlideChartSwapper {
         this.templates = templates;
     }
 
-    /** Position + size of a slide element plus the page it lives on. */
-    public record ElementTransform(Size size, AffineTransform transform, String slideId) {}
+    /**
+     * Position + size of a slide element plus the page it lives on.
+     *
+     * @param size      the element's bounding-box dimensions (width/height with units) as reported by the Slides API
+     * @param transform the element's affine transform (scale, shear and translation) positioning it on the slide
+     * @param slideId   the object ID of the slide page on which the element resides
+     */
+    public record ElementTransform(Size size, AffineTransform transform, String slideId) { }
 
+    /**
+     * Reads the presentation layout and captures every page element's size, transform and owning slide,
+     * keyed by element object ID, so charts can later be re-created in the same spot.
+     *
+     * @param slides         the authenticated Slides API client used to fetch the presentation
+     * @param presentationId the ID of the Google Slides presentation to scan
+     * @param errors         accumulator to which a human-readable message is appended if the layout cannot be read
+     * @param tag            label prefixed to any error message to identify the failing report/section
+     * @return a map from each page element's object ID to its captured {@link ElementTransform}; empty if the read failed
+     */
     public Map<String, ElementTransform> loadTransforms(
             Slides slides, String presentationId, List<String> errors, String tag) {
         Map<String, ElementTransform> out = new LinkedHashMap<>();
@@ -57,6 +73,18 @@ public class SlideChartSwapper {
         return out;
     }
 
+    /**
+     * Deletes the placeholder chart and inserts a LINKED Sheets chart from the new spreadsheet at the
+     * captured element position, in a single batch update so the slide chart reflects the report's data.
+     *
+     * @param slides           the authenticated Slides API client used to issue the batch update
+     * @param presentationId   the ID of the Google Slides presentation being edited
+     * @param oldObjectId      the object ID of the existing placeholder chart element to delete
+     * @param newSpreadsheetId the ID of the Sheets spreadsheet whose chart is linked into the slide
+     * @param xform            the previously captured size/transform/slide of the old chart; when complete,
+     *                         positions the new chart identically, otherwise the API places it at a default location
+     * @throws IOException if the batch update request to the Slides API fails
+     */
     public void replaceChartOnSlide(
             Slides slides,
             String presentationId,

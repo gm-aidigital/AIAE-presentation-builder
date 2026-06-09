@@ -24,4 +24,6 @@ public record ProgressView(
     String slideUrl,
     String error,
     List<String> warnings
-) {}
+) {
+	// required
+}

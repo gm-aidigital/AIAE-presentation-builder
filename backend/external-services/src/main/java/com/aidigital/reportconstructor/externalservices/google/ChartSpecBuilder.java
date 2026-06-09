@@ -31,11 +31,23 @@ public class ChartSpecBuilder {
 
     private final ChartTemplateCatalog templates;
 
+    /**
+     * Creates the builder backed by the catalog of chart template ids and default styling.
+     *
+     * @param templates catalog supplying the in-sheet chart id and the pie default color matrix
+     */
     public ChartSpecBuilder(ChartTemplateCatalog templates) {
         this.templates = templates;
     }
 
-    /** Reads the embedded chart spec from the configured in-sheet chart id. */
+    /**
+     * Reads the embedded chart spec matching the configured in-sheet chart id from the spreadsheet.
+     *
+     * @param sheets        authenticated Google Sheets API client used to fetch the spreadsheet
+     * @param spreadsheetId id of the helper spreadsheet whose embedded charts are scanned
+     * @return the matching chart's {@link ChartSpec}, or {@code null} if no sheet/chart matches the configured id
+     * @throws IOException if the Sheets API request fails
+     */
     public ChartSpec readChartSpec(Sheets sheets, String spreadsheetId) throws IOException {
         Spreadsheet ss = sheets.spreadsheets().get(spreadsheetId)
             .setIncludeGridData(false)
@@ -58,7 +70,14 @@ public class ChartSpecBuilder {
         return null;
     }
 
-    /** Resolves the data tab name ({@code Sheet1} preferred) on a copied spreadsheet. */
+    /**
+     * Resolves the data tab name ({@code Sheet1} preferred) on a copied spreadsheet.
+     *
+     * @param sheets        authenticated Google Sheets API client used to list sheet titles
+     * @param spreadsheetId id of the copied spreadsheet whose tabs are inspected
+     * @return {@code "Sheet1"} when present, otherwise the title of the first tab, falling back to {@code "Sheet1"} when no tab has a title
+     * @throws IOException if the Sheets API request fails
+     */
     public String findDataTab(Sheets sheets, String spreadsheetId) throws IOException {
         Spreadsheet ss = sheets.spreadsheets().get(spreadsheetId)
             .setIncludeGridData(false)
@@ -87,6 +106,10 @@ public class ChartSpecBuilder {
      * template domain's row range, retargets every source range at the copy's
      * data tab, and adds Impressions (columns / left axis) plus, when a metric
      * exists, the CTR/VCR rate (line / right axis).
+     *
+     * @param spec        the combo chart spec to mutate in place; a {@code null} spec or one without basic-chart domains is ignored
+     * @param dataSheetId sheet id of the copy's data tab that every series and domain source range is retargeted to
+     * @param withRate    when {@code true}, also adds the CTR/VCR rate series as a line on the right axis
      */
     public void injectComboSeries(ChartSpec spec, int dataSheetId, boolean withRate) {
         if (spec == null) {
@@ -123,7 +146,14 @@ public class ChartSpecBuilder {
         }
     }
 
-    /** Batch-updates the embedded chart spec on a copied helper spreadsheet. */
+    /**
+     * Batch-updates the embedded chart spec on a copied helper spreadsheet.
+     *
+     * @param sheets        authenticated Google Sheets API client used to issue the batch update
+     * @param spreadsheetId id of the copied spreadsheet whose embedded chart is replaced
+     * @param spec          the new chart spec applied to the configured in-sheet chart id
+     * @throws IOException if the Sheets API batch update fails
+     */
     public void applyChartSpec(Sheets sheets, String spreadsheetId, ChartSpec spec) throws IOException {
         com.google.api.services.sheets.v4.model.Request req =
             new com.google.api.services.sheets.v4.model.Request().setUpdateChartSpec(
@@ -137,6 +167,9 @@ public class ChartSpecBuilder {
     /**
      * Forces pie slice colors into the spec (PHP {@code _injectPieSliceColors}).
      * The non-standard {@code slices} field may be rejected by the API — callers treat as best-effort.
+     *
+     * @param spec the chart spec to mutate; returned unchanged when it has no pie chart
+     * @return the same {@code spec} instance, with per-slice background colors written (preserving any existing slice colors, otherwise falling back to the catalog's default color matrix)
      */
     @SuppressWarnings("unchecked")
     public ChartSpec injectPieSliceColors(ChartSpec spec) {
@@ -172,8 +205,8 @@ public class ChartSpecBuilder {
         return spec;
     }
 
-    private BasicChartSeries comboSeries(int sheetId, int rowStart, int rowEnd, int col,
-                                         String type, String targetAxis) {
+    BasicChartSeries comboSeries(int sheetId, int rowStart, int rowEnd, int col,
+            String type, String targetAxis) {
         GridRange range = new GridRange()
             .setSheetId(sheetId)
             .setStartRowIndex(rowStart)
@@ -186,7 +219,7 @@ public class ChartSpecBuilder {
             .setTargetAxis(targetAxis);
     }
 
-    private Map<String, Object> rgb(double[] c) {
+    Map<String, Object> rgb(double[] c) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("red", c[0]);
         m.put("green", c[1]);

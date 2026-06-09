@@ -7,8 +7,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Abstraction over the per-tactic chart generation ported from PHP
- * {@code api/chart_builder.php}. The real provider copies the helper
+ * Abstraction over per-tactic chart generation. The real provider copies the helper
  * chart-template spreadsheets, writes the pivoted actuals, applies the saved
  * chart spec and swaps the placeholder charts on the deck slides for live
  * linked charts; the stub provider is a no-op for offline demos.
@@ -58,5 +57,5 @@ public interface ChartProvider {
         Map<Integer, Double> distTacticImps,
         double distTotalImps,
         String userGoogleAccessToken
-    ) {}
+    ) { }
 }

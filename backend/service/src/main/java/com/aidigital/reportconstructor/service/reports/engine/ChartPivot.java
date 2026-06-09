@@ -1,8 +1,10 @@
 package com.aidigital.reportconstructor.service.reports.engine;
 
-import org.springframework.stereotype.Component;
-
 import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
+import com.aidigital.reportconstructor.service.reports.helpers.LineItemNamingHelper;
+import com.aidigital.reportconstructor.service.reports.helpers.ReportNumberParser;
+import com.aidigital.reportconstructor.service.reports.helpers.SheetRowHelper;
+import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
 import java.time.Month;
@@ -12,54 +14,77 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
- * Pure-data port of the pivot logic from PHP {@code api/chart_builder.php}
- * ({@code parseBqHeaders}, {@code buildPivot}, {@code buildMonthlyPivot},
- * {@code extractLiIdFromL1Naming}, {@code _isMultiYear}). No Google API calls
- * — turns raw BigQuery export rows into per-tactic daily / monthly series so the
- * {@code ChartProvider} can write them to the helper chart spreadsheets.
+ * Pure-data pivot logic: turns raw BigQuery export rows into per-tactic daily /
+ * monthly series (no Google API calls) so the {@code ChartProvider} can write them
+ * to the helper chart spreadsheets.
  *
  * <p>Each pivot value is a {@code double[]} of {@code {imps, clicks, completions}}.
- * The branching the PHP relies on is surfaced as {@code hasClicks} /
- * {@code hasCompletions}: display/social tactics have clicks, video/CTV have
- * completions, DOOH/Audio have neither.
+ * The branching is surfaced as {@code hasClicks} / {@code hasCompletions}:
+ * display/social tactics have clicks, video/CTV have completions, DOOH/Audio have
+ * neither.
  */
 @Component
 public class ChartPivot {
-    private final SheetUtils sheetUtils;
+    private final SheetRowHelper sheetRows;
+    private final LineItemNamingHelper lineItemNaming;
+    private final ReportNumberParser reportNumbers;
 
-    public ChartPivot(SheetUtils sheetUtils) {
-        this.sheetUtils = sheetUtils;
+    public ChartPivot(
+        SheetRowHelper sheetRows,
+        LineItemNamingHelper lineItemNaming,
+        ReportNumberParser reportNumbers
+    ) {
+        this.sheetRows = sheetRows;
+        this.lineItemNaming = lineItemNaming;
+        this.reportNumbers = reportNumbers;
     }
 
-    /** Column indices parsed from the BQ header row; {@code -1} when absent. */
+    /**
+     * Zero-based column indices parsed from the BQ export header row; {@code -1} when a column is absent.
+     *
+     * @param dateCol index of the {@code Date} column
+     * @param impsCol index of the {@code Impressions} column
+     * @param clicksCol index of the {@code Clicks} column, or {@code -1}
+     * @param completionsCol index of the {@code Completions} column, or {@code -1}
+     * @param l1NamingCol index of the {@code Level 1 Naming} column, or {@code -1}
+     */
     public record Headers(int dateCol, int impsCol, int clicksCol, int completionsCol, int l1NamingCol) {
-        /** Valid. */
+        /** @return {@code true} when both the {@code Date} and {@code Impressions} columns were located. */
         public boolean valid() {
             return dateCol >= 0 && impsCol >= 0;
         }
     }
 
     /**
-     * Pivot result. {@code data} is an insertion-ordered (chronological) map of
-     * label → {@code {imps, clicks, completions}}.
+     * Pivot result for one tactic.
+     *
+     * @param data insertion-ordered (chronological) map of label → {@code {imps, clicks, completions}}
+     * @param hasClicks {@code true} when any row carried clicks (display/social → CTR line series)
+     * @param hasCompletions {@code true} when any row carried completions (video/CTV → VCR line series)
      */
     public record Pivot(LinkedHashMap<String, double[]> data, boolean hasClicks, boolean hasCompletions) {
+        /** @return {@code true} when no rows were pivoted (no chart should be written). */
         public boolean isEmpty() {
             return data.isEmpty();
         }
     }
 
     /**
-     * Parses the BQ header row, mirroring PHP {@code parseBqHeaders}. Scans rows
-     * until the one containing a {@code Date} column, then records the indices.
+     * Parses the BQ header row: scans rows until the one containing a {@code Date}
+     * column, then records the indices.
+     *
+     * @param rows raw BQ export rows (may be {@code null})
+     * @return the located column indices; {@link Headers#valid()} is {@code false} when Date/Impressions are missing
      */
     public Headers parseBqHeaders(List<List<String>> rows) {
 
-        int dateCol = -1, impsCol = -1, clicksCol = -1, completionsCol = -1, l1NamingCol = -1;
+        int dateCol = -1;
+        int impsCol = -1;
+        int clicksCol = -1;
+        int completionsCol = -1;
+        int l1NamingCol = -1;
         if (rows == null) {
             return new Headers(-1, -1, -1, -1, -1);
         }
@@ -69,7 +94,7 @@ public class ChartPivot {
             }
             boolean hasDate = false;
             for (int j = 0; j < row.size(); j++) {
-                String v = cell(row, j).toLowerCase(Locale.ROOT);
+                String v = sheetRows.cellAt(row, j).toLowerCase(Locale.ROOT);
                 switch (v) {
                     case "date" -> { dateCol = j; hasDate = true; }
                     case "impressions", "imps" -> impsCol = j;
@@ -87,24 +112,25 @@ public class ChartPivot {
     }
 
     /**
-     * Extracts the line-item id from a Level 1 Naming string. The id is the 9th
-     * underscore segment (index 8) and must be all digits. Mirrors PHP
-     * {@code extractLiIdFromL1Naming}.
+     * Extracts the line-item id from a Level 1 Naming string. Delegates to
+     * {@link LineItemNamingHelper#extractLineItemIdOrBlank(String)}.
+     *
+     * @param naming the {@code Level 1 Naming} cell value (may be {@code null})
+     * @return the digits-only line-item id, or an empty string when absent/non-numeric
      */
     public String extractLiIdFromL1Naming(String naming) {
-
-        if (naming == null) {
-            return "";
-        }
-        String[] parts = naming.split("_", -1);
-        String id = parts.length > 8 ? parts[8].trim() : "";
-        return !id.isEmpty() && id.chars().allMatch(Character::isDigit) ? id : "";
+        return lineItemNaming.extractLineItemIdOrBlank(naming);
     }
 
     /**
      * Daily pivot: date ({@code yyyy-MM-dd}) → {@code {imps, clicks, completions}},
      * filtered by line-item ids (via Level 1 Naming) and the flight window.
-     * Mirrors PHP {@code buildPivot}.
+     *
+     * @param rows raw BQ export rows (may be {@code null})
+     * @param liIds line-item ids for this tactic; when empty (or no naming column) no id filter is applied
+     * @param h column indices from {@link #parseBqHeaders(List)}
+     * @param flightTs flight window to clip rows to, or {@code null} to include all dates
+     * @return chronological daily pivot for the tactic
      */
     public Pivot buildDailyPivot(
         List<List<String>> rows,
@@ -122,7 +148,7 @@ public class ChartPivot {
 
         if (rows != null) {
             for (List<String> row : rows) {
-                String dateRaw = cellAt(row, h.dateCol());
+                String dateRaw = sheetRows.cellAt(row, h.dateCol());
                 if (!headerSkipped) {
                     if (dateRaw.toLowerCase(Locale.ROOT).equals("date")) {
                         headerSkipped = true;
@@ -133,12 +159,12 @@ public class ChartPivot {
                     continue;
                 }
                 if (filterLi) {
-                    String liVal = extractLiIdFromL1Naming(cellAt(row, h.l1NamingCol()));
+                    String liVal = extractLiIdFromL1Naming(sheetRows.cellAt(row, h.l1NamingCol()));
                     if (liVal.isEmpty() || !liSet.contains(liVal)) {
                         continue;
                     }
                 }
-                LocalDate ts = sheetUtils.parseDate(dateRaw);
+                LocalDate ts = sheetRows.parseDate(dateRaw);
                 if (ts == null) {
                     continue;
                 }
@@ -146,9 +172,9 @@ public class ChartPivot {
                     continue;
                 }
                 String dateKey = ts.toString(); // yyyy-MM-dd
-                double imps = num(cellAt(row, h.impsCol()));
-                double clicks = h.clicksCol() >= 0 ? num(cellAt(row, h.clicksCol())) : 0.0;
-                double completions = h.completionsCol() >= 0 ? num(cellAt(row, h.completionsCol())) : 0.0;
+                double imps = reportNumbers.parseReportNumber(sheetRows.cellAt(row, h.impsCol()));
+                double clicks = h.clicksCol() >= 0 ? reportNumbers.parseReportNumber(sheetRows.cellAt(row, h.clicksCol())) : 0.0;
+                double completions = h.completionsCol() >= 0 ? reportNumbers.parseReportNumber(sheetRows.cellAt(row, h.completionsCol())) : 0.0;
 
                 double[] agg = pivot.computeIfAbsent(dateKey, k -> new double[3]);
                 agg[0] += imps;
@@ -164,7 +190,14 @@ public class ChartPivot {
     /**
      * Monthly pivot: month label ({@code March} or {@code March 2024} when the
      * campaign spans multiple years) → {@code {imps, clicks, completions}}, kept
-     * in chronological order. Mirrors PHP {@code buildMonthlyPivot}.
+     * in chronological order.
+     *
+     * @param rows raw BQ export rows (may be {@code null})
+     * @param liIds line-item ids for this tactic; when empty (or no naming column) no id filter is applied
+     * @param h column indices from {@link #parseBqHeaders(List)}
+     * @param flightTs flight window to clip rows to, or {@code null} to include all dates
+     * @param multiYear when {@code true}, month labels carry the year (e.g. {@code March 2024})
+     * @return chronological monthly pivot for the tactic
      */
     public Pivot buildMonthlyPivot(
         List<List<String>> rows,
@@ -184,7 +217,7 @@ public class ChartPivot {
 
         if (rows != null) {
             for (List<String> row : rows) {
-                String dateRaw = cellAt(row, h.dateCol());
+                String dateRaw = sheetRows.cellAt(row, h.dateCol());
                 if (!headerSkipped) {
                     if (dateRaw.toLowerCase(Locale.ROOT).equals("date")) {
                         headerSkipped = true;
@@ -195,12 +228,12 @@ public class ChartPivot {
                     continue;
                 }
                 if (filterLi) {
-                    String liVal = extractLiIdFromL1Naming(cellAt(row, h.l1NamingCol()));
+                    String liVal = extractLiIdFromL1Naming(sheetRows.cellAt(row, h.l1NamingCol()));
                     if (liVal.isEmpty() || !liSet.contains(liVal)) {
                         continue;
                     }
                 }
-                LocalDate ts = sheetUtils.parseDate(dateRaw);
+                LocalDate ts = sheetRows.parseDate(dateRaw);
                 if (ts == null) {
                     continue;
                 }
@@ -208,9 +241,9 @@ public class ChartPivot {
                     continue;
                 }
                 String monthKey = String.format(Locale.ROOT, "%04d-%02d", ts.getYear(), ts.getMonthValue());
-                double imps = num(cellAt(row, h.impsCol()));
-                double clicks = h.clicksCol() >= 0 ? num(cellAt(row, h.clicksCol())) : 0.0;
-                double completions = h.completionsCol() >= 0 ? num(cellAt(row, h.completionsCol())) : 0.0;
+                double imps = reportNumbers.parseReportNumber(sheetRows.cellAt(row, h.impsCol()));
+                double clicks = h.clicksCol() >= 0 ? reportNumbers.parseReportNumber(sheetRows.cellAt(row, h.clicksCol())) : 0.0;
+                double completions = h.completionsCol() >= 0 ? reportNumbers.parseReportNumber(sheetRows.cellAt(row, h.completionsCol())) : 0.0;
 
                 double[] agg = raw.computeIfAbsent(monthKey, k -> new double[3]);
                 agg[0] += imps;
@@ -231,7 +264,12 @@ public class ChartPivot {
 
     /**
      * Whether the campaign spans more than one calendar year — when it does the
-     * monthly labels carry the year. Mirrors PHP {@code _isMultiYear}.
+     * monthly labels carry the year.
+     *
+     * @param rows raw BQ export rows, scanned only when {@code flightTs} is {@code null}
+     * @param h column indices from {@link #parseBqHeaders(List)}
+     * @param flightTs flight window; when present its start/end years decide the result directly
+     * @return {@code true} when the data (or flight window) covers more than one calendar year
      */
     public boolean isMultiYear(List<List<String>> rows, Headers h, FlightDates flightTs) {
 
@@ -244,7 +282,7 @@ public class ChartPivot {
         java.util.Set<Integer> years = new java.util.HashSet<>();
         boolean headerSkipped = false;
         for (List<String> row : rows) {
-            String dateRaw = cellAt(row, h.dateCol());
+            String dateRaw = sheetRows.cellAt(row, h.dateCol());
             if (!headerSkipped) {
                 if (dateRaw.toLowerCase(Locale.ROOT).equals("date")) {
                     headerSkipped = true;
@@ -254,7 +292,7 @@ public class ChartPivot {
             if (dateRaw.isEmpty()) {
                 continue;
             }
-            LocalDate ts = sheetUtils.parseDate(dateRaw);
+            LocalDate ts = sheetRows.parseDate(dateRaw);
             if (ts != null) {
                 years.add(ts.getYear());
                 if (years.size() > 1) {
@@ -269,39 +307,5 @@ public class ChartPivot {
 
         String name = Month.of(ts.getMonthValue()).getDisplayName(TextStyle.FULL, Locale.ENGLISH);
         return multiYear ? name + " " + ts.getYear() : name;
-    }
-
-    // ── numeric cleanup: strip commas + non [0-9.], parse leading number ───────
-    private static final Pattern LEADING_NUM = Pattern.compile("^[0-9]*\\.?[0-9]+");
-
-    double num(String raw) {
-
-        if (raw == null) {
-            return 0.0;
-        }
-        String s = raw.replace(",", "").replaceAll("[^0-9.]", "");
-        Matcher m = LEADING_NUM.matcher(s);
-        if (m.find()) {
-            try {
-                return Double.parseDouble(m.group());
-            } catch (NumberFormatException ignored) {
-                return 0.0;
-            }
-        }
-        return 0.0;
-    }
-
-    String cell(List<String> row, int idx) {
-
-        String v = row.get(idx);
-        return v == null ? "" : v.trim();
-    }
-
-    String cellAt(List<String> row, int idx) {
-
-        if (row == null || idx < 0 || idx >= row.size()) {
-            return "";
-        }
-        return cell(row, idx);
     }
 }

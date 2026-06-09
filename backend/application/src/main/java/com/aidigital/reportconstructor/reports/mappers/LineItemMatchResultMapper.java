@@ -3,9 +3,9 @@ package com.aidigital.reportconstructor.reports.mappers;
 import com.aidigital.reportconstructor.api.v1.model.IdNamingV1;
 import com.aidigital.reportconstructor.api.v1.model.LineItemMatchResultV1;
 import com.aidigital.reportconstructor.api.v1.model.MappingEntryV1;
-import com.aidigital.reportconstructor.service.reports.LineItemMatcherService.LineItemMeta;
-import com.aidigital.reportconstructor.service.reports.LineItemMatcherService.MatchResult;
-import com.aidigital.reportconstructor.service.reports.LineItemMatcherService.TacticSuggestion;
+import com.aidigital.reportconstructor.service.reports.services.LineItemMatcherService.LineItemMeta;
+import com.aidigital.reportconstructor.service.reports.services.LineItemMatcherService.MatchResult;
+import com.aidigital.reportconstructor.service.reports.services.LineItemMatcherService.TacticSuggestion;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -13,9 +13,20 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Builds the V1 line-item match result DTO from the service match result, indexing
+ * line-item metadata by id and grouping ids by channel for the UI.
+ */
 @Component
 public class LineItemMatchResultMapper {
 
+    /**
+     * Converts a service match result into its V1 DTO: per-tactic mapping entries, the
+     * id&rarr;naming index, channel&rarr;ids grouping, and the auto-match summary.
+     *
+     * @param result the service match result
+     * @return the V1 line-item match result DTO
+     */
     public LineItemMatchResultV1 toResult(MatchResult result) {
         Map<String, IdNamingV1> idNamings = new LinkedHashMap<>();
         Map<String, List<String>> channelToIds = new LinkedHashMap<>();

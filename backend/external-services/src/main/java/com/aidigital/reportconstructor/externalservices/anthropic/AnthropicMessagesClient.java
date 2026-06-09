@@ -34,6 +34,13 @@ public class AnthropicMessagesClient {
     private final ObjectMapper json = new ObjectMapper();
     private final ClaudeResponseNormalizer normalizer;
 
+    /**
+     * Creates the client, capturing the configured API key and target Claude model and building an
+     * HTTP client with a 15-second connect timeout.
+     *
+     * @param props      Anthropic configuration supplying the API key and model identifier
+     * @param normalizer helper that extracts the assistant text content from a Messages API response
+     */
     public AnthropicMessagesClient(AnthropicProperties props, ClaudeResponseNormalizer normalizer) {
         this.apiKey = props.getApiKey();
         this.model = props.getModel();
@@ -42,8 +49,15 @@ public class AnthropicMessagesClient {
     }
 
     /**
-     * Sends a prompt and parses the model's JSON object from the text response.
+     * Sends a prompt and parses the model's JSON object from the text response, stripping any
+     * Markdown code fences and optionally attempting a best-effort repair of truncated output.
      *
+     * @param prompt       the full user prompt sent as the single message to Claude
+     * @param maxTokens    cap on tokens the model may generate in its reply
+     * @param timeoutSec   per-request HTTP timeout in seconds
+     * @param label        short tag identifying this call in log messages
+     * @param allowPartial when {@code true}, accepts {@code max_tokens}-truncated output and tries to
+     *                     repair the trailing JSON by closing open braces
      * @return parsed object node, or {@code null} on failure
      */
     public JsonNode callJsonObject(
@@ -86,7 +100,14 @@ public class AnthropicMessagesClient {
     }
 
     /**
-     * Sends a prompt and returns the raw Messages API JSON body.
+     * Sends a prompt as a single user message to the Anthropic Messages API and returns the raw
+     * parsed JSON response body, or {@code null} on a non-200 status or transport failure.
+     *
+     * @param prompt     the full user prompt sent as the single message to Claude
+     * @param maxTokens  cap on tokens the model may generate in its reply
+     * @param timeoutSec per-request HTTP timeout in seconds
+     * @param label      short tag identifying this call in log messages
+     * @return the full Messages API response as a JSON tree, or {@code null} on failure
      */
     public JsonNode callRaw(String prompt, int maxTokens, int timeoutSec, String label) {
         try {

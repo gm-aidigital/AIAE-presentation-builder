@@ -19,7 +19,7 @@ class ChartPivotTest {
 
     @BeforeEach
     void setUp() {
-        pivot = new ChartPivot(new SheetUtils());
+        pivot = ReportsEngineTestSupport.chartPivot();
     }
 
     @Test
@@ -41,12 +41,6 @@ class ChartPivotTest {
         String naming = "a_b_c_d_e_f_g_h_12345_x";
         assertThat(pivot.extractLiIdFromL1Naming(naming)).isEqualTo("12345");
         assertThat(pivot.extractLiIdFromL1Naming("a_b_c")).isEmpty();
-    }
-
-    @Test
-    void num_stripsCommasAndNonNumeric() {
-        assertThat(pivot.num("1,234.5")).isEqualTo(1234.5);
-        assertThat(pivot.num("n/a")).isZero();
     }
 
     @Test

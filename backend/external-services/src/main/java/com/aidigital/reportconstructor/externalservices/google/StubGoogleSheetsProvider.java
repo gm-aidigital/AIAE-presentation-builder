@@ -85,10 +85,10 @@ public class StubGoogleSheetsProvider implements GoogleSheetsProvider {
 
         List<List<String>> rows = new ArrayList<>();
         rows.add(List.of("Level 1 Naming", "Tactic", "Channel", "Impressions", "Clicks", "Spend"));
-        rows.add(List.of("DEMO_CLIENT_AWARE_Q2_CTV_2025_05_ROKU_PREM_1001_NA",      "Premium CTV",          "CTV",     "1,840,221", "—",      "$45,000"));
-        rows.add(List.of("DEMO_CLIENT_AWARE_Q2_DSP_2025_05_TTD_OPEN_1002_NA",       "Programmatic Display", "Display", "8,210,440", "32,114", "$30,000"));
-        rows.add(List.of("DEMO_CLIENT_AWARE_Q2_VID_2025_05_YT_INST_1003_NA",        "Online Video",         "Video",   "3,109,002", "12,448", "$25,000"));
-        rows.add(List.of("DEMO_CLIENT_AWARE_Q2_AUD_2025_05_SPOT_STR_1004_NA",       "Streaming Audio",      "Audio",   "2,400,118", "—",      "$20,000"));
+        rows.add(List.of("DEMO_CLIENT_AWARE_Q2_CTV_2025_05_ROKU_PREM_1001_NA", "Premium CTV", "CTV", "1,840,221", "—", "$45,000"));
+        rows.add(List.of("DEMO_CLIENT_AWARE_Q2_DSP_2025_05_TTD_OPEN_1002_NA", "Programmatic Display", "Display", "8,210,440", "32,114", "$30,000"));
+        rows.add(List.of("DEMO_CLIENT_AWARE_Q2_VID_2025_05_YT_INST_1003_NA", "Online Video", "Video", "3,109,002", "12,448", "$25,000"));
+        rows.add(List.of("DEMO_CLIENT_AWARE_Q2_AUD_2025_05_SPOT_STR_1004_NA", "Streaming Audio", "Audio", "2,400,118", "—", "$20,000"));
         return rows;
     }
 
@@ -97,7 +97,7 @@ public class StubGoogleSheetsProvider implements GoogleSheetsProvider {
         return List.of(
             List.of("Segment", "Reach", "Frequency"),
             List.of("A18-34", "1,200,000", "3.2"),
-            List.of("A35-54", "980,000",   "2.8")
+            List.of("A35-54", "980,000", "2.8")
         );
     }
 
@@ -105,7 +105,7 @@ public class StubGoogleSheetsProvider implements GoogleSheetsProvider {
 
         return List.of(
             List.of("Line", "Planned Impr", "Planned Spend"),
-            List.of("CTV",     "1,800,000", "$45,000"),
+            List.of("CTV", "1,800,000", "$45,000"),
             List.of("Display", "8,000,000", "$30,000")
         );
     }
@@ -114,9 +114,9 @@ public class StubGoogleSheetsProvider implements GoogleSheetsProvider {
 
         return List.of(
             List.of("DMA", "Share"),
-            List.of("New York",    "32%"),
+            List.of("New York", "32%"),
             List.of("Los Angeles", "21%"),
-            List.of("Chicago",     "14%")
+            List.of("Chicago", "14%")
         );
     }
 }

@@ -8,7 +8,7 @@ import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
 import java.util.List;
 
 /**
- * Abstraction over the Anthropic Claude calls the PHP report engine makes:
+ * Abstraction over the Anthropic Claude calls the report engine makes:
  * Batch A (strategic), Batch B (tactical), Batch C (results) plus a small
  * Geo-tab summarisation call.
  *

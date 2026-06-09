@@ -47,6 +47,8 @@ public class ChartSheetWriter {
     /**
      * Legacy {@code writePivotToSheet} does not write column C — the daily template's
      * CTR/VCR formula stays live. The combo line series reads column C from the sheet.
+     *
+     * @return {@code false} — column C is owned by the template formula, never overwritten
      */
     public boolean shouldWriteDailyRateColumn() {
         return false;
@@ -77,7 +79,14 @@ public class ChartSheetWriter {
         return Optional.of(rates);
     }
 
-    /** @see #rateColumnValuesForPivot(Pivot, boolean, boolean) */
+    /**
+     * Rate column body rows, honouring {@link #shouldWriteDailyRateColumn()} (never forced).
+     *
+     * @param pivot pivoted series
+     * @param hasClicks whether the numerator is clicks (else completions)
+     * @return cell values per row, or empty when column C must not be overwritten
+     * @see #rateColumnValuesForPivot(Pivot, boolean, boolean)
+     */
     public Optional<List<List<Object>>> rateColumnValuesForPivot(Pivot pivot, boolean hasClicks) {
         return rateColumnValuesForPivot(pivot, hasClicks, false);
     }
@@ -85,6 +94,12 @@ public class ChartSheetWriter {
     /**
      * Writes the pivot into the copied helper sheet, mirroring PHP
      * {@code writePivotToSheet}: date (A), impressions (B), metric (D) only — never column C.
+     *
+     * @param sheets authenticated Sheets client
+     * @param spreadsheetId id of the copied helper spreadsheet
+     * @param tabName data tab to write into
+     * @param pivot chronological daily/monthly series for the tactic
+     * @throws IOException when a Sheets API call fails
      */
     public void writePivot(Sheets sheets, String spreadsheetId, String tabName, Pivot pivot) throws IOException {
         if (pivot.isEmpty()) {
@@ -95,7 +110,12 @@ public class ChartSheetWriter {
 
         List<List<Object>> rows = readValues(sheets, spreadsheetId, tabName + "!A1:ZZ3");
 
-        int dataStartRow = -1, dateCol = -1, impsCol = -1, metricCol = -1, ctrHeaderCol = -1, headerRow = -1;
+        int dataStartRow = -1;
+        int dateCol = -1;
+        int impsCol = -1;
+        int metricCol = -1;
+        int ctrHeaderCol = -1;
+        int headerRow = -1;
         java.util.regex.Pattern metricPattern = java.util.regex.Pattern.compile(
             hasClicks ? "\\{\\{tactic\\s+\\d+\\s+clicks?\\}\\}" : "\\{\\{tactic\\s+\\d+\\s+completions?\\}\\}",
             java.util.regex.Pattern.CASE_INSENSITIVE);
@@ -202,6 +222,14 @@ public class ChartSheetWriter {
     /**
      * Writes the two-row distribution series (tactic + Other), mirroring PHP
      * {@code writeDistributionToSheet}.
+     *
+     * @param sheets authenticated Sheets client
+     * @param spreadsheetId id of the copied helper spreadsheet
+     * @param tabName data tab to write into
+     * @param tacticName label for the tactic slice
+     * @param tacticImps impressions for the tactic slice
+     * @param otherImps impressions for the "Other" slice ({@code {{total imps}}} whole, no subtraction)
+     * @throws IOException when a Sheets API call fails
      */
     public void writeDistribution(
             Sheets sheets, String spreadsheetId, String tabName,
@@ -232,7 +260,12 @@ public class ChartSheetWriter {
             new BatchUpdateValuesRequest().setValueInputOption("RAW").setData(data)).execute();
     }
 
-    /** Converts a 0-based column index to an A1 column letter. */
+    /**
+     * Converts a 0-based column index to an A1 column letter (e.g. {@code 0 → A}, {@code 26 → AA}).
+     *
+     * @param col 0-based column index
+     * @return the A1 column letter(s)
+     */
     public String colLetter(int col) {
         StringBuilder sb = new StringBuilder();
         int c = col;

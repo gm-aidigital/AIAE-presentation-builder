@@ -102,7 +102,12 @@ public class ClaudeResponseNormalizer {
         return out;
     }
 
-    /** Returns textual node value or {@code null} when absent/empty. */
+    /**
+     * Returns the textual value of a JSON node, falling back to its serialized form for non-text nodes.
+     *
+     * @param node JSON field to read (null or JSON-null yields {@code null})
+     * @return the node's text (or {@code toString()} for non-textual nodes), or {@code null} when absent/empty
+     */
     public String textOrNull(JsonNode node) {
         if (node == null || node.isNull()) {
             return null;
@@ -111,12 +116,22 @@ public class ClaudeResponseNormalizer {
         return s == null || s.isEmpty() ? null : s;
     }
 
-    /** True when the string has non-whitespace content. */
+    /**
+     * Tests whether a string carries non-whitespace content.
+     *
+     * @param s the string to inspect (may be null)
+     * @return {@code true} when {@code s} is non-null and contains at least one non-whitespace character
+     */
     public boolean notBlank(String s) {
         return s != null && !s.isBlank();
     }
 
-    /** Batch A audience_segments — max 80 chars, cut at last comma when over limit. */
+    /**
+     * Caps the Batch A {@code audience_segments} copy at 80 characters, trimming back to the last comma when truncating.
+     *
+     * @param seg raw audience-segments text from the model ({@code "not specified"} is treated as empty)
+     * @return the trimmed segment text, or {@code null} when blank or unspecified
+     */
     public String limitAudienceSegments(String seg) {
         if (seg == null) {
             return null;
@@ -133,7 +148,12 @@ public class ClaudeResponseNormalizer {
         return seg.isEmpty() ? null : seg;
     }
 
-    /** Batch A strategic point — hard max 22 characters. */
+    /**
+     * Hard-truncates a Batch A strategic-point placeholder to at most 22 characters.
+     *
+     * @param point raw strategic-point text from the model (may be null)
+     * @return the trimmed point, clipped to 22 characters, or an empty string when {@code point} is null
+     */
     public String limitStrategicPoint(String point) {
         if (point == null) {
             return "";
@@ -142,7 +162,12 @@ public class ClaudeResponseNormalizer {
         return point.length() > 22 ? point.substring(0, 22) : point;
     }
 
-    /** Batch A strategic overview — max 240 chars, cut at last {@code .} or {@code ,} past 180. */
+    /**
+     * Caps the Batch A strategic overview at 240 characters, preferring a sentence/clause break (last {@code .} or {@code ,} past position 180) over a hard cut.
+     *
+     * @param overview raw strategic-overview text from the model (may be null)
+     * @return the trimmed overview, or an empty string when {@code overview} is null
+     */
     public String limitStrategicOverview(String overview) {
         if (overview == null) {
             return "";
@@ -156,17 +181,32 @@ public class ClaudeResponseNormalizer {
         return overview;
     }
 
-    /** Batch C results_overview — {@link #normalizeC} with limit 380. */
+    /**
+     * Normalizes the Batch C {@code results_overview} copy with a 380-character budget via {@link #normalizeC}.
+     *
+     * @param val raw results-overview text from the model
+     * @return the normalized, length-capped text, or {@code null} when blank
+     */
     public String limitResultsOverview(String val) {
         return normalizeC(val, 380);
     }
 
-    /** Batch C tactic_overview — {@link #normalizeC} with limit 210. */
+    /**
+     * Normalizes the Batch C {@code tactic_overview} copy with a 210-character budget via {@link #normalizeC}.
+     *
+     * @param val raw tactic-overview text from the model
+     * @return the normalized, length-capped text, or {@code null} when blank
+     */
     public String limitTacticOverview(String val) {
         return normalizeC(val, 210);
     }
 
-    /** Geo tab summary — max 40 characters after whitespace collapse. */
+    /**
+     * Collapses whitespace in the geo-tab summary and hard-truncates it to at most 40 characters.
+     *
+     * @param text raw geo-summary text from the model (may be null or blank)
+     * @return the whitespace-collapsed, 40-character-capped summary, or {@code null} when blank
+     */
     public String limitGeoSummary(String text) {
         if (text == null || text.isBlank()) {
             return null;

@@ -7,7 +7,6 @@ import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
 import com.aidigital.reportconstructor.service.reports.engine.ReportClaudeDefaults;
 import com.fasterxml.jackson.databind.JsonNode;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
@@ -28,7 +27,6 @@ import java.util.Map;
  * exactly like the PHP functions return {@code []} — the resolvers then fall
  * back to manual/sheet values or {@code "—"}.
  */
-@Slf4j
 @Component
 @Primary
 @ConditionalOnExpression("'${external.anthropic.api-key:}' != ''")
@@ -48,7 +46,6 @@ public class RealClaudeClient implements ClaudeClient {
         this.promptBuilder = promptBuilder;
         this.normalizer = normalizer;
         this.claudeDefaults = claudeDefaults;
-        log.info("[claude] live Anthropic client initialised");
     }
 
     @Override
@@ -120,7 +117,7 @@ public class RealClaudeClient implements ClaudeClient {
             if (!data.tactics().containsKey(n) || vals == null || !vals.isObject()) {
                 continue;
             }
-            int male = Math.max(0, Math.min(100, vals.path("male").asInt(50)));
+            int male = Math.clamp(vals.path("male").asInt(50), 0, 100);
             int female = 100 - male;
             String weekdays = normalizer.textOrNull(vals.get("weekdays_peak"));
             String weekends = normalizer.textOrNull(vals.get("weekends_peak"));

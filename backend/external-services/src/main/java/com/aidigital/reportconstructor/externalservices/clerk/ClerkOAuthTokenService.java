@@ -35,7 +35,6 @@ public class ClerkOAuthTokenService implements UserGoogleTokenProvider {
     public ClerkOAuthTokenService(ClerkProperties props) {
         this.secretKey = props.getSecretKey();
         this.provider = props.getGoogleProvider();
-        log.info("[clerk] OAuth token service enabled (provider={})", provider);
     }
 
     @Override

@@ -5,6 +5,8 @@ import org.springframework.stereotype.Component;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload.LineItemMapping;
+import com.aidigital.reportconstructor.service.reports.helpers.SheetRowHelper;
+import com.aidigital.reportconstructor.service.reports.helpers.TacticExtractionHelper;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
@@ -17,23 +19,23 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Java port of {@code api/placeholders/collector.php} — {@code collectCampaignData()}.
+ * Single-pass aggregation of a campaign from its BigQuery export.
  *
  * <p>Single pass over the BigQuery export ({@code adjRows}) to compute campaign
  * totals, per-channel and per-line-item aggregates, weekday/weekend split and the
  * top delivery creative; plus a parse of the Estimates tab for planned KPIs. The
- * result mirrors the PHP array consumed by the resolvers and Claude batches.
+ * result is consumed by the resolvers and Claude batches.
  */
 @Component
 public class CampaignDataCollector {
-    private final SheetUtils sheetUtils;
-    private final TacticUtils tacticUtils;
+    private final SheetRowHelper sheetUtils;
+    private final TacticExtractionHelper tacticExtraction;
     private final CampaignResolvers campaignResolvers;
 
     public CampaignDataCollector(
-            SheetUtils sheetUtils, TacticUtils tacticUtils, CampaignResolvers campaignResolvers) {
+            SheetRowHelper sheetUtils, TacticExtractionHelper tacticExtraction, CampaignResolvers campaignResolvers) {
         this.sheetUtils = sheetUtils;
-        this.tacticUtils = tacticUtils;
+        this.tacticExtraction = tacticExtraction;
         this.campaignResolvers = campaignResolvers;
     }
 
@@ -57,23 +59,33 @@ public class CampaignDataCollector {
         List<List<String>> estimatesRows,
         List<LineItemMapping> lineItemMapping
     ) {
-        if (sheetRows == null) sheetRows = List.of();
-        if (adjRows == null) adjRows = List.of();
-        if (audienceRows == null) audienceRows = List.of();
-        if (estimatesRows == null) estimatesRows = List.of();
-        if (lineItemMapping == null) lineItemMapping = List.of();
+        if (sheetRows == null) {
+            sheetRows = List.of();
+        }
+        if (adjRows == null) {
+            adjRows = List.of();
+        }
+        if (audienceRows == null) {
+            audienceRows = List.of();
+        }
+        if (estimatesRows == null) {
+            estimatesRows = List.of();
+        }
+        if (lineItemMapping == null) {
+            lineItemMapping = List.of();
+        }
 
         // ── 1. Campaign fields: adj overrides sheet ───────────────────────────
-        String client   = coalesce(sheetUtils.findLabelValue(adjRows, "Client name:"), sheetUtils.findLabelValue(sheetRows, "Client name:"));
+        String client = coalesce(sheetUtils.findLabelValue(adjRows, "Client name:"), sheetUtils.findLabelValue(sheetRows, "Client name:"));
         String campaign = coalesce(sheetUtils.findLabelValue(adjRows, "Campaign:"), sheetUtils.findLabelValue(sheetRows, "Campaign:"));
-        String geo      = coalesce(sheetUtils.findLabelValue(adjRows, "Geo locations:"),
+        String geo = coalesce(sheetUtils.findLabelValue(adjRows, "Geo locations:"),
                           coalesce(sheetUtils.findLabelValue(sheetRows, "Geo locations:"),
                                    sheetUtils.findLabelValueBelow(sheetRows, "Geo")));
-        String goal     = coalesce(sheetUtils.findLabelValue(adjRows, "Funnel stages:"),
+        String goal = coalesce(sheetUtils.findLabelValue(adjRows, "Funnel stages:"),
                           coalesce(sheetUtils.findLabelValue(sheetRows, "Funnel stages:"),
                                    sheetUtils.findLabelValueBelow(sheetRows, "Goal")));
-        String budget   = coalesce(sheetUtils.findLabelValue(adjRows, "Total investment:"), sheetUtils.findLabelValue(sheetRows, "Total investment:"));
-        String kpis     = coalesce(sheetUtils.findLabelValue(adjRows, "Primary KPIs:"), sheetUtils.findLabelValue(sheetRows, "Primary KPIs:"));
+        String budget = coalesce(sheetUtils.findLabelValue(adjRows, "Total investment:"), sheetUtils.findLabelValue(sheetRows, "Total investment:"));
+        String kpis = coalesce(sheetUtils.findLabelValue(adjRows, "Primary KPIs:"), sheetUtils.findLabelValue(sheetRows, "Primary KPIs:"));
 
         // ── 2. Flight ─────────────────────────────────────────────────────────
         FlightDates flightTs = sheetUtils.resolveFlightTimestamps(sheetRows, adjRows);
@@ -83,7 +95,7 @@ public class CampaignDataCollector {
         String tacticsList = campaignResolvers.resolveTacticsList(sheetRows, adjRows).value();
 
         // ── 4. Explicit audience fields ───────────────────────────────────────
-        String audienceAge  = coalesce(sheetUtils.findLabelValue(adjRows, "Audience age:"), sheetUtils.findLabelValue(sheetRows, "Audience age:"));
+        String audienceAge = coalesce(sheetUtils.findLabelValue(adjRows, "Audience age:"), sheetUtils.findLabelValue(sheetRows, "Audience age:"));
         String audienceSegs = coalesce(sheetUtils.findLabelValue(adjRows, "Audience segments:"), sheetUtils.findLabelValue(sheetRows, "Audience segments:"));
 
         // ── 5. Estimates tab → planned KPIs by tactic ─────────────────────────
@@ -91,18 +103,20 @@ public class CampaignDataCollector {
         // double[] layout: {spend, imps, ctr, vcr, maxFreq}; NaN = null
 
         // ── 6. Tactics & channel mapping ──────────────────────────────────────
-        List<String> mediaTactics = tacticUtils.extractTacticsFromMedia(sheetRows);
+        List<String> mediaTactics = tacticExtraction.extractTacticsFromMedia(sheetRows);
         Map<Integer, String[]> tacticMap = new LinkedHashMap<>(); // N -> [name, channel|null]
         for (int n = 1; n <= 7; n++) {
             String name = coalesce(sheetUtils.findLabelValue(adjRows, "Tactic " + n + ":"),
                           coalesce(sheetUtils.findLabelValue(sheetRows, "Tactic " + n + ":"),
                                    n - 1 < mediaTactics.size() ? mediaTactics.get(n - 1) : null));
-            if (name == null) continue;
-            tacticMap.put(n, new String[]{name, tacticUtils.getTacticChannelFilter(name)});
+            if (name == null) {
+                continue;
+            }
+            tacticMap.put(n, new String[]{name, tacticExtraction.getTacticChannelFilter(name)});
         }
 
-        // Join line items to tactics by tactic_num carried in the mapping payload,
-        // exactly like PHP collector.php. The tactic NAME is never used for the join:
+        // Join line items to tactics by tactic_num carried in the mapping payload.
+        // The tactic NAME is never used for the join:
         // an Adjustments/sheet "Tactic N:" override renames the tactic but must not
         // break the line-item match. liToTacticNum gates row aggregation (presence of
         // the id in the mapping); numToLiId resolves the id for each tactic position.
@@ -110,10 +124,14 @@ public class CampaignDataCollector {
         Map<Integer, String> numToLiId = new LinkedHashMap<>();
         for (LineItemMapping m : lineItemMapping) {
             String id = m.lineItemId() == null ? "" : m.lineItemId().trim();
-            if (id.isEmpty()) continue;
+            if (id.isEmpty()) {
+                continue;
+            }
             int num = m.tacticNum() == null ? 0 : m.tacticNum();
             liToTacticNum.put(id, num);
-            if (num > 0) numToLiId.putIfAbsent(num, id);
+            if (num > 0) {
+                numToLiId.putIfAbsent(num, id);
+            }
         }
 
         // ── 6b. Single pass over adjRows ──────────────────────────────────────
@@ -123,10 +141,21 @@ public class CampaignDataCollector {
         Map<String, Agg> byLineItemId = new LinkedHashMap<>();
         Map<String, Map<String, double[]>> byCreative = new LinkedHashMap<>(); // liId -> creative -> {imps, clicks}
 
-        int hIdx = -1, colDt = -1, colCh = -1, colCo = -1, colIm = -1, colCl = -1, colCmp = -1, colDow = -1, colLi = -1, colCr = -1;
+        int hIdx = -1;
+        int colDt = -1;
+        int colCh = -1;
+        int colCo = -1;
+        int colIm = -1;
+        int colCl = -1;
+        int colCmp = -1;
+        int colDow = -1;
+        int colLi = -1;
+        int colCr = -1;
         for (int i = 0; i < adjRows.size(); i++) {
             List<String> row = adjRows.get(i);
-            if (row == null) continue;
+            if (row == null) {
+                continue;
+            }
             Map<String, Integer> f = new LinkedHashMap<>();
             for (int j = 0; j < row.size(); j++) {
                 String v = cell(row, j).toLowerCase(Locale.ROOT);
@@ -139,9 +168,15 @@ public class CampaignDataCollector {
                     case "completions" -> f.put("completions", j);
                     default -> { }
                 }
-                if (v.equals("day_of_week") || v.equals("dayofweek") || v.equals("day")) f.put("dow", j);
-                if (v.equals("line item id") || v.equals("line_item_id") || v.equals("lineitemid") || v.equals("line item")) f.put("li", j);
-                if (v.equals("creative") || v.equals("creative name") || v.equals("creative_name")) f.put("creative", j);
+                if (v.equals("day_of_week") || v.equals("dayofweek") || v.equals("day")) {
+                    f.put("dow", j);
+                }
+                if (v.equals("line item id") || v.equals("line_item_id") || v.equals("lineitemid") || v.equals("line item")) {
+                    f.put("li", j);
+                }
+                if (v.equals("creative") || v.equals("creative name") || v.equals("creative_name")) {
+                    f.put("creative", j);
+                }
             }
             if (f.containsKey("date") && f.containsKey("channel") && f.containsKey("cost") && f.containsKey("imps")) {
                 hIdx = i;
@@ -169,20 +204,30 @@ public class CampaignDataCollector {
 
             for (int i = hIdx + 1; i < adjRows.size(); i++) {
                 List<String> row = adjRows.get(i);
-                if (row == null) continue;
+                if (row == null) {
+                    continue;
+                }
 
                 String dateVal = cellAt(row, colDt);
-                if (dateVal.isEmpty()) continue;
+                if (dateVal.isEmpty()) {
+                    continue;
+                }
                 LocalDate ts = sheetUtils.parseDate(dateVal);
-                if (ts == null) continue;
-                if (dayStart != null && (ts.isBefore(dayStart) || ts.isAfter(dayEnd))) continue;
+                if (ts == null) {
+                    continue;
+                }
+                if (dayStart != null && (ts.isBefore(dayStart) || ts.isAfter(dayEnd))) {
+                    continue;
+                }
 
                 String chVal = cellAt(row, colCh).toLowerCase(Locale.ROOT);
 
                 String liId = null;
                 if (colLi >= 0) {
                     String v = cellAt(row, colLi);
-                    if (!v.isEmpty()) liId = v;
+                    if (!v.isEmpty()) {
+                        liId = v;
+                    }
                 } else if (colL1Naming >= 0) {
                     String naming = cellAt(row, colL1Naming);
                     if (!naming.isEmpty()) {
@@ -252,7 +297,8 @@ public class CampaignDataCollector {
         Map<String, String> topCreativeName = new LinkedHashMap<>();
         for (Map.Entry<String, Map<String, double[]>> e : byCreative.entrySet()) {
             String topName = null;
-            double topImps = -1.0, topClicks = 0.0;
+            double topImps = -1.0;
+            double topClicks = 0.0;
             for (Map.Entry<String, double[]> c : e.getValue().entrySet()) {
                 if (c.getValue()[0] > topImps) {
                     topImps = c.getValue()[0];
@@ -284,7 +330,9 @@ public class CampaignDataCollector {
                 agg = byLineItemId.get(liIdForTactic);
             } else {
                 String ch = channel != null ? channel.trim().toLowerCase(Locale.ROOT) : null;
-                if (ch != null && byChannel.containsKey(ch)) agg = byChannel.get(ch);
+                if (ch != null && byChannel.containsKey(ch)) {
+                    agg = byChannel.get(ch);
+                }
             }
 
             double sp = agg != null ? agg.spend : 0.0;
@@ -329,13 +377,19 @@ public class CampaignDataCollector {
         int aLimit = Math.min(200, audienceRows.size());
         for (int i = 0; i < aLimit; i++) {
             List<String> row = audienceRows.get(i);
-            if (row == null) continue;
+            if (row == null) {
+                continue;
+            }
             List<String> cells = new ArrayList<>();
             for (String c : row) {
                 String t = c == null ? "" : c.trim();
-                if (!t.isEmpty()) cells.add(t);
+                if (!t.isEmpty()) {
+                    cells.add(t);
+                }
             }
-            if (!cells.isEmpty()) audLines.add(String.join(" | ", cells));
+            if (!cells.isEmpty()) {
+                audLines.add(String.join(" | ", cells));
+            }
         }
         String audienceTabText = String.join("\n", audLines);
 
@@ -352,48 +406,81 @@ public class CampaignDataCollector {
 
     Map<String, double[]> parseEstimates(List<List<String>> estimatesRows) {
         Map<String, double[]> out = new LinkedHashMap<>();
-        if (estimatesRows.isEmpty()) return out;
+        if (estimatesRows.isEmpty()) {
+            return out;
+        }
 
-        int eHdrIdx = -1, eMediaCol = -1, eCostCol = -1, eImpsCol = -1, eCtrCol = -1, eVcrCol = -1, eFreqCol = -1;
+        int eHdrIdx = -1;
+        int eMediaCol = -1;
+        int eCostCol = -1;
+        int eImpsCol = -1;
+        int eCtrCol = -1;
+        int eVcrCol = -1;
+        int eFreqCol = -1;
         for (int i = 0; i < estimatesRows.size(); i++) {
             List<String> row = estimatesRows.get(i);
-            if (row == null) continue;
+            if (row == null) {
+                continue;
+            }
             boolean hasMedia = false;
-            int media = -1, cost = -1, imps = -1, ctr = -1, vcr = -1, freq = -1;
+            int media = -1;
+            int cost = -1;
+            int imps = -1;
+            int ctr = -1;
+            int vcr = -1;
+            int freq = -1;
             for (int j = 0; j < row.size(); j++) {
                 String v = cell(row, j).toLowerCase(Locale.ROOT);
                 if (v.equals("media")) { hasMedia = true; media = j; }
-                if (v.equals("total cost") || v.equals("cost") || v.equals("budget")) cost = j;
-                if (v.equals("impressions") || v.equals("imps")) imps = j;
-                if (v.equals("ctr")) ctr = j;
-                if (v.equals("vcr") || v.equals("vtr") || v.equals("view rate") || v.equals("vcr / acr") || v.equals("vcr/acr") || v.equals("acr")) vcr = j;
-                if (v.contains("max frequency") || v.contains("frequency per flight")) freq = j;
+                if (v.equals("total cost") || v.equals("cost") || v.equals("budget")) {
+                    cost = j;
+                }
+                if (v.equals("impressions") || v.equals("imps")) {
+                    imps = j;
+                }
+                if (v.equals("ctr")) {
+                    ctr = j;
+                }
+                if (v.equals("vcr") || v.equals("vtr") || v.equals("view rate") || v.equals("vcr / acr") || v.equals("vcr/acr") || v.equals("acr")) {
+                    vcr = j;
+                }
+                if (v.contains("max frequency") || v.contains("frequency per flight")) {
+                    freq = j;
+                }
             }
             if (hasMedia && (cost >= 0 || imps >= 0)) {
                 eHdrIdx = i; eMediaCol = media; eCostCol = cost; eImpsCol = imps; eCtrCol = ctr; eVcrCol = vcr; eFreqCol = freq;
                 break;
             }
         }
-        if (eHdrIdx < 0) return out;
+        if (eHdrIdx < 0) {
+            return out;
+        }
 
         for (int i = eHdrIdx + 1; i < estimatesRows.size(); i++) {
             List<String> row = estimatesRows.get(i);
-            if (row == null) continue;
+            if (row == null) {
+                continue;
+            }
             String rowText = joinLower(row, 5);
             boolean stop = false;
             for (String sw : STOP_WORDS) {
                 if (rowText.contains(sw)) { stop = true; break; }
             }
-            if (stop) break;
+            if (stop) {
+                break;
+            }
 
             String mediaVal = cellAt(row, eMediaCol);
-            if (mediaVal.isEmpty()) continue;
+            if (mediaVal.isEmpty()) {
+                continue;
+            }
 
-            double spend = parseNum(cellAt(row, eCostCol), eCostCol, true);
-            double imps = parseNum(cellAt(row, eImpsCol), eImpsCol, false);
-            double ctr = parseNum(cellAt(row, eCtrCol), eCtrCol, false);
-            double vcr = parseNum(cellAt(row, eVcrCol), eVcrCol, false);
-            double freq = parseNum(cellAt(row, eFreqCol), eFreqCol, false);
+            double spend = parseNumericCell(cellAt(row, eCostCol), eCostCol, true);
+            double imps = parseNumericCell(cellAt(row, eImpsCol), eImpsCol, false);
+            double ctr = parseNumericCell(cellAt(row, eCtrCol), eCtrCol, false);
+            double vcr = parseNumericCell(cellAt(row, eVcrCol), eVcrCol, false);
+            double freq = parseNumericCell(cellAt(row, eFreqCol), eFreqCol, false);
 
             out.put(mediaVal.toLowerCase(Locale.ROOT), new double[]{spend, imps, ctr, vcr, freq});
         }
@@ -401,9 +488,11 @@ public class CampaignDataCollector {
     }
 
     /** Cleans then parses a cell to a numeric, returning {@code NaN} when blank/non-numeric. */
-    double parseNum(String raw, int col, boolean allowMinus) {
+    double parseNumericCell(String raw, int col, boolean allowMinus) {
 
-        if (col < 0) return Double.NaN;
+        if (col < 0) {
+            return Double.NaN;
+        }
         String c = cleanNum(raw, allowMinus);
         return !c.isEmpty() && isNumeric(c) ? toFloat(c) : Double.NaN;
     }
@@ -413,20 +502,24 @@ public class CampaignDataCollector {
         return Double.isNaN(v) ? null : v;
     }
 
-    // ── numeric helpers (mirror PHP cleanup + (float) cast + is_numeric) ───────
+    // ── numeric helpers (string cleanup + float cast + numeric check) ───────
 
     private static final Pattern LEADING_NUM = Pattern.compile("^[-+]?\\d*\\.?\\d+");
 
     String cleanNum(String raw, boolean allowMinus) {
 
-        if (raw == null) return "";
+        if (raw == null) {
+            return "";
+        }
         String s = raw.replace(",", "");
         return s.replaceAll(allowMinus ? "[^0-9.\\-]" : "[^0-9.]", "");
     }
 
     double toFloat(String s) {
 
-        if (s == null) return 0.0;
+        if (s == null) {
+            return 0.0;
+        }
         Matcher m = LEADING_NUM.matcher(s.trim());
         if (m.find()) {
             try {
@@ -458,7 +551,9 @@ public class CampaignDataCollector {
 
     String cellAt(List<String> row, int idx) {
 
-        if (row == null || idx < 0 || idx >= row.size()) return "";
+        if (row == null || idx < 0 || idx >= row.size()) {
+            return "";
+        }
         return cell(row, idx);
     }
 
@@ -467,7 +562,9 @@ public class CampaignDataCollector {
         StringBuilder sb = new StringBuilder();
         int limit = Math.min(n, row.size());
         for (int i = 0; i < limit; i++) {
-            if (i > 0) sb.append(' ');
+            if (i > 0) {
+                sb.append(' ');
+            }
             sb.append(cell(row, i));
         }
         return sb.toString().toLowerCase(Locale.ROOT);

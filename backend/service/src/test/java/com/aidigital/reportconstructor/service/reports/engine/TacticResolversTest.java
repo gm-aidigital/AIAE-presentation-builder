@@ -1,6 +1,8 @@
 package com.aidigital.reportconstructor.service.reports.engine;
 
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
+import com.aidigital.reportconstructor.service.reports.helpers.SheetRowHelper;
+import com.aidigital.reportconstructor.service.reports.helpers.TacticExtractionHelper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -12,12 +14,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 class TacticResolversTest {
 
     private TacticResolvers resolvers;
-    private TacticUtils tacticUtils;
+    private TacticExtractionHelper tacticUtils;
 
     @BeforeEach
     void setUp() {
-        SheetUtils sheetUtils = new SheetUtils();
-        tacticUtils = new TacticUtils();
+        SheetRowHelper sheetUtils = ReportsEngineTestSupport.sheetRowHelper();
+        tacticUtils = ReportsEngineTestSupport.tacticExtractionHelper();
         resolvers = new TacticResolvers(sheetUtils, new Fmt(), tacticUtils, new CampaignResolvers(sheetUtils, new Fmt(), tacticUtils));
     }
 

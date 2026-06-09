@@ -41,7 +41,6 @@ public class RealGoogleSheetsProvider implements GoogleSheetsProvider {
         this.client = new Sheets.Builder(creds.transport(), creds.jsonFactory(), creds.initializer())
             .setApplicationName(APPLICATION_NAME)
             .build();
-        log.info("[sheets] live Google Sheets client initialised");
     }
 
     @Override

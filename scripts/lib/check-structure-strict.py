@@ -37,7 +37,6 @@ def is_skipped(path: Path) -> bool:
         return True
     return "/api/v1/model/" in t or "/api/v1/invoker/" in t or path.name.endswith("Api.java")
 
-
 def in_logic(path: Path) -> bool:
     t = str(path).replace("\\", "/")
     return any(p in t for p in LOGIC_PATHS)

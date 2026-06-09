@@ -65,8 +65,6 @@ public class RealSlidesProvider implements SlidesProvider {
             .build();
         this.templateId = templateId;
         this.targetFolderId = targetFolderId == null ? "" : targetFolderId.trim();
-        log.info("[slides] live Google Slides + Drive clients initialised (template={}, targetFolder={})",
-            templateId, this.targetFolderId.isEmpty() ? "<none>" : this.targetFolderId);
     }
 
     @Override
@@ -79,8 +77,6 @@ public class RealSlidesProvider implements SlidesProvider {
         boolean asUser = userGoogleAccessToken != null && !userGoogleAccessToken.isBlank();
         Drive driveClient = asUser ? buildDrive(userGoogleAccessToken) : drive;
         Slides slidesClient = asUser ? buildSlides(userGoogleAccessToken) : slides;
-        log.info("[slides] job {} → creating deck under {}", jobId,
-            asUser ? "the signed-in user's Google account" : "the service account");
         try {
             File copy = new File().setName("Report — " + jobId);
             if (!targetFolderId.isEmpty()) {
@@ -112,7 +108,6 @@ public class RealSlidesProvider implements SlidesProvider {
                     .batchUpdate(newId, new BatchUpdatePresentationRequest().setRequests(requests))
                     .execute();
             }
-            log.info("[slides] deck {} created with {} replacements", newId, requests.size());
             return "https://docs.google.com/presentation/d/" + newId + "/edit";
         } catch (IOException ex) {
             log.error("[slides] createDeck failed for job {}", jobId, ex);
@@ -149,8 +144,6 @@ public class RealSlidesProvider implements SlidesProvider {
             slidesClient.presentations()
                 .batchUpdate(presentationId, new BatchUpdatePresentationRequest().setRequests(requests))
                 .execute();
-            log.info("[slides] trimmed deck {} to {} tactic(s) ({} delete request(s))",
-                presentationId, tacticCount, requests.size());
         } catch (IOException ex) {
             log.error("[slides] trimTactics failed for {}", presentationId, ex);
             throw new AppException(ErrorReason.C000,

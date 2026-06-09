@@ -4,11 +4,15 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.MappedSuperclass;
+import lombok.Getter;
+import lombok.Setter;
 import org.hibernate.Hibernate;
 
 /**
  * Base JPA entity with ID-only {@code equals}/{@code hashCode} semantics.
  */
+@Setter
+@Getter
 @MappedSuperclass
 public abstract class IdAwareEntity {
 
@@ -16,15 +20,7 @@ public abstract class IdAwareEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    public Long getId() {
-        return id;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
-    }
-
-    @Override
+	@Override
     public final boolean equals(Object other) {
         if (this == other) {
             return true;

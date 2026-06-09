@@ -32,9 +32,8 @@ public interface SlidesProvider {
     /**
      * Removes the template's unused per-tactic slides (and their summary-table
      * rows) when the campaign has fewer than the template's seven tactic slots.
-     * Mirrors {@code trimTactics} in {@code tactic_utils.php}: without this the
-     * surplus slides survive showing raw {@code {{tactic N …}}} tokens and empty
-     * chart frames. A no-op when {@code tacticCount >= 7}.
+     * Without this, the surplus slides survive showing raw {@code {{tactic N …}}}
+     * tokens and empty chart frames. A no-op when {@code tacticCount >= 7}.
      *
      * @param presentationId        the deck to trim
      * @param tacticCount           number of real tactics (clamped 1..7)

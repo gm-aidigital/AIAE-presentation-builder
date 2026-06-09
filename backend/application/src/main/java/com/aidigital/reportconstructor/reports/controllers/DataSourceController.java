@@ -8,12 +8,15 @@ import com.aidigital.reportconstructor.reports.mappers.DataSourceApiMapper;
 import com.aidigital.reportconstructor.security.AppUserFactory;
 import com.aidigital.reportconstructor.service.common.error.AppException;
 import com.aidigital.reportconstructor.service.common.error.ErrorReason;
-import com.aidigital.reportconstructor.service.reports.SheetQueryService;
+import com.aidigital.reportconstructor.service.reports.ports.SheetQueryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * REST controller for Google data-source endpoints: connection status and sheet reads.
+ */
 @RestController
 @RequiredArgsConstructor
 public class DataSourceController implements DataSourceApi {
