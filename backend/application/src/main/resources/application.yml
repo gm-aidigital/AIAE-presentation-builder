@@ -118,19 +118,77 @@ app:
 external:
   google:
     service-account-json: ${GOOGLE_SERVICE_ACCOUNT_JSON:}
-    slides-template-id: ${SLIDES_TEMPLATE_ID:}
+    # AI Digital Slides template + object ids (same as the working POC). Cloning
+    # an empty template id is what caused C000 "deck creation failed". Override
+    # per-environment via env vars; the defaults keep generation working.
+    slides-template-id: ${SLIDES_TEMPLATE_ID:11qzOC7mdbajjlrrVrC8Zv7W5P_SOHpgMV_eWSW56WI0}
     slides-target-folder-id: ${SLIDES_TARGET_FOLDER_ID:}
-    summary-table-object-id: ${GOOGLE_SUMMARY_TABLE_OBJECT_ID:}
-    tactic-slide-object-ids: {}
+    summary-table-object-id: ${GOOGLE_SUMMARY_TABLE_OBJECT_ID:p6_i4579}
+    tactic-slide-object-ids:
+      1: "p7"
+      2: "g3da93d3d6ab_1_23"
+      3: "g3da93d3d6ab_1_95"
+      4: "g3da93d3d6ab_1_167"
+      5: "g3da93d3d6ab_1_239"
+      6: "g3da93d3d6ab_1_311"
+      7: "g3dbc30a6114_0_0"
     charts:
-      chart-id-in-sheet: ${GOOGLE_CHART_ID_IN_SHEET:0}
-      daily-template-sheet-ids: {}
-      daily-slide-object-ids: {}
-      monthly-template-sheet-ids: {}
-      monthly-slide-object-ids: {}
-      dist-template-sheet-ids: {}
-      dist-slide-object-ids: {}
-      pie-default-colors: []
+      chart-id-in-sheet: ${GOOGLE_CHART_ID_IN_SHEET:1087145314}
+      daily-template-sheet-ids:
+        1: "17da8GFAFRYt5JT6MvPV-qSi6KEd2tmI8xZMGFU-pkK4"
+        2: "1bWjf8IlKzZk9TTyHinQ2LWvpUuV9OnT58MXmi8LF5bk"
+        3: "1BUaf4mYlxRqHUyoCKJZEUX-Rhdx4wnVQg7ngE7cpUjw"
+        4: "1fCNzy7TFCDs4-cgi_6w4lHi8i_N5Hqqz9r07We12elE"
+        5: "1ZPVH6LM23phYgSpd-f2u_aP-8xer7gBE6hge4-QVsKM"
+        6: "1tgYtK4bXqsSdyRVrF8JNzX2uRsicc95ZM1ReR4hlbcA"
+        7: "1Ly2du2g45Hoi0Ad6ej5ZrxONa4yB_DUIeuhAlEMR1Zo"
+      daily-slide-object-ids:
+        1: "g3e2b29c26c1_0_0"
+        2: "g3e2b29c26c1_0_8"
+        3: "g3e2b29c26c1_0_9"
+        4: "g3e2b29c26c1_0_10"
+        5: "g3e2b29c26c1_0_11"
+        6: "g3e2b29c26c1_0_12"
+        7: "g3e2b29c26c1_0_14"
+      monthly-template-sheet-ids:
+        1: "1k8O_reSRTjSNdvQzawfm6kRjCq1G8dy--9bv1B79P1I"
+        2: "1YKj5k7juIoZpuuxWA5afr31UK444eTQMx-DEKHSYn8I"
+        3: "1TzjEYRwiD6ixTt9H_J8CBI-yGiAQxk9LNMiTEsue3XY"
+        4: "1y1BFnlcPcSPCOYHMYZ_DjbeqbLluuLJe7TL6YK9VjLQ"
+        5: "1WAcGjCwqQ4OsayGwytaJeXE_1krkt4PMVxWq7BGNA7I"
+        6: "1VRsvWp1JULRblQgU0MaHurAxUkM9m0GE34UPTAxq6nI"
+        7: "1KWyRqg1FknQBpj0ahgvavZiK1mLlhkvKN8-gU_7FVbI"
+      monthly-slide-object-ids:
+        1: "g3e2bb781e03_1_0"
+        2: "g3e2bb781e03_1_1"
+        3: "g3e2bb781e03_1_2"
+        4: "g3e2bb781e03_1_3"
+        5: "g3e2bb781e03_1_6"
+        6: "g3e2bb781e03_1_7"
+        7: "g3e2bb781e03_1_8"
+      dist-template-sheet-ids:
+        1: "1yVZmgYkjH-pZofd87fOLUOESZYFJLOYOlHI2va-2Ego"
+        2: "14UC6wUdeEeWYaEtwX5h3e9kta7mvZVgWpx260nKBhp0"
+        3: "1mk1F0I6CmXoHs_X726fXZaOHMsQbfQ7uwykZGndlGY4"
+        4: "1Um-9cFk85isdCzyoIDh4uxklMN4gHlmG_eCDz_VpELA"
+        5: "12PE8dv6iXvQYe1vdp5RNUmnFUvhWQMziKLj_j9qlxzw"
+        6: "1W6pyTiwO_bz0ssvYAyMxLx24ry-xGw5SST3ieAOQaBw"
+        7: "1ezXCDyelmD0vQK6p-70WQKL4xUmqQNOjF7HfEzVSSos"
+      dist-slide-object-ids:
+        1: "g3e3101095f6_0_0"
+        2: "g3e3101095f6_0_1"
+        3: "g3e3101095f6_0_2"
+        4: "g3e3101095f6_0_3"
+        5: "g3e3101095f6_0_4"
+        6: "g3e3101095f6_0_5"
+        7: "g3e3101095f6_0_6"
+      pie-default-colors:
+        - red: 0.173
+          green: 0.490
+          blue: 0.502
+        - red: 0.937
+          green: 0.490
+          blue: 0.133
   anthropic:
     api-key: ${ANTHROPIC_API_KEY:}
     model:   ${ANTHROPIC_MODEL:claude-sonnet-4-6}

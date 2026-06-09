@@ -111,7 +111,8 @@ public class RealSlidesProvider implements SlidesProvider {
             return "https://docs.google.com/presentation/d/" + newId + "/edit";
         } catch (IOException ex) {
             log.error("[slides] createDeck failed for job {}", jobId, ex);
-            throw new AppException(ErrorReason.C000, "Google Slides deck creation failed");
+            throw new AppException(ErrorReason.C000,
+                "Google Slides deck creation failed: " + ex.getMessage());
         }
     }
 
