@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useClerk, useUser } from "@clerk/clerk-react";
 import { readSheetTab } from "@/shared/api/sheets";
 import type { LineItemMatchResult, PreviewResult, ReportType } from "@/shared/api/types";
@@ -6,7 +6,7 @@ import { WizardProvider, useWizard } from "@/shared/wizard/WizardContext";
 import { useGoogleStatus } from "../api/useGoogleStatus";
 import { useMatchLineItems } from "../api/useMatchLineItems";
 import { usePreviewPlaceholders } from "../api/usePreviewPlaceholders";
-import { useCreateReportJob, useReportJob } from "../api/useReportJob";
+import { fetchReportJob, startReportJob } from "../api/useReportJob";
 import { GeneratingOverlay } from "./GeneratingOverlay";
 import { MatchModal } from "./MatchModal";
 import { PreviewPanel } from "./PreviewPanel";
@@ -35,7 +35,6 @@ function PageInner() {
 
     const matchMutation = useMatchLineItems();
     const previewMutation = usePreviewPlaceholders();
-    const createJob = useCreateReportJob();
 
     const [mediaPulling, setMediaPulling] = useState(false);
     const [elevatePulling, setElevatePulling] = useState(false);
@@ -49,24 +48,20 @@ function PageInner() {
     const [previewData, setPreviewData] = useState<PreviewResult | null>(null);
     const [previewVisible, setPreviewVisible] = useState(false);
 
-    const [jobId, setJobId] = useState<number | null>(null);
-    const job = useReportJob(jobId);
-    const done = job.data?.status === "done";
-    const generating = jobId != null && !done && job.data?.status !== "error";
-    const resultUrl = done ? job.data?.slideUrl ?? "" : null;
+    // Imperative generation state (stable — never derived from a live query, so
+    // polling/retries can't make the overlay flicker). Mirrors the POC.
+    const [generating, setGenerating] = useState(false);
+    const [progress, setProgress] = useState({ step: 0, total: 7, label: "" });
+    const [resultUrl, setResultUrl] = useState<string | null>(null);
+    const pollRef = useRef<number | null>(null);
 
-    // Job error → toast + reset.
-    useEffect(() => {
-        if (jobId == null) return;
-        if (job.data?.status === "error") {
-            showToast(job.data.error ?? "Generation failed", true);
-            setJobId(null);
-        } else if (job.isError) {
-            showToast(job.error?.message ?? "Generation failed", true);
-            setJobId(null);
+    function stopPolling() {
+        if (pollRef.current) {
+            window.clearInterval(pollRef.current);
+            pollRef.current = null;
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [job.data?.status, job.isError, jobId]);
+    }
+    useEffect(() => () => stopPolling(), []);
 
     // Scroll-spy for the sticky stepper.
     useEffect(() => {
@@ -256,23 +251,59 @@ function PageInner() {
             showToast("Please complete all three sections", true);
             return;
         }
-        createJob.mutate(
-            {
-                brief: w.brief,
-                reportType: w.reportType,
-                sheetRows: w.mediaPlan!.sheetRows,
-                adjRows: w.elevate!.adjRows,
-                audienceRows: w.mediaPlan!.audienceRows,
-                estimatesRows: w.mediaPlan!.estimatesRows,
-                geoRows: w.mediaPlan!.geoRows,
-                lineItemMapping: w.mapping ?? undefined,
-                bqSheetId: w.elevate!.sheetId,
-            },
-            {
-                onSuccess: (id) => setJobId(id),
-                onError: (e) => showToast(e.message, true),
-            }
-        );
+        if (!w.mediaPlan || !w.elevate) return;
+        setReq({ brief: false, sheet: false, adj: false });
+        setResultUrl(null);
+        setGenerating(true);
+        setProgress({ step: 0, total: 7, label: "Starting…" });
+        startReportJob({
+            brief: w.brief,
+            reportType: w.reportType,
+            sheetRows: w.mediaPlan.sheetRows,
+            adjRows: w.elevate.adjRows,
+            audienceRows: w.mediaPlan.audienceRows,
+            estimatesRows: w.mediaPlan.estimatesRows,
+            geoRows: w.mediaPlan.geoRows,
+            lineItemMapping: w.mapping ?? undefined,
+            bqSheetId: w.elevate.sheetId,
+        })
+            .then((jobId) => {
+                setProgress({ step: 1, total: 7, label: "Queued…" });
+                let polls = 0;
+                pollRef.current = window.setInterval(async () => {
+                    polls += 1;
+                    if (polls > 240) {
+                        stopPolling();
+                        setGenerating(false);
+                        showToast("Generation timeout — please try again", true);
+                        return;
+                    }
+                    try {
+                        const p = await fetchReportJob(jobId);
+                        if (!p) return; // transient miss — keep polling
+                        if (p.step > 0) {
+                            setProgress({ step: p.step, total: p.total || 7, label: p.label ?? "Working…" });
+                        }
+                        if (p.status === "done") {
+                            stopPolling();
+                            setProgress({ step: 7, total: 7, label: "Done!" });
+                            setResultUrl(p.slideUrl ?? "");
+                            setGenerating(false);
+                            showToast("Презентация готова!");
+                        } else if (p.status === "error") {
+                            stopPolling();
+                            setGenerating(false);
+                            showToast(p.error ?? "Generation failed", true);
+                        }
+                    } catch {
+                        /* transient poll error — keep polling */
+                    }
+                }, 1500);
+            })
+            .catch((e) => {
+                setGenerating(false);
+                showToast(e instanceof Error ? e.message : "Launch failed", true);
+            });
     }
 
     function clearAll() {
@@ -283,7 +314,10 @@ function PageInner() {
         setMatchData(null);
         setPreviewData(null);
         setPreviewVisible(false);
-        setJobId(null);
+        stopPolling();
+        setGenerating(false);
+        setResultUrl(null);
+        setProgress({ step: 0, total: 7, label: "" });
         setReq({ brief: false, sheet: false, adj: false });
     }
 
@@ -394,7 +428,7 @@ function PageInner() {
             </div>
 
             <div className="page-body">
-                <div className="form-area" style={{ display: generating ? "none" : "flex" }}>
+                <div className="form-area">
                     {/* 01 Brief */}
                     <div className="section-card" id="s1">
                         <div className="card-header">
@@ -530,6 +564,7 @@ function PageInner() {
                 <Sidebar
                     resultUrl={resultUrl}
                     previewLoading={previewMutation.isPending}
+                    generating={generating}
                     onPreview={previewPlaceholders}
                     onGenerate={generate}
                     onClear={clearAll}
@@ -537,11 +572,7 @@ function PageInner() {
             </div>
 
             {generating && (
-                <GeneratingOverlay
-                    step={job.data?.step ?? 1}
-                    total={job.data?.total ?? 7}
-                    label={job.data?.label ?? "Queued…"}
-                />
+                <GeneratingOverlay step={progress.step} total={progress.total} label={progress.label} />
             )}
 
             {previewVisible && previewData && (

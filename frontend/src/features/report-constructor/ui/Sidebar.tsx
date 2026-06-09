@@ -4,12 +4,13 @@ import { IconBolt, IconCheck, IconChecklist, IconClock, IconEye, IconMonitor, Ic
 interface Props {
     resultUrl: string | null;
     previewLoading: boolean;
+    generating: boolean;
     onPreview(): void;
     onGenerate(): void;
     onClear(): void;
 }
 
-export function Sidebar({ resultUrl, previewLoading, onPreview, onGenerate, onClear }: Props) {
+export function Sidebar({ resultUrl, previewLoading, generating, onPreview, onGenerate, onClear }: Props) {
     const { brief, mediaPlan, elevate, matchConfirmed } = useWizard();
     const briefLen = brief.trim().length;
     const hasSheet = !!mediaPlan;
@@ -91,9 +92,9 @@ export function Sidebar({ resultUrl, previewLoading, onPreview, onGenerate, onCl
                         {previewLoading ? <IconSpinner size={14} /> : <IconEye />}
                         {previewLoading ? "Loading…" : "Preview Placeholders"}
                     </button>
-                    <button className="btn-generate" disabled={!genReady} onClick={onGenerate}>
+                    <button className="btn-generate" disabled={!genReady || generating} onClick={onGenerate}>
                         <IconBolt />
-                        Generate Slides
+                        {generating ? "Generating…" : "Generate Slides"}
                     </button>
                     <div
                         className={`gen-lock-notice${
