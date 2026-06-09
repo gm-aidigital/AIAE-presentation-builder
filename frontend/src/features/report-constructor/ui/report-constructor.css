@@ -1,0 +1,417 @@
+/* Report Constructor wizard — Elevate tokens only, no hard-coded colors. */
+
+.rc {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    max-width: 880px;
+}
+
+/* ── Step card ─────────────────────────────────────────────────────────── */
+.rc-step {
+    background: hsl(var(--background));
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius-lg);
+    padding: var(--space-6);
+}
+.rc-step--done {
+    border-color: hsl(var(--primary) / 0.45);
+}
+.rc-step__head {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
+}
+.rc-step__num {
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-full);
+    background: hsl(var(--accent));
+    color: hsl(var(--primary));
+    font-weight: 700;
+    font-size: var(--text-pill);
+    display: grid;
+    place-items: center;
+}
+.rc-step--done .rc-step__num {
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+}
+.rc-step__title {
+    font-size: var(--text-section);
+    font-weight: 700;
+    margin: 0;
+}
+.rc-step__desc {
+    margin: 2px 0 0;
+    font-size: var(--text-body);
+    color: hsl(var(--muted-foreground));
+}
+.rc-step__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+/* ── Buttons (pill, uppercase) ─────────────────────────────────────────── */
+.rc-btn {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    border-radius: var(--radius-full);
+    padding: 10px 22px;
+    font-size: var(--text-pill);
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    text-decoration: none;
+    cursor: pointer;
+    border: 1.5px solid transparent;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+.rc-btn--primary {
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+}
+.rc-btn--primary:hover:not(:disabled) {
+    background: hsl(var(--primary-hover));
+}
+.rc-btn--secondary {
+    background: transparent;
+    color: hsl(var(--primary));
+    border-color: hsl(var(--primary) / 0.4);
+}
+.rc-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+/* ── Fields ────────────────────────────────────────────────────────────── */
+.rc-field {
+    display: flex;
+    gap: var(--space-3);
+    align-items: center;
+    flex-wrap: wrap;
+}
+.rc-input,
+.rc-textarea {
+    flex: 1 1 320px;
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius-md);
+    padding: 10px 14px;
+    font: inherit;
+    font-size: var(--text-body);
+    color: hsl(var(--foreground));
+    background: hsl(var(--background));
+}
+.rc-textarea {
+    width: 100%;
+    resize: vertical;
+}
+.rc-input:focus,
+.rc-textarea:focus {
+    outline: 2px solid hsl(var(--ring) / 0.4);
+    border-color: hsl(var(--ring));
+}
+
+/* ── Segmented (EOC/EOM) ──────────────────────────────────────────────── */
+.rc-segmented {
+    display: inline-flex;
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius-full);
+    padding: 3px;
+    gap: 3px;
+}
+.rc-segmented__opt {
+    border: none;
+    background: transparent;
+    border-radius: var(--radius-full);
+    padding: 6px 18px;
+    font-weight: 700;
+    font-size: var(--text-pill);
+    cursor: pointer;
+    color: hsl(var(--muted-foreground));
+}
+.rc-segmented__opt--active {
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+}
+
+/* ── Connected-sheet status + preview ─────────────────────────────────── */
+.rc-status {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+}
+.rc-status__title {
+    display: block;
+    font-size: var(--text-subhead);
+}
+.rc-status__meta {
+    color: hsl(var(--muted-foreground));
+    font-size: var(--text-body);
+}
+.rc-preview {
+    overflow-x: auto;
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius-md);
+}
+.rc-preview table,
+.rc-ph {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: var(--text-body);
+}
+.rc-preview th,
+.rc-preview td {
+    border-bottom: 1px solid hsl(var(--border));
+    padding: 6px 10px;
+    text-align: left;
+    white-space: nowrap;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.rc-preview th {
+    background: hsl(var(--secondary));
+    font-weight: 700;
+    font-size: var(--text-badge);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: hsl(var(--header-text));
+}
+.rc-preview__more {
+    margin: 0;
+    padding: 6px 10px;
+    color: hsl(var(--muted-foreground));
+    font-size: var(--text-badge);
+}
+
+/* ── States ───────────────────────────────────────────────────────────── */
+.rc-error {
+    color: hsl(var(--status-error));
+    font-size: var(--text-body);
+    margin: 0;
+}
+.rc-muted {
+    color: hsl(var(--muted-foreground));
+    font-size: var(--text-body);
+    margin: 0;
+}
+.rc-lock {
+    background: hsl(var(--status-warning) / 0.12);
+    color: hsl(var(--status-warning));
+    border-radius: var(--radius-md);
+    padding: 8px 14px;
+    font-size: var(--text-body);
+    margin: 0;
+}
+.rc-gate {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+}
+.rc-gate li {
+    font-size: var(--text-pill);
+    color: hsl(var(--muted-foreground));
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius-full);
+    padding: 4px 12px;
+}
+.rc-gate li.rc-gate--ok {
+    color: hsl(var(--status-success));
+    border-color: hsl(var(--status-success) / 0.4);
+}
+.rc-gate li.rc-gate--ok::before {
+    content: "✓ ";
+}
+
+/* ── Generation progress + result ─────────────────────────────────────── */
+.rc-progress__bar {
+    height: 8px;
+    border-radius: var(--radius-full);
+    background: hsl(var(--accent));
+    overflow: hidden;
+}
+.rc-progress__bar span {
+    display: block;
+    height: 100%;
+    background: hsl(var(--primary));
+    transition: width 0.4s ease;
+}
+.rc-progress__label {
+    margin: 6px 0 0;
+    font-size: var(--text-body);
+    color: hsl(var(--muted-foreground));
+}
+.rc-result {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    align-items: flex-start;
+}
+.rc-result__ok {
+    margin: 0;
+    font-weight: 700;
+    color: hsl(var(--status-success));
+}
+.rc-warn summary {
+    cursor: pointer;
+    color: hsl(var(--status-warning));
+    font-size: var(--text-body);
+}
+
+/* ── Placeholder preview ──────────────────────────────────────────────── */
+.rc-stats {
+    margin: 0;
+    font-weight: 700;
+    font-size: var(--text-body);
+}
+.rc-section {
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius-md);
+    margin-top: var(--space-2);
+}
+.rc-section > summary {
+    cursor: pointer;
+    padding: 8px 12px;
+    font-weight: 700;
+    font-size: var(--text-body);
+}
+.rc-section__count {
+    color: hsl(var(--muted-foreground));
+    font-weight: 400;
+    margin-left: 6px;
+}
+.rc-ph__label {
+    color: hsl(var(--muted-foreground));
+    width: 45%;
+}
+.rc-ph td {
+    border-top: 1px solid hsl(var(--border));
+    padding: 6px 12px;
+    vertical-align: top;
+}
+.rc-badge {
+    display: inline-block;
+    border-radius: var(--radius-full);
+    padding: 2px 10px;
+    font-size: var(--text-badge);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+.rc-badge--adj { background: hsl(var(--status-info) / 0.15); color: hsl(var(--status-info)); }
+.rc-badge--sheet { background: hsl(var(--status-success) / 0.15); color: hsl(var(--status-success)); }
+.rc-badge--ui { background: hsl(var(--accent)); color: hsl(var(--primary)); }
+.rc-badge--claude { background: hsl(var(--chart-purple) / 0.18); color: hsl(var(--chart-purple)); }
+.rc-badge--not_found { background: hsl(var(--muted-foreground) / 0.15); color: hsl(var(--muted-foreground)); }
+
+/* ── Match summary + modal ────────────────────────────────────────────── */
+.rc-match-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    align-items: center;
+}
+.rc-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: hsl(var(--foreground) / 0.45);
+    display: grid;
+    place-items: center;
+    padding: var(--space-4);
+    z-index: 50;
+}
+.rc-modal {
+    background: hsl(var(--background));
+    border-radius: var(--radius-lg);
+    width: min(960px, 100%);
+    max-height: 86vh;
+    overflow: auto;
+    padding: var(--space-6);
+}
+.rc-modal__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-4);
+}
+.rc-modal__head h3 {
+    margin: 0;
+    font-size: var(--text-section);
+}
+.rc-match {
+    display: grid;
+    grid-template-columns: 1fr 280px;
+    gap: var(--space-4);
+}
+@media (max-width: 720px) {
+    .rc-match { grid-template-columns: 1fr; }
+}
+.rc-tactic {
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius-md);
+    padding: 10px 12px;
+    margin-bottom: var(--space-2);
+}
+.rc-tactic__name {
+    font-weight: 700;
+    font-size: var(--text-body);
+}
+.rc-dropzone {
+    margin-top: 6px;
+    border: 1.5px dashed hsl(var(--primary) / 0.4);
+    border-radius: var(--radius-md);
+    padding: 8px 10px;
+    font-size: var(--text-body);
+    color: hsl(var(--muted-foreground));
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+}
+.rc-pool {
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius-md);
+    padding: 10px;
+    align-self: start;
+}
+.rc-pool h4 {
+    margin: 0 0 var(--space-2);
+    font-size: var(--text-badge);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: hsl(var(--muted-foreground));
+}
+.rc-chip {
+    display: block;
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius-md);
+    padding: 6px 10px;
+    margin-bottom: 6px;
+    background: hsl(var(--secondary));
+    cursor: grab;
+    font-size: var(--text-body);
+}
+.rc-chip__channel {
+    color: hsl(var(--muted-foreground));
+    font-size: var(--text-badge);
+}
+.rc-link-btn {
+    background: none;
+    border: none;
+    color: hsl(var(--primary));
+    cursor: pointer;
+    font-size: var(--text-badge);
+    padding: 0;
+    text-decoration: underline;
+}
