@@ -75,11 +75,14 @@ public class SecurityConfig {
                 .contentSecurityPolicy(csp -> csp.policyDirectives(
                     "default-src 'self'; "
                     + "frame-ancestors " + securityProperties.getCsp().getFrameAncestors() + "; "
-                    + "script-src 'self' 'unsafe-inline'; "
-                    + "style-src 'self' 'unsafe-inline'; "
-                    + "img-src 'self' data: https:; "
+                    + "script-src 'self' 'unsafe-inline' https://*.clerk.accounts.dev "
+                    + "https://*.clerk.com https://challenges.cloudflare.com; "
+                    + "worker-src 'self' blob:; "
+                    + "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+                    + "img-src 'self' data: https: blob:; "
                     + "connect-src 'self' https:; "
-                    + "font-src 'self' data:"))
+                    + "frame-src 'self' https://*.clerk.accounts.dev https://challenges.cloudflare.com; "
+                    + "font-src 'self' data: https://fonts.gstatic.com"))
                 .referrerPolicy(r -> r.policy(
                     ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))
                 .contentTypeOptions(opts -> { })

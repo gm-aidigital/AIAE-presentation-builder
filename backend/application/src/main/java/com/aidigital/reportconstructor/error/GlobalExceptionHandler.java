@@ -21,6 +21,7 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 import jakarta.validation.ConstraintViolationException;
 
 import java.time.LocalDateTime;
@@ -102,6 +103,20 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiErrorV1> handleAccessDenied(AccessDeniedException ex) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
             toDto(new ValidationMessage(ErrorReason.C004,
+                new ValidationParameter("detail", ex.getMessage()))));
+    }
+
+    /**
+     * Handles requests for static resources that do not exist (e.g. favicon.ico,
+     * vite.svg) as 404 rather than letting them fall through to a 500.
+     *
+     * @param ex missing-resource exception from the static resource handler
+     * @return 404 API error response
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiErrorV1> handleNoResource(NoResourceFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+            toDto(new ValidationMessage(ErrorReason.C001,
                 new ValidationParameter("detail", ex.getMessage()))));
     }
 
