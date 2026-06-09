@@ -14,9 +14,11 @@ import type { MappingEntry, ReportType, Rows2D } from "../api/types";
 
 export interface ConnectedSheet {
     title: string;
+    tab: string;
     sheetId: string;
     rows: number;
     cols: number;
+    tabsCount: number;
     headers: string[];
     preview: string[][];
 }
