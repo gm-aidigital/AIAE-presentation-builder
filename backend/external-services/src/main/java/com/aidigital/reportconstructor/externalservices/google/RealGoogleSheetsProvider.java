@@ -99,9 +99,20 @@ public class RealGoogleSheetsProvider implements GoogleSheetsProvider {
                 rows.stream().limit(5).toList(),
                 rows
             );
+        } catch (com.google.api.client.googleapis.json.GoogleJsonResponseException ex) {
+            int code = ex.getStatusCode();
+            String googleMsg = ex.getDetails() != null && ex.getDetails().getMessage() != null
+                ? ex.getDetails().getMessage()
+                : ex.getStatusMessage();
+            log.error("[sheets] fetch failed for {} tab={} (HTTP {})", sheetId, tab, code, ex);
+            String hint = (code == 403 || code == 404)
+                ? "The report's Google service account can't open this spreadsheet — share it with the service account (Viewer access), or check the link"
+                : "Google Sheets request failed";
+            throw new AppException(ErrorReason.C000,
+                hint + (googleMsg != null && !googleMsg.isBlank() ? " (" + googleMsg + ")" : "") + " [HTTP " + code + "]");
         } catch (IOException ex) {
             log.error("[sheets] fetch failed for {} tab={}", sheetId, tab, ex);
-            throw new AppException(ErrorReason.C000, "Google Sheets fetch failed");
+            throw new AppException(ErrorReason.C000, "Google Sheets fetch failed: " + ex.getMessage());
         }
     }
 }

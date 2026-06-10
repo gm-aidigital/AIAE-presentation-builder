@@ -3,7 +3,6 @@ import { useClerk, useUser } from "@clerk/clerk-react";
 import { readSheetTab } from "@/shared/api/sheets";
 import type { LineItemMatchResult, PreviewResult, ReportType } from "@/shared/api/types";
 import { WizardProvider, useWizard } from "@/shared/wizard/WizardContext";
-import { useGoogleStatus } from "../api/useGoogleStatus";
 import { useMatchLineItems } from "../api/useMatchLineItems";
 import { usePreviewPlaceholders } from "../api/usePreviewPlaceholders";
 import { fetchReportJob, startReportJob } from "../api/useReportJob";
@@ -31,7 +30,6 @@ function PageInner() {
     const { showToast } = useToast();
     const { user } = useUser();
     const { signOut } = useClerk();
-    const google = useGoogleStatus();
 
     const matchMutation = useMatchLineItems();
     const previewMutation = usePreviewPlaceholders();
@@ -331,7 +329,6 @@ function PageInner() {
     const bothConnected = !!w.mediaPlan && !!w.elevate;
     const matched = (w.mapping ?? []).filter((m) => m.lineItemId).length;
     const matchTotal = (w.mapping ?? []).length;
-    const mockMode = google.data?.mockMode ?? false;
 
     const matchBanner = (
         <div
@@ -380,7 +377,7 @@ function PageInner() {
                     <div className="nav-badge">Report Constructor</div>
                     <div className="nav-user">
                         <span className="nav-user-dot" />
-                        {user?.primaryEmailAddress?.emailAddress ?? ""}
+                        {user?.fullName ?? user?.primaryEmailAddress?.emailAddress ?? ""}
                     </div>
                     <button className="btn-signout" onClick={() => signOut()}>
                         Sign out
@@ -471,18 +468,6 @@ function PageInner() {
                                 <strong>Tip:</strong> Убедись что таблица доступна service-account&apos;у (share или
                                 «Anyone with the link»).
                             </>
-                        }
-                        authBanner={
-                            <div className="auth-banner ok">
-                                <IconCheck size={15} />
-                                <span>
-                                    {mockMode
-                                        ? "Google в stub-режиме — данные будут замоканы (подключи service account для реальных данных)"
-                                        : `Google подключён (service account)${
-                                              google.data?.email ? ` · ${google.data.email}` : ""
-                                          }`}
-                                </span>
-                            </div>
                         }
                         sheet={w.mediaPlan}
                         pulling={mediaPulling}

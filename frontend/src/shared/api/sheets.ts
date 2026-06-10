@@ -22,7 +22,16 @@ export async function readSheetTab(url: string, tab: string): Promise<SheetReadR
         body: { url: url.trim(), tab },
     });
     if (error || !data) {
-        throw new Error(`Failed to read tab "${tab}".`);
+        // Surface the backend's real message (ApiErrorV1.message) instead of a
+        // generic string, so the user sees *why* the read failed (no access,
+        // bad link, tab missing, …) rather than "Failed to read tab".
+        const backendMsg =
+            (error as { message?: string } | undefined)?.message?.trim() ||
+            (data as { message?: string } | undefined)?.message?.trim();
+        throw new Error(
+            backendMsg ||
+                `Couldn't read the "${tab}" tab — check the sheet link and that it's shared with the report service account.`
+        );
     }
     return data;
 }

@@ -317,10 +317,10 @@ textarea:focus { border-color: var(--blue); background: var(--white); box-shadow
 .result-link:hover { border-color: var(--blue); background: var(--blue-light); color: var(--blue); }
 
 /* ── TOAST ── */
-.toast { position: fixed; bottom: 24px; right: 24px; background: var(--blue); border-radius: 8px; padding: 13px 17px; font-size: 13px; color: var(--white); display: flex; align-items: center; gap: 10px; transform: translateY(70px); opacity: 0; transition: all 0.28s cubic-bezier(0.34,1.56,0.64,1); z-index: 200; box-shadow: 0 8px 28px rgba(0,6,223,0.25); max-width: 320px; }
+.toast { position: fixed; bottom: 24px; right: 24px; background: var(--blue); border-radius: 8px; padding: 13px 17px; font-size: 13px; line-height: 1.5; color: var(--white); display: flex; align-items: flex-start; gap: 10px; transform: translateY(70px); opacity: 0; transition: all 0.28s cubic-bezier(0.34,1.56,0.64,1); z-index: 200; box-shadow: 0 8px 28px rgba(0,6,223,0.25); max-width: 440px; overflow-wrap: anywhere; }
 .toast.show { transform: translateY(0); opacity: 1; }
 .toast.error { background: var(--red); }
-.toast-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--lime); flex-shrink: 0; }
+.toast-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--lime); flex-shrink: 0; margin-top: 5px; }
 
 /* ── GENERATING ── */
 .generating-state { display: none; flex-direction: column; gap: 14px; padding: 28px 24px; text-align: center; }
