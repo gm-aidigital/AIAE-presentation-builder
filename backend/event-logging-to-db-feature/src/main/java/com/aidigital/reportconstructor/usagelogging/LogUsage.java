@@ -28,21 +28,21 @@ import java.lang.annotation.Target;
 @Target(ElementType.METHOD)
 public @interface LogUsage {
 
-    /**
-     * Dotted lowercase action name, e.g. "employee.update", "report.export".
-     * OPTIONAL — when blank the aspect derives {@code <aggregate>.<method>}
-     * from the impl class + method. Set it only to override that default.
-     * Becomes UsageEvent.action.
-     *
-     * @return usage action name override, or "" to use the derived name
-     */
-    String action() default "";
+	/**
+	 * Dotted lowercase action name, e.g. "employee.update", "report.export".
+	 * OPTIONAL — when blank the aspect derives {@code <aggregate>.<method>}
+	 * from the impl class + method. Set it only to override that default.
+	 * Becomes UsageEvent.action.
+	 *
+	 * @return usage action name override, or "" to use the derived name
+	 */
+	String action() default "";
 
-    /**
-     * Event category. Defaults to "api_request". Other values: "auth",
-     * "custom". Errors are inferred automatically when the method throws.
-     *
-     * @return usage event category
-     */
-    String eventType() default "api_request";
+	/**
+	 * Event category. Defaults to "api_request". Other values: "auth",
+	 * "custom". Errors are inferred automatically when the method throws.
+	 *
+	 * @return usage event category
+	 */
+	String eventType() default "api_request";
 }

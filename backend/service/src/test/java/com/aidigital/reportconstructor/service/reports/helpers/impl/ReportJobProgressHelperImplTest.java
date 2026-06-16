@@ -22,65 +22,67 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class ReportJobProgressHelperImplTest {
 
-    @Mock ReportJobRepository jobs;
+	@Mock
+	ReportJobRepository jobs;
 
-    @InjectMocks ReportJobProgressHelperImpl helper;
+	@InjectMocks
+	ReportJobProgressHelperImpl helper;
 
-    @Test
-    void shouldCreateQueuedJobWithSevenStepsTest() {
-        when(jobs.save(any(ReportJobEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+	@Test
+	void shouldCreateQueuedJobWithSevenStepsTest() {
+		when(jobs.save(any(ReportJobEntity.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        ReportJobEntity job = helper.createQueuedJob("user-1", "standard");
+		ReportJobEntity job = helper.createQueuedJob("user-1", "standard");
 
-        ArgumentCaptor<ReportJobEntity> captor = ArgumentCaptor.forClass(ReportJobEntity.class);
-        verify(jobs).save(captor.capture());
-        assertThat(captor.getValue().getStatus()).isEqualTo("queued");
-        assertThat(captor.getValue().getTotal()).isEqualTo(7);
-        assertThat(captor.getValue().getOwnerUserId()).isEqualTo("user-1");
-        assertThat(captor.getValue().getReportTypeCode()).isEqualTo("standard");
-        assertThat(job.getLabel()).isEqualTo("Queued…");
-    }
+		ArgumentCaptor<ReportJobEntity> captor = ArgumentCaptor.forClass(ReportJobEntity.class);
+		verify(jobs).save(captor.capture());
+		assertThat(captor.getValue().getStatus()).isEqualTo("queued");
+		assertThat(captor.getValue().getTotal()).isEqualTo(7);
+		assertThat(captor.getValue().getOwnerUserId()).isEqualTo("user-1");
+		assertThat(captor.getValue().getReportTypeCode()).isEqualTo("standard");
+		assertThat(job.getLabel()).isEqualTo("Queued…");
+	}
 
-    @Test
-    void shouldMarkJobRunningAtStepTest() {
-        ReportJobEntity existing = new ReportJobEntity();
-        existing.setId(5L);
-        when(jobs.findById(5L)).thenReturn(Optional.of(existing));
-        when(jobs.save(any(ReportJobEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+	@Test
+	void shouldMarkJobRunningAtStepTest() {
+		ReportJobEntity existing = new ReportJobEntity();
+		existing.setId(5L);
+		when(jobs.findById(5L)).thenReturn(Optional.of(existing));
+		when(jobs.save(any(ReportJobEntity.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        helper.markJobRunningAtStep(5L, 3, "Claude — campaign batch (A)");
+		helper.markJobRunningAtStep(5L, 3, "Claude — campaign batch (A)");
 
-        assertThat(existing.getStatus()).isEqualTo("running");
-        assertThat(existing.getStep()).isEqualTo(3);
-        assertThat(existing.getLabel()).isEqualTo("Claude — campaign batch (A)");
-    }
+		assertThat(existing.getStatus()).isEqualTo("running");
+		assertThat(existing.getStep()).isEqualTo(3);
+		assertThat(existing.getLabel()).isEqualTo("Claude — campaign batch (A)");
+	}
 
-    @Test
-    void shouldMarkJobDoneTest() {
-        ReportJobEntity existing = new ReportJobEntity();
-        existing.setId(9L);
-        when(jobs.findById(9L)).thenReturn(Optional.of(existing));
-        when(jobs.save(any(ReportJobEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+	@Test
+	void shouldMarkJobDoneTest() {
+		ReportJobEntity existing = new ReportJobEntity();
+		existing.setId(9L);
+		when(jobs.findById(9L)).thenReturn(Optional.of(existing));
+		when(jobs.save(any(ReportJobEntity.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        helper.markJobDone(9L, "https://slides/d/abc123/edit", "[\"warn\"]");
+		helper.markJobDone(9L, "https://slides/d/abc123/edit", "[\"warn\"]");
 
-        assertThat(existing.getStatus()).isEqualTo("done");
-        assertThat(existing.getStep()).isEqualTo(7);
-        assertThat(existing.getLabel()).isEqualTo("Done!");
-        assertThat(existing.getSlideUrl()).isEqualTo("https://slides/d/abc123/edit");
-        assertThat(existing.getWarningsJson()).isEqualTo("[\"warn\"]");
-    }
+		assertThat(existing.getStatus()).isEqualTo("done");
+		assertThat(existing.getStep()).isEqualTo(7);
+		assertThat(existing.getLabel()).isEqualTo("Done!");
+		assertThat(existing.getSlideUrl()).isEqualTo("https://slides/d/abc123/edit");
+		assertThat(existing.getWarningsJson()).isEqualTo("[\"warn\"]");
+	}
 
-    @Test
-    void shouldThrowWhenJobNotOwnedByUserTest() {
-        ReportJobEntity existing = new ReportJobEntity();
-        existing.setOwnerUserId("other");
-        when(jobs.findById(1L)).thenReturn(Optional.of(existing));
+	@Test
+	void shouldThrowWhenJobNotOwnedByUserTest() {
+		ReportJobEntity existing = new ReportJobEntity();
+		existing.setOwnerUserId("other");
+		when(jobs.findById(1L)).thenReturn(Optional.of(existing));
 
-        Throwable thrown = catchThrowable(() -> helper.loadJobForOwner("user-1", 1L));
+		Throwable thrown = catchThrowable(() -> helper.loadJobForOwner("user-1", 1L));
 
-        assertThat(thrown)
-            .isInstanceOf(AppException.class)
-            .hasFieldOrPropertyWithValue("code", ErrorReason.C001.getCode());
-    }
+		assertThat(thrown)
+				.isInstanceOf(AppException.class)
+				.hasFieldOrPropertyWithValue("code", ErrorReason.C001.getCode());
+	}
 }

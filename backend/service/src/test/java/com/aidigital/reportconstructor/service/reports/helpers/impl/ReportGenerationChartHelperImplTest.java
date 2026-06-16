@@ -3,9 +3,10 @@ package com.aidigital.reportconstructor.service.reports.helpers.impl;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
-import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload.LineItemMapping;
-import com.aidigital.reportconstructor.service.reports.helpers.TacticExtractionHelper;
+import com.aidigital.reportconstructor.service.reports.dto.LineItemMapping;
+import com.aidigital.reportconstructor.service.reports.dto.Totals;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportNumberParser;
+import com.aidigital.reportconstructor.service.reports.helpers.TacticExtractionHelper;
 import com.aidigital.reportconstructor.service.reports.ports.ChartProvider;
 import com.aidigital.reportconstructor.service.reports.ports.SlidesProvider;
 import org.junit.jupiter.api.Test;
@@ -28,94 +29,99 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class ReportGenerationChartHelperImplTest {
 
-    @Mock ChartProvider charts;
-    @Mock SlidesProvider slides;
-    @Mock TacticExtractionHelper tacticExtraction;
-    @Mock ReportNumberParser reportNumbers;
+	@Mock
+	ChartProvider charts;
+	@Mock
+	SlidesProvider slides;
+	@Mock
+	TacticExtractionHelper tacticExtraction;
+	@Mock
+	ReportNumberParser reportNumbers;
 
-    @InjectMocks ReportGenerationChartHelperImpl helper;
+	@InjectMocks
+	ReportGenerationChartHelperImpl helper;
 
-    @Test
-    void shouldExtractPresentationIdFromSlideUrlTest() {
-        assertThat(helper.extractPresentationId("https://docs.google.com/presentation/d/abc-123_9/edit"))
-            .isEqualTo("abc-123_9");
-        assertThat(helper.extractPresentationId(null)).isNull();
-    }
+	@Test
+	void shouldExtractPresentationIdFromSlideUrlTest() {
+		assertThat(helper.extractPresentationId("https://docs.google.com/presentation/d/abc-123_9/edit"))
+				.isEqualTo("abc-123_9");
+		assertThat(helper.extractPresentationId(null)).isNull();
+	}
 
-    @Test
-    void shouldSkipChartsWhenRequiredInputsMissingTest() {
-        GeneratePayload payload = new GeneratePayload(
-            "brief", "standard", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "");
+	@Test
+	void shouldSkipChartsWhenRequiredInputsMissingTest() {
+		GeneratePayload payload = new GeneratePayload(
+				"brief", "standard", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "");
 
-        List<String> warnings = helper.buildCharts(
-            "https://docs.google.com/presentation/d/abc/edit",
-            payload,
-            emptyCampaignData(),
-            Map.of(),
-            "token"
-        );
+		List<String> warnings = helper.buildCharts(
+				"https://docs.google.com/presentation/d/abc/edit",
+				payload,
+				emptyCampaignData(),
+				Map.of(),
+				"token"
+		);
 
-        assertThat(warnings).isEmpty();
-        verify(charts, never()).buildCharts(any());
-    }
+		assertThat(warnings).isEmpty();
+		verify(charts, never()).buildCharts(any());
+	}
 
-    @Test
-    void shouldReturnSkipWarningWhenPresentationIdMissingTest() {
-        GeneratePayload payload = payloadWithChartInputs();
+	@Test
+	void shouldReturnSkipWarningWhenPresentationIdMissingTest() {
+		GeneratePayload payload = payloadWithChartInputs();
 
-        List<String> warnings = helper.buildCharts(
-            "https://example.com/no-id",
-            payload,
-            emptyCampaignData(),
-            placeholderMap(),
-            "token"
-        );
+		List<String> warnings = helper.buildCharts(
+				"https://example.com/no-id",
+				payload,
+				emptyCampaignData(),
+				placeholderMap(),
+				"token"
+		);
 
-        assertThat(warnings).containsExactly(
-            "Charts skipped — could not determine presentation id from https://example.com/no-id");
-    }
+		assertThat(warnings).containsExactly(
+				"Charts skipped — could not determine presentation id from https://example.com/no-id");
+	}
 
-    @Test
-    void shouldTrimTacticsWhenPresentationIdPresentTest() {
-        GeneratePayload payload = payloadWithChartInputs();
-        when(tacticExtraction.countTacticsInMediaPlan(payload.sheetRows())).thenReturn(3);
+	@Test
+	void shouldTrimTacticsWhenPresentationIdPresentTest() {
+		GeneratePayload payload = payloadWithChartInputs();
+		when(tacticExtraction.countTacticsInMediaPlan(payload.sheetRows())).thenReturn(3);
 
-        helper.trimUnusedTactics("https://docs.google.com/presentation/d/deck-id/edit", payload, "token");
+		helper.trimUnusedTactics("https://docs.google.com/presentation/d/deck-id/edit", payload, "token");
 
-        verify(slides).trimTactics(eq("deck-id"), eq(3), eq("token"));
-    }
+		verify(slides).trimTactics(eq("deck-id"), eq(3), eq("token"));
+	}
 
-    private static GeneratePayload payloadWithChartInputs() {
-        return new GeneratePayload(
-            "brief",
-            "standard",
-            List.of(List.of("Media"), List.of("Display")),
-            List.of(List.of("Label", "Value")),
-            List.of(),
-            List.of(),
-            List.of(),
-            List.of(new LineItemMapping("Display", "99", 1)),
-            "sheet-id"
-        );
-    }
+	private static GeneratePayload payloadWithChartInputs() {
+		return new GeneratePayload(
+				"brief",
+				"standard",
+				List.of(List.of("Media"), List.of("Display")),
+				List.of(List.of("Label", "Value")),
+				List.of(),
+				List.of(),
+				List.of(),
+				List.of(new LineItemMapping("Display", "99", 1)),
+				"sheet-id"
+		);
+	}
 
-    private static CampaignData emptyCampaignData() {
-        return new CampaignData(
-            "", "", "", "", "",
-            new FlightDates(null, null),
-            "", "", "", "", "",
-            new CampaignData.Totals(0, 0, 0, 0, null, null),
-            Map.of(),
-            ""
-        );
-    }
+	private static CampaignData emptyCampaignData() {
+		return new CampaignData(
+				"", "", "", "", "",
+				new FlightDates(null, null),
+				"", "", "", "", "",
+				new Totals(0, 0, 0, 0, null, null),
+				Map.of(),
+				""
+		);
+	}
 
-    private static Map<String, String> placeholderMap() {
-        Map<String, String> map = new LinkedHashMap<>();
-        map.put("{{Campaign_name}}", "Spring Campaign");
-        map.put("{{total imps}}", "1,234");
-        map.put("{{tactic 1}}", "Display");
-        map.put("{{tactic 1 imps}}", "500");
-        return map;
-    }
+	private static Map<String, String> placeholderMap() {
+		Map<String, String> map = new LinkedHashMap<>();
+		map.put("{{Campaign_name}}", "Spring Campaign");
+		map.put("{{total imps}}", "1,234");
+		map.put("{{tactic 1}}", "Display");
+		map.put("{{tactic 1 imps}}", "500");
+		return map;
+	}
 }

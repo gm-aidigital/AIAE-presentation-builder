@@ -12,10 +12,10 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class PostgreSqlUsageEventSink implements UsageEventSink {
 
-    private final UsageEventPersistenceService persistenceService;
+	private final UsageEventPersistenceService persistenceService;
 
-    @Override
-    public void record(UsageEvent event) {
-        persistenceService.persist(event);
-    }
+	@Override
+	public void record(UsageEvent event) {
+		persistenceService.persist(event);
+	}
 }

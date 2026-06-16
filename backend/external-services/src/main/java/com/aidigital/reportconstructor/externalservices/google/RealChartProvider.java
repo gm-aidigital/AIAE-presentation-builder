@@ -1,7 +1,7 @@
 package com.aidigital.reportconstructor.externalservices.google;
 
 import com.aidigital.reportconstructor.service.reports.ports.ChartProvider;
-import com.aidigital.reportconstructor.service.reports.ports.ChartProvider.ChartRequest;
+import com.aidigital.reportconstructor.service.reports.ports.ChartRequest;
 import com.google.api.client.http.HttpRequestInitializer;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.context.annotation.Primary;
@@ -19,27 +19,27 @@ import java.util.List;
 @ConditionalOnBean(GoogleCredentialsFactory.class)
 public class RealChartProvider implements ChartProvider {
 
-    private final GoogleClientsFactory clients;
-    private final TacticChartBuilder chartBuilder;
+	private final GoogleClientsFactory clients;
+	private final TacticChartBuilder chartBuilder;
 
-    public RealChartProvider(GoogleClientsFactory clients, TacticChartBuilder chartBuilder) {
-        this.clients = clients;
-        this.chartBuilder = chartBuilder;
-    }
+	public RealChartProvider(GoogleClientsFactory clients, TacticChartBuilder chartBuilder) {
+		this.clients = clients;
+		this.chartBuilder = chartBuilder;
+	}
 
-    @Override
-    public boolean isLive() {
-        return true;
-    }
+	@Override
+	public boolean isLive() {
+		return true;
+	}
 
-    @Override
-    public List<String> buildCharts(ChartRequest req) {
-        boolean asUser = req.userGoogleAccessToken() != null && !req.userGoogleAccessToken().isBlank();
-        HttpRequestInitializer init = asUser
-            ? clients.userInitializer(req.userGoogleAccessToken())
-            : clients.serviceAccountInitializer();
-        ChartClients chartClients = new ChartClients(
-            clients.drive(init), clients.sheets(init), clients.slides(init));
-        return chartBuilder.buildAllCharts(chartClients, req);
-    }
+	@Override
+	public List<String> buildCharts(ChartRequest req) {
+		boolean asUser = req.userGoogleAccessToken() != null && !req.userGoogleAccessToken().isBlank();
+		HttpRequestInitializer init = asUser
+				? clients.userInitializer(req.userGoogleAccessToken())
+				: clients.serviceAccountInitializer();
+		ChartClients chartClients = new ChartClients(
+				clients.drive(init), clients.sheets(init), clients.slides(init));
+		return chartBuilder.buildAllCharts(chartClients, req);
+	}
 }

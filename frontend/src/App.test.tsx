@@ -5,6 +5,8 @@ import App from "./App";
 
 vi.mock("@clerk/clerk-react", () => ({
     UserButton: () => <div data-testid="user-button-stub" />,
+    useUser: () => ({ user: null, isLoaded: true }),
+    useClerk: () => ({ signOut: vi.fn() }),
 }));
 
 /**

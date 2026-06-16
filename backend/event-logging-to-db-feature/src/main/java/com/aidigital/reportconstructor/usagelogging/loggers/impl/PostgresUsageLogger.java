@@ -15,10 +15,10 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class PostgresUsageLogger implements UsageLogger {
 
-    private final UsageEventSink usageEventSink;
+	private final UsageEventSink usageEventSink;
 
-    @Override
-    public void record(UsageEvent event) {
-        usageEventSink.record(event);
-    }
+	@Override
+	public void record(UsageEvent event) {
+		usageEventSink.record(event);
+	}
 }

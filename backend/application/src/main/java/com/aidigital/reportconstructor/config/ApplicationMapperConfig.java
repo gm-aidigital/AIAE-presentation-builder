@@ -8,8 +8,9 @@ import org.mapstruct.ReportingPolicy;
  * Shared MapStruct policy for API-layer DTO mappers.
  */
 @MapperConfig(
-    componentModel = MappingConstants.ComponentModel.SPRING,
-    unmappedTargetPolicy = ReportingPolicy.ERROR
+		componentModel = MappingConstants.ComponentModel.SPRING,
+		unmappedTargetPolicy = ReportingPolicy.ERROR
 )
 public interface ApplicationMapperConfig {
+
 }

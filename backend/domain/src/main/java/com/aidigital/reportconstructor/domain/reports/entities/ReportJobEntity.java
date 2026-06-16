@@ -21,41 +21,41 @@ import java.time.OffsetDateTime;
 @Setter
 public class ReportJobEntity extends IdAwareEntity {
 
-    @Column(name = "owner_user_id", nullable = false)
-    private String ownerUserId;
+	@Column(name = "owner_user_id", nullable = false)
+	private String ownerUserId;
 
-    @Column(name = "status", nullable = false)
-    private String status;
+	@Column(name = "status", nullable = false)
+	private String status;
 
-    @Column(name = "step", nullable = false)
-    private Integer step;
+	@Column(name = "step", nullable = false)
+	private Integer step;
 
-    @Column(name = "total", nullable = false)
-    private Integer total;
+	@Column(name = "total", nullable = false)
+	private Integer total;
 
-    @Column(name = "label")
-    private String label;
+	@Column(name = "label")
+	private String label;
 
-    @Column(name = "report_type_code")
-    private String reportTypeCode;
+	@Column(name = "report_type_code")
+	private String reportTypeCode;
 
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "payload_json", columnDefinition = "jsonb")
-    private String payloadJson;
+	@JdbcTypeCode(SqlTypes.JSON)
+	@Column(name = "payload_json", columnDefinition = "jsonb")
+	private String payloadJson;
 
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "warnings_json", columnDefinition = "jsonb")
-    private String warningsJson;
+	@JdbcTypeCode(SqlTypes.JSON)
+	@Column(name = "warnings_json", columnDefinition = "jsonb")
+	private String warningsJson;
 
-    @Column(name = "slide_url")
-    private String slideUrl;
+	@Column(name = "slide_url")
+	private String slideUrl;
 
-    @Column(name = "error_message")
-    private String errorMessage;
+	@Column(name = "error_message")
+	private String errorMessage;
 
-    @Column(name = "created_at", nullable = false)
-    private OffsetDateTime createdAt;
+	@Column(name = "created_at", nullable = false)
+	private OffsetDateTime createdAt;
 
-    @Column(name = "updated_at", nullable = false)
-    private OffsetDateTime updatedAt;
+	@Column(name = "updated_at", nullable = false)
+	private OffsetDateTime updatedAt;
 }

@@ -12,11 +12,11 @@ import org.mapstruct.Mapper;
 @Mapper(config = ApplicationMapperConfig.class)
 public interface UserMapper {
 
-    /**
-     * Converts the caller context into the API user payload.
-     *
-     * @param appUser authenticated caller context
-     * @return API user payload (identity only; no baseline roles)
-     */
-    UserV1 toUserV1(AppUser appUser);
+	/**
+	 * Converts the caller context into the API user payload.
+	 *
+	 * @param appUser authenticated caller context
+	 * @return API user payload (identity only; no baseline roles)
+	 */
+	UserV1 toUserV1(AppUser appUser);
 }

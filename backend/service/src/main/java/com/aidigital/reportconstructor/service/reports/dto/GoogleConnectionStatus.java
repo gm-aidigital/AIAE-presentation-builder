@@ -12,11 +12,11 @@ package com.aidigital.reportconstructor.service.reports.dto;
  * @param connectUrl the OAuth connect URL the caller should visit to authZ, empty when no explicit connect is needed
  */
 public record GoogleConnectionStatus(
-    boolean connected,
-    boolean mockMode,
-    String email,
-    java.util.List<String> scopes,
-    String connectUrl
+		boolean connected,
+		boolean mockMode,
+		String email,
+		java.util.List<String> scopes,
+		String connectUrl
 ) {
 	// required
 }

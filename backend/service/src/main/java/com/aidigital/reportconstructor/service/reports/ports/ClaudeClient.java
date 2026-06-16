@@ -18,18 +18,28 @@ import java.util.List;
  */
 public interface ClaudeClient {
 
-    /** @return true when the client is hitting the real Anthropic API. */
-    boolean isLive();
+	/**
+	 * @return true when the client is hitting the real Anthropic API.
+	 */
+	boolean isLive();
 
-    /** Batch A — audience age/segments, proposal overview, 4 strategic insights. */
-    ClaudeStrategic batchStrategic(CampaignData data, String brief);
+	/**
+	 * Batch A — audience age/segments, proposal overview, 4 strategic insights.
+	 */
+	ClaudeStrategic batchStrategic(CampaignData data, String brief);
 
-    /** Batch B — per-tactic gender split + weekday/weekend peak windows. */
-    ClaudeTactical batchTactical(CampaignData data, String brief);
+	/**
+	 * Batch B — per-tactic gender split + weekday/weekend peak windows.
+	 */
+	ClaudeTactical batchTactical(CampaignData data, String brief);
 
-    /** Batch C — results overview, thoughts on performance, tactic overviews. */
-    ClaudeResults batchResults(CampaignData data, String brief);
+	/**
+	 * Batch C — results overview, thoughts on performance, tactic overviews.
+	 */
+	ClaudeResults batchResults(CampaignData data, String brief);
 
-    /** Geo-tab → short ≤40-char comma-separated location string (or null). */
-    String summarizeGeo(List<List<String>> geoRows);
+	/**
+	 * Geo-tab → short ≤40-char comma-separated location string (or null).
+	 */
+	String summarizeGeo(List<List<String>> geoRows);
 }

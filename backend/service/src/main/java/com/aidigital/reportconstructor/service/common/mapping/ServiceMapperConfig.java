@@ -8,8 +8,9 @@ import org.mapstruct.ReportingPolicy;
  * Shared MapStruct policy for service-layer mappers.
  */
 @MapperConfig(
-    componentModel = MappingConstants.ComponentModel.SPRING,
-    unmappedTargetPolicy = ReportingPolicy.ERROR
+		componentModel = MappingConstants.ComponentModel.SPRING,
+		unmappedTargetPolicy = ReportingPolicy.ERROR
 )
 public interface ServiceMapperConfig {
+
 }

@@ -75,7 +75,7 @@ app:
     sso:
       issuer-uri: ${AUTH_ISSUER_URI:}
       jwk-set-uri: ${AUTH_JWKS_URI:}
-      audience:   ${AUTH_AUDIENCE:}
+      audience: ${AUTH_AUDIENCE:}
   clerk:
     secret-key: ${CLERK_SECRET_KEY:}
     google-provider: ${CLERK_GOOGLE_PROVIDER:oauth_google}
@@ -90,16 +90,16 @@ app:
   # See observability/logbook-http-logging-rules.md.
   logbook:
     censored-replacement: XXX
-    headers-to-censor: [Authorization, Cookie, Set-Cookie, X-API-Key, AccessKey, Proxy-Authorization]
-    json-fields-to-censor: [".*password.*", ".*token.*", ".*secret.*", ".*key.*", ".*credential.*", ".*authorization.*", privateKey, clientSecret, serviceAccount]
+    headers-to-censor: [ Authorization, Cookie, Set-Cookie, X-API-Key, AccessKey, Proxy-Authorization ]
+    json-fields-to-censor: [ ".*password.*", ".*token.*", ".*secret.*", ".*key.*", ".*credential.*", ".*authorization.*", privateKey, clientSecret, serviceAccount ]
     excluded:
-      "/**/actuator/**": [GET]
-      "/**/swagger-ui/**": [GET]
-      "/**/specs/**": [GET]
-      "/health": [GET]
-      "/**": [OPTIONS]
+      "/**/actuator/**": [ GET ]
+      "/**/swagger-ui/**": [ GET ]
+      "/**/specs/**": [ GET ]
+      "/health": [ GET ]
+      "/**": [ OPTIONS ]
   usage-logging:
-    enabled:      ${USAGE_LOGGING_ENABLED:true}
+    enabled: ${USAGE_LOGGING_ENABLED:true}
     # service-name MUST be non-empty when enabled=true. Default falls back
     # to spring.application.name so a generated project doesn't silently
     # bind NoOpUsageLogger because of an unset env var (past sessions
@@ -107,7 +107,7 @@ app:
     # USAGE_LOG_SERVICE_NAME env var with the real stable identifier
     # (e.g. `employee-directory`, NOT `replit-mvp-template`).
     service-name: ${USAGE_LOG_SERVICE_NAME:${spring.application.name}}
-    environment:  ${USAGE_LOG_ENVIRONMENT:dev}
+    environment: ${USAGE_LOG_ENVIRONMENT:dev}
     executor-core-pool-size: ${USAGE_LOG_EXECUTOR_CORE_POOL_SIZE:1}
     executor-max-pool-size: ${USAGE_LOG_EXECUTOR_MAX_POOL_SIZE:2}
     executor-queue-capacity: ${USAGE_LOG_EXECUTOR_QUEUE_CAPACITY:200}
@@ -191,4 +191,4 @@ external:
           blue: 0.133
   anthropic:
     api-key: ${ANTHROPIC_API_KEY:}
-    model:   ${ANTHROPIC_MODEL:claude-sonnet-4-6}
+    model: ${ANTHROPIC_MODEL:claude-sonnet-4-6}

@@ -16,13 +16,13 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 @ActiveProfiles("test")
 class ApplicationSmokeTest {
 
-    // SSO-only: SecurityConfig.jwtDecoder is @ConditionalOnMissingBean and
-    // fails fast without a real Clerk issuer. A stub decoder lets the context
-    // load without reaching a JWKS endpoint.
-    @MockitoBean
-    private JwtDecoder jwtDecoder;
+	// SSO-only: SecurityConfig.jwtDecoder is @ConditionalOnMissingBean and
+	// fails fast without a real Clerk issuer. A stub decoder lets the context
+	// load without reaching a JWKS endpoint.
+	@MockitoBean
+	private JwtDecoder jwtDecoder;
 
-    @Test
-    void shouldLoadSpringContextTest() {
-    }
+	@Test
+	void shouldLoadSpringContextTest() {
+	}
 }

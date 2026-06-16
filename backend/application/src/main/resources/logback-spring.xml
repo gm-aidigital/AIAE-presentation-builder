@@ -15,47 +15,47 @@
 -->
 <configuration>
 
-    <springProperty scope="context" name="appName" source="spring.application.name" defaultValue="app"/>
+	<springProperty scope="context" name="appName" source="spring.application.name" defaultValue="app"/>
 
-    <!-- JSON on every default profile (local, replit, prod). Readable console logs: spring.profiles.active=local,readable -->
-    <springProfile name="!readable">
-        <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
-            <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
-                <providers>
-                    <timestamp>
-                        <fieldName>@timestamp</fieldName>
-                    </timestamp>
-                    <pattern>
-                        <pattern>
-                            {
-                              "level": "%level",
-                              "logger": "%logger",
-                              "thread": "%thread",
-                              "service": "${appName}",
-                              "message": "%message"
-                            }
-                        </pattern>
-                    </pattern>
-                    <mdc/>
-                    <stackTrace/>
-                </providers>
-            </encoder>
-        </appender>
-    </springProfile>
+	<!-- JSON on every default profile (local, replit, prod). Readable console logs: spring.profiles.active=local,readable -->
+	<springProfile name="!readable">
+		<appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+			<encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
+				<providers>
+					<timestamp>
+						<fieldName>@timestamp</fieldName>
+					</timestamp>
+					<pattern>
+						<pattern>
+							{
+							"level": "%level",
+							"logger": "%logger",
+							"thread": "%thread",
+							"service": "${appName}",
+							"message": "%message"
+							}
+						</pattern>
+					</pattern>
+					<mdc/>
+					<stackTrace/>
+				</providers>
+			</encoder>
+		</appender>
+	</springProfile>
 
-    <springProfile name="readable">
-        <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
-            <encoder>
-                <pattern>%d{HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n</pattern>
-            </encoder>
-        </appender>
-    </springProfile>
+	<springProfile name="readable">
+		<appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+			<encoder>
+				<pattern>%d{HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n</pattern>
+			</encoder>
+		</appender>
+	</springProfile>
 
-    <root level="INFO">
-        <appender-ref ref="STDOUT"/>
-    </root>
+	<root level="INFO">
+		<appender-ref ref="STDOUT"/>
+	</root>
 
-    <!-- Zalando Logbook: TRACE so HTTP request/response lines are emitted
-         with the configured masking applied. -->
-    <logger name="org.zalando.logbook" level="TRACE"/>
+	<!-- Zalando Logbook: TRACE so HTTP request/response lines are emitted
+		 with the configured masking applied. -->
+	<logger name="org.zalando.logbook" level="TRACE"/>
 </configuration>

@@ -12,8 +12,8 @@ import com.aidigital.reportconstructor.usagelogging.models.UsageEvent;
  */
 public class NoOpUsageLogger implements UsageLogger {
 
-    @Override
-    public void record(UsageEvent event) {
-        // no-op
-    }
+	@Override
+	public void record(UsageEvent event) {
+		// no-op
+	}
 }

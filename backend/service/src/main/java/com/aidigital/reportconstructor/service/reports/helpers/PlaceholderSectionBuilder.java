@@ -14,23 +14,23 @@ import java.util.List;
  */
 public interface PlaceholderSectionBuilder {
 
-    /**
-     * Builds every preview section, merging resolver output with Claude batch results.
-     *
-     * @param payload    constructor request supplying sheet/adjustments rows and report type
-     * @param data         aggregated campaign/tactic metrics snapshot
-     * @param ccA          Claude Batch A strategic copy
-     * @param ccB          Claude Batch B tactical copy
-     * @param ccC          Claude Batch C results copy
-     * @param geoSummary   AI geo summary, or {@code null} when not used
-     * @return ordered preview sections with their Russian UI titles
-     */
-    List<PreviewSection> buildSections(
-        GeneratePayload payload,
-        CampaignData data,
-        ClaudeStrategic ccA,
-        ClaudeTactical ccB,
-        ClaudeResults ccC,
-        String geoSummary
-    );
+	/**
+	 * Builds every preview section, merging resolver output with Claude batch results.
+	 *
+	 * @param payload    constructor request supplying sheet/adjustments rows and report type
+	 * @param data       aggregated campaign/tactic metrics snapshot
+	 * @param ccA        Claude Batch A strategic copy
+	 * @param ccB        Claude Batch B tactical copy
+	 * @param ccC        Claude Batch C results copy
+	 * @param geoSummary AI geo summary, or {@code null} when not used
+	 * @return ordered preview sections with their Russian UI titles
+	 */
+	List<PreviewSection> buildSections(
+			GeneratePayload payload,
+			CampaignData data,
+			ClaudeStrategic ccA,
+			ClaudeTactical ccB,
+			ClaudeResults ccC,
+			String geoSummary
+	);
 }

@@ -29,36 +29,40 @@ import java.util.UUID;
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class CorrelationIdFilter extends OncePerRequestFilter {
 
-    /** Header name used both for the incoming id and the echoed response header. */
-    public static final String HEADER = "X-Correlation-Id";
-    /** MDC key — referenced by {@code logback-spring.xml} JSON encoder. */
-    public static final String MDC_KEY = "correlationId";
+	/**
+	 * Header name used both for the incoming id and the echoed response header.
+	 */
+	public static final String HEADER = "X-Correlation-Id";
+	/**
+	 * MDC key — referenced by {@code logback-spring.xml} JSON encoder.
+	 */
+	public static final String MDC_KEY = "correlationId";
 
-    /**
-     * Reads or generates the correlation id, sets MDC + response header,
-     * delegates to the chain, and clears MDC in {@code finally}.
-     *
-     * @param request  inbound servlet request
-     * @param response outbound servlet response
-     * @param chain    filter chain to delegate to
-     * @throws ServletException propagated from downstream filters
-     * @throws IOException      propagated from downstream filters
-     */
-    @Override
-    protected void doFilterInternal(HttpServletRequest request,
-                                    HttpServletResponse response,
-                                    FilterChain chain)
-            throws ServletException, IOException {
-        String incoming = request.getHeader(HEADER);
-        String id = (incoming == null || incoming.isBlank())
-            ? UUID.randomUUID().toString()
-            : incoming;
-        MDC.put(MDC_KEY, id);
-        response.setHeader(HEADER, id);
-        try {
-            chain.doFilter(request, response);
-        } finally {
-            MDC.remove(MDC_KEY);
-        }
-    }
+	/**
+	 * Reads or generates the correlation id, sets MDC + response header,
+	 * delegates to the chain, and clears MDC in {@code finally}.
+	 *
+	 * @param request  inbound servlet request
+	 * @param response outbound servlet response
+	 * @param chain    filter chain to delegate to
+	 * @throws ServletException propagated from downstream filters
+	 * @throws IOException      propagated from downstream filters
+	 */
+	@Override
+	protected void doFilterInternal(HttpServletRequest request,
+	                                HttpServletResponse response,
+	                                FilterChain chain)
+			throws ServletException, IOException {
+		String incoming = request.getHeader(HEADER);
+		String id = (incoming == null || incoming.isBlank())
+				? UUID.randomUUID().toString()
+				: incoming;
+		MDC.put(MDC_KEY, id);
+		response.setHeader(HEADER, id);
+		try {
+			chain.doFilter(request, response);
+		} finally {
+			MDC.remove(MDC_KEY);
+		}
+	}
 }

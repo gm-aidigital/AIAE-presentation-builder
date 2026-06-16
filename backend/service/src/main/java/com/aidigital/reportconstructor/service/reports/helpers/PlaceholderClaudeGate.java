@@ -8,37 +8,37 @@ import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
  */
 public interface PlaceholderClaudeGate {
 
-    /**
-     * Returns true when Batch A strategic placeholders are absent from both row sets.
-     *
-     * @param payload constructor request whose adjustments and sheet rows are inspected
-     * @return {@code true} when at least one Batch A placeholder still needs AI generation
-     */
-    boolean needStrategic(GeneratePayload payload);
+	/**
+	 * Returns true when Batch A strategic placeholders are absent from both row sets.
+	 *
+	 * @param payload constructor request whose adjustments and sheet rows are inspected
+	 * @return {@code true} when at least one Batch A placeholder still needs AI generation
+	 */
+	boolean needStrategic(GeneratePayload payload);
 
-    /**
-     * Returns true when any tactic still needs Batch B gender or weekday copy.
-     *
-     * @param payload constructor request whose adjustments and sheet rows are inspected
-     * @param data    aggregated snapshot whose tactic keys drive per-tactic checks
-     * @return {@code true} when at least one tactic still needs Batch B copy
-     */
-    boolean needTactical(GeneratePayload payload, CampaignData data);
+	/**
+	 * Returns true when any tactic still needs Batch B gender or weekday copy.
+	 *
+	 * @param payload constructor request whose adjustments and sheet rows are inspected
+	 * @param data    aggregated snapshot whose tactic keys drive per-tactic checks
+	 * @return {@code true} when at least one tactic still needs Batch B copy
+	 */
+	boolean needTactical(GeneratePayload payload, CampaignData data);
 
-    /**
-     * Returns true when results overview, performance thoughts, or tactic overviews are missing.
-     *
-     * @param payload constructor request whose adjustments and sheet rows are inspected
-     * @param data    aggregated snapshot whose tactic keys drive overview checks
-     * @return {@code true} when at least one Batch C placeholder still needs AI generation
-     */
-    boolean needResults(GeneratePayload payload, CampaignData data);
+	/**
+	 * Returns true when results overview, performance thoughts, or tactic overviews are missing.
+	 *
+	 * @param payload constructor request whose adjustments and sheet rows are inspected
+	 * @param data    aggregated snapshot whose tactic keys drive overview checks
+	 * @return {@code true} when at least one Batch C placeholder still needs AI generation
+	 */
+	boolean needResults(GeneratePayload payload, CampaignData data);
 
-    /**
-     * Returns true when geo summary must be generated from the Geo tab.
-     *
-     * @param payload constructor request whose adjustments and sheet rows are inspected
-     * @return {@code true} when the geo summary AI call is required
-     */
-    boolean needGeoSummary(GeneratePayload payload);
+	/**
+	 * Returns true when geo summary must be generated from the Geo tab.
+	 *
+	 * @param payload constructor request whose adjustments and sheet rows are inspected
+	 * @return {@code true} when the geo summary AI call is required
+	 */
+	boolean needGeoSummary(GeneratePayload payload);
 }

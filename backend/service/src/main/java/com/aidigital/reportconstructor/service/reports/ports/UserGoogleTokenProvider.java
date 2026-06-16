@@ -7,9 +7,9 @@ package com.aidigital.reportconstructor.service.reports.ports;
  */
 public interface UserGoogleTokenProvider {
 
-    /**
-     * @param userId Clerk user id ({@code sub} claim)
-     * @return Google OAuth access token, or {@code null} when unavailable (non-fatal)
-     */
-    String googleAccessToken(String userId);
+	/**
+	 * @param userId Clerk user id ({@code sub} claim)
+	 * @return Google OAuth access token, or {@code null} when unavailable (non-fatal)
+	 */
+	String googleAccessToken(String userId);
 }

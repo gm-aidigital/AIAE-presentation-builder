@@ -19,11 +19,11 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @Testcontainers
 class LiquibaseChangelogSmokeTest {
 
-    @Container
-    @ServiceConnection
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
+	@Container
+	@ServiceConnection
+	static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
 
-    @Test
-    void shouldApplyMasterChangelogToPostgresTest() {
-    }
+	@Test
+	void shouldApplyMasterChangelogToPostgresTest() {
+	}
 }

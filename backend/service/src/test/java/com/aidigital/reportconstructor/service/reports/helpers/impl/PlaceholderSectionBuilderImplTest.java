@@ -5,6 +5,7 @@ import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
 import com.aidigital.reportconstructor.service.reports.dto.Placeholder;
 import com.aidigital.reportconstructor.service.reports.dto.PreviewSection;
+import com.aidigital.reportconstructor.service.reports.dto.Totals;
 import com.aidigital.reportconstructor.service.reports.engine.ReportClaudeDefaults;
 import com.aidigital.reportconstructor.service.reports.engine.ReportsEngineTestSupport;
 import org.junit.jupiter.api.Test;
@@ -16,85 +17,85 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class PlaceholderSectionBuilderImplTest {
 
-    private final PlaceholderSectionBuilderImpl builder = ReportsEngineTestSupport.placeholderSectionBuilder();
-    private final ReportClaudeDefaults claudeDefaults = new ReportClaudeDefaults();
+	private final PlaceholderSectionBuilderImpl builder = ReportsEngineTestSupport.placeholderSectionBuilder();
+	private final ReportClaudeDefaults claudeDefaults = new ReportClaudeDefaults();
 
-    @Test
-    void shouldBuildElevenSectionsWithRussianTitlesTest() {
-        GeneratePayload payload = minimalPayload();
-        CampaignData data = emptyCampaignData();
+	@Test
+	void shouldBuildElevenSectionsWithRussianTitlesTest() {
+		GeneratePayload payload = minimalPayload();
+		CampaignData data = emptyCampaignData();
 
-        List<PreviewSection> sections = builder.buildSections(
-            payload, data,
-            claudeDefaults.emptyStrategic(), claudeDefaults.emptyTactical(), claudeDefaults.emptyResults(), null
-        );
+		List<PreviewSection> sections = builder.buildSections(
+				payload, data,
+				claudeDefaults.emptyStrategic(), claudeDefaults.emptyTactical(), claudeDefaults.emptyResults(), null
+		);
 
-        assertThat(sections).hasSize(11);
-        assertThat(sections.get(0).title()).isEqualTo("Начало");
-        assertThat(sections.get(1).title()).isEqualTo("Обзорные слайды");
-        assertThat(sections.get(2).title()).isEqualTo("Стратегические инсайты");
-        assertThat(sections.get(3).title()).isEqualTo("Суммарные метрики");
-        assertThat(sections.get(4).title()).isEqualTo("Тактика 1");
-        assertThat(sections.get(10).title()).isEqualTo("Тактика 7");
-    }
+		assertThat(sections).hasSize(11);
+		assertThat(sections.get(0).title()).isEqualTo("Начало");
+		assertThat(sections.get(1).title()).isEqualTo("Обзорные слайды");
+		assertThat(sections.get(2).title()).isEqualTo("Стратегические инсайты");
+		assertThat(sections.get(3).title()).isEqualTo("Суммарные метрики");
+		assertThat(sections.get(4).title()).isEqualTo("Тактика 1");
+		assertThat(sections.get(10).title()).isEqualTo("Тактика 7");
+	}
 
-    @Test
-    void shouldUseFullPlaceholderSetForTacticsOneThroughSixTest() {
-        GeneratePayload payload = minimalPayload();
-        CampaignData data = emptyCampaignData();
+	@Test
+	void shouldUseFullPlaceholderSetForTacticsOneThroughSixTest() {
+		GeneratePayload payload = minimalPayload();
+		CampaignData data = emptyCampaignData();
 
-        List<PreviewSection> sections = builder.buildSections(
-            payload, data,
-            claudeDefaults.emptyStrategic(), claudeDefaults.emptyTactical(), claudeDefaults.emptyResults(), null
-        );
+		List<PreviewSection> sections = builder.buildSections(
+				payload, data,
+				claudeDefaults.emptyStrategic(), claudeDefaults.emptyTactical(), claudeDefaults.emptyResults(), null
+		);
 
-        assertThat(sections.get(4).placeholders()).hasSize(18);
-        assertThat(sections.get(4).placeholders())
-            .extracting(Placeholder::key)
-            .contains("{{tactic 1 volume}}", "{{tactic 1 top creative name}}");
-    }
+		assertThat(sections.get(4).placeholders()).hasSize(18);
+		assertThat(sections.get(4).placeholders())
+				.extracting(Placeholder::key)
+				.contains("{{tactic 1 volume}}", "{{tactic 1 top creative name}}");
+	}
 
-    @Test
-    void shouldUseShortPlaceholderSetForTacticSevenTest() {
-        GeneratePayload payload = minimalPayload();
-        CampaignData data = emptyCampaignData();
+	@Test
+	void shouldUseShortPlaceholderSetForTacticSevenTest() {
+		GeneratePayload payload = minimalPayload();
+		CampaignData data = emptyCampaignData();
 
-        List<PreviewSection> sections = builder.buildSections(
-            payload, data,
-            claudeDefaults.emptyStrategic(), claudeDefaults.emptyTactical(), claudeDefaults.emptyResults(), null
-        );
+		List<PreviewSection> sections = builder.buildSections(
+				payload, data,
+				claudeDefaults.emptyStrategic(), claudeDefaults.emptyTactical(), claudeDefaults.emptyResults(), null
+		);
 
-        assertThat(sections.get(10).placeholders()).hasSize(14);
-        assertThat(sections.get(10).placeholders())
-            .extracting(Placeholder::key)
-            .doesNotContain("{{tactic 7 volume}}", "{{tactic 7 top creative name}}");
-    }
+		assertThat(sections.get(10).placeholders()).hasSize(14);
+		assertThat(sections.get(10).placeholders())
+				.extracting(Placeholder::key)
+				.doesNotContain("{{tactic 7 volume}}", "{{tactic 7 top creative name}}");
+	}
 
-    private static GeneratePayload minimalPayload() {
-        return new GeneratePayload(
-            "brief",
-            "standard",
-            List.of(
-                List.of("Media", "Comments"),
-                List.of("Programmatic Display", "")
-            ),
-            List.of(),
-            List.of(),
-            List.of(),
-            List.of(),
-            List.of(),
-            ""
-        );
-    }
+	private static GeneratePayload minimalPayload() {
+		return new GeneratePayload(
+				"brief",
+				"standard",
+				List.of(
+						List.of("Media", "Comments"),
+						List.of("Programmatic Display", "")
+				),
+				List.of(),
+				List.of(),
+				List.of(),
+				List.of(),
+				List.of(),
+				""
+		);
+	}
 
-    private static CampaignData emptyCampaignData() {
-        return new CampaignData(
-            "", "", "", "", "",
-            new FlightDates(null, null),
-            "", "", "", "", "",
-            new CampaignData.Totals(0, 0, 0, 0, null, null),
-            Map.of(),
-            ""
-        );
-    }
+	private static CampaignData emptyCampaignData() {
+		return new CampaignData(
+				"", "", "", "", "",
+				new FlightDates(null, null),
+				"", "", "", "", "",
+				new Totals(0, 0, 0, 0, null, null),
+				Map.of(),
+				""
+		);
+	}
 }

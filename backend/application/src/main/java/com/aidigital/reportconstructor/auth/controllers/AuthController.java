@@ -19,18 +19,18 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class AuthController implements AuthApi {
 
-    private final AppUserFactory appUserFactory;
-    private final UserMapper userMapper;
+	private final AppUserFactory appUserFactory;
+	private final UserMapper userMapper;
 
-    /**
-     * Returns the authenticated user payload built from the JWT in the
-     * security context.
-     *
-     * @return 200 with {@link UserV1} populated from the JWT claims.
-     */
-    @Override
-    public ResponseEntity<UserV1> getCurrentUser() {
-        var auth = SecurityContextHolder.getContext().getAuthentication();
-        return ResponseEntity.ok(userMapper.toUserV1(appUserFactory.from(auth)));
-    }
+	/**
+	 * Returns the authenticated user payload built from the JWT in the
+	 * security context.
+	 *
+	 * @return 200 with {@link UserV1} populated from the JWT claims.
+	 */
+	@Override
+	public ResponseEntity<UserV1> getCurrentUser() {
+		var auth = SecurityContextHolder.getContext().getAuthentication();
+		return ResponseEntity.ok(userMapper.toUserV1(appUserFactory.from(auth)));
+	}
 }

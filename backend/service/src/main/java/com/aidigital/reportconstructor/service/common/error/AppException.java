@@ -18,41 +18,41 @@ package com.aidigital.reportconstructor.service.common.error;
  */
 public class AppException extends RuntimeException {
 
-    private final ValidationMessage validationMessage;
+	private final ValidationMessage validationMessage;
 
-    public AppException(ErrorReason reason, Object... params) {
-        this.validationMessage = new ValidationMessage(reason, params);
-    }
+	public AppException(ErrorReason reason, Object... params) {
+		this.validationMessage = new ValidationMessage(reason, params);
+	}
 
-    public AppException(ErrorReason reason, Throwable cause, Object... params) {
-        super(cause);
-        this.validationMessage = new ValidationMessage(reason, params);
-    }
+	public AppException(ErrorReason reason, Throwable cause, Object... params) {
+		super(cause);
+		this.validationMessage = new ValidationMessage(reason, params);
+	}
 
-    public AppException(ErrorReason reason, ValidationParameter... parameters) {
-        this.validationMessage = new ValidationMessage(reason, parameters);
-    }
+	public AppException(ErrorReason reason, ValidationParameter... parameters) {
+		this.validationMessage = new ValidationMessage(reason, parameters);
+	}
 
-    public AppException(ErrorReason reason, Throwable cause, ValidationParameter... parameters) {
-        super(cause);
-        this.validationMessage = new ValidationMessage(reason, parameters);
-    }
+	public AppException(ErrorReason reason, Throwable cause, ValidationParameter... parameters) {
+		super(cause);
+		this.validationMessage = new ValidationMessage(reason, parameters);
+	}
 
-    public ValidationMessage getValidationMessage() {
-        return validationMessage;
-    }
+	public ValidationMessage getValidationMessage() {
+		return validationMessage;
+	}
 
-    public String getCode() {
-        return validationMessage.getCode();
-    }
+	public String getCode() {
+		return validationMessage.getCode();
+	}
 
-    @Override
-    public String getMessage() {
-        return String.valueOf(validationMessage);
-    }
+	@Override
+	public String getMessage() {
+		return String.valueOf(validationMessage);
+	}
 
-    @Override
-    public String getLocalizedMessage() {
-        return getMessage();
-    }
+	@Override
+	public String getLocalizedMessage() {
+		return getMessage();
+	}
 }

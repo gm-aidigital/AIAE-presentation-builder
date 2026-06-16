@@ -9,25 +9,29 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "app.clerk")
 public class ClerkProperties {
 
-    /** Clerk Backend API secret key. Bean is only active when non-blank. */
-    private String secretKey = "";
+	/**
+	 * Clerk Backend API secret key. Bean is only active when non-blank.
+	 */
+	private String secretKey = "";
 
-    /** OAuth provider id whose access token is fetched (default Google). */
-    private String googleProvider = "oauth_google";
+	/**
+	 * OAuth provider id whose access token is fetched (default Google).
+	 */
+	private String googleProvider = "oauth_google";
 
-    public String getSecretKey() {
-        return secretKey;
-    }
+	public String getSecretKey() {
+		return secretKey;
+	}
 
-    public void setSecretKey(String secretKey) {
-        this.secretKey = secretKey;
-    }
+	public void setSecretKey(String secretKey) {
+		this.secretKey = secretKey;
+	}
 
-    public String getGoogleProvider() {
-        return googleProvider;
-    }
+	public String getGoogleProvider() {
+		return googleProvider;
+	}
 
-    public void setGoogleProvider(String googleProvider) {
-        this.googleProvider = googleProvider;
-    }
+	public void setGoogleProvider(String googleProvider) {
+		this.googleProvider = googleProvider;
+	}
 }

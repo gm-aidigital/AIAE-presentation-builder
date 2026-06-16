@@ -16,12 +16,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class LineItemMatchingController implements LineItemMatchingApi {
 
-    private final LineItemMatcherService matcher;
-    private final LineItemMatchResultMapper mapper;
+	private final LineItemMatcherService matcher;
+	private final LineItemMatchResultMapper mapper;
 
-    @Override
-    public ResponseEntity<LineItemMatchResultV1> matchLineItems(LineItemMatchRequestV1 body) {
-        var result = matcher.match(body.getBqRows(), body.getPlanRows());
-        return ResponseEntity.ok(mapper.toResult(result));
-    }
+	@Override
+	public ResponseEntity<LineItemMatchResultV1> matchLineItems(LineItemMatchRequestV1 body) {
+		var result = matcher.match(body.getBqRows(), body.getPlanRows());
+		return ResponseEntity.ok(mapper.toResult(result));
+	}
 }

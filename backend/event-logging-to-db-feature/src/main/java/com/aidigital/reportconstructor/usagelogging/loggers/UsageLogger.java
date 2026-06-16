@@ -12,12 +12,12 @@ import com.aidigital.reportconstructor.usagelogging.models.UsageEvent;
  */
 public interface UsageLogger {
 
-    /**
-     * Persists a single usage event. Must NOT block / throw into the caller
-     * — implementations swallow infra errors and surface them via local
-     * warning logs.
-     *
-     * @param event fully populated event from UsageLoggingAspect
-     */
-    void record(UsageEvent event);
+	/**
+	 * Persists a single usage event. Must NOT block / throw into the caller
+	 * — implementations swallow infra errors and surface them via local
+	 * warning logs.
+	 *
+	 * @param event fully populated event from UsageLoggingAspect
+	 */
+	void record(UsageEvent event);
 }

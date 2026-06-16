@@ -17,29 +17,29 @@ import org.springframework.stereotype.Component;
 @Primary
 public class RoutingUsageEventSink implements UsageEventSink {
 
-    private static final Logger LOG = LoggerFactory.getLogger(RoutingUsageEventSink.class);
+	private static final Logger LOG = LoggerFactory.getLogger(RoutingUsageEventSink.class);
 
-    private final PostgreSqlUsageEventSink postgresSink;
-    private final UsageEventSink bigQuerySink;
+	private final PostgreSqlUsageEventSink postgresSink;
+	private final UsageEventSink bigQuerySink;
 
-    public RoutingUsageEventSink(
-        PostgreSqlUsageEventSink postgresSink,
-        @Autowired(required = false) @Qualifier("bigqueryUsageEventSink") UsageEventSink bigQuerySink
-    ) {
-        this.postgresSink = postgresSink;
-        this.bigQuerySink = bigQuerySink;
-    }
+	public RoutingUsageEventSink(
+			PostgreSqlUsageEventSink postgresSink,
+			@Autowired(required = false) @Qualifier("bigqueryUsageEventSink") UsageEventSink bigQuerySink
+	) {
+		this.postgresSink = postgresSink;
+		this.bigQuerySink = bigQuerySink;
+	}
 
-    @Override
-    public void record(UsageEvent event) {
-        if (bigQuerySink != null) {
-            try {
-                bigQuerySink.record(event);
-                return;
-            } catch (RuntimeException ex) {
-                LOG.warn("BigQuery usage sink failed; falling back to PostgreSQL: {}", ex.getMessage());
-            }
-        }
-        postgresSink.record(event);
-    }
+	@Override
+	public void record(UsageEvent event) {
+		if (bigQuerySink != null) {
+			try {
+				bigQuerySink.record(event);
+				return;
+			} catch (RuntimeException ex) {
+				LOG.warn("BigQuery usage sink failed; falling back to PostgreSQL: {}", ex.getMessage());
+			}
+		}
+		postgresSink.record(event);
+	}
 }

@@ -9,4 +9,5 @@ package com.aidigital.reportconstructor.service.reports.dto;
  * @param source the origin of the resolved value (e.g. the data field, computed metric, or AI-gen. copy it came from)
  */
 public record Placeholder(String key, String label, String value, String source) {
+
 }

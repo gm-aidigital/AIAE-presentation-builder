@@ -27,62 +27,62 @@
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
                              https://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
-    <parent>
-        <groupId>com.aidigital.reportconstructor</groupId>
-        <artifactId>app-parent</artifactId>
-        <version>0.0.1-SNAPSHOT</version>
-        <relativePath>../pom.xml</relativePath>
-    </parent>
-    <artifactId>event-logging-to-db-feature</artifactId>
-    <name>Replit MVP — event-logging-to-db-feature</name>
+	<modelVersion>4.0.0</modelVersion>
+	<parent>
+		<groupId>com.aidigital.reportconstructor</groupId>
+		<artifactId>app-parent</artifactId>
+		<version>0.0.1-SNAPSHOT</version>
+		<relativePath>../pom.xml</relativePath>
+	</parent>
+	<artifactId>event-logging-to-db-feature</artifactId>
+	<name>Replit MVP — event-logging-to-db-feature</name>
 
-    <properties>
-        <jacoco.branch.coverage>0.60</jacoco.branch.coverage>
-    </properties>
+	<properties>
+		<jacoco.branch.coverage>0.60</jacoco.branch.coverage>
+	</properties>
 
-    <!-- Self-contained, removable feature. Must NOT depend on any other internal
-         module (domain/service/application). ID semantics live in this module. -->
-    <dependencies>
-        <dependency>
-            <groupId>org.projectlombok</groupId>
-            <artifactId>lombok</artifactId>
-        </dependency>
+	<!-- Self-contained, removable feature. Must NOT depend on any other internal
+		 module (domain/service/application). ID semantics live in this module. -->
+	<dependencies>
+		<dependency>
+			<groupId>org.projectlombok</groupId>
+			<artifactId>lombok</artifactId>
+		</dependency>
 
-        <!-- JPA entity + repository -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-jpa</artifactId>
-        </dependency>
+		<!-- JPA entity + repository -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-jpa</artifactId>
+		</dependency>
 
-        <!-- @Aspect + @Around -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-aop</artifactId>
-        </dependency>
+		<!-- @Aspect + @Around -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-aop</artifactId>
+		</dependency>
 
-        <!-- HttpServletRequest + RequestContextHolder for client_ip/user_agent -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
-        </dependency>
+		<!-- HttpServletRequest + RequestContextHolder for client_ip/user_agent -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-web</artifactId>
+		</dependency>
 
-        <!-- SecurityContextHolder, Authentication, Jwt (Bearer JWT path) -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-security</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
-        </dependency>
+		<!-- SecurityContextHolder, Authentication, Jwt (Bearer JWT path) -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-security</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+		</dependency>
 
-        <!-- Test: JUnit 5 + Mockito + AssertJ + Spring test context. Proves the
-             aspect auto-intercepts every public *ServiceImpl method. -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-    </dependencies>
+		<!-- Test: JUnit 5 + Mockito + AssertJ + Spring test context. Proves the
+			 aspect auto-intercepts every public *ServiceImpl method. -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+	</dependencies>
 </project>

@@ -15,33 +15,33 @@ import org.mapstruct.Mapping;
 @Mapper(config = ApplicationMapperConfig.class)
 public interface ReportJobsApiMapper {
 
-    /**
-     * Converts a persisted report job into the "created" V1 response.
-     *
-     * @param job the persisted report job entity
-     * @return the V1 job-created DTO
-     */
-    @Mapping(target = "jobId", source = "id")
-    ReportJobCreatedV1 toCreated(ReportJobEntity job);
+	/**
+	 * Converts a persisted report job into the "created" V1 response.
+	 *
+	 * @param job the persisted report job entity
+	 * @return the V1 job-created DTO
+	 */
+	@Mapping(target = "jobId", source = "id")
+	ReportJobCreatedV1 toCreated(ReportJobEntity job);
 
-    /**
-     * Converts a progress view into the V1 job DTO for the given job id.
-     *
-     * @param jobId the report job id
-     * @param view  the service progress view
-     * @return the V1 report job DTO
-     */
-    @Mapping(target = "jobId", source = "jobId")
-    @Mapping(target = "status", expression = "java(toStatus(view.status()))")
-    ReportJobV1 toJob(Long jobId, ProgressView view);
+	/**
+	 * Converts a progress view into the V1 job DTO for the given job id.
+	 *
+	 * @param jobId the report job id
+	 * @param view  the service progress view
+	 * @return the V1 report job DTO
+	 */
+	@Mapping(target = "jobId", source = "jobId")
+	@Mapping(target = "status", expression = "java(toStatus(view.status()))")
+	ReportJobV1 toJob(Long jobId, ProgressView view);
 
-    /**
-     * Maps a status string to the V1 {@link ReportJobStatusV1} enum.
-     *
-     * @param status the service status string (may be {@code null})
-     * @return the matching status enum, or {@code null} when {@code status} is {@code null}
-     */
-    default ReportJobStatusV1 toStatus(String status) {
-        return status == null ? null : ReportJobStatusV1.fromValue(status);
-    }
+	/**
+	 * Maps a status string to the V1 {@link ReportJobStatusV1} enum.
+	 *
+	 * @param status the service status string (may be {@code null})
+	 * @return the matching status enum, or {@code null} when {@code status} is {@code null}
+	 */
+	default ReportJobStatusV1 toStatus(String status) {
+		return status == null ? null : ReportJobStatusV1.fromValue(status);
+	}
 }

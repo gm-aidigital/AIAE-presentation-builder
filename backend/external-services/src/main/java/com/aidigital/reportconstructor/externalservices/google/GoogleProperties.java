@@ -1,9 +1,9 @@
 package com.aidigital.reportconstructor.externalservices.google;
 
-import java.util.Map;
-
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
+
+import java.util.Map;
 
 /**
  * Typed configuration for the Google Slides / Drive integration, bound from
@@ -16,58 +16,68 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "external.google")
 public class GoogleProperties {
 
-    /** Service-account JSON key. Live Google beans are inactive when blank. */
-    private String serviceAccountJson = "";
+	/**
+	 * Service-account JSON key. Live Google beans are inactive when blank.
+	 */
+	private String serviceAccountJson = "";
 
-    /** Source deck copied for every generated report. */
-    private String slidesTemplateId = "";
+	/**
+	 * Source deck copied for every generated report.
+	 */
+	private String slidesTemplateId = "";
 
-    /** Optional Drive folder the generated deck + chart copies are placed in. */
-    private String slidesTargetFolderId = "";
+	/**
+	 * Optional Drive folder the generated deck + chart copies are placed in.
+	 */
+	private String slidesTargetFolderId = "";
 
-    /** Summary table object id for per-tactic row pruning (trimTactics). */
-    private String summaryTableObjectId = "";
+	/**
+	 * Summary table object id for per-tactic row pruning (trimTactics).
+	 */
+	private String summaryTableObjectId = "";
 
-    /** Template slide object ids per tactic slot (1-based keys). */
-    private Map<Integer, String> tacticSlideObjectIds = Map.of();
+	/**
+	 * Template slide object ids per tactic slot (1-based keys).
+	 */
+	private Map<Integer, String> tacticSlideObjectIds = Map.of();
 
-    public String getServiceAccountJson() {
-        return serviceAccountJson;
-    }
+	public String getServiceAccountJson() {
+		return serviceAccountJson;
+	}
 
-    public void setServiceAccountJson(String serviceAccountJson) {
-        this.serviceAccountJson = serviceAccountJson;
-    }
+	public void setServiceAccountJson(String serviceAccountJson) {
+		this.serviceAccountJson = serviceAccountJson;
+	}
 
-    public String getSlidesTemplateId() {
-        return slidesTemplateId;
-    }
+	public String getSlidesTemplateId() {
+		return slidesTemplateId;
+	}
 
-    public void setSlidesTemplateId(String slidesTemplateId) {
-        this.slidesTemplateId = slidesTemplateId;
-    }
+	public void setSlidesTemplateId(String slidesTemplateId) {
+		this.slidesTemplateId = slidesTemplateId;
+	}
 
-    public String getSlidesTargetFolderId() {
-        return slidesTargetFolderId;
-    }
+	public String getSlidesTargetFolderId() {
+		return slidesTargetFolderId;
+	}
 
-    public void setSlidesTargetFolderId(String slidesTargetFolderId) {
-        this.slidesTargetFolderId = slidesTargetFolderId;
-    }
+	public void setSlidesTargetFolderId(String slidesTargetFolderId) {
+		this.slidesTargetFolderId = slidesTargetFolderId;
+	}
 
-    public String getSummaryTableObjectId() {
-        return summaryTableObjectId;
-    }
+	public String getSummaryTableObjectId() {
+		return summaryTableObjectId;
+	}
 
-    public void setSummaryTableObjectId(String summaryTableObjectId) {
-        this.summaryTableObjectId = summaryTableObjectId;
-    }
+	public void setSummaryTableObjectId(String summaryTableObjectId) {
+		this.summaryTableObjectId = summaryTableObjectId;
+	}
 
-    public Map<Integer, String> getTacticSlideObjectIds() {
-        return tacticSlideObjectIds;
-    }
+	public Map<Integer, String> getTacticSlideObjectIds() {
+		return tacticSlideObjectIds;
+	}
 
-    public void setTacticSlideObjectIds(Map<Integer, String> tacticSlideObjectIds) {
-        this.tacticSlideObjectIds = tacticSlideObjectIds == null ? Map.of() : tacticSlideObjectIds;
-    }
+	public void setTacticSlideObjectIds(Map<Integer, String> tacticSlideObjectIds) {
+		this.tacticSlideObjectIds = tacticSlideObjectIds == null ? Map.of() : tacticSlideObjectIds;
+	}
 }

@@ -21,22 +21,22 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class ReportJobsController implements ReportJobsApi {
 
-    private final ReportGenerationService reportGeneration;
-    private final ReportJobsApiMapper mapper;
-    private final PlaceholdersApiMapper payloadMapper;
-    private final AppUserFactory appUserFactory;
+	private final ReportGenerationService reportGeneration;
+	private final ReportJobsApiMapper mapper;
+	private final PlaceholdersApiMapper payloadMapper;
+	private final AppUserFactory appUserFactory;
 
-    @Override
-    public ResponseEntity<ReportJobCreatedV1> createReportJob(GenerateRequestV1 body) {
-        var user = appUserFactory.from(SecurityContextHolder.getContext().getAuthentication());
-        var job = reportGeneration.start(user.userId(), user.userId(), payloadMapper.toPayload(body));
-        return new ResponseEntity<>(mapper.toCreated(job), HttpStatus.ACCEPTED);
-    }
+	@Override
+	public ResponseEntity<ReportJobCreatedV1> createReportJob(GenerateRequestV1 body) {
+		var user = appUserFactory.from(SecurityContextHolder.getContext().getAuthentication());
+		var job = reportGeneration.start(user.userId(), user.userId(), payloadMapper.toPayload(body));
+		return new ResponseEntity<>(mapper.toCreated(job), HttpStatus.ACCEPTED);
+	}
 
-    @Override
-    public ResponseEntity<ReportJobV1> getReportJob(Long jobId) {
-        var user = appUserFactory.from(SecurityContextHolder.getContext().getAuthentication());
-        var view = reportGeneration.progress(user.userId(), jobId);
-        return ResponseEntity.ok(mapper.toJob(jobId, view));
-    }
+	@Override
+	public ResponseEntity<ReportJobV1> getReportJob(Long jobId) {
+		var user = appUserFactory.from(SecurityContextHolder.getContext().getAuthentication());
+		var view = reportGeneration.progress(user.userId(), jobId);
+		return ResponseEntity.ok(mapper.toJob(jobId, view));
+	}
 }

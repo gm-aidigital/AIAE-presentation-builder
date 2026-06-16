@@ -30,7 +30,7 @@ export async function readSheetTab(url: string, tab: string): Promise<SheetReadR
             (data as { message?: string } | undefined)?.message?.trim();
         throw new Error(
             backendMsg ||
-                `Couldn't read the "${tab}" tab — check the sheet link and that it's shared with the report service account.`
+                `Couldn't read the "${tab}" tab — check the sheet link and that you're signed in with a Google account that has at least Viewer access.`
         );
     }
     return data;

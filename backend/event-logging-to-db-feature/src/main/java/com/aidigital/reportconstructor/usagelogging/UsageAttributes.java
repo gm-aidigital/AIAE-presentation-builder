@@ -39,44 +39,44 @@ import java.util.Map;
 @Component
 public class UsageAttributes {
 
-    private final ThreadLocal<Map<String, Object>> bag = new ThreadLocal<>();
+	private final ThreadLocal<Map<String, Object>> bag = new ThreadLocal<>();
 
-    /**
-     * Records one attribute on the in-flight event. Subsequent calls with the
-     * same key overwrite. Silently ignores null keys and null values.
-     *
-     * @param key   attribute key (alphanumeric / underscore preferred)
-     * @param value JSON-serialisable value
-     */
-    public void put(String key, Object value) {
-        if (key == null || value == null) {
-            return;
-        }
-        Map<String, Object> map = bag.get();
-        if (map == null) {
-            map = new LinkedHashMap<>();
-            bag.set(map);
-        }
-        map.put(key, value);
-    }
+	/**
+	 * Records one attribute on the in-flight event. Subsequent calls with the
+	 * same key overwrite. Silently ignores null keys and null values.
+	 *
+	 * @param key   attribute key (alphanumeric / underscore preferred)
+	 * @param value JSON-serialisable value
+	 */
+	public void put(String key, Object value) {
+		if (key == null || value == null) {
+			return;
+		}
+		Map<String, Object> map = bag.get();
+		if (map == null) {
+			map = new LinkedHashMap<>();
+			bag.set(map);
+		}
+		map.put(key, value);
+	}
 
-    /**
-     * Returns the accumulated attributes for the current thread without
-     * clearing them. Aspect-only usage path.
-     *
-     * @return immutable snapshot, or null when no attributes were recorded
-     */
-    public Map<String, Object> snapshot() {
-        Map<String, Object> map = bag.get();
-        return (map == null || map.isEmpty()) ? null : Map.copyOf(map);
-    }
+	/**
+	 * Returns the accumulated attributes for the current thread without
+	 * clearing them. Aspect-only usage path.
+	 *
+	 * @return immutable snapshot, or null when no attributes were recorded
+	 */
+	public Map<String, Object> snapshot() {
+		Map<String, Object> map = bag.get();
+		return (map == null || map.isEmpty()) ? null : Map.copyOf(map);
+	}
 
-    /**
-     * Discards the attribute bag for the current thread. The aspect calls this
-     * in {@code finally\{\}} after the event is dispatched so the next request
-     * on the same worker thread starts clean.
-     */
-    public void clear() {
-        bag.remove();
-    }
+	/**
+	 * Discards the attribute bag for the current thread. The aspect calls this
+	 * in {@code finally\{\}} after the event is dispatched so the next request
+	 * on the same worker thread starts clean.
+	 */
+	public void clear() {
+		bag.remove();
+	}
 }

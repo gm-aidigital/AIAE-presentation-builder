@@ -10,15 +10,22 @@ import com.aidigital.reportconstructor.service.reports.dto.SheetData;
  */
 public interface GoogleSheetsProvider {
 
-    /** @return true when the provider is talking to the real Google APIs. */
-    boolean isLive();
+	/**
+	 * @return true when the provider is talking to the real Google APIs.
+	 */
+	boolean isLive();
 
-    /**
-     * Reads the requested tab from the spreadsheet at the given URL.
-     *
-     * @param spreadsheetUrl Google Sheets URL
-     * @param tab            tab name (Proposal, Workspace, Basic, …)
-     * @return sheet payload mirroring the PHP {@code fetch_sheet.php} shape
-     */
-    SheetData fetchTab(String spreadsheetUrl, String tab);
+	/**
+	 * Reads the requested tab from the spreadsheet at the given URL.
+	 *
+	 * @param spreadsheetUrl        Google Sheets URL
+	 * @param tab                   tab name (Proposal, Workspace, Basic, …)
+	 * @param userGoogleAccessToken the signed-in user's Google OAuth access token
+	 *                              (Clerk-brokered); when present the read runs as
+	 *                              that user, so the spreadsheet only needs to be
+	 *                              viewable by them. Falls back to the service
+	 *                              account when {@code null}/blank.
+	 * @return sheet payload mirroring the PHP {@code fetch_sheet.php} shape
+	 */
+	SheetData fetchTab(String spreadsheetUrl, String tab, String userGoogleAccessToken);
 }

@@ -9,8 +9,10 @@ package com.aidigital.reportconstructor.service.common.security;
  * an opt-in extension — if the product needs role-based authorization, add a
  * separate {@code roles} field here keyed by the stable {@code userId}.
  *
- * @param userId    Stable Clerk user id — the {@code user_id} claim (equals {@code sub}).
- * @param email     Lowercased canonical email from the {@code email} claim.
- * @param fullName  Display name from the {@code full_name} claim, falling back to email.
+ * @param userId   Stable Clerk user id — the {@code user_id} claim (equals {@code sub}).
+ * @param email    Lowercased canonical email from the {@code email} claim.
+ * @param fullName Display name from the {@code full_name} claim, falling back to email.
  */
-public record AppUser(String userId, String email, String fullName) { }
+public record AppUser(String userId, String email, String fullName) {
+
+}

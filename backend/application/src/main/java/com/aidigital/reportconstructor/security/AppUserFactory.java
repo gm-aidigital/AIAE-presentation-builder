@@ -21,41 +21,41 @@ import java.util.Optional;
 @Component
 public class AppUserFactory {
 
-    private static final String CLAIM_USER_ID = "user_id";
-    private static final String CLAIM_EMAIL = "email";
-    private static final String CLAIM_FULLNAME = "full_name";
+	private static final String CLAIM_USER_ID = "user_id";
+	private static final String CLAIM_EMAIL = "email";
+	private static final String CLAIM_FULLNAME = "full_name";
 
-    /**
-     * Converts the current request authentication into an {@link AppUser}.
-     *
-     * @param auth Spring Security authentication from the security context
-     * @return caller identity built from the Clerk JWT claims
-     * @throws IllegalStateException when the authentication is not a Clerk JWT
-     *         or required claims are absent
-     */
-    public AppUser from(Authentication auth) {
-        if (!(auth instanceof JwtAuthenticationToken jwtAuth)) {
-            throw new IllegalStateException(
-                "Unsupported authentication type; expected a Clerk JWT: "
-                + (auth == null ? "null" : auth.getClass().getName()));
-        }
-        Jwt jwt = jwtAuth.getToken();
+	/**
+	 * Converts the current request authentication into an {@link AppUser}.
+	 *
+	 * @param auth Spring Security authentication from the security context
+	 * @return caller identity built from the Clerk JWT claims
+	 * @throws IllegalStateException when the authentication is not a Clerk JWT
+	 *                               or required claims are absent
+	 */
+	public AppUser from(Authentication auth) {
+		if (!(auth instanceof JwtAuthenticationToken jwtAuth)) {
+			throw new IllegalStateException(
+					"Unsupported authentication type; expected a Clerk JWT: "
+							+ (auth == null ? "null" : auth.getClass().getName()));
+		}
+		Jwt jwt = jwtAuth.getToken();
 
-        String userId = jwt.getClaimAsString(CLAIM_USER_ID);
-        if (userId == null || userId.isBlank()) {
-            throw new IllegalStateException("Clerk JWT is missing required claim: user_id");
-        }
+		String userId = jwt.getClaimAsString(CLAIM_USER_ID);
+		if (userId == null || userId.isBlank()) {
+			throw new IllegalStateException("Clerk JWT is missing required claim: user_id");
+		}
 
-        String rawEmail = jwt.getClaimAsString(CLAIM_EMAIL);
-        if (rawEmail == null || rawEmail.isBlank()) {
-            throw new IllegalStateException("Clerk JWT is missing required claim: email");
-        }
-        String email = rawEmail.trim().toLowerCase(Locale.ROOT);
+		String rawEmail = jwt.getClaimAsString(CLAIM_EMAIL);
+		if (rawEmail == null || rawEmail.isBlank()) {
+			throw new IllegalStateException("Clerk JWT is missing required claim: email");
+		}
+		String email = rawEmail.trim().toLowerCase(Locale.ROOT);
 
-        String fullName = Optional.ofNullable(jwt.getClaimAsString(CLAIM_FULLNAME))
-            .filter(v -> !v.isBlank())
-            .orElse(email);
+		String fullName = Optional.ofNullable(jwt.getClaimAsString(CLAIM_FULLNAME))
+				.filter(v -> !v.isBlank())
+				.orElse(email);
 
-        return new AppUser(userId, email, fullName);
-    }
+		return new AppUser(userId, email, fullName);
+	}
 }

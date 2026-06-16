@@ -16,12 +16,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class PlaceholdersController implements PlaceholdersApi {
 
-    private final PlaceholderResolverService placeholders;
-    private final PlaceholdersApiMapper mapper;
+	private final PlaceholderResolverService placeholders;
+	private final PlaceholdersApiMapper mapper;
 
-    @Override
-    public ResponseEntity<PreviewResultV1> previewPlaceholders(PreviewRequestV1 body) {
-        var result = placeholders.resolve(mapper.toPayload(body));
-        return ResponseEntity.ok(mapper.toPreviewResponse(result));
-    }
+	@Override
+	public ResponseEntity<PreviewResultV1> previewPlaceholders(PreviewRequestV1 body) {
+		var result = placeholders.resolve(mapper.toPayload(body));
+		return ResponseEntity.ok(mapper.toPreviewResponse(result));
+	}
 }

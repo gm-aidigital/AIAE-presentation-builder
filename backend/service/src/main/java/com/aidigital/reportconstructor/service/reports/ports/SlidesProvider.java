@@ -13,32 +13,34 @@ import java.util.Map;
  */
 public interface SlidesProvider {
 
-    /** @return true when the provider is talking to the real Google APIs. */
-    boolean isLive();
+	/**
+	 * @return true when the provider is talking to the real Google APIs.
+	 */
+	boolean isLive();
 
-    /**
-     * @param jobId                 orchestration job id used as a correlation suffix
-     * @param placeholderMap        resolved {@code {token}} → value pairs to write
-     *                              into the cloned deck
-     * @param userGoogleAccessToken optional Google OAuth access token for the
-     *                              signed-in user (obtained from Clerk). When
-     *                              non-blank the deck is created in that user's
-     *                              personal Drive; when null/blank the provider
-     *                              falls back to the service account.
-     * @return public Slides URL the UI shows in its "Slides ready" card
-     */
-    String createDeck(String jobId, Map<String, String> placeholderMap, String userGoogleAccessToken);
+	/**
+	 * @param jobId                 orchestration job id used as a correlation suffix
+	 * @param placeholderMap        resolved {@code {token}} → value pairs to write
+	 *                              into the cloned deck
+	 * @param userGoogleAccessToken optional Google OAuth access token for the
+	 *                              signed-in user (obtained from Clerk). When
+	 *                              non-blank the deck is created in that user's
+	 *                              personal Drive; when null/blank the provider
+	 *                              falls back to the service account.
+	 * @return public Slides URL the UI shows in its "Slides ready" card
+	 */
+	String createDeck(String jobId, Map<String, String> placeholderMap, String userGoogleAccessToken);
 
-    /**
-     * Removes the template's unused per-tactic slides (and their summary-table
-     * rows) when the campaign has fewer than the template's seven tactic slots.
-     * Without this, the surplus slides survive showing raw {@code {{tactic N …}}}
-     * tokens and empty chart frames. A no-op when {@code tacticCount >= 7}.
-     *
-     * @param presentationId        the deck to trim
-     * @param tacticCount           number of real tactics (clamped 1..7)
-     * @param userGoogleAccessToken optional signed-in user's Google OAuth token;
-     *                              falls back to the service account when blank
-     */
-    void trimTactics(String presentationId, int tacticCount, String userGoogleAccessToken);
+	/**
+	 * Removes the template's unused per-tactic slides (and their summary-table
+	 * rows) when the campaign has fewer than the template's seven tactic slots.
+	 * Without this, the surplus slides survive showing raw {@code {{tactic N …}}}
+	 * tokens and empty chart frames. A no-op when {@code tacticCount >= 7}.
+	 *
+	 * @param presentationId        the deck to trim
+	 * @param tacticCount           number of real tactics (clamped 1..7)
+	 * @param userGoogleAccessToken optional signed-in user's Google OAuth token;
+	 *                              falls back to the service account when blank
+	 */
+	void trimTactics(String presentationId, int tacticCount, String userGoogleAccessToken);
 }

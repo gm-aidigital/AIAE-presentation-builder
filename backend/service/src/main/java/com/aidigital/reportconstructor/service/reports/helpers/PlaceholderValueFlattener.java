@@ -10,11 +10,11 @@ import java.util.Map;
  */
 public interface PlaceholderValueFlattener {
 
-    /**
-     * Converts section placeholders to a token map, substituting an em dash for empty values.
-     *
-     * @param sections resolved preview sections produced by {@link PlaceholderSectionBuilder}
-     * @return ordered map of {@code {{token}}} keys to replacement strings
-     */
-    Map<String, String> buildFlatReplacements(List<PreviewSection> sections);
+	/**
+	 * Converts section placeholders to a token map, substituting an em dash for empty values.
+	 *
+	 * @param sections resolved preview sections produced by {@link PlaceholderSectionBuilder}
+	 * @return ordered map of {@code {{token}}} keys to replacement strings
+	 */
+	Map<String, String> buildFlatReplacements(List<PreviewSection> sections);
 }

@@ -17,47 +17,47 @@ import org.springframework.web.bind.annotation.GetMapping;
 @Controller
 public class SpaFallbackController {
 
-    private static final Resource INDEX = new ClassPathResource("static/index.html");
+	private static final Resource INDEX = new ClassPathResource("static/index.html");
 
-    /**
-     * Root and explicit index requests.
-     *
-     * @return the SPA shell when the static build exists
-     */
-    @GetMapping(value = {"/", "/index.html"})
-    public ResponseEntity<Resource> root() {
-        return indexHtml();
-    }
+	/**
+	 * Root and explicit index requests.
+	 *
+	 * @return the SPA shell when the static build exists
+	 */
+	@GetMapping(value = {"/", "/index.html"})
+	public ResponseEntity<Resource> root() {
+		return indexHtml();
+	}
 
-    /**
-     * Single-segment client routes (e.g. {@code /login}, {@code /reports}).
-     *
-     * @return the SPA shell when the path is not an API/static asset
-     */
-    @GetMapping("/{path:^(?!api|actuator|swagger-ui|v3|assets|error|favicon\\.ico)[^\\.]+$}")
-    public ResponseEntity<Resource> spaSingleSegment() {
-        return indexHtml();
-    }
+	/**
+	 * Single-segment client routes (e.g. {@code /login}, {@code /reports}).
+	 *
+	 * @return the SPA shell when the path is not an API/static asset
+	 */
+	@GetMapping("/{path:^(?!api|actuator|swagger-ui|v3|assets|error|favicon\\.ico)[^\\.]+$}")
+	public ResponseEntity<Resource> spaSingleSegment() {
+		return indexHtml();
+	}
 
-    /**
-     * Nested client routes (e.g. {@code /reports/123/edit}).
-     *
-     * @return the SPA shell when the path is not an API/static asset
-     */
-    @GetMapping("/{path:^(?!api|actuator|swagger-ui|v3|assets|error|favicon\\.ico)[^\\.]+}/**")
-    public ResponseEntity<Resource> spaNested() {
-        return indexHtml();
-    }
+	/**
+	 * Nested client routes (e.g. {@code /reports/123/edit}).
+	 *
+	 * @return the SPA shell when the path is not an API/static asset
+	 */
+	@GetMapping("/{path:^(?!api|actuator|swagger-ui|v3|assets|error|favicon\\.ico)[^\\.]+}/**")
+	public ResponseEntity<Resource> spaNested() {
+		return indexHtml();
+	}
 
-    /**
-     * Returns the built SPA shell, or 404 when the frontend has not been packaged.
-     *
-     * @return HTML response for client-side routing, or not found
-     */
-    private ResponseEntity<Resource> indexHtml() {
-        if (!INDEX.exists()) {
-            return ResponseEntity.notFound().build();
-        }
-        return ResponseEntity.ok().contentType(MediaType.TEXT_HTML).body(INDEX);
-    }
+	/**
+	 * Returns the built SPA shell, or 404 when the frontend has not been packaged.
+	 *
+	 * @return HTML response for client-side routing, or not found
+	 */
+	ResponseEntity<Resource> indexHtml() {
+		if (!INDEX.exists()) {
+			return ResponseEntity.notFound().build();
+		}
+		return ResponseEntity.ok().contentType(MediaType.TEXT_HTML).body(INDEX);
+	}
 }

@@ -9,13 +9,14 @@ import java.util.Map;
  * {@code thoughtsOnPerformance} holds up to 4 elements; {@code tacticOverviews}
  * is keyed by 1-based tactic number.
  *
- * @param resultsOverview Claude-generated narrative summarizing the campaign's overall results
+ * @param resultsOverview       Claude-generated narrative summarizing the campaign's overall results
  * @param thoughtsOnPerformance up to 4 Claude-generated performance commentary bullets
- * @param tacticOverviews Claude-generated per-tactic narrative overviews, keyed by 1-based tactic number
+ * @param tacticOverviews       Claude-generated per-tactic narrative overviews, keyed by 1-based tactic number
  */
 public record ClaudeResults(
-    String resultsOverview,
-    List<String> thoughtsOnPerformance,
-    Map<Integer, String> tacticOverviews
+		String resultsOverview,
+		List<String> thoughtsOnPerformance,
+		Map<Integer, String> tacticOverviews
 ) {
+
 }

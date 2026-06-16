@@ -31,26 +31,26 @@ package com.aidigital.reportconstructor.service.common.error;
  */
 public enum ErrorReason {
 
-    C000("Unexpected error: %s"),
-    C001("Resource not found: %s"),
-    C002("Malformed request: %s"),
-    C003("External call failed: %s"),
-    C004("Access forbidden"),
-    C005("Authentication required"),
-    C006("Conflict: %s"),
-    C007("Rate limit exceeded");
+	C000("Unexpected error: %s"),
+	C001("Resource not found: %s"),
+	C002("Malformed request: %s"),
+	C003("External call failed: %s"),
+	C004("Access forbidden"),
+	C005("Authentication required"),
+	C006("Conflict: %s"),
+	C007("Rate limit exceeded");
 
-    private final String description;
+	private final String description;
 
-    ErrorReason(String description) {
-        this.description = description;
-    }
+	ErrorReason(String description) {
+		this.description = description;
+	}
 
-    public String getCode() {
-        return name();
-    }
+	public String getCode() {
+		return name();
+	}
 
-    public String getDescription() {
-        return description;
-    }
+	public String getDescription() {
+		return description;
+	}
 }

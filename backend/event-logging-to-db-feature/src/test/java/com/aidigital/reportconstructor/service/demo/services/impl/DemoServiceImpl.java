@@ -8,16 +8,16 @@ import com.aidigital.reportconstructor.usagelogging.LogUsage;
 
 public class DemoServiceImpl {
 
-    public String doThing() {
-        return "ok";
-    }
+	public String doThing() {
+		return "ok";
+	}
 
-    public void boom() {
-        throw new IllegalStateException("kaboom");
-    }
+	public void boom() {
+		throw new IllegalStateException("kaboom");
+	}
 
-    @LogUsage(action = "custom.action.name")
-    public String custom() {
-        return "ok";
-    }
+	@LogUsage(action = "custom.action.name")
+	public String custom() {
+		return "ok";
+	}
 }

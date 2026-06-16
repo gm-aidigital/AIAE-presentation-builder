@@ -13,25 +13,29 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "external.anthropic")
 public class AnthropicProperties {
 
-    /** Anthropic API key. Live Claude client is inactive when blank. */
-    private String apiKey = "";
+	/**
+	 * Anthropic API key. Live Claude client is inactive when blank.
+	 */
+	private String apiKey = "";
 
-    /** Claude model id used for all batches. */
-    private String model = "claude-sonnet-4-6";
+	/**
+	 * Claude model id used for all batches.
+	 */
+	private String model = "claude-sonnet-4-6";
 
-    public String getApiKey() {
-        return apiKey;
-    }
+	public String getApiKey() {
+		return apiKey;
+	}
 
-    public void setApiKey(String apiKey) {
-        this.apiKey = apiKey;
-    }
+	public void setApiKey(String apiKey) {
+		this.apiKey = apiKey;
+	}
 
-    public String getModel() {
-        return model;
-    }
+	public String getModel() {
+		return model;
+	}
 
-    public void setModel(String model) {
-        this.model = model;
-    }
+	public void setModel(String model) {
+		this.model = model;
+	}
 }

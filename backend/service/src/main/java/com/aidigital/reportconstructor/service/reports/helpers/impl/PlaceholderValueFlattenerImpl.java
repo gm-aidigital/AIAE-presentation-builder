@@ -15,17 +15,17 @@ import java.util.Map;
 @Component
 public class PlaceholderValueFlattenerImpl implements PlaceholderValueFlattener {
 
-    private static final String DASH = "\u2014"; // —
+	private static final String DASH = "\u2014"; // —
 
-    @Override
-    public Map<String, String> buildFlatReplacements(List<PreviewSection> sections) {
-        Map<String, String> flat = new LinkedHashMap<>();
-        for (PreviewSection sec : sections) {
-            for (Placeholder ph : sec.placeholders()) {
-                String v = ph.value();
-                flat.put(ph.key(), v == null || v.isEmpty() ? DASH : v);
-            }
-        }
-        return flat;
-    }
+	@Override
+	public Map<String, String> buildFlatReplacements(List<PreviewSection> sections) {
+		Map<String, String> flat = new LinkedHashMap<>();
+		for (PreviewSection sec : sections) {
+			for (Placeholder ph : sec.placeholders()) {
+				String v = ph.value();
+				flat.put(ph.key(), v == null || v.isEmpty() ? DASH : v);
+			}
+		}
+		return flat;
+	}
 }

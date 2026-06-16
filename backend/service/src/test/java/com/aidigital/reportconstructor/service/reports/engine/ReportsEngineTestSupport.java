@@ -16,53 +16,54 @@ import com.aidigital.reportconstructor.service.reports.helpers.impl.TacticExtrac
  */
 public final class ReportsEngineTestSupport {
 
-    private ReportsEngineTestSupport() {}
+	private ReportsEngineTestSupport() {
+	}
 
-    static TacticCatalog tacticCatalog() {
-        return new TacticCatalog();
-    }
+	static TacticCatalog tacticCatalog() {
+		return new TacticCatalog();
+	}
 
-    static TacticExtractionHelper tacticExtractionHelper() {
-        return new TacticExtractionHelperImpl(tacticCatalog(), sheetRowHelper());
-    }
+	static TacticExtractionHelper tacticExtractionHelper() {
+		return new TacticExtractionHelperImpl(tacticCatalog(), sheetRowHelper());
+	}
 
-    static SheetRowHelper sheetRowHelper() {
-        return new SheetRowHelperImpl(tacticCatalog());
-    }
+	static SheetRowHelper sheetRowHelper() {
+		return new SheetRowHelperImpl(tacticCatalog());
+	}
 
-    static LineItemNamingHelper lineItemNamingHelper() {
-        return new LineItemNamingHelperImpl();
-    }
+	static LineItemNamingHelper lineItemNamingHelper() {
+		return new LineItemNamingHelperImpl();
+	}
 
-    static ReportNumberParser reportNumberParser() {
-        return new ReportNumberParserImpl();
-    }
+	static ReportNumberParser reportNumberParser() {
+		return new ReportNumberParserImpl();
+	}
 
-    static Fmt fmt() {
-        return new Fmt();
-    }
+	static Fmt fmt() {
+		return new Fmt();
+	}
 
-    static CampaignResolvers campaignResolvers() {
-        return new CampaignResolvers(sheetRowHelper(), fmt(), tacticExtractionHelper());
-    }
+	static CampaignResolvers campaignResolvers() {
+		return new CampaignResolvers(sheetRowHelper(), fmt(), tacticExtractionHelper());
+	}
 
-    static TacticResolvers tacticResolvers() {
-        return new TacticResolvers(sheetRowHelper(), fmt(), tacticExtractionHelper(), campaignResolvers());
-    }
+	static TacticResolvers tacticResolvers() {
+		return new TacticResolvers(sheetRowHelper(), fmt(), tacticExtractionHelper(), campaignResolvers());
+	}
 
-    public static PlaceholderSectionBuilderImpl placeholderSectionBuilder() {
-        return new PlaceholderSectionBuilderImpl(campaignResolvers(), tacticResolvers(), tacticExtractionHelper());
-    }
+	public static PlaceholderSectionBuilderImpl placeholderSectionBuilder() {
+		return new PlaceholderSectionBuilderImpl(campaignResolvers(), tacticResolvers(), tacticExtractionHelper());
+	}
 
-    public static PlaceholderClaudeGateImpl placeholderClaudeGate() {
-        return new PlaceholderClaudeGateImpl(sheetRowHelper());
-    }
+	public static PlaceholderClaudeGateImpl placeholderClaudeGate() {
+		return new PlaceholderClaudeGateImpl(sheetRowHelper());
+	}
 
-    public static CampaignDataCollector campaignDataCollector() {
-        return new CampaignDataCollector(sheetRowHelper(), tacticExtractionHelper(), campaignResolvers());
-    }
+	public static CampaignDataCollector campaignDataCollector() {
+		return new CampaignDataCollector(sheetRowHelper(), tacticExtractionHelper(), campaignResolvers());
+	}
 
-    public static ChartPivot chartPivot() {
-        return new ChartPivot(sheetRowHelper(), lineItemNamingHelper(), reportNumberParser());
-    }
+	public static ChartPivot chartPivot() {
+		return new ChartPivot(sheetRowHelper(), lineItemNamingHelper(), reportNumberParser());
+	}
 }

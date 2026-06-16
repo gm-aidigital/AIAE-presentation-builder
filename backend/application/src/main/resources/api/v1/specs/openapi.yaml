@@ -39,11 +39,11 @@ tags:
 paths:
   /api/v1/auth/me:
     get:
-      tags: [auth]
+      tags: [ auth ]
       operationId: getCurrentUser
       summary: Returns the authenticated user (Clerk SSO)
       security:
-        - bearerAuth: []
+        - bearerAuth: [ ]
       responses:
         "200":
           description: Authenticated user payload
@@ -64,7 +64,7 @@ paths:
 
   /api/v1/sheets/read:
     post:
-      tags: [DataSource]
+      tags: [ DataSource ]
       operationId: readSheet
       summary: Read one tab of a Google Sheet (A1:Z) as the service account
       description: |
@@ -74,7 +74,7 @@ paths:
         the requested tab does not exist, returns 200 with `ok=false` and
         `error="tab_not_found"` so the client can apply its Estimates→Proposal fallback.
       security:
-        - bearerAuth: []
+        - bearerAuth: [ ]
       requestBody:
         required: true
         content:
@@ -99,11 +99,11 @@ paths:
 
   /api/v1/google/status:
     get:
-      tags: [DataSource]
+      tags: [ DataSource ]
       operationId: getGoogleConnectionStatus
       summary: Google connectivity for the signed-in user (service account + mock mode)
       security:
-        - bearerAuth: []
+        - bearerAuth: [ ]
       responses:
         "200":
           description: Connection status for sheet read and deck generation.
@@ -118,7 +118,7 @@ paths:
 
   /api/v1/line-items/match:
     post:
-      tags: [LineItemMatching]
+      tags: [ LineItemMatching ]
       operationId: matchLineItems
       summary: Auto-map media-plan tactics to BigQuery line-item IDs (rules only)
       description: |
@@ -128,7 +128,7 @@ paths:
         channel maps to exactly one ID. Unmatched tactics are left for manual
         drag-and-drop in the UI.
       security:
-        - bearerAuth: []
+        - bearerAuth: [ ]
       requestBody:
         required: true
         content:
@@ -153,7 +153,7 @@ paths:
 
   /api/v1/placeholders/preview:
     post:
-      tags: [Placeholders]
+      tags: [ Placeholders ]
       operationId: previewPlaceholders
       summary: Compute the campaign placeholder→value map (dry-run, no Drive writes)
       description: |
@@ -163,7 +163,7 @@ paths:
         on `CLAUDE_ENABLED`; when disabled they fall back to manual/"—". Touches no
         Google Drive/Slides.
       security:
-        - bearerAuth: []
+        - bearerAuth: [ ]
       requestBody:
         required: true
         content:
@@ -188,7 +188,7 @@ paths:
 
   /api/v1/report-jobs:
     post:
-      tags: [ReportJobs]
+      tags: [ ReportJobs ]
       operationId: createReportJob
       summary: Enqueue an async Google Slides report-generation job
       description: |
@@ -197,7 +197,7 @@ paths:
         share with the caller's email). Returns the job id immediately; poll
         `GET /api/v1/report-jobs/{jobId}` for progress and the final deck URL.
       security:
-        - bearerAuth: []
+        - bearerAuth: [ ]
       requestBody:
         required: true
         content:
@@ -222,7 +222,7 @@ paths:
 
   /api/v1/report-jobs/{jobId}:
     get:
-      tags: [ReportJobs]
+      tags: [ ReportJobs ]
       operationId: getReportJob
       summary: Poll a report-generation job by id
       description: |
@@ -230,7 +230,7 @@ paths:
         URL and any non-fatal warnings. Authorized to the owner only; a job owned by
         another user returns 404.
       security:
-        - bearerAuth: []
+        - bearerAuth: [ ]
       parameters:
         - in: path
           name: jobId
@@ -301,21 +301,21 @@ components:
     # ── Identity & shared error (scaffold — keep verbatim) ──────────────────────
     UserV1:
       type: object
-      required: [user_id, email]
+      required: [ user_id, email ]
       # Baseline payload carries identity only. Add a roles array here ONLY when
       # the product introduces server-side role authorization.
       properties:
-        user_id:   { type: string, description: "Clerk user id (sub/user_id claim)" }
-        email:     { type: string, format: email }
+        user_id: { type: string, description: "Clerk user id (sub/user_id claim)" }
+        email: { type: string, format: email }
         full_name: { type: string }
 
     ApiErrorV1:
       type: object
-      required: [code, message, timestamp]
+      required: [ code, message, timestamp ]
       properties:
-        code:          { type: string, description: "Machine-readable error code" }
-        message:       { type: string, description: "Human-readable message" }
-        timestamp:     { type: string, format: date-time }
+        code: { type: string, description: "Machine-readable error code" }
+        message: { type: string, description: "Human-readable message" }
+        timestamp: { type: string, format: date-time }
         correlationId: { type: string }
         parameters:
           type: array
@@ -323,9 +323,9 @@ components:
 
     ValidationParameterV1:
       type: object
-      required: [code, value]
+      required: [ code, value ]
       properties:
-        code:  { type: string }
+        code: { type: string }
         value: { type: string }
 
     # ── Enums (standalone $ref schemas — never inline) ──────────────────────────
@@ -336,55 +336,55 @@ components:
         auto/Claude-derived values are tagged `adj` to match the legacy UI; only the
         geo summary and thoughts/strategic fields use `claude`. `ui` = the report-type
         value; `not_found` = unresolved.
-      enum: [adj, sheet, ui, claude, not_found]
+      enum: [ adj, sheet, ui, claude, not_found ]
 
     ReportJobStatusV1:
       type: string
       description: Lifecycle of a report-generation job (mirrors the report_job_status dictionary table).
-      enum: [queued, running, done, error]
+      enum: [ queued, running, done, error ]
 
     ReportTypeV1:
       type: string
       description: |
         Report type. COSMETIC ONLY — fills the single `{{report_type}}` placeholder;
         the section/placeholder catalog is identical for both values.
-      enum: [EOC, EOM]
+      enum: [ EOC, EOM ]
 
     # ── DataSource ──────────────────────────────────────────────────────────────
     GoogleConnectionStatusV1:
       type: object
-      required: [connected, email, scopes, connectUrl, mockMode]
+      required: [ connected, email, scopes, connectUrl, mockMode ]
       properties:
-        connected:  { type: boolean }
-        email:      { type: string }
+        connected: { type: boolean }
+        email: { type: string }
         scopes:
           type: array
           items: { type: string }
         connectUrl: { type: string }
-        mockMode:   { type: boolean }
+        mockMode: { type: boolean }
 
     SheetReadRequestV1:
       type: object
-      required: [url, tab]
+      required: [ url, tab ]
       properties:
         url: { type: string, description: "Full Google Sheets URL (the spreadsheet id is parsed out)." }
         tab: { type: string, description: "Exact tab name, e.g. Proposal, Audience&Inventory, Estimates, Geo, Basic." }
 
     SheetReadResultV1:
       type: object
-      required: [ok, tab, rows, cols, tabs, headers, preview, rawRows]
+      required: [ ok, tab, rows, cols, tabs, headers, preview, rawRows ]
       properties:
-        ok:       { type: boolean, description: "True when the tab was read; false with `error` set otherwise." }
-        error:    { type: string, description: "Error code when ok=false, e.g. tab_not_found." }
-        sheetId:  { type: string }
-        title:    { type: string, description: "Spreadsheet title." }
-        tab:      { type: string, description: "Tab that was read." }
+        ok: { type: boolean, description: "True when the tab was read; false with `error` set otherwise." }
+        error: { type: string, description: "Error code when ok=false, e.g. tab_not_found." }
+        sheetId: { type: string }
+        title: { type: string, description: "Spreadsheet title." }
+        tab: { type: string, description: "Tab that was read." }
         tabs:
           type: array
           description: All tab titles in the spreadsheet.
           items: { type: string }
-        rows:     { type: integer, format: int32 }
-        cols:     { type: integer, format: int32 }
+        rows: { type: integer, format: int32 }
+        cols: { type: integer, format: int32 }
         headers:
           type: array
           description: First row (header cells).
@@ -405,7 +405,7 @@ components:
     # ── LineItemMatching ─────────────────────────────────────────────────────────
     LineItemMatchRequestV1:
       type: object
-      required: [bqRows, planRows]
+      required: [ bqRows, planRows ]
       properties:
         bqRows:
           type: array
@@ -422,26 +422,26 @@ components:
 
     IdNamingV1:
       type: object
-      required: [naming, channel, tactic]
+      required: [ naming, channel, tactic ]
       properties:
-        naming:  { type: string }
+        naming: { type: string }
         channel: { type: string }
-        tactic:  { type: string }
+        tactic: { type: string }
 
     MappingEntryV1:
       type: object
-      required: [tacticNum, tacticName, autoMatched]
+      required: [ tacticNum, tacticName, autoMatched ]
       properties:
-        tacticNum:       { type: integer, format: int32 }
-        tacticName:      { type: string }
-        lineItemId:      { type: string, description: "Matched line-item id, or null when unmatched." }
-        namingSample:    { type: string, description: "Sample Level-1 naming for the matched id (display only)." }
-        autoMatched:     { type: boolean }
+        tacticNum: { type: integer, format: int32 }
+        tacticName: { type: string }
+        lineItemId: { type: string, description: "Matched line-item id, or null when unmatched." }
+        namingSample: { type: string, description: "Sample Level-1 naming for the matched id (display only)." }
+        autoMatched: { type: boolean }
         expectedChannel: { type: string, description: "Channel that needs manual assignment (when ambiguous)." }
 
     LineItemMatchResultV1:
       type: object
-      required: [mapping, uniqueIds, idNamings, channelToIds, warnings, autoMatched, autoMatchCount]
+      required: [ mapping, uniqueIds, idNamings, channelToIds, warnings, autoMatched, autoMatchCount ]
       properties:
         mapping:
           type: array
@@ -462,37 +462,37 @@ components:
         warnings:
           type: array
           items: { type: string }
-        autoMatched:     { type: boolean, description: "True only when every entry auto-matched and mapping is non-empty." }
-        autoMatchCount:  { type: integer, format: int32 }
+        autoMatched: { type: boolean, description: "True only when every entry auto-matched and mapping is non-empty." }
+        autoMatchCount: { type: integer, format: int32 }
 
     # ── Placeholders ──────────────────────────────────────────────────────────────
     PreviewRequestV1:
       type: object
-      required: [brief, reportType]
+      required: [ brief, reportType ]
       properties:
-        brief:      { type: string }
+        brief: { type: string }
         reportType: { $ref: "#/components/schemas/ReportTypeV1" }
-        sheetRows:      { $ref: "#/components/schemas/Rows2DV1" }
-        adjRows:        { $ref: "#/components/schemas/Rows2DV1" }
-        audienceRows:   { $ref: "#/components/schemas/Rows2DV1" }
-        estimatesRows:  { $ref: "#/components/schemas/Rows2DV1" }
-        geoRows:        { $ref: "#/components/schemas/Rows2DV1" }
+        sheetRows: { $ref: "#/components/schemas/Rows2DV1" }
+        adjRows: { $ref: "#/components/schemas/Rows2DV1" }
+        audienceRows: { $ref: "#/components/schemas/Rows2DV1" }
+        estimatesRows: { $ref: "#/components/schemas/Rows2DV1" }
+        geoRows: { $ref: "#/components/schemas/Rows2DV1" }
         lineItemMapping:
           type: array
           items: { $ref: "#/components/schemas/MappingEntryV1" }
 
     PlaceholderEntryV1:
       type: object
-      required: [key, label, value, source]
+      required: [ key, label, value, source ]
       properties:
-        key:    { type: string, description: "Placeholder token, e.g. {{total imps}}." }
-        label:  { type: string, description: "Human label (Russian, verbatim)." }
-        value:  { type: string, description: "Resolved value, or — when unresolved." }
+        key: { type: string, description: "Placeholder token, e.g. {{total imps}}." }
+        label: { type: string, description: "Human label (Russian, verbatim)." }
+        value: { type: string, description: "Resolved value, or — when unresolved." }
         source: { $ref: "#/components/schemas/SourceV1" }
 
     SectionV1:
       type: object
-      required: [title, placeholders]
+      required: [ title, placeholders ]
       properties:
         title: { type: string, description: "Section title (Russian, verbatim — Начало, Обзорные, …)." }
         placeholders:
@@ -501,21 +501,21 @@ components:
 
     LabelPairV1:
       type: object
-      required: [label, value]
+      required: [ label, value ]
       properties:
         label: { type: string }
         value: { type: string }
 
     PreviewStatsV1:
       type: object
-      required: [found, total]
+      required: [ found, total ]
       properties:
         found: { type: integer, format: int32 }
         total: { type: integer, format: int32 }
 
     PreviewResultV1:
       type: object
-      required: [sections, allLabels, stats, sheetCount, adjCount]
+      required: [ sections, allLabels, stats, sheetCount, adjCount ]
       properties:
         sections:
           type: array
@@ -526,22 +526,22 @@ components:
           additionalProperties:
             type: array
             items: { $ref: "#/components/schemas/LabelPairV1" }
-        stats:      { $ref: "#/components/schemas/PreviewStatsV1" }
+        stats: { $ref: "#/components/schemas/PreviewStatsV1" }
         sheetCount: { type: integer, format: int32 }
-        adjCount:   { type: integer, format: int32 }
+        adjCount: { type: integer, format: int32 }
 
     # ── ReportJobs ────────────────────────────────────────────────────────────────
     GenerateRequestV1:
       type: object
-      required: [brief, reportType]
+      required: [ brief, reportType ]
       properties:
-        brief:      { type: string }
+        brief: { type: string }
         reportType: { $ref: "#/components/schemas/ReportTypeV1" }
-        sheetRows:      { $ref: "#/components/schemas/Rows2DV1" }
-        adjRows:        { $ref: "#/components/schemas/Rows2DV1" }
-        audienceRows:   { $ref: "#/components/schemas/Rows2DV1" }
-        estimatesRows:  { $ref: "#/components/schemas/Rows2DV1" }
-        geoRows:        { $ref: "#/components/schemas/Rows2DV1" }
+        sheetRows: { $ref: "#/components/schemas/Rows2DV1" }
+        adjRows: { $ref: "#/components/schemas/Rows2DV1" }
+        audienceRows: { $ref: "#/components/schemas/Rows2DV1" }
+        estimatesRows: { $ref: "#/components/schemas/Rows2DV1" }
+        geoRows: { $ref: "#/components/schemas/Rows2DV1" }
         lineItemMapping:
           type: array
           items: { $ref: "#/components/schemas/MappingEntryV1" }
@@ -553,25 +553,25 @@ components:
 
     ReportJobCreatedV1:
       type: object
-      required: [jobId]
+      required: [ jobId ]
       properties:
         jobId: { type: integer, format: int64 }
 
     ReportJobV1:
       type: object
-      required: [jobId, status, step, total, warnings]
+      required: [ jobId, status, step, total, warnings ]
       properties:
-        jobId:    { type: integer, format: int64 }
-        status:   { $ref: "#/components/schemas/ReportJobStatusV1" }
-        step:     { type: integer, format: int32 }
-        total:    { type: integer, format: int32, description: "Always 7." }
-        label:    { type: string, description: "Human progress label." }
+        jobId: { type: integer, format: int64 }
+        status: { $ref: "#/components/schemas/ReportJobStatusV1" }
+        step: { type: integer, format: int32 }
+        total: { type: integer, format: int32, description: "Always 7." }
+        label: { type: string, description: "Human progress label." }
         slideUrl: { type: string, description: "Generated deck URL (set when status=done)." }
         warnings:
           type: array
           description: Non-fatal warnings (chart/share failures); the job still completes.
           items: { type: string }
-        error:    { type: string, description: "Error message when status=error." }
+        error: { type: string, description: "Error message when status=error." }
 
     # ── Shared building block ───────────────────────────────────────────────────
     Rows2DV1:

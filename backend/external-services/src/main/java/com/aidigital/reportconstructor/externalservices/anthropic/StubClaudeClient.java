@@ -1,11 +1,11 @@
 package com.aidigital.reportconstructor.externalservices.anthropic;
 
-import com.aidigital.reportconstructor.service.reports.ports.ClaudeClient;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
 import com.aidigital.reportconstructor.service.reports.engine.ReportClaudeDefaults;
+import com.aidigital.reportconstructor.service.reports.ports.ClaudeClient;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -21,34 +21,34 @@ import java.util.List;
 @Component
 public class StubClaudeClient implements ClaudeClient {
 
-    private final ReportClaudeDefaults claudeDefaults;
+	private final ReportClaudeDefaults claudeDefaults;
 
-    public StubClaudeClient(ReportClaudeDefaults claudeDefaults) {
-        this.claudeDefaults = claudeDefaults;
-    }
+	public StubClaudeClient(ReportClaudeDefaults claudeDefaults) {
+		this.claudeDefaults = claudeDefaults;
+	}
 
-    @Override
-    public boolean isLive() {
-        return false;
-    }
+	@Override
+	public boolean isLive() {
+		return false;
+	}
 
-    @Override
-    public ClaudeStrategic batchStrategic(CampaignData data, String brief) {
-        return claudeDefaults.emptyStrategic();
-    }
+	@Override
+	public ClaudeStrategic batchStrategic(CampaignData data, String brief) {
+		return claudeDefaults.emptyStrategic();
+	}
 
-    @Override
-    public ClaudeTactical batchTactical(CampaignData data, String brief) {
-        return claudeDefaults.emptyTactical();
-    }
+	@Override
+	public ClaudeTactical batchTactical(CampaignData data, String brief) {
+		return claudeDefaults.emptyTactical();
+	}
 
-    @Override
-    public ClaudeResults batchResults(CampaignData data, String brief) {
-        return claudeDefaults.emptyResults();
-    }
+	@Override
+	public ClaudeResults batchResults(CampaignData data, String brief) {
+		return claudeDefaults.emptyResults();
+	}
 
-    @Override
-    public String summarizeGeo(List<List<String>> geoRows) {
-        return null;
-    }
+	@Override
+	public String summarizeGeo(List<List<String>> geoRows) {
+		return null;
+	}
 }

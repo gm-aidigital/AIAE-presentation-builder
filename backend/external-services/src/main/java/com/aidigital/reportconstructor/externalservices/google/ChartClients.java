@@ -14,4 +14,5 @@ import com.google.api.services.slides.v1.Slides;
  * @param slides Slides client used to swap placeholder charts on the deck
  */
 record ChartClients(Drive drive, Sheets sheets, Slides slides) {
+
 }

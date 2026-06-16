@@ -42,77 +42,77 @@ import java.util.Map;
 @NoArgsConstructor
 public class UsageEventEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+	@Id
+	@GeneratedValue(strategy = GenerationType.IDENTITY)
+	private Long id;
 
-    @Column(name = "event_id", unique = true, nullable = false)
-    private String eventId;
+	@Column(name = "event_id", unique = true, nullable = false)
+	private String eventId;
 
-    @Column(name = "event_timestamp", nullable = false)
-    private LocalDateTime eventTimestamp;
+	@Column(name = "event_timestamp", nullable = false)
+	private LocalDateTime eventTimestamp;
 
-    @Column(nullable = false)
-    private String service;
+	@Column(nullable = false)
+	private String service;
 
-    private String environment;
+	private String environment;
 
-    @Column(name = "event_type", nullable = false)
-    private String eventType;
+	@Column(name = "event_type", nullable = false)
+	private String eventType;
 
-    private String action;
+	private String action;
 
-    @Column(name = "user_id")
-    private String userId;
+	@Column(name = "user_id")
+	private String userId;
 
-    @Column(name = "user_email")
-    private String userEmail;
+	@Column(name = "user_email")
+	private String userEmail;
 
-    private String status;
+	private String status;
 
-    @Column(name = "duration_ms")
-    private Long durationMs;
+	@Column(name = "duration_ms")
+	private Long durationMs;
 
-    @Column(name = "attributes", columnDefinition = "jsonb")
-    @JdbcTypeCode(SqlTypes.JSON)
-    private Map<String, Object> attributes;
+	@Column(name = "attributes", columnDefinition = "jsonb")
+	@JdbcTypeCode(SqlTypes.JSON)
+	private Map<String, Object> attributes;
 
-    @Column(name = "error_message")
-    private String errorMessage;
+	@Column(name = "error_message")
+	private String errorMessage;
 
-    @Column(name = "client_ip")
-    private String clientIp;
+	@Column(name = "client_ip")
+	private String clientIp;
 
-    @Column(name = "user_agent")
-    private String userAgent;
+	@Column(name = "user_agent")
+	private String userAgent;
 
-    /**
-     * Hibernate-proxy-compatible identity equality: two entities are equal only
-     * when both have the same non-null id and the same effective entity type.
-     *
-     * @param other candidate to compare against
-     * @return true when both entities share a non-null id and entity type
-     */
-    @Override
-    public final boolean equals(Object other) {
-        if (this == other) {
-            return true;
-        }
-        if (other == null || Hibernate.getClass(this) != Hibernate.getClass(other)) {
-            return false;
-        }
-        UsageEventEntity that = (UsageEventEntity) other;
-        return id != null && id.equals(that.id);
-    }
+	/**
+	 * Hibernate-proxy-compatible identity equality: two entities are equal only
+	 * when both have the same non-null id and the same effective entity type.
+	 *
+	 * @param other candidate to compare against
+	 * @return true when both entities share a non-null id and entity type
+	 */
+	@Override
+	public final boolean equals(Object other) {
+		if (this == other) {
+			return true;
+		}
+		if (other == null || Hibernate.getClass(this) != Hibernate.getClass(other)) {
+			return false;
+		}
+		UsageEventEntity that = (UsageEventEntity) other;
+		return id != null && id.equals(that.id);
+	}
 
-    /**
-     * Stable hash derived from the entity type while transient and from the id
-     * once assigned.
-     *
-     * @return identity-based hash code
-     */
-    @Override
-    public final int hashCode() {
-        return id != null ? id.hashCode() : 0;
-    }
+	/**
+	 * Stable hash derived from the entity type while transient and from the id
+	 * once assigned.
+	 *
+	 * @return identity-based hash code
+	 */
+	@Override
+	public final int hashCode() {
+		return id != null ? id.hashCode() : 0;
+	}
 }

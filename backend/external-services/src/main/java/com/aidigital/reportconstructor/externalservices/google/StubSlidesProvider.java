@@ -18,20 +18,20 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class StubSlidesProvider implements SlidesProvider {
 
-    private final GoogleProperties props;
+	private final GoogleProperties props;
 
-    @Override
-    public boolean isLive() {
-        return false;
-    }
+	@Override
+	public boolean isLive() {
+		return false;
+	}
 
-    @Override
-    public String createDeck(String jobId, Map<String, String> placeholderMap, String userGoogleAccessToken) {
-        return "https://docs.google.com/presentation/d/" + props.getSlidesTemplateId() + "/edit?stub=" + jobId;
-    }
+	@Override
+	public String createDeck(String jobId, Map<String, String> placeholderMap, String userGoogleAccessToken) {
+		return "https://docs.google.com/presentation/d/" + props.getSlidesTemplateId() + "/edit?stub=" + jobId;
+	}
 
-    @Override
-    public void trimTactics(String presentationId, int tacticCount, String userGoogleAccessToken) {
-        // No-op: the stub never clones a real deck, so there are no slides to trim.
-    }
+	@Override
+	public void trimTactics(String presentationId, int tacticCount, String userGoogleAccessToken) {
+		// No-op: the stub never clones a real deck, so there are no slides to trim.
+	}
 }

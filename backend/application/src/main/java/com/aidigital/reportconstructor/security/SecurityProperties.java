@@ -11,56 +11,58 @@ import org.springframework.validation.annotation.Validated;
 @ConfigurationProperties(prefix = "app.security")
 public class SecurityProperties {
 
-    private final Cors cors = new Cors();
-    private final Csp csp = new Csp();
+	private final Cors cors = new Cors();
+	private final Csp csp = new Csp();
 
-    public Cors getCors() {
-        return cors;
-    }
+	public Cors getCors() {
+		return cors;
+	}
 
-    public Csp getCsp() {
-        return csp;
-    }
+	public Csp getCsp() {
+		return csp;
+	}
 
-    /**
-     * Cross-origin resource sharing settings.
-     */
-    public static class Cors {
-        @NotBlank
-        private String allowedOrigins =
-            "https://*.replit.dev,https://*.repl.co,http://localhost:5173,http://localhost:5000";
+	/**
+	 * Cross-origin resource sharing settings.
+	 */
+	public static class Cors {
 
-        private long maxAgeSeconds = 3600L;
+		@NotBlank
+		private String allowedOrigins =
+				"https://*.replit.dev,https://*.repl.co,http://localhost:5173,http://localhost:5000";
 
-        public String getAllowedOrigins() {
-            return allowedOrigins;
-        }
+		private long maxAgeSeconds = 3600L;
 
-        public void setAllowedOrigins(String allowedOrigins) {
-            this.allowedOrigins = allowedOrigins;
-        }
+		public String getAllowedOrigins() {
+			return allowedOrigins;
+		}
 
-        public long getMaxAgeSeconds() {
-            return maxAgeSeconds;
-        }
+		public void setAllowedOrigins(String allowedOrigins) {
+			this.allowedOrigins = allowedOrigins;
+		}
 
-        public void setMaxAgeSeconds(long maxAgeSeconds) {
-            this.maxAgeSeconds = maxAgeSeconds;
-        }
-    }
+		public long getMaxAgeSeconds() {
+			return maxAgeSeconds;
+		}
 
-    /**
-     * Content Security Policy settings.
-     */
-    public static class Csp {
-        private String frameAncestors = "'self' https://*.replit.dev https://*.repl.co";
+		public void setMaxAgeSeconds(long maxAgeSeconds) {
+			this.maxAgeSeconds = maxAgeSeconds;
+		}
+	}
 
-        public String getFrameAncestors() {
-            return frameAncestors;
-        }
+	/**
+	 * Content Security Policy settings.
+	 */
+	public static class Csp {
 
-        public void setFrameAncestors(String frameAncestors) {
-            this.frameAncestors = frameAncestors;
-        }
-    }
+		private String frameAncestors = "'self' https://*.replit.dev https://*.repl.co";
+
+		public String getFrameAncestors() {
+			return frameAncestors;
+		}
+
+		public void setFrameAncestors(String frameAncestors) {
+			this.frameAncestors = frameAncestors;
+		}
+	}
 }

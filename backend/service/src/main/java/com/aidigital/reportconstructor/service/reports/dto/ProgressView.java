@@ -17,13 +17,13 @@ import java.util.List;
  * @param warnings per-chart warnings collected during generation
  */
 public record ProgressView(
-    int step,
-    int total,
-    String label,
-    String status,
-    String slideUrl,
-    String error,
-    List<String> warnings
+		int step,
+		int total,
+		String label,
+		String status,
+		String slideUrl,
+		String error,
+		List<String> warnings
 ) {
 	// required
 }

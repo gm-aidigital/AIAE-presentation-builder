@@ -18,31 +18,32 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ReportGenerationWarningsHelperImpl implements ReportGenerationWarningsHelper {
 
-    private final ObjectMapper objectMapper;
+	private final ObjectMapper objectMapper;
 
-    @Override
-    public List<String> parseWarnings(String warningsJson) {
-        if (warningsJson == null || warningsJson.isBlank()) {
-            return List.of();
-        }
-        try {
-            return objectMapper.readValue(warningsJson, new TypeReference<List<String>>() { });
-        } catch (Exception ex) {
-            log.warn("[report] could not parse warnings json: {}", ex.getMessage());
-            return List.of();
-        }
-    }
+	@Override
+	public List<String> parseWarnings(String warningsJson) {
+		if (warningsJson == null || warningsJson.isBlank()) {
+			return List.of();
+		}
+		try {
+			return objectMapper.readValue(warningsJson, new TypeReference<List<String>>() {
+			});
+		} catch (Exception ex) {
+			log.warn("[report] could not parse warnings json: {}", ex.getMessage());
+			return List.of();
+		}
+	}
 
-    @Override
-    public String serializeWarnings(List<String> warnings) {
-        if (warnings == null || warnings.isEmpty()) {
-            return null;
-        }
-        try {
-            return objectMapper.writeValueAsString(warnings);
-        } catch (JsonProcessingException ex) {
-            log.warn("[report] could not serialise warnings: {}", ex.getMessage());
-            return null;
-        }
-    }
+	@Override
+	public String serializeWarnings(List<String> warnings) {
+		if (warnings == null || warnings.isEmpty()) {
+			return null;
+		}
+		try {
+			return objectMapper.writeValueAsString(warnings);
+		} catch (JsonProcessingException ex) {
+			log.warn("[report] could not serialise warnings: {}", ex.getMessage());
+			return null;
+		}
+	}
 }

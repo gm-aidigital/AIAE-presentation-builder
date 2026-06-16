@@ -12,18 +12,20 @@ import java.util.Map;
 
 @Builder
 public record UsageEvent(
-    String eventId,
-    LocalDateTime eventTimestamp,
-    String service,
-    String environment,
-    String eventType,
-    String action,
-    String userId,
-    String userEmail,
-    String status,
-    long durationMs,
-    Map<String, Object> attributes,
-    String errorMessage,
-    String clientIp,
-    String userAgent
-) { }
+		String eventId,
+		LocalDateTime eventTimestamp,
+		String service,
+		String environment,
+		String eventType,
+		String action,
+		String userId,
+		String userEmail,
+		String status,
+		long durationMs,
+		Map<String, Object> attributes,
+		String errorMessage,
+		String clientIp,
+		String userAgent
+) {
+
+}

@@ -12,10 +12,10 @@ import com.aidigital.reportconstructor.usagelogging.models.UsageEvent;
  */
 public interface UsageEventSink {
 
-    /**
-     * Records a single usage event.
-     *
-     * @param event immutable usage event payload
-     */
-    void record(UsageEvent event);
+	/**
+	 * Records a single usage event.
+	 *
+	 * @param event immutable usage event payload
+	 */
+	void record(UsageEvent event);
 }

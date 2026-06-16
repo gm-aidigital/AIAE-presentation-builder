@@ -27,65 +27,65 @@ import java.util.function.Supplier;
  */
 @Component
 public class CompanyEmailDomainAuthorizationManager
-    implements AuthorizationManager<RequestAuthorizationContext> {
+		implements AuthorizationManager<RequestAuthorizationContext> {
 
-    private static final String EMAIL_CLAIM = "email";
+	private static final String EMAIL_CLAIM = "email";
 
-    private final AuthProperties authProperties;
+	private final AuthProperties authProperties;
 
-    public CompanyEmailDomainAuthorizationManager(AuthProperties authProperties) {
-        this.authProperties = authProperties;
-    }
+	public CompanyEmailDomainAuthorizationManager(AuthProperties authProperties) {
+		this.authProperties = authProperties;
+	}
 
-    @Override
-    public AuthorizationDecision check(
-        Supplier<Authentication> authentication,
-        RequestAuthorizationContext context
-    ) {
-        Authentication auth = authentication.get();
-        if (!(auth instanceof JwtAuthenticationToken jwtAuth)) {
-            return new AuthorizationDecision(false);
-        }
-        String email = jwtAuth.getToken().getClaimAsString(EMAIL_CLAIM);
-        return new AuthorizationDecision(isAllowedEmail(email));
-    }
+	@Override
+	public AuthorizationDecision check(
+			Supplier<Authentication> authentication,
+			RequestAuthorizationContext context
+	) {
+		Authentication auth = authentication.get();
+		if (!(auth instanceof JwtAuthenticationToken jwtAuth)) {
+			return new AuthorizationDecision(false);
+		}
+		String email = jwtAuth.getToken().getClaimAsString(EMAIL_CLAIM);
+		return new AuthorizationDecision(isAllowedEmail(email));
+	}
 
-    /**
-     * Decides whether an email belongs to the configured company domain.
-     *
-     * @param email raw email claim value (may be null)
-     * @return true when the email's domain exactly matches the allow-list domain
-     */
-    public boolean isAllowedEmail(String email) {
-        if (email == null || email.isBlank()) {
-            return false;
-        }
-        String domain = normalizeDomain(authProperties.getAllowedEmailDomain());
-        if (domain.isBlank()) {
-            return false;
-        }
-        String normalized = email.trim().toLowerCase(Locale.ROOT);
-        int at = normalized.lastIndexOf('@');
-        if (at < 0 || at == normalized.length() - 1) {
-            return false;
-        }
-        return domain.equals(normalized.substring(at + 1));
-    }
+	/**
+	 * Decides whether an email belongs to the configured company domain.
+	 *
+	 * @param email raw email claim value (may be null)
+	 * @return true when the email's domain exactly matches the allow-list domain
+	 */
+	public boolean isAllowedEmail(String email) {
+		if (email == null || email.isBlank()) {
+			return false;
+		}
+		String domain = normalizeDomain(authProperties.getAllowedEmailDomain());
+		if (domain.isBlank()) {
+			return false;
+		}
+		String normalized = email.trim().toLowerCase(Locale.ROOT);
+		int at = normalized.lastIndexOf('@');
+		if (at < 0 || at == normalized.length() - 1) {
+			return false;
+		}
+		return domain.equals(normalized.substring(at + 1));
+	}
 
-    /**
-     * Normalizes the configured company domain for comparison.
-     *
-     * @param domain configured domain value (may be null)
-     * @return trimmed lower-case domain without a leading {@code @}
-     */
-    private String normalizeDomain(String domain) {
-        if (domain == null) {
-            return "";
-        }
-        String normalized = domain.trim().toLowerCase(Locale.ROOT);
-        if (normalized.startsWith("@")) {
-            normalized = normalized.substring(1);
-        }
-        return normalized;
-    }
+	/**
+	 * Normalizes the configured company domain for comparison.
+	 *
+	 * @param domain configured domain value (may be null)
+	 * @return trimmed lower-case domain without a leading {@code @}
+	 */
+	String normalizeDomain(String domain) {
+		if (domain == null) {
+			return "";
+		}
+		String normalized = domain.trim().toLowerCase(Locale.ROOT);
+		if (normalized.startsWith("@")) {
+			normalized = normalized.substring(1);
+		}
+		return normalized;
+	}
 }
