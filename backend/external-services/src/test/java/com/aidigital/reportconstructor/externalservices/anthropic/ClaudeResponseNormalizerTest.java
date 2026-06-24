@@ -116,4 +116,33 @@ class ClaudeResponseNormalizerTest {
 		assertThat(out).doesNotEndWith("tacti");
 		assertThat(longOverview.substring(0, out.length() + 1)).startsWith(out + " ");
 	}
+
+	@Test
+	void shouldPreferSentenceEndingPeriodOverALaterCommaTest() {
+		// Given: a period sits just past the 75% threshold, and a comma sits further along but still
+		// inside the cut window — picking the later (comma) would end on an unfinished clause
+		String longText = "a".repeat(160) + "." + "b".repeat(20) + "," + "c".repeat(50);
+
+		// When:
+		String out = normalizer.normalizeC(longText, 210);
+
+		// Then: cuts at the period, not the later comma, so the result is a finished sentence
+		assertThat(out).isNotNull();
+		assertThat(out).endsWith(".");
+		assertThat(out).doesNotContain(",");
+	}
+
+	@Test
+	void shouldPreferSentenceEndingPeriodOverALaterCommaForStrategicOverviewTest() {
+		// Given: a period sits just past position 180, and a comma sits further along but still inside
+		// the 240-char cut window
+		String longOverview = "a".repeat(190) + "." + "b".repeat(20) + "," + "c".repeat(50);
+
+		// When:
+		String out = normalizer.limitStrategicOverview(longOverview);
+
+		// Then: cuts at the period, not the later comma
+		assertThat(out).endsWith(".");
+		assertThat(out).doesNotContain(",");
+	}
 }

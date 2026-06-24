@@ -477,16 +477,22 @@ public class ClaudeBatchPromptBuilder {
 		}
 		return Optional.of(
 				"You are editing client-facing campaign-report copy that is too long for its layout slot.\n\n"
-						+ "For EACH field below, rewrite the text so it fits within its character limit, while " +
-						"preserving its key meaning and business message as closely as possible. Cut secondary " +
-						"detail before cutting the main point. Always end on a complete word and, where the limit " +
-						"allows, a complete sentence — never cut off mid-word or mid-clause.\n\n"
+						+ "For EACH field below, REWRITE it as a complete, self-contained thought that fits within " +
+						"its character limit — do not just truncate the original. Preserve the key meaning and " +
+						"business message as closely as possible: cut whole secondary clauses or examples before " +
+						"cutting the main point, then re-word what remains so it reads as a finished sentence.\n\n"
 						+ "Fields:\n" + String.join("\n", entries) + "\n\n"
 						+ "Return ONLY a JSON object mapping each key to its rewritten text, with no other keys:\n"
 						+ "{" + String.join(", ", keys) + "}\n\n"
 						+ "Rules:\n"
 						+ "- Every value's length MUST be at or under that field's character limit — count " +
 						"characters, not words.\n"
+						+ "- CRITICAL: every value MUST end with a period (or other sentence-ending punctuation) " +
+						"and read as a complete thought. NEVER end mid-clause, mid-list, or on a dangling comma, " +
+						"dash, or conjunction (e.g. \"and\", \"to ensure\", \"such as\"). If the full original idea " +
+						"does not fit, drop an entire trailing clause/example rather than trimming it down to a " +
+						"fragment.\n"
+						+ "- Never cut off mid-word.\n"
 						+ "- Keep the same language (English) and tense as the original text.\n"
 						+ "- Return ONLY the JSON object — no markdown, no backticks, no explanation."
 		);

@@ -61,8 +61,9 @@ public class ClaudeResponseNormalizer {
 	}
 
 	/**
-	 * Batch C normalize: window=limit, last {@code .}/{@code ,} threshold limit*0.75, falling back to the
-	 * last word boundary (never mid-word) when no such punctuation is found.
+	 * Batch C normalize: window=limit, prefers the last sentence-ending {@code .} past threshold
+	 * limit*0.75 (so the result reads as a finished thought); falls back to the last {@code ,} past the
+	 * same threshold, then to the last word boundary (never mid-word) when neither is found.
 	 *
 	 * @param val   raw model text
 	 * @param limit character budget
@@ -75,9 +76,13 @@ public class ClaudeResponseNormalizer {
 		val = val.replaceAll("\\s*[\\r\\n]+\\s*", " ").replaceAll("\\s{2,}", " ").trim();
 		if (val.length() > limit) {
 			String cut = val.substring(0, limit);
-			int lp = Math.max(cut.lastIndexOf('.'), cut.lastIndexOf(','));
-			if (lp > (int) (limit * 0.75)) {
-				val = val.substring(0, lp + 1).trim();
+			int threshold = (int) (limit * 0.75);
+			int lastPeriod = cut.lastIndexOf('.');
+			int lastComma = cut.lastIndexOf(',');
+			if (lastPeriod > threshold) {
+				val = val.substring(0, lastPeriod + 1).trim();
+			} else if (lastComma > threshold) {
+				val = val.substring(0, lastComma + 1).trim();
 			} else {
 				int ls = cut.lastIndexOf(' ');
 				val = ls > 0 ? cut.substring(0, ls).trim() : cut.trim();
@@ -170,9 +175,10 @@ public class ClaudeResponseNormalizer {
 	}
 
 	/**
-	 * Caps the Batch A strategic overview at 240 characters, preferring a sentence/clause break (last {@code .} or
-	 * {@code ,} past position 180) over a hard cut, and falling back to the last word boundary (never mid-word)
-	 * when no such punctuation is found.
+	 * Caps the Batch A strategic overview at 240 characters, preferring the last sentence-ending {@code .}
+	 * past position 180 (so the result reads as a finished thought) over a hard cut, then falling back to
+	 * the last {@code ,} past the same position, then to the last word boundary (never mid-word) when
+	 * neither is found.
 	 *
 	 * @param overview raw strategic-overview text from the model (may be null)
 	 * @return the trimmed overview, or an empty string when {@code overview} is null
@@ -184,9 +190,12 @@ public class ClaudeResponseNormalizer {
 		overview = overview.trim();
 		if (overview.length() > 240) {
 			String cut = overview.substring(0, 240);
-			int lp = Math.max(cut.lastIndexOf('.'), cut.lastIndexOf(','));
-			if (lp > 180) {
-				overview = overview.substring(0, lp + 1).trim();
+			int lastPeriod = cut.lastIndexOf('.');
+			int lastComma = cut.lastIndexOf(',');
+			if (lastPeriod > 180) {
+				overview = overview.substring(0, lastPeriod + 1).trim();
+			} else if (lastComma > 180) {
+				overview = overview.substring(0, lastComma + 1).trim();
 			} else {
 				int ls = cut.lastIndexOf(' ');
 				overview = ls > 0 ? cut.substring(0, ls).trim() : cut.trim();
