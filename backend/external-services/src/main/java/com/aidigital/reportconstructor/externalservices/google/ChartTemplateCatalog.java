@@ -23,6 +23,8 @@ public class ChartTemplateCatalog {
 	private Map<Integer, String> distTemplateSheetIds = Map.of();
 	private Map<Integer, String> distSlideObjectIds = Map.of();
 	private List<RgbColor> pieDefaultColors = List.of();
+	private RgbColor comboColumnColor;
+	private RgbColor comboLineColor;
 
 	/**
 	 * Returns the embedded chart's object id within its template spreadsheet, used to locate the
@@ -189,5 +191,67 @@ public class ChartTemplateCatalog {
 			out[i] = new double[]{c.getRed(), c.getGreen(), c.getBlue()};
 		}
 		return out;
+	}
+
+	/**
+	 * Returns the configured color for combo-chart columns (the Impressions series), or {@code null} to fall back
+	 * to the built-in brand default.
+	 *
+	 * @return the combo column color, or {@code null} when unset
+	 */
+	public RgbColor getComboColumnColor() {
+		return comboColumnColor;
+	}
+
+	/**
+	 * Sets the combo-chart column (Impressions series) color.
+	 *
+	 * @param comboColumnColor the normalized RGB color applied to combo columns (may be null to use the default)
+	 */
+	public void setComboColumnColor(RgbColor comboColumnColor) {
+		this.comboColumnColor = comboColumnColor;
+	}
+
+	/**
+	 * Returns the configured color for the combo-chart line (the CTR/VCR rate series), or {@code null} to fall back
+	 * to the built-in brand default.
+	 *
+	 * @return the combo line color, or {@code null} when unset
+	 */
+	public RgbColor getComboLineColor() {
+		return comboLineColor;
+	}
+
+	/**
+	 * Sets the combo-chart line (CTR/VCR rate series) color.
+	 *
+	 * @param comboLineColor the normalized RGB color applied to the combo line (may be null to use the default)
+	 */
+	public void setComboLineColor(RgbColor comboLineColor) {
+		this.comboLineColor = comboLineColor;
+	}
+
+	/**
+	 * Builds the combo column (Impressions series) color as a {@code {red, green, blue}} triple, falling back to the
+	 * built-in brand blue ({@code #0009DB}) when none is configured.
+	 *
+	 * @return the normalized RGB components for combo columns
+	 */
+	public double[] comboColumnColorComponents() {
+		return comboColumnColor == null
+				? new double[]{0.0, 0.035294, 0.858824}
+				: new double[]{comboColumnColor.getRed(), comboColumnColor.getGreen(), comboColumnColor.getBlue()};
+	}
+
+	/**
+	 * Builds the combo line (CTR/VCR series) color as a {@code {red, green, blue}} triple, falling back to the
+	 * built-in brand green ({@code #AFF23F}) when none is configured.
+	 *
+	 * @return the normalized RGB components for the combo line
+	 */
+	public double[] comboLineColorComponents() {
+		return comboLineColor == null
+				? new double[]{0.686275, 0.949020, 0.247059}
+				: new double[]{comboLineColor.getRed(), comboLineColor.getGreen(), comboLineColor.getBlue()};
 	}
 }

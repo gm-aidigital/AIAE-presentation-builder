@@ -7,6 +7,8 @@ import com.google.api.services.sheets.v4.model.BatchUpdateSpreadsheetRequest;
 import com.google.api.services.sheets.v4.model.ChartData;
 import com.google.api.services.sheets.v4.model.ChartSourceRange;
 import com.google.api.services.sheets.v4.model.ChartSpec;
+import com.google.api.services.sheets.v4.model.Color;
+import com.google.api.services.sheets.v4.model.ColorStyle;
 import com.google.api.services.sheets.v4.model.EmbeddedChart;
 import com.google.api.services.sheets.v4.model.GridRange;
 import com.google.api.services.sheets.v4.model.PieChartSpec;
@@ -138,9 +140,11 @@ public class ChartSpecBuilder {
 			}
 		}
 		List<BasicChartSeries> series = new ArrayList<>();
-		series.add(comboSeries(dataSheetId, rowStart, rowEnd, ChartSheetWriter.IMPS_COL, "COLUMN", "LEFT_AXIS"));
+		series.add(comboSeries(dataSheetId, rowStart, rowEnd, ChartSheetWriter.IMPS_COL, "COLUMN", "LEFT_AXIS",
+				templates.comboColumnColorComponents()));
 		if (withRate) {
-			series.add(comboSeries(dataSheetId, rowStart, rowEnd, ChartSheetWriter.RATE_COL, "LINE", "RIGHT_AXIS"));
+			series.add(comboSeries(dataSheetId, rowStart, rowEnd, ChartSheetWriter.RATE_COL, "LINE", "RIGHT_AXIS",
+					templates.comboLineColorComponents()));
 		}
 		bc.setSeries(series);
 		if (bc.getHeaderCount() == null) {
@@ -208,18 +212,37 @@ public class ChartSpecBuilder {
 		return spec;
 	}
 
+	/**
+	 * Builds one combo-chart data series over a single column of the copy's data tab, pinned to an explicit color so
+	 * the chart keeps its brand styling instead of reverting to the sheet's default theme once linked into Slides.
+	 *
+	 * @param sheetId    sheet id of the copy's data tab the source range points at
+	 * @param rowStart   inclusive start row index of the series range
+	 * @param rowEnd     exclusive end row index of the series range
+	 * @param col        zero-based column index supplying the series values
+	 * @param type       the basic-chart series type, e.g. {@code "COLUMN"} or {@code "LINE"}
+	 * @param targetAxis the axis the series is plotted against, e.g. {@code "LEFT_AXIS"} or {@code "RIGHT_AXIS"}
+	 * @param color      normalized {@code {red, green, blue}} components applied to the series
+	 * @return the configured series
+	 */
 	BasicChartSeries comboSeries(int sheetId, int rowStart, int rowEnd, int col,
-	                             String type, String targetAxis) {
+	                             String type, String targetAxis, double[] color) {
 		GridRange range = new GridRange()
 				.setSheetId(sheetId)
 				.setStartRowIndex(rowStart)
 				.setEndRowIndex(rowEnd)
 				.setStartColumnIndex(col)
 				.setEndColumnIndex(col + 1);
+		Color seriesColor = new Color()
+				.setRed((float) color[0])
+				.setGreen((float) color[1])
+				.setBlue((float) color[2]);
 		return new BasicChartSeries()
 				.setSeries(new ChartData().setSourceRange(new ChartSourceRange().setSources(List.of(range))))
 				.setType(type)
-				.setTargetAxis(targetAxis);
+				.setTargetAxis(targetAxis)
+				.setColor(seriesColor)
+				.setColorStyle(new ColorStyle().setRgbColor(seriesColor));
 	}
 
 	Map<String, Object> rgb(double[] c) {
