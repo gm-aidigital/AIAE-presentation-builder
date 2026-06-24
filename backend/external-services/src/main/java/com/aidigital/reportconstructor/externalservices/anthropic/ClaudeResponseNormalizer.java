@@ -161,17 +161,33 @@ public class ClaudeResponseNormalizer {
 	}
 
 	/**
-	 * Hard-truncates a Batch A strategic-point placeholder to at most 22 characters.
+	 * Caps the Batch A strategic-point placeholder at 22 characters, preferring the last sentence-ending
+	 * {@code .} past position 11 over a hard cut, then falling back to the last {@code ,} past the same
+	 * position, then to the last word boundary (never mid-word) when neither is found.
 	 *
 	 * @param point raw strategic-point text from the model (may be null)
-	 * @return the trimmed point, clipped to 22 characters, or an empty string when {@code point} is null
+	 * @return the trimmed point, or an empty string when {@code point} is null
 	 */
 	public String limitStrategicPoint(String point) {
 		if (point == null) {
 			return "";
 		}
 		point = point.trim();
-		return point.length() > 22 ? point.substring(0, 22) : point;
+		if (point.length() > 22) {
+			String cut = point.substring(0, 22);
+			int threshold = 11;
+			int lastPeriod = cut.lastIndexOf('.');
+			int lastComma = cut.lastIndexOf(',');
+			if (lastPeriod > threshold) {
+				point = point.substring(0, lastPeriod + 1).trim();
+			} else if (lastComma > threshold) {
+				point = point.substring(0, lastComma + 1).trim();
+			} else {
+				int ls = cut.lastIndexOf(' ');
+				point = ls > 0 ? cut.substring(0, ls).trim() : cut.trim();
+			}
+		}
+		return point;
 	}
 
 	/**
@@ -225,10 +241,12 @@ public class ClaudeResponseNormalizer {
 	}
 
 	/**
-	 * Collapses whitespace in the geo-tab summary and hard-truncates it to at most 40 characters.
+	 * Collapses whitespace in the geo-tab summary and caps it at 40 characters, preferring the last
+	 * sentence-ending {@code .} past position 20 over a hard cut, then falling back to the last {@code ,}
+	 * past the same position, then to the last word boundary (never mid-word) when neither is found.
 	 *
 	 * @param text raw geo-summary text from the model (may be null or blank)
-	 * @return the whitespace-collapsed, 40-character-capped summary, or {@code null} when blank
+	 * @return the whitespace-collapsed, length-capped summary, or {@code null} when blank
 	 */
 	public String limitGeoSummary(String text) {
 		if (text == null || text.isBlank()) {
@@ -236,7 +254,18 @@ public class ClaudeResponseNormalizer {
 		}
 		text = text.replaceAll("\\s*[\\r\\n]+\\s*", " ").replaceAll("\\s{2,}", " ").trim();
 		if (text.length() > 40) {
-			text = text.substring(0, 40).trim();
+			String cut = text.substring(0, 40);
+			int threshold = 20;
+			int lastPeriod = cut.lastIndexOf('.');
+			int lastComma = cut.lastIndexOf(',');
+			if (lastPeriod > threshold) {
+				text = text.substring(0, lastPeriod + 1).trim();
+			} else if (lastComma > threshold) {
+				text = text.substring(0, lastComma + 1).trim();
+			} else {
+				int ls = cut.lastIndexOf(' ');
+				text = ls > 0 ? cut.substring(0, ls).trim() : cut.trim();
+			}
 		}
 		return text.isEmpty() ? null : text;
 	}

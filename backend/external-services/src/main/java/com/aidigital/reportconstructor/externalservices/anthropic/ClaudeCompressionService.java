@@ -20,7 +20,7 @@ import java.util.Map;
 @ConditionalOnExpression("'${external.anthropic.api-key:}' != ''")
 public class ClaudeCompressionService {
 
-	private static final int MAX_TOKENS = 1200;
+	private static final int MAX_TOKENS = 3000;
 	private static final int TIMEOUT_SECONDS = 30;
 
 	private final AnthropicMessagesClient messagesClient;
