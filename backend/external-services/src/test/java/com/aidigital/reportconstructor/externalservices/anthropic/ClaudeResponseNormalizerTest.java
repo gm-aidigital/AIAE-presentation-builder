@@ -48,6 +48,32 @@ class ClaudeResponseNormalizerTest {
 	}
 
 	@Test
+	void limitRecommendationTitle_max30CharsAtWordBoundary() {
+		String out = normalizer.limitRecommendationTitle("Scale Connected TV In Evening Dayparts Significantly");
+		assertThat(out.length()).isLessThanOrEqualTo(30);
+		assertThat(out).doesNotEndWith(" ");
+		assertThat(out).startsWith("Scale Connected TV");
+	}
+
+	@Test
+	void limitRecommendationTitle_nullBecomesEmpty() {
+		assertThat(normalizer.limitRecommendationTitle(null)).isEmpty();
+	}
+
+	@Test
+	void limitRecommendationText_max130CharsEndsOnSentence() {
+		String longText = "x".repeat(200);
+		String out = normalizer.limitRecommendationText(longText);
+		assertThat(out).isNotNull();
+		assertThat(out.length()).isLessThanOrEqualTo(130);
+	}
+
+	@Test
+	void limitRecommendationText_shortTextUnchanged() {
+		assertEquals("Reallocate spend to CTV.", normalizer.limitRecommendationText("Reallocate spend to CTV."));
+	}
+
+	@Test
 	void limitAudienceSegments_max80AtComma() {
 		String longSeg =
 				"one, two, three, four, five, six, seven, eight, nine, ten, eleven, twelve, thirteen, fourteen, " +

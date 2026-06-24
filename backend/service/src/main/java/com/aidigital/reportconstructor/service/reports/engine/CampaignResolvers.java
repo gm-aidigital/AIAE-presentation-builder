@@ -1,6 +1,7 @@
 package com.aidigital.reportconstructor.service.reports.engine;
 
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
+import com.aidigital.reportconstructor.service.reports.dto.Recommendation;
 import com.aidigital.reportconstructor.service.reports.dto.StrategicInsight;
 import com.aidigital.reportconstructor.service.reports.helpers.SheetRowHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.TacticExtractionHelper;
@@ -413,6 +414,50 @@ public class CampaignResolvers {
 				result.put(overKey, new Resolved("Strategic overview " + i + " (auto: Claude)", ci.overview(), "adj"));
 			} else {
 				result.put(overKey, new Resolved("Strategic overview " + i + ":", null, "not_found"));
+			}
+		}
+		return result;
+	}
+
+	/**
+	 * Resolves the eight optimization-recommendation placeholders ({@code {{recommendation N}}} and
+	 * {@code {{recommendation N text}}} for N = 1..4), preferring manual values and falling back to Claude's
+	 * forward-looking recommendations.
+	 *
+	 * @param sheetRows Media Plan tab rows
+	 * @param adjRows   manual Adjustments tab rows (checked first)
+	 * @param claude    Claude's per-index recommendations (title + text), one per slot, used when no manual
+	 *                  value exists (may be null)
+	 * @return a map keyed by placeholder ({@code {{recommendation N}}} / {@code {{recommendation N text}}}) to
+	 * its {@link Resolved}; values may be {@code "not_found"}
+	 */
+	public Map<String, Resolved> resolveRecommendations(
+			List<List<String>> sheetRows, List<List<String>> adjRows, List<Recommendation> claude) {
+
+		Map<String, Resolved> result = new LinkedHashMap<>();
+		for (int i = 1; i <= 4; i++) {
+			String mTitle = coalesce(sheetUtils.findLabelValue(adjRows, "Recommendation " + i + ":"),
+					sheetUtils.findLabelValue(sheetRows, "Recommendation " + i + ":"));
+			String mText = coalesce(sheetUtils.findLabelValue(adjRows, "Recommendation " + i + " text:"),
+					sheetUtils.findLabelValue(sheetRows, "Recommendation " + i + " text:"));
+			Recommendation ci = claude != null && claude.size() >= i ? claude.get(i - 1) : null;
+
+			String titleKey = "{{recommendation " + i + "}}";
+			if (mTitle != null) {
+				result.put(titleKey, new Resolved("Recommendation " + i + ":", mTitle, "adj"));
+			} else if (ci != null && notBlank(ci.title())) {
+				result.put(titleKey, new Resolved("Recommendation " + i + " (auto: Claude)", ci.title(), "adj"));
+			} else {
+				result.put(titleKey, new Resolved("Recommendation " + i + ":", null, "not_found"));
+			}
+
+			String textKey = "{{recommendation " + i + " text}}";
+			if (mText != null) {
+				result.put(textKey, new Resolved("Recommendation " + i + " text:", mText, "adj"));
+			} else if (ci != null && notBlank(ci.text())) {
+				result.put(textKey, new Resolved("Recommendation " + i + " text (auto: Claude)", ci.text(), "adj"));
+			} else {
+				result.put(textKey, new Resolved("Recommendation " + i + " text:", null, "not_found"));
 			}
 		}
 		return result;

@@ -440,12 +440,42 @@ public class ClaudeBatchPromptBuilder {
 						+ "  //  Focus metrics by tactic type: Display→Imps+CTR; Video/Pre-roll→Imps+CTR+VCR; " +
 						"CTV/OTT→Imps+VCR; Audio→Completions.\n"
 						+ "  //  Past tense. No bullets. Business English. Max 2 sentences.\n"
-						+ "  }\n"
+						+ "  },\n"
+						+ "  \"optimization_recommendations\": array  // EXACTLY 4 objects: {\"title\": string, " +
+						"\"text\": string}.\n"
+						+ "  //  This is the single most important slide of the deck — the agency's forward-looking, " +
+						"actionable plan.\n"
+						+ "  //  Every other section of this report exists to justify these 4 recommendations: ground " +
+						"each one in the\n"
+						+ "  //    actual results, tactics, audience and goal above.\n"
+						+ "  //  PURPOSE: concrete next-step actions that show how to hit the client's goal even more " +
+						"effectively next flight.\n"
+						+ "  //  'title': MAX 28 CHARACTERS. A short imperative action headline, Title Case, no " +
+						"trailing period\n"
+						+ "  //    (e.g. \"Scale CTV In Evening Dayparts\", \"Refresh Display Creative\"). Name the " +
+						"specific lever.\n"
+						+ "  //  'text': MAX 125 CHARACTERS. One complete sentence stating WHAT to do and WHY it " +
+						"advances the goal,\n"
+						+ "  //    referencing a specific tactic / audience / metric from this campaign. End on a " +
+						"complete sentence.\n"
+						+ "  //  CLIENT-FACING TONE — non-negotiable: these recommendations represent the agency as the " +
+						"expert partner.\n"
+						+ "  //    Frame every item as a proactive optimization to amplify success — NEVER as a fix for " +
+						"agency error\n"
+						+ "  //    or past underperformance. Position the agency as the strategist driving the next win. " +
+						"No blame, no\n"
+						+ "  //    apology, no generic advice (\"keep monitoring\", \"optimize further\") — each must be " +
+						"specific and ownable.\n"
+						+ "  //  The 4 recommendations must be DISTINCT levers (e.g. budget reallocation, " +
+						"audience expansion,\n"
+						+ "  //    creative strategy, channel/daypart mix, measurement) — no two restating the same idea.\n"
 						+ "}\n\n"
 						+ "Rules:\n"
 						+ "- Return ONLY the JSON object — no markdown, no backticks, no explanation.\n"
 						+ "- null for results_overview / thoughts_on_performance if genuinely insufficient data.\n"
 						+ "- For tactic_overviews: include a key for every tactic number listed above.\n"
+						+ "- optimization_recommendations: ALWAYS return exactly 4 objects, each with non-empty title " +
+						"and text.\n"
 						+ "- Do NOT invent metrics. Use only the numbers provided.\n"
 						+ "- CRITICAL: each tactic_overview value MUST end on a complete word/sentence and be ≤190 " +
 						"characters.\n"

@@ -307,6 +307,46 @@ public class ClaudeResponseNormalizer {
 	}
 
 	/**
+	 * Caps the Batch C recommendation title placeholder at 30 characters, preferring the last real
+	 * sentence-ending {@code .} (decimal points excluded) past position 15 over a hard cut, then falling
+	 * back to the last word boundary (never mid-word), with any trailing dangling comma stripped, when no
+	 * qualifying period is found. Like a strategic point, the title is a headline and is not forced to end
+	 * on a period.
+	 *
+	 * @param title raw recommendation-title text from the model (may be null)
+	 * @return the trimmed title, or an empty string when {@code title} is null
+	 */
+	public String limitRecommendationTitle(String title) {
+		if (title == null) {
+			return "";
+		}
+		title = title.trim();
+		if (title.length() > 30) {
+			String cut = title.substring(0, 30);
+			int threshold = 15;
+			int lastPeriod = lastSentencePeriod(cut);
+			if (lastPeriod > threshold) {
+				title = title.substring(0, lastPeriod + 1).trim();
+			} else {
+				int ls = cut.lastIndexOf(' ');
+				title = stripTrailingComma(ls > 0 ? cut.substring(0, ls).trim() : cut.trim());
+			}
+		}
+		return title;
+	}
+
+	/**
+	 * Normalizes the Batch C recommendation body copy with a 130-character budget via {@link #normalizeC},
+	 * so it reads as a finished sentence ending on sentence-ending punctuation.
+	 *
+	 * @param val raw recommendation-text from the model
+	 * @return the normalized, length-capped text, or {@code null} when blank
+	 */
+	public String limitRecommendationText(String val) {
+		return normalizeC(val, 130);
+	}
+
+	/**
 	 * Normalizes the Batch C {@code results_overview} copy with a 380-character budget via {@link #normalizeC}.
 	 *
 	 * @param val raw results-overview text from the model

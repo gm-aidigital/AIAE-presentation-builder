@@ -91,6 +91,9 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		sections.add(buildPreviewSection("Tactic 7",
 				buildShortTacticSection(7, sheet, adj, data, ccB, ccC, mediaTactics)));
 
+		sections.add(buildPreviewSection("Optimization Recommendations",
+				campaignResolvers.resolveRecommendations(sheet, adj, ccC.recommendations())));
+
 		return sections;
 	}
 

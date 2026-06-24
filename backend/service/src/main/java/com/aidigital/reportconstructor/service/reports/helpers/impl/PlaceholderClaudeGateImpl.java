@@ -69,6 +69,14 @@ public class PlaceholderClaudeGateImpl implements PlaceholderClaudeGate {
 		if (bothNull(adj, sheet, "Thoughts on the performance:")) {
 			return true;
 		}
+		for (int i = 1; i <= 4; i++) {
+			if (bothNull(adj, sheet, "Recommendation " + i + ":")) {
+				return true;
+			}
+			if (bothNull(adj, sheet, "Recommendation " + i + " text:")) {
+				return true;
+			}
+		}
 		if (data != null && data.tactics() != null) {
 			for (int n : data.tactics().keySet()) {
 				if (bothNull(adj, sheet, "Tactic " + n + " overview:")) {

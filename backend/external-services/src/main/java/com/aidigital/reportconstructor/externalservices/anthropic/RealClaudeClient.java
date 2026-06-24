@@ -4,6 +4,7 @@ import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
+import com.aidigital.reportconstructor.service.reports.dto.Recommendation;
 import com.aidigital.reportconstructor.service.reports.dto.StrategicInsight;
 import com.aidigital.reportconstructor.service.reports.dto.TacticInsight;
 import com.aidigital.reportconstructor.service.reports.engine.ReportClaudeDefaults;
@@ -40,6 +41,8 @@ public class RealClaudeClient implements ClaudeClient {
 	private static final int RESULTS_OVERVIEW_LIMIT = 380;
 	private static final int THOUGHT_LIMIT = 220;
 	private static final int TACTIC_OVERVIEW_LIMIT = 210;
+	private static final int RECOMMENDATION_TITLE_LIMIT = 30;
+	private static final int RECOMMENDATION_TEXT_LIMIT = 130;
 
 	private final AnthropicMessagesClient messagesClient;
 	private final ClaudeBatchPromptBuilder promptBuilder;
@@ -182,6 +185,15 @@ public class RealClaudeClient implements ClaudeClient {
 			}
 		}
 
+		JsonNode recArr = parsed.get("optimization_recommendations");
+		String[] rawRecTitles = new String[4];
+		String[] rawRecTexts = new String[4];
+		for (int i = 0; i < 4; i++) {
+			JsonNode item = (recArr != null && recArr.isArray() && i < recArr.size()) ? recArr.get(i) : null;
+			rawRecTitles[i] = item == null ? "" : item.path("title").asText("").trim();
+			rawRecTexts[i] = item == null ? "" : item.path("text").asText("").trim();
+		}
+
 		List<ClaudeCompressionField> compressionFields = new ArrayList<>();
 		if (rawResultsOverview != null) {
 			compressionFields.add(
@@ -196,6 +208,12 @@ public class RealClaudeClient implements ClaudeClient {
 		for (Map.Entry<Integer, String> e : rawTacticOverviews.entrySet()) {
 			compressionFields.add(
 					new ClaudeCompressionField("tactic_overview_" + e.getKey(), e.getValue(), TACTIC_OVERVIEW_LIMIT));
+		}
+		for (int i = 0; i < 4; i++) {
+			compressionFields.add(
+					new ClaudeCompressionField("rec_title_" + i, rawRecTitles[i], RECOMMENDATION_TITLE_LIMIT));
+			compressionFields.add(
+					new ClaudeCompressionField("rec_text_" + i, rawRecTexts[i], RECOMMENDATION_TEXT_LIMIT));
 		}
 		Map<String, String> compressed = compressionService.compress(compressionFields, "BatchD-Results");
 
@@ -214,7 +232,14 @@ public class RealClaudeClient implements ClaudeClient {
 			tacticOverviews.put(tacticNumber,
 					normalizer.limitTacticOverview(compressed.get("tactic_overview_" + tacticNumber)));
 		}
-		return new ClaudeResults(resultsOverview, thoughts, tacticOverviews);
+
+		List<Recommendation> recommendations = new ArrayList<>();
+		for (int i = 0; i < 4; i++) {
+			String title = normalizer.limitRecommendationTitle(compressed.get("rec_title_" + i));
+			String text = normalizer.limitRecommendationText(compressed.get("rec_text_" + i));
+			recommendations.add(new Recommendation(title, text));
+		}
+		return new ClaudeResults(resultsOverview, thoughts, tacticOverviews, recommendations);
 	}
 
 	@Override

@@ -5,18 +5,21 @@ import java.util.Map;
 
 /**
  * Structured output of Claude Batch C (results), carrying the
- * {@code results_overview / thoughts_on_performance / tactic_overviews} fields.
- * {@code thoughtsOnPerformance} holds up to 4 elements; {@code tacticOverviews}
- * is keyed by 1-based tactic number.
+ * {@code results_overview / thoughts_on_performance / tactic_overviews /
+ * optimization_recommendations} fields. {@code thoughtsOnPerformance} holds up
+ * to 4 elements; {@code tacticOverviews} is keyed by 1-based tactic number;
+ * {@code recommendations} holds up to 4 forward-looking optimization items.
  *
  * @param resultsOverview       Claude-generated narrative summarizing the campaign's overall results
  * @param thoughtsOnPerformance up to 4 Claude-generated performance commentary bullets
  * @param tacticOverviews       Claude-generated per-tactic narrative overviews, keyed by 1-based tactic number
+ * @param recommendations       up to 4 Claude-generated forward-looking optimization recommendations
  */
 public record ClaudeResults(
 		String resultsOverview,
 		List<String> thoughtsOnPerformance,
-		Map<Integer, String> tacticOverviews
+		Map<Integer, String> tacticOverviews,
+		List<Recommendation> recommendations
 ) {
 
 }
