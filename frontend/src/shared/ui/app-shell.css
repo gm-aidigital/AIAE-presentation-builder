@@ -20,6 +20,13 @@
     gap: var(--space-2);
 }
 
+.app-header__version {
+    font-family: "DM Mono", monospace;
+    font-size: 11px;
+    color: hsl(var(--muted-foreground));
+    white-space: nowrap;
+}
+
 .app-shell {
     display: flex;
     flex-direction: column;

@@ -35,6 +35,8 @@ tags:
     description: Compute the campaign placeholder→value map (dry-run; no Drive writes)
   - name: ReportJobs
     description: Persisted async Google Slides report generation jobs
+  - name: System
+    description: Build/version metadata for the running backend
 
 paths:
   /api/v1/auth/me:
@@ -254,6 +256,33 @@ paths:
           $ref: "#/components/responses/NotFoundV1"
         "500":
           $ref: "#/components/responses/InternalServerErrorV1"
+
+  /api/v1/version:
+    get:
+      tags: [ System ]
+      operationId: getVersion
+      summary: Returns the git commit of the running backend build
+      description: |
+        Reads the build-time generated `git.properties` (git-commit-id-maven-plugin).
+        Used by the frontend to show whether a deploy actually picked up the latest
+        commit. Fields are "unknown" when the build was produced without git metadata
+        (e.g. a checkout without a `.git` directory).
+      security:
+        - bearerAuth: [ ]
+      responses:
+        "200":
+          description: Backend build version info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionV1"
+              examples:
+                demo:
+                  value:
+                    commitId: "f476734"
+                    commitTime: "2026-06-24T16:37:14+02:00"
+        "401":
+          $ref: "#/components/responses/UnauthorizedV1"
 
 components:
   securitySchemes:
@@ -572,6 +601,17 @@ components:
           description: Non-fatal warnings (chart/share failures); the job still completes.
           items: { type: string }
         error: { type: string, description: "Error message when status=error." }
+
+    VersionV1:
+      type: object
+      required: [ commitId ]
+      properties:
+        commitId:
+          type: string
+          description: Short git commit hash of the running backend build (e.g. "f476734"), or "unknown".
+        commitTime:
+          type: string
+          description: Commit timestamp (ISO-8601) of commitId, omitted when unavailable.
 
     # ── Shared building block ───────────────────────────────────────────────────
     Rows2DV1:
