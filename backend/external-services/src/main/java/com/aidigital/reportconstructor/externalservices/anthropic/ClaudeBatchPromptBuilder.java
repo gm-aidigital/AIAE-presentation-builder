@@ -19,6 +19,8 @@ import java.util.Optional;
 @ConditionalOnExpression("'${external.anthropic.api-key:}' != ''")
 public class ClaudeBatchPromptBuilder {
 
+	private static final double COMPRESSION_PROMPT_BUFFER_RATIO = 0.8;
+
 	private final ClaudeResponseNormalizer normalizer;
 	private final Fmt fmt;
 
@@ -458,7 +460,9 @@ public class ClaudeBatchPromptBuilder {
 
 	/**
 	 * Builds the Batch D (compression) prompt asking Claude to shrink each oversized field to its character
-	 * budget while preserving meaning, or empty when there are no fields to compress.
+	 * budget while preserving meaning, or empty when there are no fields to compress. The limit quoted to
+	 * Claude is {@link #COMPRESSION_PROMPT_BUFFER_RATIO} of the field's real budget — not the budget we
+	 * actually enforce — so the rewrite has headroom to still fit after the hard-truncation safety net runs.
 	 *
 	 * @param fields oversized fields to compress, each carrying its own raw text and character budget
 	 * @return the compression prompt requesting a JSON object keyed by each field's {@code key}, or empty when
@@ -471,8 +475,9 @@ public class ClaudeBatchPromptBuilder {
 		List<String> entries = new ArrayList<>();
 		List<String> keys = new ArrayList<>();
 		for (ClaudeCompressionField field : fields) {
+			int promptLimit = Math.max(1, (int) (field.maxChars() * COMPRESSION_PROMPT_BUFFER_RATIO));
 			keys.add("\"" + field.key() + "\"");
-			entries.add("- key: \"" + field.key() + "\", limit: " + field.maxChars() + " characters\n"
+			entries.add("- key: \"" + field.key() + "\", limit: " + promptLimit + " characters\n"
 					+ "  text: \"" + field.text().replace("\"", "'") + "\"");
 		}
 		return Optional.of(
