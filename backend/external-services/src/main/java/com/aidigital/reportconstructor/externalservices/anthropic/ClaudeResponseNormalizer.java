@@ -6,6 +6,7 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Text normalization for Claude batch responses — ports the PHP char-limit
@@ -13,6 +14,17 @@ import java.util.List;
  */
 @Component
 public class ClaudeResponseNormalizer {
+
+	/**
+	 * Function/connector words that read as unfinished when a sentence is cut right after them, so they are
+	 * trimmed from the tail of a hard word-boundary cut before a closing period is appended.
+	 */
+	private static final Set<String> DANGLING_TAIL_WORDS = Set.of(
+			"a", "an", "the", "and", "or", "but", "nor", "so", "yet", "to", "of", "in", "on", "at", "by",
+			"for", "with", "from", "as", "is", "are", "was", "were", "be", "been", "being", "that", "which",
+			"who", "this", "these", "those", "into", "than", "then", "while", "where", "when", "because",
+			"such", "via", "per", "vs", "its", "their", "our", "his", "her", "your", "about", "over", "under",
+			"across", "within", "between", "through", "during", "against", "toward", "towards", "upon");
 
 	/**
 	 * Extracts concatenated text blocks from an Anthropic Messages API response.
@@ -63,9 +75,60 @@ public class ClaudeResponseNormalizer {
 	}
 
 	/**
+	 * Turns a prose fragment left by a hard word-boundary cut into something that reads as a finished
+	 * sentence: strips trailing punctuation and connectors, drops trailing dangling function words (e.g.
+	 * {@code "is"}, {@code "for"}, {@code "and"}), and appends a period when the result does not already end
+	 * with sentence-ending punctuation. Returns {@code val} unchanged when it already ends in {@code . ! ?}
+	 * or when trimming would leave nothing.
+	 *
+	 * @param val a prose fragment that was cut at a word boundary (never mid-word)
+	 * @return the fragment rewritten to end on a complete thought, or {@code val} unchanged when already complete
+	 */
+	String finishSentence(String val) {
+		if (val == null || val.isEmpty()) {
+			return val;
+		}
+		String trimmed = val.strip();
+		if (endsWithSentencePunctuation(trimmed)) {
+			return trimmed;
+		}
+		String working = trimmed.replaceAll("[\\s,;:\\-–—]+$", "");
+		boolean changed = true;
+		while (changed && !working.isEmpty()) {
+			changed = false;
+			int lastSpace = working.lastIndexOf(' ');
+			String lastWord = working.substring(lastSpace + 1);
+			String bare = lastWord.replaceAll("[^\\p{L}]", "").toLowerCase();
+			if (!bare.isEmpty() && DANGLING_TAIL_WORDS.contains(bare)) {
+				working = lastSpace < 0 ? "" : working.substring(0, lastSpace).replaceAll("[\\s,;:\\-–—]+$", "");
+				changed = true;
+			}
+		}
+		if (working.isEmpty()) {
+			return trimmed;
+		}
+		if (endsWithSentencePunctuation(working)) {
+			return working;
+		}
+		// A single token with no spaces is not a sentence (e.g. an unbroken blob); leave it as-is rather
+		// than append a period that would also overflow the budget by one character.
+		return working.indexOf(' ') < 0 ? working : working + ".";
+	}
+
+	/**
+	 * Reports whether the text already closes on sentence-ending punctuation.
+	 *
+	 * @param val text to inspect (assumed non-null and stripped)
+	 * @return {@code true} when {@code val} ends with {@code .}, {@code !} or {@code ?}
+	 */
+	boolean endsWithSentencePunctuation(String val) {
+		return val.endsWith(".") || val.endsWith("!") || val.endsWith("?");
+	}
+
+	/**
 	 * Batch A {@code proposal_overview}: window limit+120, last real sentence-ending {@code .} (decimal
-	 * points excluded) past threshold limit*0.5; falls back to the last word boundary, with any trailing
-	 * dangling comma stripped, when no qualifying period is found.
+	 * points excluded) past threshold limit*0.5; falls back to the last word boundary and rewrites the tail
+	 * to end on a complete sentence (see {@link #finishSentence}) when no qualifying period is found.
 	 *
 	 * @param val   raw model text
 	 * @param limit character budget before windowing
@@ -84,7 +147,7 @@ public class ClaudeResponseNormalizer {
 			} else {
 				String cut = val.substring(0, limit);
 				int ls = cut.lastIndexOf(' ');
-				val = stripTrailingComma(ls >= 0 ? val.substring(0, ls).trim() : cut.trim());
+				val = finishSentence(ls >= 0 ? val.substring(0, ls).trim() : cut.trim());
 			}
 		}
 		return val.isEmpty() ? null : val;
@@ -93,8 +156,8 @@ public class ClaudeResponseNormalizer {
 	/**
 	 * Batch C normalize: window=limit, prefers the last real sentence-ending {@code .} (decimal points
 	 * excluded) past threshold limit*0.75 (so the result reads as a finished thought); falls back to the
-	 * last word boundary (never mid-word), with any trailing dangling comma stripped, when no qualifying
-	 * period is found.
+	 * last word boundary (never mid-word) and rewrites the tail to end on a complete sentence (see
+	 * {@link #finishSentence}) when no qualifying period is found.
 	 *
 	 * @param val   raw model text
 	 * @param limit character budget
@@ -113,7 +176,7 @@ public class ClaudeResponseNormalizer {
 				val = val.substring(0, lastPeriod + 1).trim();
 			} else {
 				int ls = cut.lastIndexOf(' ');
-				val = stripTrailingComma(ls > 0 ? cut.substring(0, ls).trim() : cut.trim());
+				val = finishSentence(ls > 0 ? cut.substring(0, ls).trim() : cut.trim());
 			}
 		}
 		return val.isEmpty() ? null : val;
@@ -219,8 +282,8 @@ public class ClaudeResponseNormalizer {
 	/**
 	 * Caps the Batch A strategic overview at 240 characters, preferring the last real sentence-ending
 	 * {@code .} (decimal points excluded) past position 180 (so the result reads as a finished thought)
-	 * over a hard cut, then falling back to the last word boundary (never mid-word), with any trailing
-	 * dangling comma stripped, when no qualifying period is found.
+	 * over a hard cut, then falling back to the last word boundary (never mid-word) and rewriting the tail
+	 * to end on a complete sentence (see {@link #finishSentence}) when no qualifying period is found.
 	 *
 	 * @param overview raw strategic-overview text from the model (may be null)
 	 * @return the trimmed overview, or an empty string when {@code overview} is null
@@ -237,7 +300,7 @@ public class ClaudeResponseNormalizer {
 				overview = overview.substring(0, lastPeriod + 1).trim();
 			} else {
 				int ls = cut.lastIndexOf(' ');
-				overview = stripTrailingComma(ls > 0 ? cut.substring(0, ls).trim() : cut.trim());
+				overview = finishSentence(ls > 0 ? cut.substring(0, ls).trim() : cut.trim());
 			}
 		}
 		return overview;

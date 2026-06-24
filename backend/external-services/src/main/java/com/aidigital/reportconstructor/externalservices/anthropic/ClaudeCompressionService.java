@@ -68,7 +68,7 @@ public class ClaudeCompressionService {
 					oversized.size());
 			return result;
 		}
-		JsonNode parsed = messagesClient.callJsonObject(prompt.get(), MAX_TOKENS, TIMEOUT_SECONDS, label, false);
+		JsonNode parsed = messagesClient.callJsonObject(prompt.get(), MAX_TOKENS, TIMEOUT_SECONDS, label, true);
 		if (parsed == null) {
 			log.warn("[claude:{}] Batch D call failed; keeping original (oversized) text for {} fields", label,
 					oversized.size());

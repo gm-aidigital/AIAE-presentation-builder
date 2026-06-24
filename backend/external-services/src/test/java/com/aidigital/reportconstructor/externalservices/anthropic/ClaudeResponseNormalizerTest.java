@@ -96,11 +96,13 @@ class ClaudeResponseNormalizerTest {
 		// When:
 		String out = normalizer.normalizeC(longText, 210);
 
-		// Then: cut lands on a space boundary, never mid-word
+		// Then: cut lands on a space boundary (never mid-word) and is finished with a period
 		assertThat(out).isNotNull();
 		assertThat(out.length()).isLessThanOrEqualTo(210);
-		assertThat(out).doesNotEndWith("alph");
-		assertThat(longText.substring(0, out.length() + 1)).startsWith(out + " ");
+		assertThat(out).doesNotEndWith("alph.");
+		assertThat(out).endsWith("alpha.");
+		String body = out.substring(0, out.length() - 1);
+		assertThat(longText.substring(0, body.length() + 1)).startsWith(body + " ");
 	}
 
 	@Test
@@ -111,10 +113,12 @@ class ClaudeResponseNormalizerTest {
 		// When:
 		String out = normalizer.limitStrategicOverview(longOverview);
 
-		// Then: cut lands on a space boundary, never mid-word
+		// Then: cut lands on a space boundary (never mid-word) and is finished with a period
 		assertThat(out.length()).isLessThanOrEqualTo(240);
-		assertThat(out).doesNotEndWith("tacti");
-		assertThat(longOverview.substring(0, out.length() + 1)).startsWith(out + " ");
+		assertThat(out).doesNotEndWith("tacti.");
+		assertThat(out).endsWith("tactic.");
+		String body = out.substring(0, out.length() - 1);
+		assertThat(longOverview.substring(0, body.length() + 1)).startsWith(body + " ");
 	}
 
 	@Test
@@ -172,5 +176,72 @@ class ClaudeResponseNormalizerTest {
 		// Then: the dangling comma is removed instead of left as the visible ending
 		assertThat(out).doesNotEndWith(",");
 		assertThat(out.length()).isLessThanOrEqualTo(240);
+	}
+
+	@Test
+	void shouldDropTrailingPrepositionAndAddPeriodWhenFinishingSentenceTest() {
+		// Given: a fragment left by a word-boundary cut that ends on a dangling preposition
+		String fragment = "validating video as the primary engagement driver for";
+
+		// When:
+		String out = normalizer.finishSentence(fragment);
+
+		// Then: the dangling word is dropped and the result reads as a finished sentence
+		assertEquals("validating video as the primary engagement driver.", out);
+	}
+
+	@Test
+	void shouldDropTrailingVerbAndAddPeriodWhenFinishingSentenceTest() {
+		// Given: a fragment that ends on a dangling auxiliary verb
+		String fragment = "matched audience intent and the segment strategy is";
+
+		// When:
+		String out = normalizer.finishSentence(fragment);
+
+		// Then:
+		assertEquals("matched audience intent and the segment strategy.", out);
+	}
+
+	@Test
+	void shouldAddPeriodWhenTailIsAContentWordTest() {
+		// Given: a fragment whose last word carries meaning, just missing terminal punctuation
+		String fragment = "concentrated delivery within the trade zones";
+
+		// When:
+		String out = normalizer.finishSentence(fragment);
+
+		// Then: nothing is dropped, only a period is appended
+		assertEquals("concentrated delivery within the trade zones.", out);
+	}
+
+	@Test
+	void shouldLeaveAlreadyCompleteSentenceUnchangedWhenFinishingTest() {
+		// Given: a fragment that already ends on sentence-ending punctuation
+		String fragment = "the campaign delivered qualified local reach efficiently.";
+
+		// When:
+		String out = normalizer.finishSentence(fragment);
+
+		// Then:
+		assertEquals("the campaign delivered qualified local reach efficiently.", out);
+	}
+
+	@Test
+	void shouldEndOnCompleteSentenceAfterWordBoundaryFallbackInNormalizeCTest() {
+		// Given: prose longer than the 210-char budget, no sentence-ending period anywhere, engineered so
+		// the word-boundary cut lands on a dangling connector word
+		String longText = ("the team kept spending across many channels and "
+				+ "validating the approach with ").repeat(6);
+
+		// When:
+		String out = normalizer.normalizeC(longText, 210);
+
+		// Then: the result fits and reads as a finished thought rather than ending mid-clause
+		assertThat(out).isNotNull();
+		assertThat(out.length()).isLessThanOrEqualTo(211);
+		assertThat(out).endsWith(".");
+		assertThat(out).doesNotEndWith(" with.");
+		assertThat(out).doesNotEndWith(" and.");
+		assertThat(out).doesNotEndWith(" the.");
 	}
 }
