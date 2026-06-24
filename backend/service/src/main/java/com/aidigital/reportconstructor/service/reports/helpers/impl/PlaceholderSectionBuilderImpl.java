@@ -64,7 +64,7 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		start.put("{{geo_locations}}", campaignResolvers.resolveGeoLocations(sheet, adj, geoSummary));
 		start.put("{{funnel_stages}}", campaignResolvers.resolveFunnelStages(sheet, adj));
 		start.put("{{tactics_list}}", campaignResolvers.resolveTacticsList(sheet, adj));
-		sections.add(buildPreviewSection("Начало", start));
+		sections.add(buildPreviewSection("Start", start));
 
 		Map<String, Resolved> overview = new LinkedHashMap<>();
 		overview.put("{{proposal overview}}", campaignResolvers.resolveProposalOverview(sheet, adj,
@@ -72,9 +72,9 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		overview.put("{{Our results overview}}", campaignResolvers.resolveResultsOverview(sheet, adj,
 				ccC.resultsOverview()));
 		overview.putAll(campaignResolvers.resolveThoughtsOnPerformance(sheet, adj, ccC.thoughtsOnPerformance()));
-		sections.add(buildPreviewSection("Обзорные слайды", overview));
+		sections.add(buildPreviewSection("Overview Slides", overview));
 
-		sections.add(buildPreviewSection("Стратегические инсайты",
+		sections.add(buildPreviewSection("Strategic Insights",
 				campaignResolvers.resolveStrategicInsights(sheet, adj, ccA.strategicInsights())));
 
 		Map<String, Resolved> totals = new LinkedHashMap<>();
@@ -82,13 +82,13 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		totals.put("{{total ctr}}", campaignResolvers.resolveTotalCtr(sheet, adj, data));
 		totals.put("{{total vcr}}", campaignResolvers.resolveTotalVcr(sheet, adj, data));
 		totals.put("{{total spend}}", campaignResolvers.resolveTotalInvestment(sheet, adj, data));
-		sections.add(buildPreviewSection("Суммарные метрики", totals));
+		sections.add(buildPreviewSection("Summary Metrics", totals));
 
 		for (int n = 1; n <= 6; n++) {
-			sections.add(buildPreviewSection("Тактика " + n,
+			sections.add(buildPreviewSection("Tactic " + n,
 					buildFullTacticSection(n, sheet, adj, data, ccB, ccC, mediaTactics)));
 		}
-		sections.add(buildPreviewSection("Тактика 7",
+		sections.add(buildPreviewSection("Tactic 7",
 				buildShortTacticSection(7, sheet, adj, data, ccB, ccC, mediaTactics)));
 
 		return sections;

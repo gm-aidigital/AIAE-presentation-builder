@@ -494,7 +494,7 @@ components:
       type: object
       required: [ title, placeholders ]
       properties:
-        title: { type: string, description: "Section title (Russian, verbatim — Начало, Обзорные, …)." }
+        title: { type: string, description: "Section title (English, verbatim — Start, Overview, …)." }
         placeholders:
           type: array
           items: { $ref: "#/components/schemas/PlaceholderEntryV1" }

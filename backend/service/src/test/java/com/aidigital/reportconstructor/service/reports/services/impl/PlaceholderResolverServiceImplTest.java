@@ -61,7 +61,7 @@ class PlaceholderResolverServiceImplTest {
 		GeneratePayload payload = payload(
 				List.of(List.of("r1"), List.of("r2")),
 				List.of(List.of("a1")));
-		PreviewSection section = new PreviewSection("Начало", List.of(
+		PreviewSection section = new PreviewSection("Start", List.of(
 				new Placeholder("{{a}}", "A", "v1", "sheet"),
 				new Placeholder("{{b}}", "B", "v2", "claude"),
 				new Placeholder("{{c}}", "C", null, "not_found")));

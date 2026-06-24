@@ -186,7 +186,7 @@ function PageInner() {
     }
     function runMatching() {
         if (!w.mediaPlan || !w.elevate) {
-            showToast("Подключи оба файла перед маппингом", true);
+            showToast("Connect both files before matching", true);
             return;
         }
         matchMutation.mutate(
@@ -202,13 +202,13 @@ function PageInner() {
     }
     function confirmMatching() {
         if (!w.mapping || w.mapping.length === 0) {
-            showToast("Сначала запусти маппинг", true);
+            showToast("Run matching first", true);
             return;
         }
         w.confirmMatch();
         setMatchOpen(false);
         const matched = w.mapping.filter((m) => m.lineItemId).length;
-        showToast(`Маппинг подтверждён — ${matched}/${w.mapping.length} тактик`);
+        showToast(`Mapping confirmed — ${matched}/${w.mapping.length} tactics`);
     }
 
     // ── Preview ───────────────────────────────────────────────────────────
@@ -287,7 +287,7 @@ function PageInner() {
                             setProgress({ step: 7, total: 7, label: "Done!" });
                             setResultUrl(p.slideUrl ?? "");
                             setGenerating(false);
-                            showToast("Презентация готова!");
+                            showToast("Presentation ready!");
                         } else if (p.status === "error") {
                             stopPolling();
                             setGenerating(false);
@@ -343,17 +343,17 @@ function PageInner() {
             <div className="match-status-banner-text">
                 <div className="match-status-banner-label">
                     {!bothConnected
-                        ? "Line Items — подключи оба файла"
+                        ? "Line Items — connect both files"
                         : w.matchConfirmed
-                          ? "✓ Маппинг подтверждён"
-                          : "Line Items — требует проверки"}
+                          ? "✓ Mapping confirmed"
+                          : "Line Items — needs review"}
                 </div>
                 <div className="match-status-banner-sub">
                     {!bothConnected
-                        ? "Сначала загрузи Media Plan и BQ-выгрузку"
+                        ? "First load the Media Plan and BQ export"
                         : w.matchConfirmed
-                          ? `${matched} из ${matchTotal} тактик привязаны к Line Item ID`
-                          : "Запусти маппинг и подтверди перед генерацией"}
+                          ? `${matched} of ${matchTotal} tactics linked to a Line Item ID`
+                          : "Run matching and confirm before generating"}
                 </div>
             </div>
             <button className="btn-match-open" disabled={!bothConnected} onClick={openMatch}>
@@ -465,8 +465,8 @@ function PageInner() {
                         desc="Channel allocations, budgets, targeting — Google Sheets link"
                         hint={
                             <>
-                                <strong>Tip:</strong> Убедись что таблица доступна service-account&apos;у (share или
-                                «Anyone with the link»).
+                                <strong>Tip:</strong> Make sure the sheet is accessible to the service account (share
+                                it or set it to "Anyone with the link").
                             </>
                         }
                         sheet={w.mediaPlan}
@@ -488,8 +488,8 @@ function PageInner() {
                         desc='BigQuery export — actual performance data, tab "Basic"'
                         hint={
                             <>
-                                <strong>Tip:</strong> Вставь ссылку на Google Sheets с выгрузкой из BigQuery. Будет
-                                прочитана вкладка <strong>Basic</strong>.
+                                <strong>Tip:</strong> Paste the Google Sheets link with the BigQuery export. The{" "}
+                                <strong>Basic</strong> tab will be read.
                             </>
                         }
                         sheet={w.elevate}

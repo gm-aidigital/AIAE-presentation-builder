@@ -31,12 +31,12 @@ class PlaceholderSectionBuilderImplTest {
 		);
 
 		assertThat(sections).hasSize(11);
-		assertThat(sections.get(0).title()).isEqualTo("Начало");
-		assertThat(sections.get(1).title()).isEqualTo("Обзорные слайды");
-		assertThat(sections.get(2).title()).isEqualTo("Стратегические инсайты");
-		assertThat(sections.get(3).title()).isEqualTo("Суммарные метрики");
-		assertThat(sections.get(4).title()).isEqualTo("Тактика 1");
-		assertThat(sections.get(10).title()).isEqualTo("Тактика 7");
+		assertThat(sections.get(0).title()).isEqualTo("Start");
+		assertThat(sections.get(1).title()).isEqualTo("Overview Slides");
+		assertThat(sections.get(2).title()).isEqualTo("Strategic Insights");
+		assertThat(sections.get(3).title()).isEqualTo("Summary Metrics");
+		assertThat(sections.get(4).title()).isEqualTo("Tactic 1");
+		assertThat(sections.get(10).title()).isEqualTo("Tactic 7");
 	}
 
 	@Test

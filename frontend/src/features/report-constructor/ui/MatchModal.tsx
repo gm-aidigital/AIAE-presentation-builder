@@ -74,9 +74,9 @@ export function MatchModal({ open, matchData, running, onClose, onRun, onConfirm
                     <div>
                         <div className="match-modal-title">Line Item Matching</div>
                         <div className="match-modal-desc">
-                            Слева — тактики из медиаплана. Справа — все Line Item ID найденные в BQ. Перетащи
-                            нужный ID на тактику или нажми «Re-run» чтобы система попробовала сопоставить
-                            автоматически.
+                            Left — tactics from the media plan. Right — all Line Item IDs found in BQ. Drag the
+                            right ID onto a tactic, or click "Re-run" to let the system try to match
+                            automatically.
                         </div>
                     </div>
                 </div>
@@ -92,20 +92,20 @@ export function MatchModal({ open, matchData, running, onClose, onRun, onConfirm
                     {!matchData ? (
                         <div className="match-empty">
                             {running
-                                ? "Анализируем данные…"
-                                : "Подключи Media Plan и BQ-выгрузку, затем нажми «Run Matching»"}
+                                ? "Analyzing data…"
+                                : "Connect the Media Plan and BQ export, then click \"Run Matching\""}
                         </div>
                     ) : (
                         <div className="match-layout">
                             <div className="match-tactics-panel">
                                 <div className="match-panel-label">
-                                    <span>Тактики из медиаплана</span>
+                                    <span>Tactics from media plan</span>
                                     <span>
                                         {matched}/{rows.length}
                                     </span>
                                 </div>
                                 {rows.length === 0 && (
-                                    <div className="match-empty">Тактики не найдены под ячейкой «Media»</div>
+                                    <div className="match-empty">No tactics found under the "Media" cell</div>
                                 )}
                                 {rows.map((row, idx) => {
                                     const hasId = !!row.lineItemId;
@@ -155,7 +155,7 @@ export function MatchModal({ open, matchData, running, onClose, onRun, onConfirm
                                                 {hasId && (
                                                     <button
                                                         className="match-remove-btn"
-                                                        title="Убрать ID"
+                                                        title="Remove ID"
                                                         onClick={() => remove(idx)}
                                                     >
                                                         ×
@@ -169,16 +169,16 @@ export function MatchModal({ open, matchData, running, onClose, onRun, onConfirm
 
                             <div className="match-ids-panel">
                                 <div className="match-panel-label">
-                                    <span>Line Item IDs из BQ</span>
-                                    <span>{allIds.length} уникальных</span>
+                                    <span>Line Item IDs from BQ</span>
+                                    <span>{allIds.length} unique</span>
                                 </div>
                                 <div className="match-ids-pool">
                                     <div className="match-ids-pool-inner">
                                         {allIds.length === 0 ? (
-                                            <div className="match-drag-hint">ID не найдены в BQ-выгрузке</div>
+                                            <div className="match-drag-hint">No IDs found in the BQ export</div>
                                         ) : pool.length === 0 ? (
                                             <div className="match-drag-hint" style={{ padding: "24px" }}>
-                                                Все ID распределены ✓
+                                                All IDs assigned ✓
                                             </div>
                                         ) : (
                                             <>
@@ -209,7 +209,7 @@ export function MatchModal({ open, matchData, running, onClose, onRun, onConfirm
                                                         </div>
                                                     );
                                                 })}
-                                                <div className="match-drag-hint">← Перетащи на тактику</div>
+                                                <div className="match-drag-hint">← Drag onto a tactic</div>
                                             </>
                                         )}
                                     </div>
@@ -242,7 +242,7 @@ export function MatchModal({ open, matchData, running, onClose, onRun, onConfirm
                                     lineHeight: 1.4,
                                 }}
                             >
-                                ⚠ {unmatched.length} тактика без ID — данные будут показаны как 0:{" "}
+                                ⚠ {unmatched.length} tactic(s) without an ID — their data will show as 0:{" "}
                                 {unmatched.map((m) => m.tacticName).join(", ")}
                             </div>
                         )}

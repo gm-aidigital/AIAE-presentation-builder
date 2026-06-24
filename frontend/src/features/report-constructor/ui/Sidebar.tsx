@@ -101,7 +101,7 @@ export function Sidebar({ resultUrl, previewLoading, generating, onPreview, onGe
                             briefLen > 0 && hasSheet && hasAdj && !matchConfirmed ? " visible" : ""
                         }`}
                     >
-                        ⚠ Сначала подтверди маппинг line items
+                        ⚠ Confirm the line item mapping first
                     </div>
                 </div>
                 <div className="gen-bottom">
@@ -118,7 +118,7 @@ export function Sidebar({ resultUrl, previewLoading, generating, onPreview, onGe
                 </div>
                 <div className="result-body">
                     <div style={{ fontSize: "12px", color: "var(--text-muted)", lineHeight: 1.6 }}>
-                        Презентация готова и сохранена в Google Slides.
+                        The presentation is ready and saved to Google Slides.
                     </div>
                     <a className="result-link" href={resultUrl || "#"} target="_blank" rel="noreferrer">
                         <IconMonitor />
