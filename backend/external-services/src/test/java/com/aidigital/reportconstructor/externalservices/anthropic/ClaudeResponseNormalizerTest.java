@@ -145,4 +145,32 @@ class ClaudeResponseNormalizerTest {
 		assertThat(out).endsWith(".");
 		assertThat(out).doesNotContain(",");
 	}
+
+	@Test
+	void shouldNotTreatADecimalPointAsASentenceEndingPeriodTest() {
+		// Given: the only "." in the cut window is a decimal point inside a number (e.g. "94.72"),
+		// not a real sentence end, followed by plain text with no further punctuation
+		String longOverview = "Programmatic delivered a 94.72 percent rate " + "across the board ".repeat(15);
+
+		// When:
+		String out = normalizer.limitStrategicOverview(longOverview);
+
+		// Then: the decimal point is not mistaken for a sentence boundary
+		assertThat(out).doesNotEndWith("94.");
+		assertThat(out.length()).isLessThanOrEqualTo(240);
+	}
+
+	@Test
+	void shouldStripDanglingTrailingCommaWhenFallingBackToWordBoundaryTest() {
+		// Given: no sentence-ending period anywhere, but the word-boundary cut lands right after a comma
+		// in a list (e.g. "... buyers, shoppers,")
+		String longOverview = "Layered intent segments " + "buyers, shoppers, decision makers, ".repeat(8);
+
+		// When:
+		String out = normalizer.limitStrategicOverview(longOverview);
+
+		// Then: the dangling comma is removed instead of left as the visible ending
+		assertThat(out).doesNotEndWith(",");
+		assertThat(out.length()).isLessThanOrEqualTo(240);
+	}
 }

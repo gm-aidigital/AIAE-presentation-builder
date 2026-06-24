@@ -35,7 +35,37 @@ public class ClaudeResponseNormalizer {
 	}
 
 	/**
-	 * Batch A {@code proposal_overview}: window limit+120, last {@code .} threshold limit*0.5.
+	 * Finds the last sentence-ending period in {@code window}, treating a period immediately followed by a
+	 * digit (e.g. the {@code "."} in {@code "94.72"}) as part of a decimal number rather than a sentence
+	 * boundary.
+	 *
+	 * @param window text scanned for a sentence-ending period
+	 * @return index of the last qualifying period, or -1 when none is found
+	 */
+	int lastSentencePeriod(String window) {
+		for (int i = window.length() - 1; i >= 0; i--) {
+			if (window.charAt(i) == '.' && (i + 1 >= window.length() || !Character.isDigit(window.charAt(i + 1)))) {
+				return i;
+			}
+		}
+		return -1;
+	}
+
+	/**
+	 * Trims a trailing dangling comma left at the end of a word-boundary cut, since a list cut off
+	 * mid-enumeration reads as unfinished even though it didn't break mid-word.
+	 *
+	 * @param val text that was just cut at a word boundary
+	 * @return {@code val} with a single trailing comma removed, otherwise {@code val} unchanged
+	 */
+	String stripTrailingComma(String val) {
+		return val.endsWith(",") ? val.substring(0, val.length() - 1).trim() : val;
+	}
+
+	/**
+	 * Batch A {@code proposal_overview}: window limit+120, last real sentence-ending {@code .} (decimal
+	 * points excluded) past threshold limit*0.5; falls back to the last word boundary, with any trailing
+	 * dangling comma stripped, when no qualifying period is found.
 	 *
 	 * @param val   raw model text
 	 * @param limit character budget before windowing
@@ -48,22 +78,23 @@ public class ClaudeResponseNormalizer {
 		val = val.replaceAll("\\s*[\\r\\n]+\\s*", " ").replaceAll("\\s{2,}", " ").trim();
 		if (val.length() > limit) {
 			String window = val.substring(0, Math.min(limit + 120, val.length()));
-			int lp = window.lastIndexOf('.');
+			int lp = lastSentencePeriod(window);
 			if (lp >= (int) (limit * 0.5)) {
 				val = val.substring(0, lp + 1).trim();
 			} else {
 				String cut = val.substring(0, limit);
 				int ls = cut.lastIndexOf(' ');
-				val = ls >= 0 ? val.substring(0, ls).trim() : cut.trim();
+				val = stripTrailingComma(ls >= 0 ? val.substring(0, ls).trim() : cut.trim());
 			}
 		}
 		return val.isEmpty() ? null : val;
 	}
 
 	/**
-	 * Batch C normalize: window=limit, prefers the last sentence-ending {@code .} past threshold
-	 * limit*0.75 (so the result reads as a finished thought); falls back to the last {@code ,} past the
-	 * same threshold, then to the last word boundary (never mid-word) when neither is found.
+	 * Batch C normalize: window=limit, prefers the last real sentence-ending {@code .} (decimal points
+	 * excluded) past threshold limit*0.75 (so the result reads as a finished thought); falls back to the
+	 * last word boundary (never mid-word), with any trailing dangling comma stripped, when no qualifying
+	 * period is found.
 	 *
 	 * @param val   raw model text
 	 * @param limit character budget
@@ -77,15 +108,12 @@ public class ClaudeResponseNormalizer {
 		if (val.length() > limit) {
 			String cut = val.substring(0, limit);
 			int threshold = (int) (limit * 0.75);
-			int lastPeriod = cut.lastIndexOf('.');
-			int lastComma = cut.lastIndexOf(',');
+			int lastPeriod = lastSentencePeriod(cut);
 			if (lastPeriod > threshold) {
 				val = val.substring(0, lastPeriod + 1).trim();
-			} else if (lastComma > threshold) {
-				val = val.substring(0, lastComma + 1).trim();
 			} else {
 				int ls = cut.lastIndexOf(' ');
-				val = ls > 0 ? cut.substring(0, ls).trim() : cut.trim();
+				val = stripTrailingComma(ls > 0 ? cut.substring(0, ls).trim() : cut.trim());
 			}
 		}
 		return val.isEmpty() ? null : val;
@@ -161,9 +189,10 @@ public class ClaudeResponseNormalizer {
 	}
 
 	/**
-	 * Caps the Batch A strategic-point placeholder at 22 characters, preferring the last sentence-ending
-	 * {@code .} past position 11 over a hard cut, then falling back to the last {@code ,} past the same
-	 * position, then to the last word boundary (never mid-word) when neither is found.
+	 * Caps the Batch A strategic-point placeholder at 22 characters, preferring the last real
+	 * sentence-ending {@code .} (decimal points excluded) past position 11 over a hard cut, then falling
+	 * back to the last word boundary (never mid-word), with any trailing dangling comma stripped, when no
+	 * qualifying period is found.
 	 *
 	 * @param point raw strategic-point text from the model (may be null)
 	 * @return the trimmed point, or an empty string when {@code point} is null
@@ -176,25 +205,22 @@ public class ClaudeResponseNormalizer {
 		if (point.length() > 22) {
 			String cut = point.substring(0, 22);
 			int threshold = 11;
-			int lastPeriod = cut.lastIndexOf('.');
-			int lastComma = cut.lastIndexOf(',');
+			int lastPeriod = lastSentencePeriod(cut);
 			if (lastPeriod > threshold) {
 				point = point.substring(0, lastPeriod + 1).trim();
-			} else if (lastComma > threshold) {
-				point = point.substring(0, lastComma + 1).trim();
 			} else {
 				int ls = cut.lastIndexOf(' ');
-				point = ls > 0 ? cut.substring(0, ls).trim() : cut.trim();
+				point = stripTrailingComma(ls > 0 ? cut.substring(0, ls).trim() : cut.trim());
 			}
 		}
 		return point;
 	}
 
 	/**
-	 * Caps the Batch A strategic overview at 240 characters, preferring the last sentence-ending {@code .}
-	 * past position 180 (so the result reads as a finished thought) over a hard cut, then falling back to
-	 * the last {@code ,} past the same position, then to the last word boundary (never mid-word) when
-	 * neither is found.
+	 * Caps the Batch A strategic overview at 240 characters, preferring the last real sentence-ending
+	 * {@code .} (decimal points excluded) past position 180 (so the result reads as a finished thought)
+	 * over a hard cut, then falling back to the last word boundary (never mid-word), with any trailing
+	 * dangling comma stripped, when no qualifying period is found.
 	 *
 	 * @param overview raw strategic-overview text from the model (may be null)
 	 * @return the trimmed overview, or an empty string when {@code overview} is null
@@ -206,15 +232,12 @@ public class ClaudeResponseNormalizer {
 		overview = overview.trim();
 		if (overview.length() > 240) {
 			String cut = overview.substring(0, 240);
-			int lastPeriod = cut.lastIndexOf('.');
-			int lastComma = cut.lastIndexOf(',');
+			int lastPeriod = lastSentencePeriod(cut);
 			if (lastPeriod > 180) {
 				overview = overview.substring(0, lastPeriod + 1).trim();
-			} else if (lastComma > 180) {
-				overview = overview.substring(0, lastComma + 1).trim();
 			} else {
 				int ls = cut.lastIndexOf(' ');
-				overview = ls > 0 ? cut.substring(0, ls).trim() : cut.trim();
+				overview = stripTrailingComma(ls > 0 ? cut.substring(0, ls).trim() : cut.trim());
 			}
 		}
 		return overview;
@@ -241,9 +264,10 @@ public class ClaudeResponseNormalizer {
 	}
 
 	/**
-	 * Collapses whitespace in the geo-tab summary and caps it at 40 characters, preferring the last
-	 * sentence-ending {@code .} past position 20 over a hard cut, then falling back to the last {@code ,}
-	 * past the same position, then to the last word boundary (never mid-word) when neither is found.
+	 * Collapses whitespace in the geo-tab summary and caps it at 40 characters, preferring the last real
+	 * sentence-ending {@code .} (decimal points excluded) past position 20 over a hard cut, then falling
+	 * back to the last word boundary (never mid-word), with any trailing dangling comma stripped, when no
+	 * qualifying period is found.
 	 *
 	 * @param text raw geo-summary text from the model (may be null or blank)
 	 * @return the whitespace-collapsed, length-capped summary, or {@code null} when blank
@@ -256,15 +280,12 @@ public class ClaudeResponseNormalizer {
 		if (text.length() > 40) {
 			String cut = text.substring(0, 40);
 			int threshold = 20;
-			int lastPeriod = cut.lastIndexOf('.');
-			int lastComma = cut.lastIndexOf(',');
+			int lastPeriod = lastSentencePeriod(cut);
 			if (lastPeriod > threshold) {
 				text = text.substring(0, lastPeriod + 1).trim();
-			} else if (lastComma > threshold) {
-				text = text.substring(0, lastComma + 1).trim();
 			} else {
 				int ls = cut.lastIndexOf(' ');
-				text = ls > 0 ? cut.substring(0, ls).trim() : cut.trim();
+				text = stripTrailingComma(ls > 0 ? cut.substring(0, ls).trim() : cut.trim());
 			}
 		}
 		return text.isEmpty() ? null : text;
