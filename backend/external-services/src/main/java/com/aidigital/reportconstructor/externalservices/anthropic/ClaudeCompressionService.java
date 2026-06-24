@@ -1,6 +1,7 @@
 package com.aidigital.reportconstructor.externalservices.anthropic;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
 
@@ -14,6 +15,7 @@ import java.util.Map;
  * longer than its character budget, preserving meaning, before the hard-truncation safety net in
  * {@link ClaudeResponseNormalizer} runs as a final guarantee.
  */
+@Slf4j
 @Component
 @ConditionalOnExpression("'${external.anthropic.api-key:}' != ''")
 public class ClaudeCompressionService {
@@ -54,23 +56,43 @@ public class ClaudeCompressionService {
 			}
 		}
 		if (oversized.isEmpty()) {
+			log.info("[claude:{}] Batch D skipped: all {} fields already within budget", label, fields.size());
 			return result;
 		}
+		log.info("[claude:{}] Batch D compressing {} of {} oversized fields: {}",
+				label, oversized.size(), fields.size(), oversized.stream().map(ClaudeCompressionField::key).toList());
 
 		var prompt = promptBuilder.buildCompressionPrompt(oversized);
 		if (prompt.isEmpty()) {
+			log.warn("[claude:{}] Batch D produced no prompt; keeping original text for {} fields", label,
+					oversized.size());
 			return result;
 		}
 		JsonNode parsed = messagesClient.callJsonObject(prompt.get(), MAX_TOKENS, TIMEOUT_SECONDS, label, false);
 		if (parsed == null) {
+			log.warn("[claude:{}] Batch D call failed; keeping original (oversized) text for {} fields", label,
+					oversized.size());
 			return result;
 		}
+		int compressedCount = 0;
 		for (ClaudeCompressionField field : oversized) {
 			JsonNode value = parsed.get(field.key());
 			if (value != null && value.isTextual() && !value.asText().isBlank()) {
-				result.put(field.key(), value.asText().trim());
+				String compressedText = value.asText().trim();
+				result.put(field.key(), compressedText);
+				compressedCount++;
+				if (compressedText.length() > field.maxChars()) {
+					log.warn("[claude:{}] Batch D field '{}' still {} chars after compression (budget {}); "
+							+ "hard-truncation safety net will trim it", label, field.key(), compressedText.length(),
+							field.maxChars());
+				}
+			} else {
+				log.warn("[claude:{}] Batch D returned no usable value for field '{}'; keeping original ({} chars, "
+						+ "budget {})", label, field.key(), field.text().length(), field.maxChars());
 			}
 		}
+		log.info("[claude:{}] Batch D compressed {} of {} oversized fields", label, compressedCount,
+				oversized.size());
 		return result;
 	}
 }
