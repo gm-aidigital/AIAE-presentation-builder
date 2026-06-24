@@ -175,6 +175,7 @@ public class TacticChartBuilder {
 
 		for (int n = 1; n <= req.tacticCount(); n++) {
 			try {
+				double tacticImps = req.distTacticImps().getOrDefault(n, 0.0);
 				renderDistributionChart(clients, req.presentationId(), folderId, transforms,
 						new DistributionChartJob(
 								n,
@@ -182,8 +183,8 @@ public class TacticChartBuilder {
 								templates.getDistSlideObjectIds().get(n),
 								"Distribution Chart Tactic " + n + " — " + req.campaignTitle(),
 								req.distTacticNames().getOrDefault(n, "Tactic " + n),
-								req.distTacticImps().getOrDefault(n, 0.0),
-								req.distTotalImps()));
+								tacticImps,
+								req.distTotalImps() - tacticImps));
 			} catch (IOException ex) {
 				errors.add(chartErrors.describeChartError("Distribution Tactic " + n, ex));
 			}

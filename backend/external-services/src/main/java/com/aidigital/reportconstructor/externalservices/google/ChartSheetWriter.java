@@ -232,7 +232,7 @@ public class ChartSheetWriter {
 	 * @param tabName       data tab to write into
 	 * @param tacticName    label for the tactic slice
 	 * @param tacticImps    impressions for the tactic slice
-	 * @param otherImps     impressions for the "Other" slice ({@code {{total imps}}} whole, no subtraction)
+	 * @param otherImps     impressions for the "Other" slice, i.e. total impressions minus this tactic's impressions
 	 * @throws IOException when a Sheets API call fails
 	 */
 	public void writeDistribution(

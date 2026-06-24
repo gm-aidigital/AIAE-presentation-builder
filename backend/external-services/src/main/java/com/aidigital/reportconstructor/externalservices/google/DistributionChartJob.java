@@ -9,7 +9,7 @@ package com.aidigital.reportconstructor.externalservices.google;
  * @param copyName    name for the copied spreadsheet
  * @param tacticName  display name of the tactic
  * @param tacticImp   this tactic's impressions
- * @param otherImps   total impressions across all tactics
+ * @param otherImps   impressions for the "Other" slice, i.e. total impressions minus this tactic's impressions
  */
 record DistributionChartJob(
 		int tacticNum,
