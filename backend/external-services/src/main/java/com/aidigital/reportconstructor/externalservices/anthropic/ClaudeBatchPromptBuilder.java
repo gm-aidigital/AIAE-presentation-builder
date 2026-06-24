@@ -457,6 +457,42 @@ public class ClaudeBatchPromptBuilder {
 	}
 
 	/**
+	 * Builds the Batch D (compression) prompt asking Claude to shrink each oversized field to its character
+	 * budget while preserving meaning, or empty when there are no fields to compress.
+	 *
+	 * @param fields oversized fields to compress, each carrying its own raw text and character budget
+	 * @return the compression prompt requesting a JSON object keyed by each field's {@code key}, or empty when
+	 * {@code fields} is empty
+	 */
+	public Optional<String> buildCompressionPrompt(List<ClaudeCompressionField> fields) {
+		if (fields.isEmpty()) {
+			return Optional.empty();
+		}
+		List<String> entries = new ArrayList<>();
+		List<String> keys = new ArrayList<>();
+		for (ClaudeCompressionField field : fields) {
+			keys.add("\"" + field.key() + "\"");
+			entries.add("- key: \"" + field.key() + "\", limit: " + field.maxChars() + " characters\n"
+					+ "  text: \"" + field.text().replace("\"", "'") + "\"");
+		}
+		return Optional.of(
+				"You are editing client-facing campaign-report copy that is too long for its layout slot.\n\n"
+						+ "For EACH field below, rewrite the text so it fits within its character limit, while " +
+						"preserving its key meaning and business message as closely as possible. Cut secondary " +
+						"detail before cutting the main point. Always end on a complete word and, where the limit " +
+						"allows, a complete sentence — never cut off mid-word or mid-clause.\n\n"
+						+ "Fields:\n" + String.join("\n", entries) + "\n\n"
+						+ "Return ONLY a JSON object mapping each key to its rewritten text, with no other keys:\n"
+						+ "{" + String.join(", ", keys) + "}\n\n"
+						+ "Rules:\n"
+						+ "- Every value's length MUST be at or under that field's character limit — count " +
+						"characters, not words.\n"
+						+ "- Keep the same language (English) and tense as the original text.\n"
+						+ "- Return ONLY the JSON object — no markdown, no backticks, no explanation."
+		);
+	}
+
+	/**
 	 * Builds the geo-tab summarisation prompt from spreadsheet rows.
 	 *
 	 * @param geoRows rows of the media-plan "Geo" tab; each inner list is one row whose cells are joined with {@code

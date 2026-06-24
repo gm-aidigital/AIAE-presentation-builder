@@ -21,8 +21,9 @@ import java.util.Map;
 
 /**
  * Real Anthropic Messages API implementation — a faithful port of PHP
- * {@code claude_api.php} (batches A/B/C) plus {@code resolveGeoFromTab}.
- * Activated only when {@code ANTHROPIC_API_KEY} is set; otherwise
+ * {@code claude_api.php} (batches A/B/C) plus {@code resolveGeoFromTab}, with an added Batch D
+ * compression pass that asks Claude to shrink oversized placeholder text before the hard-truncation
+ * safety net runs. Activated only when {@code ANTHROPIC_API_KEY} is set; otherwise
  * {@link StubClaudeClient} is the sole candidate.
  *
  * <p>Every batch returns the empty DTO on any error/timeout/parse failure,
@@ -34,19 +35,28 @@ import java.util.Map;
 @ConditionalOnExpression("'${external.anthropic.api-key:}' != ''")
 public class RealClaudeClient implements ClaudeClient {
 
+	private static final int STRATEGIC_POINT_LIMIT = 22;
+	private static final int STRATEGIC_OVERVIEW_LIMIT = 240;
+	private static final int RESULTS_OVERVIEW_LIMIT = 380;
+	private static final int THOUGHT_LIMIT = 220;
+	private static final int TACTIC_OVERVIEW_LIMIT = 210;
+
 	private final AnthropicMessagesClient messagesClient;
 	private final ClaudeBatchPromptBuilder promptBuilder;
 	private final ClaudeResponseNormalizer normalizer;
+	private final ClaudeCompressionService compressionService;
 	private final ReportClaudeDefaults claudeDefaults;
 
 	public RealClaudeClient(
 			AnthropicMessagesClient messagesClient,
 			ClaudeBatchPromptBuilder promptBuilder,
 			ClaudeResponseNormalizer normalizer,
+			ClaudeCompressionService compressionService,
 			ReportClaudeDefaults claudeDefaults) {
 		this.messagesClient = messagesClient;
 		this.promptBuilder = promptBuilder;
 		this.normalizer = normalizer;
+		this.compressionService = compressionService;
 		this.claudeDefaults = claudeDefaults;
 	}
 
@@ -77,18 +87,22 @@ public class RealClaudeClient implements ClaudeClient {
 		String seg = normalizer.limitAudienceSegments(normalizer.textOrNull(parsed.get("audience_segments")));
 		String overview = normalizer.normalizeProposal(normalizer.textOrNull(parsed.get("proposal_overview")), 400);
 
-		List<StrategicInsight> insights = new ArrayList<>();
 		JsonNode arr = parsed.get("strategic_insights");
-		if (arr != null && arr.isArray()) {
-			for (int i = 0; i < arr.size() && i < 4; i++) {
-				JsonNode item = arr.get(i);
-				String point = normalizer.limitStrategicPoint(item.path("point").asText(""));
-				String ov = normalizer.limitStrategicOverview(item.path("overview").asText(""));
-				insights.add(new StrategicInsight(point, ov));
-			}
+		List<ClaudeCompressionField> compressionFields = new ArrayList<>();
+		for (int i = 0; i < 4; i++) {
+			JsonNode item = (arr != null && arr.isArray() && i < arr.size()) ? arr.get(i) : null;
+			String rawPoint = item == null ? "" : item.path("point").asText("").trim();
+			String rawOverview = item == null ? "" : item.path("overview").asText("").trim();
+			compressionFields.add(new ClaudeCompressionField("point_" + i, rawPoint, STRATEGIC_POINT_LIMIT));
+			compressionFields.add(new ClaudeCompressionField("overview_" + i, rawOverview, STRATEGIC_OVERVIEW_LIMIT));
 		}
-		while (insights.size() < 4) {
-			insights.add(new StrategicInsight("", ""));
+		Map<String, String> compressed = compressionService.compress(compressionFields, "BatchD-Strategic");
+
+		List<StrategicInsight> insights = new ArrayList<>();
+		for (int i = 0; i < 4; i++) {
+			String point = normalizer.limitStrategicPoint(compressed.get("point_" + i));
+			String ov = normalizer.limitStrategicOverview(compressed.get("overview_" + i));
+			insights.add(new StrategicInsight(point, ov));
 		}
 
 		return new ClaudeStrategic(age, seg, overview, insights);
@@ -145,12 +159,11 @@ public class RealClaudeClient implements ClaudeClient {
 			return claudeDefaults.emptyResults();
 		}
 
-		String resultsOverview =
-				normalizer.limitResultsOverview(normalizer.textOrNull(parsed.get("results_overview")));
-		List<String> thoughts = normalizer.normalizeThoughts(normalizer.textOrNull(parsed.get("thoughts_on_performance"
-		)));
+		String rawResultsOverview = normalizer.textOrNull(parsed.get("results_overview"));
+		List<String> rawThoughts =
+				normalizer.normalizeThoughts(normalizer.textOrNull(parsed.get("thoughts_on_performance")));
 
-		Map<Integer, String> tacticOverviews = new LinkedHashMap<>();
+		Map<Integer, String> rawTacticOverviews = new LinkedHashMap<>();
 		JsonNode raw = parsed.get("tactic_overviews");
 		if (raw != null && raw.isObject()) {
 			var it = raw.fields();
@@ -165,8 +178,41 @@ public class RealClaudeClient implements ClaudeClient {
 				if (n <= 0) {
 					continue;
 				}
-				tacticOverviews.put(n, normalizer.limitTacticOverview(ent.getValue().asText("")));
+				rawTacticOverviews.put(n, ent.getValue().asText(""));
 			}
+		}
+
+		List<ClaudeCompressionField> compressionFields = new ArrayList<>();
+		if (rawResultsOverview != null) {
+			compressionFields.add(
+					new ClaudeCompressionField("results_overview", rawResultsOverview, RESULTS_OVERVIEW_LIMIT));
+		}
+		for (int i = 0; i < rawThoughts.size(); i++) {
+			String thought = rawThoughts.get(i);
+			if (thought != null) {
+				compressionFields.add(new ClaudeCompressionField("thought_" + i, thought, THOUGHT_LIMIT));
+			}
+		}
+		for (Map.Entry<Integer, String> e : rawTacticOverviews.entrySet()) {
+			compressionFields.add(
+					new ClaudeCompressionField("tactic_overview_" + e.getKey(), e.getValue(), TACTIC_OVERVIEW_LIMIT));
+		}
+		Map<String, String> compressed = compressionService.compress(compressionFields, "BatchD-Results");
+
+		String resultsOverview = rawResultsOverview == null
+				? null
+				: normalizer.limitResultsOverview(compressed.get("results_overview"));
+
+		List<String> thoughts = new ArrayList<>();
+		for (int i = 0; i < rawThoughts.size(); i++) {
+			String thought = rawThoughts.get(i);
+			thoughts.add(thought == null ? null : normalizer.normalizeC(compressed.get("thought_" + i), THOUGHT_LIMIT));
+		}
+
+		Map<Integer, String> tacticOverviews = new LinkedHashMap<>();
+		for (Integer tacticNumber : rawTacticOverviews.keySet()) {
+			tacticOverviews.put(tacticNumber,
+					normalizer.limitTacticOverview(compressed.get("tactic_overview_" + tacticNumber)));
 		}
 		return new ClaudeResults(resultsOverview, thoughts, tacticOverviews);
 	}
