@@ -87,4 +87,33 @@ class ClaudeResponseNormalizerTest {
 		assertThat(out).isNotNull();
 		assertThat(out.length()).isLessThanOrEqualTo(210);
 	}
+
+	@Test
+	void shouldFallBackToLastWordBoundaryWhenNoPunctuationFoundTest() {
+		// Given: words separated by spaces, no '.'/',' anywhere, longer than the 210-char budget
+		String longText = "alpha ".repeat(60);
+
+		// When:
+		String out = normalizer.normalizeC(longText, 210);
+
+		// Then: cut lands on a space boundary, never mid-word
+		assertThat(out).isNotNull();
+		assertThat(out.length()).isLessThanOrEqualTo(210);
+		assertThat(out).doesNotEndWith("alph");
+		assertThat(longText.substring(0, out.length() + 1)).startsWith(out + " ");
+	}
+
+	@Test
+	void shouldFallBackToLastWordBoundaryForStrategicOverviewTest() {
+		// Given: a strategic overview with no sentence-ending punctuation, longer than the 240-char budget
+		String longOverview = "tactic ".repeat(40);
+
+		// When:
+		String out = normalizer.limitStrategicOverview(longOverview);
+
+		// Then: cut lands on a space boundary, never mid-word
+		assertThat(out.length()).isLessThanOrEqualTo(240);
+		assertThat(out).doesNotEndWith("tacti");
+		assertThat(longOverview.substring(0, out.length() + 1)).startsWith(out + " ");
+	}
 }

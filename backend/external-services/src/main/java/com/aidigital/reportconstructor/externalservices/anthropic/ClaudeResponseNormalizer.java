@@ -61,7 +61,8 @@ public class ClaudeResponseNormalizer {
 	}
 
 	/**
-	 * Batch C normalize: window=limit, last {@code .}/{@code ,} threshold limit*0.75.
+	 * Batch C normalize: window=limit, last {@code .}/{@code ,} threshold limit*0.75, falling back to the
+	 * last word boundary (never mid-word) when no such punctuation is found.
 	 *
 	 * @param val   raw model text
 	 * @param limit character budget
@@ -75,7 +76,12 @@ public class ClaudeResponseNormalizer {
 		if (val.length() > limit) {
 			String cut = val.substring(0, limit);
 			int lp = Math.max(cut.lastIndexOf('.'), cut.lastIndexOf(','));
-			val = lp > (int) (limit * 0.75) ? val.substring(0, lp + 1).trim() : cut.trim();
+			if (lp > (int) (limit * 0.75)) {
+				val = val.substring(0, lp + 1).trim();
+			} else {
+				int ls = cut.lastIndexOf(' ');
+				val = ls > 0 ? cut.substring(0, ls).trim() : cut.trim();
+			}
 		}
 		return val.isEmpty() ? null : val;
 	}
@@ -165,7 +171,8 @@ public class ClaudeResponseNormalizer {
 
 	/**
 	 * Caps the Batch A strategic overview at 240 characters, preferring a sentence/clause break (last {@code .} or
-	 * {@code ,} past position 180) over a hard cut.
+	 * {@code ,} past position 180) over a hard cut, and falling back to the last word boundary (never mid-word)
+	 * when no such punctuation is found.
 	 *
 	 * @param overview raw strategic-overview text from the model (may be null)
 	 * @return the trimmed overview, or an empty string when {@code overview} is null
@@ -178,7 +185,12 @@ public class ClaudeResponseNormalizer {
 		if (overview.length() > 240) {
 			String cut = overview.substring(0, 240);
 			int lp = Math.max(cut.lastIndexOf('.'), cut.lastIndexOf(','));
-			overview = lp > 180 ? overview.substring(0, lp + 1).trim() : cut.trim();
+			if (lp > 180) {
+				overview = overview.substring(0, lp + 1).trim();
+			} else {
+				int ls = cut.lastIndexOf(' ');
+				overview = ls > 0 ? cut.substring(0, ls).trim() : cut.trim();
+			}
 		}
 		return overview;
 	}
