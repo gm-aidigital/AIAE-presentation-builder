@@ -176,14 +176,11 @@ class CampaignResolversTest {
 	}
 
 	@Test
-	void computeFrequencies_planFromReachAndFactFromReducedProposalReach() {
-		// Given: a spy whose reach reduction is fixed at 5%, 3M impressions, and a 1M reach on both tabs
+	void computeFrequencies_planRoundedUpAndFactScaledByMultiplier() {
+		// Given: a spy whose fact uplift is fixed at 1.10, 3M impressions, and a 1M reach
 		CampaignResolvers spyResolvers = spy(ReportsEngineTestSupport.campaignResolvers());
-		doReturn(0.95).when(spyResolvers).reachReductionFactor();
+		doReturn(1.10).when(spyResolvers).factFrequencyMultiplier();
 		List<List<String>> estimates = List.of(
-				List.of("Media", "Reach"),
-				List.of("Total", "1,000,000"));
-		List<List<String>> proposal = List.of(
 				List.of("Media", "Reach"),
 				List.of("Total", "1,000,000"));
 		CampaignData data = new CampaignData(
@@ -191,11 +188,31 @@ class CampaignResolversTest {
 				new Totals(0, 3_000_000, 0, 0, null, null), Map.of(), null);
 
 		// When:
-		CampaignFrequencies freq = spyResolvers.computeFrequencies(estimates, proposal, List.of(), data);
+		CampaignFrequencies freq = spyResolvers.computeFrequencies(estimates, List.of(), List.of(), data);
 
-		// Then: plan = 3M / 1M = 3.00, fact = 3M / (1M * 0.95) = 3.16
-		assertThat(freq.plan()).isEqualTo("3.00");
-		assertThat(freq.fact()).isEqualTo("3.16");
+		// Then: plan = ceil(3M / 1M) = 3, fact = (3M / 1M) * 1.10 = 3.30
+		assertThat(freq.plan()).isEqualTo("3");
+		assertThat(freq.fact()).isEqualTo("3.30");
+	}
+
+	@Test
+	void computeFrequencies_planRoundsUpNonIntegerFrequency() {
+		// Given: 3.2M impressions over 1M reach yields a fractional plan frequency
+		CampaignResolvers spyResolvers = spy(ReportsEngineTestSupport.campaignResolvers());
+		doReturn(1.05).when(spyResolvers).factFrequencyMultiplier();
+		List<List<String>> estimates = List.of(
+				List.of("Media", "Reach"),
+				List.of("Total", "1,000,000"));
+		CampaignData data = new CampaignData(
+				null, null, null, null, null, null, null, null, null, null, null,
+				new Totals(0, 3_200_000, 0, 0, null, null), Map.of(), null);
+
+		// When:
+		CampaignFrequencies freq = spyResolvers.computeFrequencies(estimates, List.of(), List.of(), data);
+
+		// Then: plan = ceil(3.2) = 4, fact = 3.2 * 1.05 = 3.36
+		assertThat(freq.plan()).isEqualTo("4");
+		assertThat(freq.fact()).isEqualTo("3.36");
 	}
 
 	@Test

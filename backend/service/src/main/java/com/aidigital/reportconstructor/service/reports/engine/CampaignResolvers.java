@@ -904,13 +904,14 @@ public class CampaignResolvers {
 
 	/**
 	 * Computes the planned and actual campaign frequency figures (touchpoints per user) that seed the
-	 * Claude frequency narrative. Planned frequency is total impressions ÷ campaign reach (the same reach
-	 * {@code {{reach}}} resolves). Actual frequency is total impressions ÷ proposal-tab reach reduced by a
-	 * random 1–10% (see {@link #reachReductionFactor}), so it reads slightly higher than the plan. Both are
-	 * formatted to two decimals, or left {@code null} when the underlying impressions/reach are unavailable.
+	 * Claude frequency narrative, both derived from total impressions ÷ campaign reach (the same reach
+	 * {@code {{reach}}} resolves). The planned figure is rounded up to a whole number; the actual figure is
+	 * the raw division scaled by a fresh random 1–15% uplift (see {@link #factFrequencyMultiplier}) so it
+	 * reads slightly higher than the plan, kept to two decimals. Both are {@code null} when the underlying
+	 * impressions/reach are unavailable.
 	 *
-	 * @param estimatesRows Estimates tab rows (primary reach source for the planned figure)
-	 * @param sheetRows     Media Plan / Proposal tab rows (manual overrides and proposal reach)
+	 * @param estimatesRows Estimates tab rows (primary reach source)
+	 * @param sheetRows     Media Plan / Proposal tab rows (manual overrides and Estimates fallback)
 	 * @param adjRows       manual Adjustments tab rows (checked first)
 	 * @param data          aggregated campaign data supplying the BigQuery impression total
 	 * @return the computed {@link CampaignFrequencies}; either field may be {@code null}
@@ -923,23 +924,20 @@ public class CampaignResolvers {
 		if (imps == null || imps <= 0 || reach == null || reach <= 0) {
 			return new CampaignFrequencies(null, null);
 		}
-		String plan = freq2(imps / reach);
-
-		Double proposalReach = bottomReachValue(sheetRows);
-		double factReach = (proposalReach != null && proposalReach > 0 ? proposalReach : reach)
-				* reachReductionFactor();
-		String fact = factReach > 0 ? freq2(imps / factReach) : null;
+		double rawFrequency = imps / reach;
+		String plan = String.valueOf((long) Math.ceil(rawFrequency));
+		String fact = freq2(rawFrequency * factFrequencyMultiplier());
 		return new CampaignFrequencies(plan, fact);
 	}
 
 	/**
-	 * Returns the multiplier that reduces proposal reach by a fresh random 1–10% on every call, modelling
-	 * the actual delivered reach coming in slightly below plan.
+	 * Returns the multiplier that scales the raw frequency up by a fresh random 1–15% on every call,
+	 * modelling the actual delivered frequency coming in slightly above plan.
 	 *
-	 * @return a factor in {@code [0.90, 0.99]}
+	 * @return a factor in {@code [1.01, 1.15]}
 	 */
-	double reachReductionFactor() {
-		return 1.0 - ThreadLocalRandom.current().nextDouble(0.01, 0.10);
+	double factFrequencyMultiplier() {
+		return ThreadLocalRandom.current().nextDouble(1.01, 1.15);
 	}
 
 	/**
