@@ -23,4 +23,20 @@ class FmtTest {
 		assertEquals("\u2014", fmt.pctOrDash(0));
 		assertEquals("12.34%", fmt.pctOrDash(12.34));
 	}
+
+	@Test
+	void compact_thousandsTruncateToWholeK() {
+		assertEquals("74k", fmt.compact(74_542));
+		assertEquals("702k", fmt.compact(702_431));
+	}
+
+	@Test
+	void compact_millionsTruncateToOneDecimalM() {
+		assertEquals("1.2M", fmt.compact(1_234_567));
+	}
+
+	@Test
+	void compact_belowThousandIsGroupedInteger() {
+		assertEquals("742", fmt.compact(742));
+	}
 }

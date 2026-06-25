@@ -52,4 +52,26 @@ public class Fmt {
 	public String pctOrDash(double v) {
 		return v <= 0 ? "\u2014" : dec2(v) + "%";
 	}
+
+	/**
+	 * Renders a count in compact notation by truncating (not rounding) toward zero:
+	 * millions become one-decimal {@code "M"} (e.g. {@code 1,234,567 \u2192 "1.2M"}) and
+	 * thousands become whole-number lowercase {@code "k"} (e.g. {@code 74,542 \u2192 "74k"},
+	 * {@code 702,431 \u2192 "702k"}). Values below 1,000 render as a grouped integer.
+	 *
+	 * @param v the count to abbreviate (e.g. campaign reach)
+	 * @return the compact string with a {@code M}/{@code k} suffix, or a grouped integer when below 1,000
+	 */
+	public String compact(double v) {
+		double abs = Math.abs(v);
+		String sign = v < 0 ? "-" : "";
+		if (abs >= 1_000_000) {
+			double millions = Math.floor(abs / 100_000) / 10.0;
+			return sign + String.format(Locale.US, "%.1f", millions) + "M";
+		}
+		if (abs >= 1_000) {
+			return sign + (long) (abs / 1_000) + "k";
+		}
+		return intGroup(v);
+	}
 }

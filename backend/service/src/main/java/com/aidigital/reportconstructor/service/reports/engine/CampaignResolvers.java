@@ -643,6 +643,166 @@ public class CampaignResolvers {
 		return new Resolved("Total VCR (auto: Completions / Imps)", null, "not_found");
 	}
 
+	/**
+	 * Resolves the campaign-level reach as the bottom-most populated value of the
+	 * "Reach" column in the media-plan table (typically the totals row). The
+	 * Estimates tab is read first; when it has no Reach column the Proposal (Media
+	 * Plan) tab is used as the fallback, mirroring the user's manual lookup. A
+	 * manual Adjustments / Media Plan {@code "Reach:"} label still wins over both.
+	 *
+	 * @param estimatesRows Estimates tab rows, the primary source for the Reach column
+	 * @param sheetRows     Proposal / Media Plan tab rows, used for the manual label and as the Estimates fallback
+	 * @param adjRows       manual Adjustments tab rows (checked first)
+	 * @return a {@link Resolved} reach string, or a null-valued {@code "not_found"} when no Reach column/value exists
+	 */
+	public Resolved resolveReach(List<List<String>> estimatesRows, List<List<String>> sheetRows,
+	                             List<List<String>> adjRows) {
+
+		String fromAdj = sheetUtils.findLabelValue(adjRows, "Reach:");
+		if (fromAdj != null) {
+			return new Resolved("Reach:", fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, "Reach:");
+		if (fromSheet != null) {
+			return new Resolved("Reach:", fromSheet, "sheet");
+		}
+		String fromEstimates = bottomReach(estimatesRows);
+		if (fromEstimates != null) {
+			return new Resolved("Reach (auto: Estimates Reach column, bottom row)", fromEstimates, "sheet");
+		}
+		String fromProposal = bottomReach(sheetRows);
+		if (fromProposal != null) {
+			return new Resolved("Reach (auto: Proposal Reach column, bottom row)", fromProposal, "sheet");
+		}
+		return new Resolved("Reach:", null, "not_found");
+	}
+
+	/**
+	 * Resolves the campaign-level reach in compact notation (e.g. {@code "74k"},
+	 * {@code "1.2M"}). It abbreviates the same bottom-row Reach value that
+	 * {@link #resolveReach} reads (Estimates first, then Proposal), while a manual
+	 * Adjustments / Media Plan {@code "Reach short:"} label wins over both.
+	 *
+	 * @param estimatesRows Estimates tab rows, the primary source for the Reach column
+	 * @param sheetRows     Proposal / Media Plan tab rows, used for the manual label and as the Estimates fallback
+	 * @param adjRows       manual Adjustments tab rows (checked first)
+	 * @return a {@link Resolved} compact reach string, or a null-valued {@code "not_found"} when no Reach value exists
+	 */
+	public Resolved resolveReachShort(List<List<String>> estimatesRows, List<List<String>> sheetRows,
+	                                  List<List<String>> adjRows) {
+
+		String fromAdj = sheetUtils.findLabelValue(adjRows, "Reach short:");
+		if (fromAdj != null) {
+			return new Resolved("Reach short:", fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, "Reach short:");
+		if (fromSheet != null) {
+			return new Resolved("Reach short:", fromSheet, "sheet");
+		}
+		Double fromEstimates = bottomReachValue(estimatesRows);
+		if (fromEstimates != null) {
+			return new Resolved("Reach short (auto: Estimates Reach column, bottom row)", fmt.compact(fromEstimates),
+					"sheet");
+		}
+		Double fromProposal = bottomReachValue(sheetRows);
+		if (fromProposal != null) {
+			return new Resolved("Reach short (auto: Proposal Reach column, bottom row)", fmt.compact(fromProposal),
+					"sheet");
+		}
+		return new Resolved("Reach short:", null, "not_found");
+	}
+
+	/**
+	 * Finds the "Reach" column in a media-plan grid and returns its bottom-most
+	 * populated numeric value (the totals row) formatted with comma grouping.
+	 *
+	 * @param rows media-plan grid rows to scan for a Reach column
+	 * @return the formatted bottom Reach value, or {@code null} when no Reach column or numeric value is present
+	 */
+	String bottomReach(List<List<String>> rows) {
+
+		Double bottom = bottomReachValue(rows);
+		return bottom == null ? null : fmt.intGroup(bottom);
+	}
+
+	/**
+	 * Finds the "Reach" column in a media-plan grid and returns its bottom-most
+	 * populated numeric value (the totals row) as a raw count.
+	 *
+	 * @param rows media-plan grid rows to scan for a Reach column
+	 * @return the bottom Reach count, or {@code null} when no Reach column or numeric value is present
+	 */
+	Double bottomReachValue(List<List<String>> rows) {
+
+		if (rows == null) {
+			return null;
+		}
+		int[] header = findReachColumn(rows);
+		if (header == null) {
+			return null;
+		}
+		Double bottom = null;
+		for (int i = header[0] + 1; i < rows.size(); i++) {
+			Double v = parseReachCell(cellAt(rows.get(i), header[1]));
+			if (v != null) {
+				bottom = v;
+			}
+		}
+		return bottom;
+	}
+
+	/**
+	 * Locates the Reach column header, preferring an exact {@code "reach"} cell and
+	 * otherwise the first header that merely contains "reach" (e.g. "Unique Reach"),
+	 * skipping percentage/rate columns.
+	 *
+	 * @param rows media-plan grid rows to scan
+	 * @return a two-element {@code [rowIndex, colIndex]}, or {@code null} when no Reach header is present
+	 */
+	int[] findReachColumn(List<List<String>> rows) {
+
+		int[] loose = null;
+		for (int i = 0; i < rows.size(); i++) {
+			List<String> row = rows.get(i);
+			if (row == null) {
+				continue;
+			}
+			for (int j = 0; j < row.size(); j++) {
+				String v = cell(row, j).toLowerCase(Locale.ROOT);
+				if (v.equals("reach")) {
+					return new int[]{i, j};
+				}
+				if (loose == null && v.contains("reach") && !v.contains("%") && !v.contains("rate")) {
+					loose = new int[]{i, j};
+				}
+			}
+		}
+		return loose;
+	}
+
+	/**
+	 * Parses a Reach cell into a non-negative count, stripping grouping separators
+	 * and any surrounding decoration.
+	 *
+	 * @param raw the raw cell text from the Reach column
+	 * @return the parsed reach count, or {@code null} when the cell holds no usable number
+	 */
+	Double parseReachCell(String raw) {
+
+		if (raw == null) {
+			return null;
+		}
+		String c = raw.replace(",", "").replaceAll("[^0-9.]", "");
+		if (c.isEmpty() || !c.matches("\\d*\\.?\\d+")) {
+			return null;
+		}
+		try {
+			return Double.parseDouble(c);
+		} catch (NumberFormatException ignored) {
+			return null;
+		}
+	}
+
 	// ── helpers ───────────────────────────────────────────────────────────────
 
 	String[] split4(String raw) {

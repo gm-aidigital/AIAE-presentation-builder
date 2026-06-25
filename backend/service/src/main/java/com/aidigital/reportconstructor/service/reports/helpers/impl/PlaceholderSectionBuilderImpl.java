@@ -78,6 +78,8 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 				campaignResolvers.resolveStrategicInsights(sheet, adj, ccA.strategicInsights())));
 
 		Map<String, Resolved> totals = new LinkedHashMap<>();
+		totals.put("{{reach}}", campaignResolvers.resolveReach(payload.estimatesRows(), sheet, adj));
+		totals.put("{{reach_p}}", campaignResolvers.resolveReachShort(payload.estimatesRows(), sheet, adj));
 		totals.put("{{total imps}}", campaignResolvers.resolveTotalImps(sheet, adj, data));
 		totals.put("{{total ctr}}", campaignResolvers.resolveTotalCtr(sheet, adj, data));
 		totals.put("{{total vcr}}", campaignResolvers.resolveTotalVcr(sheet, adj, data));

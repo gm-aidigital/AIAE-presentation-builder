@@ -64,6 +64,86 @@ class CampaignResolversTest {
 		assertThat(result.get("{{recommendation 4 text}}").value()).isNull();
 	}
 
+	@Test
+	void resolveReach_usesBottomEstimatesReachValue() {
+		List<List<String>> estimates = List.of(
+				List.of("Media", "Impressions", "Reach"),
+				List.of("CTV", "1,800,000", "900,000"),
+				List.of("Display", "8,000,000", "2,500,000"),
+				List.of("Total", "9,800,000", "3,100,000"));
+		Resolved r = resolvers.resolveReach(estimates, List.of(), List.of());
+		assertThat(r.value()).isEqualTo("3,100,000");
+		assertThat(r.source()).isEqualTo("sheet");
+	}
+
+	@Test
+	void resolveReach_fallsBackToProposalWhenEstimatesHasNoReachColumn() {
+		List<List<String>> estimates = List.of(
+				List.of("Media", "Impressions"),
+				List.of("CTV", "1,800,000"));
+		List<List<String>> proposal = List.of(
+				List.of("Media", "Reach"),
+				List.of("CTV", "900,000"),
+				List.of("Total", "2,750,000"));
+		Resolved r = resolvers.resolveReach(estimates, proposal, List.of());
+		assertThat(r.value()).isEqualTo("2,750,000");
+	}
+
+	@Test
+	void resolveReach_manualAdjustmentWins() {
+		List<List<String>> estimates = List.of(
+				List.of("Media", "Reach"),
+				List.of("Total", "3,100,000"));
+		List<List<String>> adj = labelRow("Reach:", "4M unique");
+		Resolved r = resolvers.resolveReach(estimates, List.of(), adj);
+		assertThat(r.value()).isEqualTo("4M unique");
+		assertThat(r.source()).isEqualTo("adj");
+	}
+
+	@Test
+	void resolveReach_notFoundWhenNoReachColumnAnywhere() {
+		List<List<String>> estimates = List.of(
+				List.of("Media", "Impressions"),
+				List.of("CTV", "1,800,000"));
+		Resolved r = resolvers.resolveReach(estimates, List.of(), List.of());
+		assertThat(r.value()).isNull();
+		assertThat(r.source()).isEqualTo("not_found");
+	}
+
+	@Test
+	void resolveReachShort_compactsBottomEstimatesReachValue() {
+		List<List<String>> estimates = List.of(
+				List.of("Media", "Reach"),
+				List.of("CTV", "900,000"),
+				List.of("Total", "1,234,567"));
+		Resolved r = resolvers.resolveReachShort(estimates, List.of(), List.of());
+		assertThat(r.value()).isEqualTo("1.2M");
+		assertThat(r.source()).isEqualTo("sheet");
+	}
+
+	@Test
+	void resolveReachShort_fallsBackToProposalWhenEstimatesHasNoReachColumn() {
+		List<List<String>> estimates = List.of(
+				List.of("Media", "Impressions"),
+				List.of("CTV", "1,800,000"));
+		List<List<String>> proposal = List.of(
+				List.of("Media", "Reach"),
+				List.of("Total", "702,431"));
+		Resolved r = resolvers.resolveReachShort(estimates, proposal, List.of());
+		assertThat(r.value()).isEqualTo("702k");
+	}
+
+	@Test
+	void resolveReachShort_manualAdjustmentWins() {
+		List<List<String>> estimates = List.of(
+				List.of("Media", "Reach"),
+				List.of("Total", "1,234,567"));
+		List<List<String>> adj = labelRow("Reach short:", "1.3M");
+		Resolved r = resolvers.resolveReachShort(estimates, List.of(), adj);
+		assertThat(r.value()).isEqualTo("1.3M");
+		assertThat(r.source()).isEqualTo("adj");
+	}
+
 	private static List<List<String>> labelRow(String label, String value) {
 		return List.of(List.of(label, value, "", ""));
 	}
