@@ -1,6 +1,7 @@
 package com.aidigital.reportconstructor.service.reports.engine;
 
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
+import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
 import com.aidigital.reportconstructor.service.reports.dto.Recommendation;
 import com.aidigital.reportconstructor.service.reports.dto.Totals;
 import org.junit.jupiter.api.BeforeEach;
@@ -10,6 +11,8 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.spy;
 
 class CampaignResolversTest {
 
@@ -168,6 +171,69 @@ class CampaignResolversTest {
 	@Test
 	void resolveMarketVolume_notFoundWhenUiValueBlank() {
 		Resolved r = resolvers.resolveMarketVolume("", List.of(), List.of());
+		assertThat(r.value()).isNull();
+		assertThat(r.source()).isEqualTo("not_found");
+	}
+
+	@Test
+	void computeFrequencies_planFromReachAndFactFromReducedProposalReach() {
+		// Given: a spy whose reach reduction is fixed at 5%, 3M impressions, and a 1M reach on both tabs
+		CampaignResolvers spyResolvers = spy(ReportsEngineTestSupport.campaignResolvers());
+		doReturn(0.95).when(spyResolvers).reachReductionFactor();
+		List<List<String>> estimates = List.of(
+				List.of("Media", "Reach"),
+				List.of("Total", "1,000,000"));
+		List<List<String>> proposal = List.of(
+				List.of("Media", "Reach"),
+				List.of("Total", "1,000,000"));
+		CampaignData data = new CampaignData(
+				null, null, null, null, null, null, null, null, null, null, null,
+				new Totals(0, 3_000_000, 0, 0, null, null), Map.of(), null);
+
+		// When:
+		CampaignFrequencies freq = spyResolvers.computeFrequencies(estimates, proposal, List.of(), data);
+
+		// Then: plan = 3M / 1M = 3.00, fact = 3M / (1M * 0.95) = 3.16
+		assertThat(freq.plan()).isEqualTo("3.00");
+		assertThat(freq.fact()).isEqualTo("3.16");
+	}
+
+	@Test
+	void computeFrequencies_nullWhenReachMissing() {
+		// Given: impressions present but no reach column anywhere
+		List<List<String>> estimates = List.of(
+				List.of("Media", "Impressions"),
+				List.of("CTV", "1,800,000"));
+		CampaignData data = new CampaignData(
+				null, null, null, null, null, null, null, null, null, null, null,
+				new Totals(0, 3_000_000, 0, 0, null, null), Map.of(), null);
+
+		// When:
+		CampaignFrequencies freq = resolvers.computeFrequencies(estimates, List.of(), List.of(), data);
+
+		// Then:
+		assertThat(freq.plan()).isNull();
+		assertThat(freq.fact()).isNull();
+	}
+
+	@Test
+	void resolveFOpportunity_manualWinsOverClaude() {
+		List<List<String>> adj = labelRow("Frequency opportunity:", "Manual opportunity copy.");
+		Resolved r = resolvers.resolveFOpportunity(List.of(), adj, "Claude opportunity copy.");
+		assertThat(r.value()).isEqualTo("Manual opportunity copy.");
+		assertThat(r.source()).isEqualTo("adj");
+	}
+
+	@Test
+	void resolveFFact_fallsBackToClaudeWhenNoManualValue() {
+		Resolved r = resolvers.resolveFFact(List.of(), List.of(), "Actual frequency was 3.16.");
+		assertThat(r.value()).isEqualTo("Actual frequency was 3.16.");
+		assertThat(r.source()).isEqualTo("adj");
+	}
+
+	@Test
+	void resolveFStorytelling_notFoundWhenNoManualOrClaude() {
+		Resolved r = resolvers.resolveFStorytelling(List.of(), List.of(), null);
 		assertThat(r.value()).isNull();
 		assertThat(r.source()).isEqualTo("not_found");
 	}

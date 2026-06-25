@@ -21,7 +21,7 @@ class PlaceholderSectionBuilderImplTest {
 	private final ReportClaudeDefaults claudeDefaults = new ReportClaudeDefaults();
 
 	@Test
-	void shouldBuildTwelveSectionsWithExpectedTitlesTest() {
+	void shouldBuildThirteenSectionsWithExpectedTitlesTest() {
 		GeneratePayload payload = minimalPayload();
 		CampaignData data = emptyCampaignData();
 
@@ -30,7 +30,7 @@ class PlaceholderSectionBuilderImplTest {
 				claudeDefaults.emptyStrategic(), claudeDefaults.emptyTactical(), claudeDefaults.emptyResults(), null
 		);
 
-		assertThat(sections).hasSize(12);
+		assertThat(sections).hasSize(13);
 		assertThat(sections.get(0).title()).isEqualTo("Start");
 		assertThat(sections.get(1).title()).isEqualTo("Overview Slides");
 		assertThat(sections.get(2).title()).isEqualTo("Strategic Insights");
@@ -45,6 +45,10 @@ class PlaceholderSectionBuilderImplTest {
 						"{{recommendation 2}}", "{{recommendation 2 text}}",
 						"{{recommendation 3}}", "{{recommendation 3 text}}",
 						"{{recommendation 4}}", "{{recommendation 4 text}}");
+		assertThat(sections.get(12).title()).isEqualTo("Frequency Story");
+		assertThat(sections.get(12).placeholders())
+				.extracting(Placeholder::key)
+				.containsExactly("{{f_oppartunity}}", "{{f_fact}}", "{{f_storytelling}}");
 	}
 
 	@Test

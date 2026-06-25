@@ -36,9 +36,9 @@ public class ReportClaudeDefaults {
 	 * Builds a placeholder results batch used when Batch C is skipped or returns nothing.
 	 *
 	 * @return a {@link ClaudeResults} with a null results overview, an empty performance-thoughts list,
-	 * an empty per-tactic overviews map, and an empty recommendations list
+	 * an empty per-tactic overviews map, an empty recommendations list, and null frequency-narrative copy
 	 */
 	public ClaudeResults emptyResults() {
-		return new ClaudeResults(null, List.of(), Map.of(), List.of());
+		return new ClaudeResults(null, List.of(), Map.of(), List.of(), null, null, null);
 	}
 }

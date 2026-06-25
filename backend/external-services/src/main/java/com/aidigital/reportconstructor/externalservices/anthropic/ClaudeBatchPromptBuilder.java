@@ -1,6 +1,7 @@
 package com.aidigital.reportconstructor.externalservices.anthropic;
 
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
+import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
 import com.aidigital.reportconstructor.service.reports.dto.Tactic;
 import com.aidigital.reportconstructor.service.reports.dto.Totals;
 import com.aidigital.reportconstructor.service.reports.engine.Fmt;
@@ -244,15 +245,20 @@ public class ClaudeBatchPromptBuilder {
 	/**
 	 * Builds the Batch C (results) prompt, or empty when there is no campaign context to send.
 	 *
-	 * @param data  parsed campaign data including overall totals and actual-vs-plan tactic metrics used for the
-	 *                 results context blocks
-	 * @param brief free-text campaign brief prepended as the {@code === CAMPAIGN BRIEF ===} section (treated as empty
-	 *                when null)
+	 * @param data        parsed campaign data including overall totals and actual-vs-plan tactic metrics used for the
+	 *                       results context blocks
+	 * @param brief       free-text campaign brief prepended as the {@code === CAMPAIGN BRIEF ===} section (treated as
+	 *                       empty when null)
+	 * @param frequencies pre-computed planned/actual frequency figures; when both are present a {@code === FREQUENCY
+	 *                       ===} block is added and Claude is asked to fill the frequency-narrative fields, otherwise
+	 *                       those fields are returned null
 	 * @return the Batch C post-campaign prompt requesting results overview, performance thoughts and per-tactic
 	 * overviews JSON, or empty when no context block could be built
 	 */
-	public Optional<String> buildBatchCPrompt(CampaignData data, String brief) {
+	public Optional<String> buildBatchCPrompt(CampaignData data, String brief, CampaignFrequencies frequencies) {
 		String brf = brief == null ? "" : brief;
+		boolean hasFrequencies = frequencies != null
+				&& normalizer.notBlank(frequencies.plan()) && normalizer.notBlank(frequencies.fact());
 
 		List<String> planLines = new ArrayList<>();
 		if (normalizer.notBlank(data.client())) {
@@ -331,6 +337,11 @@ public class ClaudeBatchPromptBuilder {
 		}
 		if (!tacticLines.isEmpty()) {
 			ctx.add("=== RESULTS BY TACTIC ===\n" + String.join("\n", tacticLines));
+		}
+		if (hasFrequencies) {
+			ctx.add("=== FREQUENCY ===\n"
+					+ "Planned frequency (touchpoints per user): " + frequencies.plan() + "\n"
+					+ "Actual frequency (touchpoints per user):  " + frequencies.fact());
 		}
 		if (ctx.isEmpty()) {
 			return Optional.empty();
@@ -469,6 +480,33 @@ public class ClaudeBatchPromptBuilder {
 						+ "  //  The 4 recommendations must be DISTINCT levers (e.g. budget reallocation, " +
 						"audience expansion,\n"
 						+ "  //    creative strategy, channel/daypart mix, measurement) — no two restating the same idea.\n"
+						+ (hasFrequencies
+								? "  \"f_opportunity\": string,           // MAX 180 CHARACTERS. End on a complete " +
+								"sentence.\n"
+								+ "  //  Convey EXACTLY this message, naming the client's specific industry (infer it " +
+								"from the brief/campaign):\n"
+								+ "  //  \"Based on our experience in your industry ([INDUSTRY]), it takes " + frequencies.plan() +
+								" touchpoints to move a user\n"
+								+ "  //   from passive awareness to active intent — keeping the brand top-of-mind and " +
+								"triggering the 'Invisible Win' faster.\"\n"
+								+ "  //  Use the number " + frequencies.plan() + " VERBATIM. Do not invent a different " +
+								"figure.\n"
+								+ "  \"f_fact\": string,                   // MAX 140 CHARACTERS. End on a complete " +
+								"sentence.\n"
+								+ "  //  Convey this message: in practice the campaign's actual delivered frequency came " +
+								"out to " + frequencies.fact() + "\n"
+								+ "  //   touchpoints per user, closely aligned with our original plan. Use the number " +
+								frequencies.fact() + " VERBATIM.\n"
+								+ "  \"f_storytelling\": string,           // MAX 320 CHARACTERS. End on a complete " +
+								"sentence.\n"
+								+ "  //  Convey EXACTLY this 3-part message, using both numbers VERBATIM:\n"
+								+ "  //  \"Our data shows frequency was " + frequencies.fact() + " vs " + frequencies.plan() +
+								", which positively impacted overall\n"
+								+ "  //   performance. The campaign results and the volume of bookings clearly validate " +
+								"this. Moving forward, we\n"
+								+ "  //   recommend maintaining this frequency as we engage the new in-market audience we " +
+								"have available.\"\n"
+								: "")
 						+ "}\n\n"
 						+ "Rules:\n"
 						+ "- Return ONLY the JSON object — no markdown, no backticks, no explanation.\n"
@@ -483,6 +521,10 @@ public class ClaudeBatchPromptBuilder {
 						"newlines.\n"
 						+ "- DEPTH OVER BREADTH: one insight with a real explanation beats three that only restate " +
 						"numbers.\n"
+						+ (hasFrequencies
+								? "- f_opportunity / f_fact / f_storytelling: keep each within its character limit, embed " +
+								"the supplied frequency numbers VERBATIM, and end on a complete sentence.\n"
+								: "")
 						+ "- Output in English.\n\n"
 						+ "Campaign data:\n" + context;
 		return Optional.of(prompt);

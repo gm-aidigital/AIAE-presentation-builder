@@ -1,6 +1,7 @@
 package com.aidigital.reportconstructor.service.reports.engine;
 
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
+import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
 import com.aidigital.reportconstructor.service.reports.dto.Recommendation;
 import com.aidigital.reportconstructor.service.reports.dto.StrategicInsight;
 import com.aidigital.reportconstructor.service.reports.helpers.SheetRowHelper;
@@ -12,6 +13,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Campaign-level placeholder resolvers. Each returns a {@link Resolved}
@@ -489,6 +491,73 @@ public class CampaignResolvers {
 	}
 
 	/**
+	 * Resolves the {@code {{f_oppartunity}}} frequency-opportunity copy, preferring a manual
+	 * {@code "Frequency opportunity:"} value and falling back to the Claude-generated text.
+	 *
+	 * @param sheetRows  Media Plan tab rows
+	 * @param adjRows    manual Adjustments tab rows (checked first)
+	 * @param claudeText Claude-authored frequency-opportunity copy, used as last resort (may be null)
+	 * @return a {@link Resolved} frequency-opportunity string, or a null-valued {@code "not_found"}
+	 */
+	public Resolved resolveFOpportunity(List<List<String>> sheetRows, List<List<String>> adjRows,
+	                                    String claudeText) {
+		return resolveClaudeNarrative(sheetRows, adjRows, "Frequency opportunity:", claudeText);
+	}
+
+	/**
+	 * Resolves the {@code {{f_fact}}} actual-frequency copy, preferring a manual {@code "Frequency fact:"}
+	 * value and falling back to the Claude-generated text.
+	 *
+	 * @param sheetRows  Media Plan tab rows
+	 * @param adjRows    manual Adjustments tab rows (checked first)
+	 * @param claudeText Claude-authored actual-frequency copy, used as last resort (may be null)
+	 * @return a {@link Resolved} actual-frequency string, or a null-valued {@code "not_found"}
+	 */
+	public Resolved resolveFFact(List<List<String>> sheetRows, List<List<String>> adjRows, String claudeText) {
+		return resolveClaudeNarrative(sheetRows, adjRows, "Frequency fact:", claudeText);
+	}
+
+	/**
+	 * Resolves the {@code {{f_storytelling}}} frequency-storytelling copy, preferring a manual
+	 * {@code "Frequency storytelling:"} value and falling back to the Claude-generated text.
+	 *
+	 * @param sheetRows  Media Plan tab rows
+	 * @param adjRows    manual Adjustments tab rows (checked first)
+	 * @param claudeText Claude-authored frequency-storytelling copy, used as last resort (may be null)
+	 * @return a {@link Resolved} frequency-storytelling string, or a null-valued {@code "not_found"}
+	 */
+	public Resolved resolveFStorytelling(List<List<String>> sheetRows, List<List<String>> adjRows,
+	                                     String claudeText) {
+		return resolveClaudeNarrative(sheetRows, adjRows, "Frequency storytelling:", claudeText);
+	}
+
+	/**
+	 * Shared manual-first / Claude-fallback resolution for a single-label narrative placeholder.
+	 *
+	 * @param sheetRows  Media Plan tab rows
+	 * @param adjRows    manual Adjustments tab rows (checked first)
+	 * @param label      the exact manual override label (e.g. {@code "Frequency opportunity:"})
+	 * @param claudeText Claude-authored copy used when no manual value exists (may be null)
+	 * @return a {@link Resolved} carrying the manual or Claude value, or a null-valued {@code "not_found"}
+	 */
+	Resolved resolveClaudeNarrative(List<List<String>> sheetRows, List<List<String>> adjRows, String label,
+	                                String claudeText) {
+
+		String fromAdj = sheetUtils.findLabelValue(adjRows, label);
+		if (fromAdj != null) {
+			return new Resolved(label, fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, label);
+		if (fromSheet != null) {
+			return new Resolved(label, fromSheet, "sheet");
+		}
+		if (notBlank(claudeText)) {
+			return new Resolved(label + " (auto: Claude)", claudeText, "adj");
+		}
+		return new Resolved(label, null, "not_found");
+	}
+
+	/**
 	 * Resolves the four {@code {{thoughts on the performance N}}} placeholders by
 	 * splitting a single pipe-delimited manual value into four parts, or falling
 	 * back to Claude's per-index performance commentary.
@@ -831,6 +900,99 @@ public class CampaignResolvers {
 		} catch (NumberFormatException ignored) {
 			return null;
 		}
+	}
+
+	/**
+	 * Computes the planned and actual campaign frequency figures (touchpoints per user) that seed the
+	 * Claude frequency narrative. Planned frequency is total impressions ÷ campaign reach (the same reach
+	 * {@code {{reach}}} resolves). Actual frequency is total impressions ÷ proposal-tab reach reduced by a
+	 * random 1–10% (see {@link #reachReductionFactor}), so it reads slightly higher than the plan. Both are
+	 * formatted to two decimals, or left {@code null} when the underlying impressions/reach are unavailable.
+	 *
+	 * @param estimatesRows Estimates tab rows (primary reach source for the planned figure)
+	 * @param sheetRows     Media Plan / Proposal tab rows (manual overrides and proposal reach)
+	 * @param adjRows       manual Adjustments tab rows (checked first)
+	 * @param data          aggregated campaign data supplying the BigQuery impression total
+	 * @return the computed {@link CampaignFrequencies}; either field may be {@code null}
+	 */
+	public CampaignFrequencies computeFrequencies(List<List<String>> estimatesRows, List<List<String>> sheetRows,
+	                                              List<List<String>> adjRows, CampaignData data) {
+
+		Double imps = numericTotalImps(sheetRows, adjRows, data);
+		Double reach = numericReach(estimatesRows, sheetRows, adjRows);
+		if (imps == null || imps <= 0 || reach == null || reach <= 0) {
+			return new CampaignFrequencies(null, null);
+		}
+		String plan = freq2(imps / reach);
+
+		Double proposalReach = bottomReachValue(sheetRows);
+		double factReach = (proposalReach != null && proposalReach > 0 ? proposalReach : reach)
+				* reachReductionFactor();
+		String fact = factReach > 0 ? freq2(imps / factReach) : null;
+		return new CampaignFrequencies(plan, fact);
+	}
+
+	/**
+	 * Returns the multiplier that reduces proposal reach by a fresh random 1–10% on every call, modelling
+	 * the actual delivered reach coming in slightly below plan.
+	 *
+	 * @return a factor in {@code [0.90, 0.99]}
+	 */
+	double reachReductionFactor() {
+		return 1.0 - ThreadLocalRandom.current().nextDouble(0.01, 0.10);
+	}
+
+	/**
+	 * Resolves the numeric total impressions, honouring a manual {@code "Total imps:"} override before
+	 * falling back to the BigQuery impression total.
+	 *
+	 * @param sheetRows Media Plan tab rows
+	 * @param adjRows   manual Adjustments tab rows (checked first)
+	 * @param data      aggregated campaign data supplying the BigQuery impression total
+	 * @return the impression count, or {@code null} when neither a manual value nor positive total exists
+	 */
+	Double numericTotalImps(List<List<String>> sheetRows, List<List<String>> adjRows, CampaignData data) {
+
+		String manual = coalesce(sheetUtils.findLabelValue(adjRows, "Total imps:"),
+				sheetUtils.findLabelValue(sheetRows, "Total imps:"));
+		Double parsed = parseReachCell(manual);
+		if (parsed != null) {
+			return parsed;
+		}
+		double imps = data == null || data.totals() == null ? 0 : data.totals().imps();
+		return imps > 0 ? imps : null;
+	}
+
+	/**
+	 * Resolves the numeric campaign reach the same way {@link #resolveReach} does: a manual {@code "Reach:"}
+	 * override first, then the Estimates-tab bottom row, then the Proposal-tab bottom row.
+	 *
+	 * @param estimatesRows Estimates tab rows (primary reach source)
+	 * @param sheetRows     Media Plan / Proposal tab rows (manual override and Estimates fallback)
+	 * @param adjRows       manual Adjustments tab rows (checked first)
+	 * @return the reach count, or {@code null} when no reach value is present
+	 */
+	Double numericReach(List<List<String>> estimatesRows, List<List<String>> sheetRows,
+	                    List<List<String>> adjRows) {
+
+		String manual = coalesce(sheetUtils.findLabelValue(adjRows, "Reach:"),
+				sheetUtils.findLabelValue(sheetRows, "Reach:"));
+		Double parsed = parseReachCell(manual);
+		if (parsed != null) {
+			return parsed;
+		}
+		Double fromEstimates = bottomReachValue(estimatesRows);
+		return fromEstimates != null ? fromEstimates : bottomReachValue(sheetRows);
+	}
+
+	/**
+	 * Formats a frequency value as a fixed two-decimal string (e.g. {@code "3.45"}).
+	 *
+	 * @param v the frequency value (touchpoints per user)
+	 * @return the value rendered with exactly two fractional digits
+	 */
+	String freq2(double v) {
+		return String.format(Locale.US, "%.2f", v);
 	}
 
 	// ── helpers ───────────────────────────────────────────────────────────────

@@ -97,6 +97,12 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		sections.add(buildPreviewSection("Optimization Recommendations",
 				campaignResolvers.resolveRecommendations(sheet, adj, ccC.recommendations())));
 
+		Map<String, Resolved> frequency = new LinkedHashMap<>();
+		frequency.put("{{f_oppartunity}}", campaignResolvers.resolveFOpportunity(sheet, adj, ccC.fOpportunity()));
+		frequency.put("{{f_fact}}", campaignResolvers.resolveFFact(sheet, adj, ccC.fFact()));
+		frequency.put("{{f_storytelling}}", campaignResolvers.resolveFStorytelling(sheet, adj, ccC.fStorytelling()));
+		sections.add(buildPreviewSection("Frequency Story", frequency));
+
 		return sections;
 	}
 

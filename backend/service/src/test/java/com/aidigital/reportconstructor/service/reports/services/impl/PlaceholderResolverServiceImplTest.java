@@ -5,6 +5,7 @@ import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
 import com.aidigital.reportconstructor.service.reports.dto.Placeholder;
 import com.aidigital.reportconstructor.service.reports.dto.PreviewSection;
 import com.aidigital.reportconstructor.service.reports.engine.CampaignDataCollector;
+import com.aidigital.reportconstructor.service.reports.engine.CampaignResolvers;
 import com.aidigital.reportconstructor.service.reports.engine.ReportClaudeDefaults;
 import com.aidigital.reportconstructor.service.reports.helpers.PlaceholderClaudeGate;
 import com.aidigital.reportconstructor.service.reports.helpers.PlaceholderLabelCollector;
@@ -31,6 +32,8 @@ class PlaceholderResolverServiceImplTest {
 
 	@Mock
 	CampaignDataCollector campaignDataCollector;
+	@Mock
+	CampaignResolvers campaignResolvers;
 	@Mock
 	PlaceholderSectionBuilder sectionBuilder;
 	@Mock

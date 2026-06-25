@@ -367,6 +367,39 @@ public class ClaudeResponseNormalizer {
 	}
 
 	/**
+	 * Normalizes the {@code {{f_oppartunity}}} frequency-opportunity copy with a 180-character budget via
+	 * {@link #normalizeC}.
+	 *
+	 * @param val raw frequency-opportunity text from the model
+	 * @return the normalized, length-capped text, or {@code null} when blank
+	 */
+	public String limitFOpportunity(String val) {
+		return normalizeC(val, 180);
+	}
+
+	/**
+	 * Normalizes the {@code {{f_fact}}} actual-frequency copy with a 140-character budget via
+	 * {@link #normalizeC}.
+	 *
+	 * @param val raw actual-frequency text from the model
+	 * @return the normalized, length-capped text, or {@code null} when blank
+	 */
+	public String limitFFact(String val) {
+		return normalizeC(val, 140);
+	}
+
+	/**
+	 * Normalizes the {@code {{f_storytelling}}} frequency-storytelling copy with a 320-character budget via
+	 * {@link #normalizeC}.
+	 *
+	 * @param val raw frequency-storytelling text from the model
+	 * @return the normalized, length-capped text, or {@code null} when blank
+	 */
+	public String limitFStorytelling(String val) {
+		return normalizeC(val, 320);
+	}
+
+	/**
 	 * Collapses whitespace in the geo-tab summary and caps it at 40 characters, preferring the last real
 	 * sentence-ending {@code .} (decimal points excluded) past position 20 over a hard cut, then falling
 	 * back to the last word boundary (never mid-word), with any trailing dangling comma stripped, when no

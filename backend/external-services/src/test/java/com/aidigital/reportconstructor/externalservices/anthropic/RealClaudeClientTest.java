@@ -1,6 +1,7 @@
 package com.aidigital.reportconstructor.externalservices.anthropic;
 
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
+import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
 import com.aidigital.reportconstructor.service.reports.dto.Recommendation;
 import com.aidigital.reportconstructor.service.reports.dto.Totals;
@@ -47,7 +48,8 @@ class RealClaudeClientTest {
 				null, "$500,000", "Reach", "Display, CTV", "25-44", "Auto intenders",
 				new Totals(0, 0, 0, 0, null, null), Map.of(), null);
 		String brief = "Drive awareness for the Spring Launch.";
-		String expectedPrompt = promptBuilder.buildBatchCPrompt(data, brief).orElseThrow();
+		CampaignFrequencies frequencies = new CampaignFrequencies(null, null);
+		String expectedPrompt = promptBuilder.buildBatchCPrompt(data, brief, frequencies).orElseThrow();
 
 		JsonNode response = json.readTree("""
 				{
@@ -89,7 +91,7 @@ class RealClaudeClientTest {
 				});
 
 		// When:
-		ClaudeResults results = client.batchResults(data, brief);
+		ClaudeResults results = client.batchResults(data, brief, frequencies);
 
 		// Then:
 		assertThat(results.recommendations()).hasSize(4);

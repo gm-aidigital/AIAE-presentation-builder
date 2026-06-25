@@ -69,6 +69,11 @@ public class PlaceholderClaudeGateImpl implements PlaceholderClaudeGate {
 		if (bothNull(adj, sheet, "Thoughts on the performance:")) {
 			return true;
 		}
+		if (bothNull(adj, sheet, "Frequency opportunity:")
+				|| bothNull(adj, sheet, "Frequency fact:")
+				|| bothNull(adj, sheet, "Frequency storytelling:")) {
+			return true;
+		}
 		for (int i = 1; i <= 4; i++) {
 			if (bothNull(adj, sheet, "Recommendation " + i + ":")) {
 				return true;

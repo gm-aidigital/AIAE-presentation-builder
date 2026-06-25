@@ -26,6 +26,30 @@ class ClaudeResponseNormalizerTest {
 	}
 
 	@Test
+	void limitFOpportunity_capsAt180Chars() {
+		String out = normalizer.limitFOpportunity("word " + "x".repeat(300) + ".");
+		assertThat(out.length()).isLessThanOrEqualTo(180);
+	}
+
+	@Test
+	void limitFFact_capsAt140Chars() {
+		String out = normalizer.limitFFact("word " + "x".repeat(300) + ".");
+		assertThat(out.length()).isLessThanOrEqualTo(140);
+	}
+
+	@Test
+	void limitFStorytelling_capsAt320Chars() {
+		String out = normalizer.limitFStorytelling("word " + "x".repeat(500) + ".");
+		assertThat(out.length()).isLessThanOrEqualTo(320);
+	}
+
+	@Test
+	void limitFFact_shortTextUnchanged() {
+		assertEquals("Actual frequency was 3.16, aligned with our plan.",
+				normalizer.limitFFact("Actual frequency was 3.16, aligned with our plan."));
+	}
+
+	@Test
 	void normalizeThoughts_splitsPipeIntoFour() {
 		List<String> slots = normalizer.normalizeThoughts("one | two | three | four");
 		assertEquals("one", slots.get(0));

@@ -1,6 +1,7 @@
 package com.aidigital.reportconstructor.service.reports.services.impl;
 
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
+import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
@@ -8,6 +9,7 @@ import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
 import com.aidigital.reportconstructor.service.reports.dto.Placeholder;
 import com.aidigital.reportconstructor.service.reports.dto.PreviewSection;
 import com.aidigital.reportconstructor.service.reports.engine.CampaignDataCollector;
+import com.aidigital.reportconstructor.service.reports.engine.CampaignResolvers;
 import com.aidigital.reportconstructor.service.reports.engine.ReportClaudeDefaults;
 import com.aidigital.reportconstructor.service.reports.helpers.PlaceholderClaudeGate;
 import com.aidigital.reportconstructor.service.reports.helpers.PlaceholderLabelCollector;
@@ -29,6 +31,7 @@ import java.util.Map;
 public class PlaceholderResolverServiceImpl implements PlaceholderResolverService {
 
 	private final CampaignDataCollector campaignDataCollector;
+	private final CampaignResolvers campaignResolvers;
 	private final PlaceholderSectionBuilder sectionBuilder;
 	private final PlaceholderClaudeGate claudeGate;
 	private final PlaceholderLabelCollector labelCollector;
@@ -78,6 +81,12 @@ public class PlaceholderResolverServiceImpl implements PlaceholderResolverServic
 				payload.sheetRows(), payload.adjRows(), payload.audienceRows(),
 				payload.estimatesRows(), payload.lineItemMapping()
 		);
+	}
+
+	@Override
+	public CampaignFrequencies computeFrequencies(GeneratePayload payload, CampaignData data) {
+		return campaignResolvers.computeFrequencies(
+				payload.estimatesRows(), payload.sheetRows(), payload.adjRows(), data);
 	}
 
 	@Override

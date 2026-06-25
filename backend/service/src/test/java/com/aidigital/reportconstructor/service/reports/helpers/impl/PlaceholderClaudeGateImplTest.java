@@ -80,6 +80,41 @@ class PlaceholderClaudeGateImplTest {
 		assertThat(gate.needTactical(payload, data)).isTrue();
 	}
 
+	@Test
+	void shouldNeedResultsWhenOnlyFrequencyNarrativeMissingTest() {
+		// Given: every Batch C manual value present EXCEPT the frequency-narrative labels (no tactics)
+		List<List<String>> rows = new java.util.ArrayList<>(List.of(
+				List.of("Our results overview:", "Overview"),
+				List.of("Thoughts on the performance:", "T1 | T2 | T3 | T4")));
+		for (int i = 1; i <= 4; i++) {
+			rows.add(List.of("Recommendation " + i + ":", "R" + i));
+			rows.add(List.of("Recommendation " + i + " text:", "R" + i + " text"));
+		}
+		GeneratePayload payload = payloadWithRows(rows, List.of());
+
+		// When-Then: the missing frequency labels alone keep Batch C required
+		assertThat(gate.needResults(payload, null)).isTrue();
+	}
+
+	@Test
+	void shouldNotNeedResultsWhenFrequencyNarrativePresentTest() {
+		// Given: every Batch C manual value present, including the three frequency-narrative labels
+		List<List<String>> rows = new java.util.ArrayList<>(List.of(
+				List.of("Our results overview:", "Overview"),
+				List.of("Thoughts on the performance:", "T1 | T2 | T3 | T4"),
+				List.of("Frequency opportunity:", "Opportunity copy"),
+				List.of("Frequency fact:", "Fact copy"),
+				List.of("Frequency storytelling:", "Storytelling copy")));
+		for (int i = 1; i <= 4; i++) {
+			rows.add(List.of("Recommendation " + i + ":", "R" + i));
+			rows.add(List.of("Recommendation " + i + " text:", "R" + i + " text"));
+		}
+		GeneratePayload payload = payloadWithRows(rows, List.of());
+
+		// When-Then:
+		assertThat(gate.needResults(payload, null)).isFalse();
+	}
+
 	private static GeneratePayload payloadWithRows(List<List<String>> sheet, List<List<String>> adj) {
 		return new GeneratePayload("brief", "standard", sheet, adj, List.of(), List.of(), List.of(), List.of(), "");
 	}

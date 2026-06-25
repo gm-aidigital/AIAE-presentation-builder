@@ -4,6 +4,7 @@ import com.aidigital.reportconstructor.domain.reports.entities.ReportJobEntity;
 import com.aidigital.reportconstructor.service.common.error.AppException;
 import com.aidigital.reportconstructor.service.common.error.ErrorReason;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
+import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
@@ -96,8 +97,9 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 					? claude.batchTactical(data, brief) : claudeDefaults.emptyTactical();
 
 			jobProgress.markJobRunningAtStep(jobId, 5, "Claude — executive batch (C)");
+			CampaignFrequencies frequencies = placeholders.computeFrequencies(payload, data);
 			ClaudeResults ccC = (live && placeholders.needResults(payload, data))
-					? claude.batchResults(data, brief) : claudeDefaults.emptyResults();
+					? claude.batchResults(data, brief, frequencies) : claudeDefaults.emptyResults();
 
 			String geoSummary = (live && placeholders.needGeoSummary(payload))
 					? claude.summarizeGeo(payload.geoRows()) : null;

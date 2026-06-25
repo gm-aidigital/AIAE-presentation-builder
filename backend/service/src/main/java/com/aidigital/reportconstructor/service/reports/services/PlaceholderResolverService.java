@@ -1,6 +1,7 @@
 package com.aidigital.reportconstructor.service.reports.services;
 
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
+import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
@@ -49,6 +50,16 @@ public interface PlaceholderResolverService {
 	 * @return the aggregated campaign/tactic metrics snapshot derived from those rows
 	 */
 	CampaignData collectData(GeneratePayload payload);
+
+	/**
+	 * Computes the planned/actual campaign frequency figures fed into Claude Batch C so the frequency
+	 * narrative ({@code {{f_oppartunity}} / {{f_fact}} / {{f_storytelling}}}) embeds the exact numbers.
+	 *
+	 * @param payload the constructor request carrying the Media-Plan, Adjustments and Estimates rows
+	 * @param data    the aggregated campaign snapshot supplying the impression total
+	 * @return the computed frequency figures; either field may be {@code null} when reach/impressions are absent
+	 */
+	CampaignFrequencies computeFrequencies(GeneratePayload payload, CampaignData data);
 
 	/**
 	 * Gates Claude Batch A when strategic placeholders are absent from both row sets.

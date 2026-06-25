@@ -1,6 +1,7 @@
 package com.aidigital.reportconstructor.externalservices.anthropic;
 
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
+import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
@@ -43,6 +44,9 @@ public class RealClaudeClient implements ClaudeClient {
 	private static final int TACTIC_OVERVIEW_LIMIT = 210;
 	private static final int RECOMMENDATION_TITLE_LIMIT = 30;
 	private static final int RECOMMENDATION_TEXT_LIMIT = 130;
+	private static final int F_OPPORTUNITY_LIMIT = 180;
+	private static final int F_FACT_LIMIT = 140;
+	private static final int F_STORYTELLING_LIMIT = 320;
 
 	private final AnthropicMessagesClient messagesClient;
 	private final ClaudeBatchPromptBuilder promptBuilder;
@@ -152,8 +156,8 @@ public class RealClaudeClient implements ClaudeClient {
 	}
 
 	@Override
-	public ClaudeResults batchResults(CampaignData data, String brief) {
-		var prompt = promptBuilder.buildBatchCPrompt(data, brief);
+	public ClaudeResults batchResults(CampaignData data, String brief, CampaignFrequencies frequencies) {
+		var prompt = promptBuilder.buildBatchCPrompt(data, brief, frequencies);
 		if (prompt.isEmpty()) {
 			return claudeDefaults.emptyResults();
 		}
@@ -194,10 +198,23 @@ public class RealClaudeClient implements ClaudeClient {
 			rawRecTexts[i] = item == null ? "" : item.path("text").asText("").trim();
 		}
 
+		String rawFOpportunity = normalizer.textOrNull(parsed.get("f_opportunity"));
+		String rawFFact = normalizer.textOrNull(parsed.get("f_fact"));
+		String rawFStorytelling = normalizer.textOrNull(parsed.get("f_storytelling"));
+
 		List<ClaudeCompressionField> compressionFields = new ArrayList<>();
 		if (rawResultsOverview != null) {
 			compressionFields.add(
 					new ClaudeCompressionField("results_overview", rawResultsOverview, RESULTS_OVERVIEW_LIMIT));
+		}
+		if (rawFOpportunity != null) {
+			compressionFields.add(new ClaudeCompressionField("f_opportunity", rawFOpportunity, F_OPPORTUNITY_LIMIT));
+		}
+		if (rawFFact != null) {
+			compressionFields.add(new ClaudeCompressionField("f_fact", rawFFact, F_FACT_LIMIT));
+		}
+		if (rawFStorytelling != null) {
+			compressionFields.add(new ClaudeCompressionField("f_storytelling", rawFStorytelling, F_STORYTELLING_LIMIT));
 		}
 		for (int i = 0; i < rawThoughts.size(); i++) {
 			String thought = rawThoughts.get(i);
@@ -239,7 +256,17 @@ public class RealClaudeClient implements ClaudeClient {
 			String text = normalizer.limitRecommendationText(compressed.get("rec_text_" + i));
 			recommendations.add(new Recommendation(title, text));
 		}
-		return new ClaudeResults(resultsOverview, thoughts, tacticOverviews, recommendations);
+
+		String fOpportunity = rawFOpportunity == null
+				? null
+				: normalizer.limitFOpportunity(compressed.get("f_opportunity"));
+		String fFact = rawFFact == null ? null : normalizer.limitFFact(compressed.get("f_fact"));
+		String fStorytelling = rawFStorytelling == null
+				? null
+				: normalizer.limitFStorytelling(compressed.get("f_storytelling"));
+
+		return new ClaudeResults(resultsOverview, thoughts, tacticOverviews, recommendations,
+				fOpportunity, fFact, fStorytelling);
 	}
 
 	@Override

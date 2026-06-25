@@ -1,6 +1,7 @@
 package com.aidigital.reportconstructor.service.reports.ports;
 
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
+import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
@@ -34,9 +35,15 @@ public interface ClaudeClient {
 	ClaudeTactical batchTactical(CampaignData data, String brief);
 
 	/**
-	 * Batch C — results overview, thoughts on performance, tactic overviews.
+	 * Batch C — results overview, thoughts on performance, tactic overviews, plus the frequency
+	 * narrative ({@code {{f_oppartunity}} / {{f_fact}} / {{f_storytelling}}}) seeded with {@code frequencies}.
+	 *
+	 * @param data        parsed campaign data and actual-vs-plan tactic metrics
+	 * @param brief       free-text campaign brief used to infer the client's industry
+	 * @param frequencies pre-computed planned/actual frequency figures embedded in the frequency narrative
+	 * @return the parsed, length-capped Batch C copy
 	 */
-	ClaudeResults batchResults(CampaignData data, String brief);
+	ClaudeResults batchResults(CampaignData data, String brief, CampaignFrequencies frequencies);
 
 	/**
 	 * Geo-tab → short ≤40-char comma-separated location string (or null).
