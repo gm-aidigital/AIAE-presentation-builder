@@ -39,6 +39,7 @@ type OptionalTabs = Pick<MediaPlanState, "audienceRows" | "estimatesRows" | "geo
 interface WizardContextValue {
     brief: string;
     reportType: ReportType;
+    marketVolume: string;
     mediaPlan: MediaPlanState | null;
     elevate: ElevateState | null;
     mapping: MappingEntry[] | null;
@@ -46,6 +47,7 @@ interface WizardContextValue {
 
     setBrief(value: string): void;
     setReportType(value: ReportType): void;
+    setMarketVolume(value: string): void;
     connectMediaPlan(value: MediaPlanState): void;
     updateMediaPlanTabs(patch: Partial<OptionalTabs>): void;
     disconnectMediaPlan(): void;
@@ -61,6 +63,7 @@ const WizardContext = createContext<WizardContextValue | null>(null);
 export function WizardProvider({ children }: { children: ReactNode }) {
     const [brief, setBriefState] = useState("");
     const [reportType, setReportTypeState] = useState<ReportType>("EOC");
+    const [marketVolume, setMarketVolumeState] = useState("");
     const [mediaPlan, setMediaPlan] = useState<MediaPlanState | null>(null);
     const [elevate, setElevate] = useState<ElevateState | null>(null);
     const [mapping, setMappingState] = useState<MappingEntry[] | null>(null);
@@ -75,12 +78,14 @@ export function WizardProvider({ children }: { children: ReactNode }) {
         () => ({
             brief,
             reportType,
+            marketVolume,
             mediaPlan,
             elevate,
             mapping,
             matchConfirmed,
             setBrief: setBriefState,
             setReportType: setReportTypeState,
+            setMarketVolume: setMarketVolumeState,
             connectMediaPlan: (v) => {
                 setMediaPlan(v);
                 invalidateMatch();
@@ -106,7 +111,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
             confirmMatch: () => setMatchConfirmed(true),
             resetMatch: invalidateMatch,
         }),
-        [brief, reportType, mediaPlan, elevate, mapping, matchConfirmed, invalidateMatch]
+        [brief, reportType, marketVolume, mediaPlan, elevate, mapping, matchConfirmed, invalidateMatch]
     );
 
     return <WizardContext.Provider value={value}>{children}</WizardContext.Provider>;

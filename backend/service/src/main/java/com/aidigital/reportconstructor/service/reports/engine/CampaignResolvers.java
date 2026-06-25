@@ -713,6 +713,36 @@ public class CampaignResolvers {
 	}
 
 	/**
+	 * Resolves the maximum addressable audience volume in compact notation (e.g.
+	 * {@code "74k"}, {@code "1.2M"}). The value is the figure the user enters in the
+	 * UI from their DV360 audience estimate; it is parsed and abbreviated via
+	 * {@link Fmt#compact}. A manual Adjustments / Media Plan {@code "Market volume:"}
+	 * label still wins over the UI value and is used verbatim.
+	 *
+	 * @param marketVolume the raw audience-volume string entered in the UI (may be {@code null} or blank)
+	 * @param sheetRows    Media Plan tab rows, scanned for a manual {@code "Market volume:"} override
+	 * @param adjRows      manual Adjustments tab rows (checked first)
+	 * @return a {@link Resolved} compact volume string, or a null-valued {@code "not_found"} when nothing parses
+	 */
+	public Resolved resolveMarketVolume(String marketVolume, List<List<String>> sheetRows,
+	                                    List<List<String>> adjRows) {
+
+		String fromAdj = sheetUtils.findLabelValue(adjRows, "Market volume:");
+		if (fromAdj != null) {
+			return new Resolved("Market volume:", fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, "Market volume:");
+		if (fromSheet != null) {
+			return new Resolved("Market volume:", fromSheet, "sheet");
+		}
+		Double parsed = parseReachCell(marketVolume);
+		if (parsed != null) {
+			return new Resolved("Market volume (UI)", fmt.compact(parsed), "sheet");
+		}
+		return new Resolved("Market volume:", null, "not_found");
+	}
+
+	/**
 	 * Finds the "Reach" column in a media-plan grid and returns its bottom-most
 	 * populated numeric value (the totals row) formatted with comma grouping.
 	 *

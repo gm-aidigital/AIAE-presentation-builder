@@ -61,6 +61,7 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		start.put("{{audience_age}}", campaignResolvers.resolveAudienceAge(sheet, adj, ccA.audienceAge()));
 		start.put("{{audience_segments}}", campaignResolvers.resolveAudienceSegments(sheet, adj,
 				ccA.audienceSegments()));
+		start.put("{{market volume}}", campaignResolvers.resolveMarketVolume(payload.marketVolume(), sheet, adj));
 		start.put("{{geo_locations}}", campaignResolvers.resolveGeoLocations(sheet, adj, geoSummary));
 		start.put("{{funnel_stages}}", campaignResolvers.resolveFunnelStages(sheet, adj));
 		start.put("{{tactics_list}}", campaignResolvers.resolveTacticsList(sheet, adj));

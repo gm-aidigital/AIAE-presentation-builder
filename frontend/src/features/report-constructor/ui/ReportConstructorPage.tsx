@@ -221,6 +221,7 @@ function PageInner() {
             {
                 brief: w.brief,
                 reportType: w.reportType,
+                marketVolume: w.marketVolume,
                 sheetRows: w.mediaPlan?.sheetRows ?? [],
                 adjRows: w.elevate?.adjRows ?? [],
                 audienceRows: w.mediaPlan?.audienceRows ?? [],
@@ -257,6 +258,7 @@ function PageInner() {
         startReportJob({
             brief: w.brief,
             reportType: w.reportType,
+            marketVolume: w.marketVolume,
             sheetRows: w.mediaPlan.sheetRows,
             adjRows: w.elevate.adjRows,
             audienceRows: w.mediaPlan.audienceRows,
@@ -307,6 +309,7 @@ function PageInner() {
     function clearAll() {
         w.setBrief("");
         w.setReportType("EOC");
+        w.setMarketVolume("");
         w.disconnectMediaPlan();
         w.disconnectElevate();
         setMatchData(null);
@@ -540,6 +543,30 @@ function PageInner() {
                                             </button>
                                         ))}
                                     </div>
+                                </div>
+
+                                <div className="setting-row">
+                                    <div className="setting-label">
+                                        Market Volume
+                                        <span className="setting-label-sub">
+                                            — maximum addressable audience size
+                                        </span>
+                                    </div>
+                                    <div className="sheets-hint">
+                                        Open <strong>DV360</strong>, select your advertiser, and enter your
+                                        socio-demographic and audience targeting. Read off the{" "}
+                                        <strong>maximum audience volume</strong> the estimate reports, and paste that
+                                        number here. It fills the <strong>{"{{market volume}}"}</strong> placeholder,
+                                        shortened automatically (e.g. 74,542 → 74k, 1,234,567 → 1.2M).
+                                    </div>
+                                    <input
+                                        className="input-field"
+                                        type="text"
+                                        inputMode="numeric"
+                                        placeholder="e.g. 1 234 567"
+                                        value={w.marketVolume}
+                                        onChange={(e) => w.setMarketVolume(e.target.value)}
+                                    />
                                 </div>
                             </div>
                         </div>

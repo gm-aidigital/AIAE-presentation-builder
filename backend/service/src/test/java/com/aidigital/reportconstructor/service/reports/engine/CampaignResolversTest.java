@@ -144,6 +144,34 @@ class CampaignResolversTest {
 		assertThat(r.source()).isEqualTo("adj");
 	}
 
+	@Test
+	void resolveMarketVolume_compactsUiValue() {
+		Resolved r = resolvers.resolveMarketVolume("74,542", List.of(), List.of());
+		assertThat(r.value()).isEqualTo("74k");
+		assertThat(r.source()).isEqualTo("sheet");
+	}
+
+	@Test
+	void resolveMarketVolume_compactsMillionsUiValue() {
+		Resolved r = resolvers.resolveMarketVolume("1234567", List.of(), List.of());
+		assertThat(r.value()).isEqualTo("1.2M");
+	}
+
+	@Test
+	void resolveMarketVolume_manualAdjustmentWins() {
+		List<List<String>> adj = labelRow("Market volume:", "5M reachable");
+		Resolved r = resolvers.resolveMarketVolume("74,542", List.of(), adj);
+		assertThat(r.value()).isEqualTo("5M reachable");
+		assertThat(r.source()).isEqualTo("adj");
+	}
+
+	@Test
+	void resolveMarketVolume_notFoundWhenUiValueBlank() {
+		Resolved r = resolvers.resolveMarketVolume("", List.of(), List.of());
+		assertThat(r.value()).isNull();
+		assertThat(r.source()).isEqualTo("not_found");
+	}
+
 	private static List<List<String>> labelRow(String label, String value) {
 		return List.of(List.of(label, value, "", ""));
 	}
