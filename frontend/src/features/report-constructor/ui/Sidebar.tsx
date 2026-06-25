@@ -11,11 +11,12 @@ interface Props {
 }
 
 export function Sidebar({ resultUrl, previewLoading, generating, onPreview, onGenerate, onClear }: Props) {
-    const { brief, mediaPlan, elevate, matchConfirmed } = useWizard();
+    const { brief, marketVolume, mediaPlan, elevate, matchConfirmed } = useWizard();
     const briefLen = brief.trim().length;
     const hasSheet = !!mediaPlan;
     const hasAdj = !!elevate;
-    const genReady = briefLen > 0 && hasSheet && hasAdj && matchConfirmed;
+    const hasMarketVolume = marketVolume.trim().length > 0;
+    const genReady = briefLen > 0 && hasSheet && hasAdj && hasMarketVolume && matchConfirmed;
     const previewReady = hasSheet || hasAdj;
     const flow1 = hasSheet || hasAdj;
     const flow2 = (hasSheet || hasAdj) && briefLen > 0;
@@ -36,6 +37,15 @@ export function Sidebar({ resultUrl, previewLoading, generating, onPreview, onGe
                         </span>
                         <span className={`status-val${briefLen > 0 ? " on" : ""}`}>
                             {briefLen > 0 ? `${briefLen.toLocaleString()} chars` : "Empty"}
+                        </span>
+                    </div>
+                    <div className="status-row">
+                        <span className="status-key">
+                            <span className={`status-dot${hasMarketVolume ? " on" : ""}`} />
+                            Market Volume
+                        </span>
+                        <span className={`status-val${hasMarketVolume ? " on" : ""}`}>
+                            {hasMarketVolume ? marketVolume.trim() : "Empty"}
                         </span>
                     </div>
                     <div className="status-row">

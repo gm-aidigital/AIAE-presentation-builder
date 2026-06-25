@@ -568,16 +568,18 @@ components:
     # ── ReportJobs ────────────────────────────────────────────────────────────────
     GenerateRequestV1:
       type: object
-      required: [ brief, reportType ]
+      required: [ brief, reportType, marketVolume ]
       properties:
         brief: { type: string }
         reportType: { $ref: "#/components/schemas/ReportTypeV1" }
         marketVolume:
           type: string
+          minLength: 1
           description: |
             Maximum addressable audience volume entered in the UI (DV360 audience
-            estimate). Free text; the server parses the number and renders it
-            compact (e.g. 74k, 702k, 1.2M) into {{market volume}}.
+            estimate). Required to generate a presentation. Free text; the server
+            parses the number and renders it compact (e.g. 74k, 702k, 1.2M) into
+            {{market volume}}.
         sheetRows: { $ref: "#/components/schemas/Rows2DV1" }
         adjRows: { $ref: "#/components/schemas/Rows2DV1" }
         audienceRows: { $ref: "#/components/schemas/Rows2DV1" }

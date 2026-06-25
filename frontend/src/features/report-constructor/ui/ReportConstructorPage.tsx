@@ -36,7 +36,7 @@ function PageInner() {
 
     const [mediaPulling, setMediaPulling] = useState(false);
     const [elevatePulling, setElevatePulling] = useState(false);
-    const [req, setReq] = useState({ brief: false, sheet: false, adj: false });
+    const [req, setReq] = useState({ brief: false, sheet: false, adj: false, marketVolume: false });
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [activeStep, setActiveStep] = useState(0);
 
@@ -64,7 +64,7 @@ function PageInner() {
     // Scroll-spy for the sticky stepper.
     useEffect(() => {
         function onScroll() {
-            ["s1", "s2", "s3"].forEach((id, i) => {
+            ["s1", "s2", "s3", "s4"].forEach((id, i) => {
                 const el = document.getElementById(id);
                 if (!el) return;
                 const r = el.getBoundingClientRect();
@@ -244,14 +244,19 @@ function PageInner() {
 
     // ── Generate ──────────────────────────────────────────────────────────
     function generate() {
-        const errs = { brief: !w.brief.trim(), sheet: !w.mediaPlan, adj: !w.elevate };
-        if (errs.brief || errs.sheet || errs.adj) {
+        const errs = {
+            brief: !w.brief.trim(),
+            sheet: !w.mediaPlan,
+            adj: !w.elevate,
+            marketVolume: !w.marketVolume.trim(),
+        };
+        if (errs.brief || errs.sheet || errs.adj || errs.marketVolume) {
             setReq(errs);
-            showToast("Please complete all three sections", true);
+            showToast("Please complete all required sections", true);
             return;
         }
         if (!w.mediaPlan || !w.elevate) return;
-        setReq({ brief: false, sheet: false, adj: false });
+        setReq({ brief: false, sheet: false, adj: false, marketVolume: false });
         setResultUrl(null);
         setGenerating(true);
         setProgress({ step: 0, total: 7, label: "Starting…" });
@@ -319,15 +324,17 @@ function PageInner() {
         setGenerating(false);
         setResultUrl(null);
         setProgress({ step: 0, total: 7, label: "" });
-        setReq({ brief: false, sheet: false, adj: false });
+        setReq({ brief: false, sheet: false, adj: false, marketVolume: false });
     }
 
     // ── Derived UI ────────────────────────────────────────────────────────
     const briefLen = w.brief.length;
+    const hasMarketVolume = w.marketVolume.trim().length > 0;
     const steps = [
         { label: "Campaign Brief", done: w.brief.trim().length > 0, href: "#s1" },
-        { label: "Media Plan", done: !!w.mediaPlan, href: "#s2" },
-        { label: "Elevate Dashboard", done: !!w.elevate, href: "#s3" },
+        { label: "Market Volume", done: hasMarketVolume, href: "#s2" },
+        { label: "Media Plan", done: !!w.mediaPlan, href: "#s3" },
+        { label: "Elevate Dashboard", done: !!w.elevate, href: "#s4" },
     ];
     const bothConnected = !!w.mediaPlan && !!w.elevate;
     const matched = (w.mapping ?? []).filter((m) => m.lineItemId).length;
@@ -460,10 +467,44 @@ function PageInner() {
                         </div>
                     </div>
 
-                    {/* 02 Media Plan */}
+                    {/* 02 Market Volume */}
+                    <div className="section-card" id="s2">
+                        <div className="card-header">
+                            <div className="card-num">02</div>
+                            <div>
+                                <div className="card-title">Market Volume</div>
+                                <div className="card-desc">Maximum addressable audience size — required</div>
+                            </div>
+                        </div>
+                        <div className="card-body">
+                            <div className="sheets-hint">
+                                Open <strong>DV360</strong>, select your advertiser, and enter your socio-demographic
+                                and audience targeting. Read off the <strong>maximum audience volume</strong> the
+                                estimate reports, and paste that number here. It fills the{" "}
+                                <strong>{"{{market volume}}"}</strong> placeholder, shortened automatically (e.g.
+                                74,542 → 74k, 1,234,567 → 1.2M).
+                            </div>
+                            <input
+                                className="input-field"
+                                type="text"
+                                inputMode="numeric"
+                                placeholder="e.g. 1 234 567"
+                                value={w.marketVolume}
+                                onChange={(e) => {
+                                    w.setMarketVolume(e.target.value);
+                                    setReq((r) => ({ ...r, marketVolume: false }));
+                                }}
+                            />
+                            <div className={`field-error${req.marketVolume ? " visible" : ""}`}>
+                                Market volume is required.
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 03 Media Plan */}
                     <SheetCard
-                        num="02"
-                        id="s2"
+                        num="03"
+                        id="s3"
                         title="Media Plan"
                         desc="Channel allocations, budgets, targeting — Google Sheets link"
                         hint={
@@ -483,10 +524,10 @@ function PageInner() {
                         }}
                     />
 
-                    {/* 03 Elevate */}
+                    {/* 04 Elevate */}
                     <SheetCard
-                        num="03"
-                        id="s3"
+                        num="04"
+                        id="s4"
                         title="Elevate Dashboard Datasheet"
                         desc='BigQuery export — actual performance data, tab "Basic"'
                         hint={
@@ -507,11 +548,11 @@ function PageInner() {
                         }}
                     />
 
-                    {/* 04 Settings */}
-                    <div className={`settings-card${settingsOpen ? " open" : ""}`} id="s4">
+                    {/* 05 Settings */}
+                    <div className={`settings-card${settingsOpen ? " open" : ""}`} id="s5">
                         <button className="settings-toggle" onClick={() => setSettingsOpen((v) => !v)}>
                             <div className="settings-toggle-left">
-                                <div className="settings-toggle-num">04</div>
+                                <div className="settings-toggle-num">05</div>
                                 <div>
                                     <div className="settings-toggle-title">Additional Settings</div>
                                     <div className="settings-toggle-desc">Report type and output options</div>
@@ -543,30 +584,6 @@ function PageInner() {
                                             </button>
                                         ))}
                                     </div>
-                                </div>
-
-                                <div className="setting-row">
-                                    <div className="setting-label">
-                                        Market Volume
-                                        <span className="setting-label-sub">
-                                            — maximum addressable audience size
-                                        </span>
-                                    </div>
-                                    <div className="sheets-hint">
-                                        Open <strong>DV360</strong>, select your advertiser, and enter your
-                                        socio-demographic and audience targeting. Read off the{" "}
-                                        <strong>maximum audience volume</strong> the estimate reports, and paste that
-                                        number here. It fills the <strong>{"{{market volume}}"}</strong> placeholder,
-                                        shortened automatically (e.g. 74,542 → 74k, 1,234,567 → 1.2M).
-                                    </div>
-                                    <input
-                                        className="input-field"
-                                        type="text"
-                                        inputMode="numeric"
-                                        placeholder="e.g. 1 234 567"
-                                        value={w.marketVolume}
-                                        onChange={(e) => w.setMarketVolume(e.target.value)}
-                                    />
                                 </div>
                             </div>
                         </div>
