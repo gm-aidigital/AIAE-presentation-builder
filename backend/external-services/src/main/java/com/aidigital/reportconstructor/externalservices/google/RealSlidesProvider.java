@@ -174,7 +174,7 @@ public class RealSlidesProvider implements SlidesProvider {
 
 	HttpRequestInitializer userInitializer(String accessToken) {
 
-		return new HttpCredentialsAdapter(
-				GoogleCredentials.create(new AccessToken(accessToken, null)));
+		return creds.withTimeout(new HttpCredentialsAdapter(
+				GoogleCredentials.create(new AccessToken(accessToken, null))));
 	}
 }

@@ -32,6 +32,14 @@ public class GoogleCredentialsFactory {
 			"https://www.googleapis.com/auth/drive"
 	);
 
+	/**
+	 * Connect/read timeout applied to every outgoing Google API request. Large media plans
+	 * (thousands of rows across many sheet tabs) and decks with many {@code {{token}}}
+	 * replacements can take well past the client library's 20s default to process on
+	 * Google's side.
+	 */
+	public static final int HTTP_TIMEOUT_MILLIS = 120_000;
+
 	private final GoogleCredentials credentials;
 	private final HttpTransport transport;
 	private final GsonFactory jsonFactory = GsonFactory.getDefaultInstance();
@@ -79,12 +87,31 @@ public class GoogleCredentialsFactory {
 	}
 
 	/**
-	 * Builds a request initializer that attaches the scoped service-account
-	 * credentials (as OAuth bearer tokens) to every outgoing Google API request.
+	 * Builds a request initializer that attaches the scoped service-account credentials (as
+	 * OAuth bearer tokens) to every outgoing Google API request and raises the connect/read
+	 * timeout to {@link #HTTP_TIMEOUT_MILLIS} so slow Sheets reads / Slides batch updates on
+	 * large reports don't time out against the library's default.
 	 *
 	 * @return a fresh {@link HttpRequestInitializer} wrapping the loaded credentials
 	 */
 	public HttpRequestInitializer initializer() {
-		return new HttpCredentialsAdapter(credentials);
+		return withTimeout(new HttpCredentialsAdapter(credentials));
+	}
+
+	/**
+	 * Wraps a credentials-backed {@link HttpRequestInitializer} so every request it initializes
+	 * also gets the shared {@link #HTTP_TIMEOUT_MILLIS} connect/read timeout. Exposed so callers
+	 * building their own per-user credentials adapter (e.g. {@code RealSlidesProvider}'s
+	 * Clerk-OAuth path) apply the same timeout instead of the client library's 20s default.
+	 *
+	 * @param credentialsInitializer the credentials adapter to delegate authentication to
+	 * @return an {@link HttpRequestInitializer} applying both credentials and the timeout
+	 */
+	public HttpRequestInitializer withTimeout(HttpRequestInitializer credentialsInitializer) {
+		return request -> {
+			credentialsInitializer.initialize(request);
+			request.setConnectTimeout(HTTP_TIMEOUT_MILLIS);
+			request.setReadTimeout(HTTP_TIMEOUT_MILLIS);
+		};
 	}
 }
