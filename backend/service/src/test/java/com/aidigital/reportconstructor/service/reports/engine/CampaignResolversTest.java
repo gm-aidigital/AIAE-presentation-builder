@@ -244,7 +244,7 @@ class CampaignResolversTest {
 				new Totals(0, 3_000_000, 0, 0, null, null), Map.of(), null);
 
 		// When:
-		CampaignFrequencies freq = spyResolvers.computeFrequencies(estimates, List.of(), List.of(), data);
+		CampaignFrequencies freq = spyResolvers.computeFrequencies(estimates, List.of(), List.of(), data, null);
 
 		// Then: plan = ceil(3M / 1M) = 3, reach_f = 1M * 1.10 = 1.1M, fact = 3M / 1.1M = 2.73
 		assertThat(freq.plan()).isEqualTo("3");
@@ -265,7 +265,7 @@ class CampaignResolversTest {
 				new Totals(0, 3_200_000, 0, 0, null, null), Map.of(), null);
 
 		// When:
-		CampaignFrequencies freq = spyResolvers.computeFrequencies(estimates, List.of(), List.of(), data);
+		CampaignFrequencies freq = spyResolvers.computeFrequencies(estimates, List.of(), List.of(), data, null);
 
 		// Then: plan = ceil(3.2) = 4, reach_f = 1M * 1.05 = 1.05M, fact = 3.2M / 1.05M = 3.05
 		assertThat(freq.plan()).isEqualTo("4");
@@ -284,7 +284,7 @@ class CampaignResolversTest {
 				new Totals(0, 3_000_000, 0, 0, null, null), Map.of(), null);
 
 		// When:
-		CampaignFrequencies freq = resolvers.computeFrequencies(estimates, List.of(), List.of(), data);
+		CampaignFrequencies freq = resolvers.computeFrequencies(estimates, List.of(), List.of(), data, null);
 
 		// Then:
 		assertThat(freq.plan()).isNull();

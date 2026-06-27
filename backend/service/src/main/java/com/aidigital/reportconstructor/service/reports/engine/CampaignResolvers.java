@@ -870,6 +870,30 @@ public class CampaignResolvers {
 	}
 
 	/**
+	 * Resolves the maximum addressable audience volume as a plain number, honouring the same manual
+	 * Adjustments / Media Plan {@code "Market volume:"} override as {@link #resolveMarketVolume}, so
+	 * {@link #computeFrequencies} can derive the remaining in-market audience from the exact same figure
+	 * shown in {@code {{market volume}}}.
+	 *
+	 * @param marketVolume the raw audience-volume string entered in the UI (may be {@code null} or blank)
+	 * @param sheetRows    Media Plan tab rows, scanned for a manual {@code "Market volume:"} override
+	 * @param adjRows      manual Adjustments tab rows (checked first)
+	 * @return the parsed market volume, or {@code null} when nothing parses
+	 */
+	Double numericMarketVolume(String marketVolume, List<List<String>> sheetRows, List<List<String>> adjRows) {
+
+		String fromAdj = sheetUtils.findLabelValue(adjRows, "Market volume:");
+		if (fromAdj != null) {
+			return parseReachCell(fromAdj);
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, "Market volume:");
+		if (fromSheet != null) {
+			return parseReachCell(fromSheet);
+		}
+		return parseReachCell(marketVolume);
+	}
+
+	/**
 	 * Finds the "Reach" column in a media-plan grid and returns its bottom-most
 	 * populated numeric value (the totals row) formatted with comma grouping.
 	 *
@@ -975,20 +999,25 @@ public class CampaignResolvers {
 	 * @param sheetRows     Media Plan / Proposal tab rows (manual overrides and Estimates fallback)
 	 * @param adjRows       manual Adjustments tab rows (checked first)
 	 * @param data          aggregated campaign data supplying the BigQuery impression total
+	 * @param marketVolume  the raw audience-volume string entered in the UI, used to derive
+	 *                         {@link CampaignFrequencies#remainingAudience()} (may be {@code null} or blank)
 	 * @return the computed {@link CampaignFrequencies}; any field may be {@code null}
 	 */
 	public CampaignFrequencies computeFrequencies(List<List<String>> estimatesRows, List<List<String>> sheetRows,
-	                                              List<List<String>> adjRows, CampaignData data) {
+	                                              List<List<String>> adjRows, CampaignData data,
+	                                              String marketVolume) {
 
 		Double imps = numericTotalImps(sheetRows, adjRows, data);
 		Double reach = numericReach(estimatesRows, sheetRows, adjRows);
 		if (imps == null || imps <= 0 || reach == null || reach <= 0) {
-			return new CampaignFrequencies(null, null, null);
+			return new CampaignFrequencies(null, null, null, null);
 		}
 		String plan = String.valueOf((long) Math.ceil(imps / reach));
 		double reachFact = reachFactFrom(reach);
 		String fact = freq2(imps / reachFact);
-		return new CampaignFrequencies(plan, fact, reachFact);
+		Double marketVolumeNum = numericMarketVolume(marketVolume, sheetRows, adjRows);
+		Double remainingAudience = marketVolumeNum == null ? null : Math.max(marketVolumeNum - reachFact, 0);
+		return new CampaignFrequencies(plan, fact, reachFact, remainingAudience);
 	}
 
 	/**

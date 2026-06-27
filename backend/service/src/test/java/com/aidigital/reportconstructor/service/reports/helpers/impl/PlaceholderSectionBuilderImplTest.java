@@ -29,7 +29,7 @@ class PlaceholderSectionBuilderImplTest {
 		List<PreviewSection> sections = builder.buildSections(
 				payload, data,
 				claudeDefaults.emptyStrategic(), claudeDefaults.emptyTactical(), claudeDefaults.emptyResults(), null,
-				new CampaignFrequencies(null, null, null)
+				new CampaignFrequencies(null, null, null, null)
 		);
 
 		assertThat(sections).hasSize(13);
@@ -61,7 +61,7 @@ class PlaceholderSectionBuilderImplTest {
 		List<PreviewSection> sections = builder.buildSections(
 				payload, data,
 				claudeDefaults.emptyStrategic(), claudeDefaults.emptyTactical(), claudeDefaults.emptyResults(), null,
-				new CampaignFrequencies(null, null, null)
+				new CampaignFrequencies(null, null, null, null)
 		);
 
 		assertThat(sections.get(4).placeholders()).hasSize(18);
@@ -78,7 +78,7 @@ class PlaceholderSectionBuilderImplTest {
 		List<PreviewSection> sections = builder.buildSections(
 				payload, data,
 				claudeDefaults.emptyStrategic(), claudeDefaults.emptyTactical(), claudeDefaults.emptyResults(), null,
-				new CampaignFrequencies(null, null, null)
+				new CampaignFrequencies(null, null, null, null)
 		);
 
 		assertThat(sections.get(10).placeholders()).hasSize(14);

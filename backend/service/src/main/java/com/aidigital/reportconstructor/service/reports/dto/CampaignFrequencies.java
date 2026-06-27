@@ -13,10 +13,13 @@ package com.aidigital.reportconstructor.service.reports.dto;
  * same number that seeded the Claude {@code {{f_fact}}} narrative, instead of each drawing its own random
  * uplift.
  *
- * @param plan      planned frequency rounded up to a whole number, or {@code null} when not computable
- * @param fact      actual frequency formatted to two decimals, or {@code null} when not computable
- * @param reachFact the actual ("fact") reach used to compute {@code fact}, or {@code null} when not computable
+ * @param plan              planned frequency rounded up to a whole number, or {@code null} when not computable
+ * @param fact              actual frequency formatted to two decimals, or {@code null} when not computable
+ * @param reachFact         the actual ("fact") reach used to compute {@code fact}, or {@code null} when not
+ *                             computable
+ * @param remainingAudience the addressable market volume minus {@code reachFact} — the in-market audience still
+ *                             available for upcoming flights, or {@code null} when the market volume is unknown
  */
-public record CampaignFrequencies(String plan, String fact, Double reachFact) {
+public record CampaignFrequencies(String plan, String fact, Double reachFact, Double remainingAudience) {
 
 }

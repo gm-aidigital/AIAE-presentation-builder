@@ -90,7 +90,7 @@ public class PlaceholderResolverServiceImpl implements PlaceholderResolverServic
 	@Override
 	public CampaignFrequencies computeFrequencies(GeneratePayload payload, CampaignData data) {
 		return campaignResolvers.computeFrequencies(
-				payload.estimatesRows(), payload.sheetRows(), payload.adjRows(), data);
+				payload.estimatesRows(), payload.sheetRows(), payload.adjRows(), data, payload.marketVolume());
 	}
 
 	@Override

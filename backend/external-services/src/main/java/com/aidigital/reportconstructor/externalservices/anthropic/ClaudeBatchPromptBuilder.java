@@ -499,13 +499,19 @@ public class ClaudeBatchPromptBuilder {
 								frequencies.fact() + " VERBATIM.\n"
 								+ "  \"f_storytelling\": string,           // MAX 320 CHARACTERS. End on a complete " +
 								"sentence.\n"
-								+ "  //  Convey EXACTLY this 3-part message, using both numbers VERBATIM:\n"
+								+ "  //  Convey EXACTLY this 3-part message, using all VERBATIM numbers given:\n"
 								+ "  //  \"Our data shows frequency was " + frequencies.fact() + " vs " + frequencies.plan() +
 								", which positively impacted overall\n"
-								+ "  //   performance. The campaign results and the volume of bookings clearly validate " +
-								"this. Moving forward, we\n"
-								+ "  //   recommend maintaining this frequency as we engage the new in-market audience we " +
-								"have available.\"\n"
+								+ "  //   performance, consistent with the campaign results and booked media volume. " +
+								"Moving forward, we recommend\n"
+								+ "  //   maintaining this frequency as we engage the remaining in-market audience"
+								+ (frequencies.remainingAudience() != null
+										? " of approximately " + fmt.compact(frequencies.remainingAudience())
+										: "")
+								+ " available for upcoming\n"
+								+ "  //   flights.\"\n"
+								+ "  //  Tone: neutral and factual — do not editorialize or claim the results \"validate\" " +
+								"or \"prove\" anything.\n"
 								: "")
 						+ "}\n\n"
 						+ "Rules:\n"
