@@ -12,6 +12,8 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.spy;
 
 class TacticResolversTest {
 
@@ -53,5 +55,46 @@ class TacticResolversTest {
 		assertThat(r.source()).isEqualTo("adj");
 		assertThat(r.value()).isEqualTo("9.00");
 		assertThat(r.label()).contains("10%");
+	}
+
+	@Test
+	void resolveTacticVolume_prefersManualAdjustmentOverride() {
+		List<List<String>> adj = List.of(List.of("Tactic 1 volume:", "250K"));
+		Resolved r = resolvers.resolveTacticVolume(1, "Display", "1000000", List.of(), adj);
+		assertThat(r.source()).isEqualTo("adj");
+		assertThat(r.value()).isEqualTo("250K");
+	}
+
+	@Test
+	void resolveTacticVolume_computesCoefficientTimesRandomTimesMarketVolume() {
+		TacticResolvers spy = spy(resolvers);
+		doReturn(1.0).when(spy).volumeMultiplier();
+		Resolved r = spy.resolveTacticVolume(1, "Display", "1000000", List.of(), List.of());
+		assertThat(r.source()).isEqualTo("adj");
+		assertThat(r.label()).contains("auto");
+		assertThat(r.value()).isEqualTo("900k"); // 0.90 * 1.0 * 1,000,000
+	}
+
+	@Test
+	void resolveTacticVolume_clampsToMarketVolume() {
+		TacticResolvers spy = spy(resolvers);
+		doReturn(2.0).when(spy).volumeMultiplier();
+		Resolved r = spy.resolveTacticVolume(1, "Display", "1000000", List.of(), List.of());
+		assertThat(r.value()).isEqualTo("1.0M"); // 0.90 * 2.0 * 1,000,000 clamped to market volume
+	}
+
+	@Test
+	void resolveTacticVolume_notFoundWhenMarketVolumeMissing() {
+		Resolved r = resolvers.resolveTacticVolume(1, "Display", null, List.of(), List.of());
+		assertThat(r.source()).isEqualTo("not_found");
+		assertThat(r.value()).isNull();
+	}
+
+	@Test
+	void volumeCoefficient_resolvesExactKeywordAndDefault() {
+		assertThat(tacticUtils.volumeCoefficient("Display")).isEqualTo(0.90);
+		assertThat(tacticUtils.volumeCoefficient("CTV/OTT")).isEqualTo(0.70);
+		assertThat(tacticUtils.volumeCoefficient("Open Exchange Display")).isEqualTo(0.90); // keyword fallback
+		assertThat(tacticUtils.volumeCoefficient("Totally Unknown Channel")).isEqualTo(0.50); // default
 	}
 }

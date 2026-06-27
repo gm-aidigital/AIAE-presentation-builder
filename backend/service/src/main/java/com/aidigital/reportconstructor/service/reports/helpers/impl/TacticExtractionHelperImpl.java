@@ -144,6 +144,12 @@ public class TacticExtractionHelperImpl implements TacticExtractionHelper {
 	}
 
 	@Override
+	public double volumeCoefficient(String tacticName) {
+
+		return catalog.volumeCoefficient(tacticName);
+	}
+
+	@Override
 	public String getTacticKpiType(String tacticName) {
 
 		if (tacticName == null) {

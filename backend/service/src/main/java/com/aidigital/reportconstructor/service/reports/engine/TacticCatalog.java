@@ -15,6 +15,9 @@ import java.util.Map;
 @Component
 public class TacticCatalog {
 
+	/** Coefficient applied to {@code {{market volume}}} for a tactic whose channel is not recognised. */
+	private static final double DEFAULT_VOLUME_COEFFICIENT = 0.50;
+
 	// ── DATA: tacticChannelMap() ──────────────────────────────────────────────
 	private final Map<String, String> channelMap = new LinkedHashMap<>();
 
@@ -320,6 +323,99 @@ public class TacticCatalog {
 		}
 	}
 
+	// ── DATA: volumeCoefficient() exact display-name lookup ───────────────────
+	private final Map<String, Double> volumeExactMap = new LinkedHashMap<>();
+
+	{
+		Map<String, Double> m = volumeExactMap;
+		m.put("display", 0.90);
+		m.put("youtube", 0.82);
+		m.put("youtube in-stream", 0.80);
+		m.put("meta", 0.78);
+		m.put("performance max", 0.78);
+		m.put("video", 0.78);
+		m.put("ctv/ott", 0.70);
+		m.put("rich media", 0.70);
+		m.put("native", 0.68);
+		m.put("native display", 0.68);
+		m.put("native video", 0.68);
+		m.put("ctv", 0.65);
+		m.put("programmatic mobile", 0.65);
+		m.put("geofencing", 0.65);
+		m.put("in-app display", 0.65);
+		m.put("instagram", 0.60);
+		m.put("ott", 0.55);
+		m.put("tiktok", 0.52);
+		m.put("audio", 0.50);
+		m.put("amazon display", 0.50);
+		m.put("amazon audio", 0.50);
+		m.put("amazon podcast", 0.50);
+		m.put("snapchat", 0.45);
+		m.put("amazon video", 0.45);
+		m.put("netflix", 0.45);
+		m.put("dooh", 0.45);
+		m.put("amazon fire tv", 0.40);
+		m.put("amazon search", 0.40);
+		m.put("amazon sponsored ads", 0.40);
+		m.put("google app", 0.40);
+		m.put("google uac", 0.40);
+		m.put("app (google uac)", 0.40);
+		m.put("live sports", 0.40);
+		m.put("pinterest", 0.38);
+		m.put("linkedin", 0.35);
+		m.put("google search", 0.35);
+		m.put("google sem", 0.35);
+		m.put("demand gen", 0.35);
+		m.put("reddit", 0.30);
+		m.put("twitter", 0.30);
+		m.put("google tv", 0.30);
+		m.put("twitch", 0.25);
+		m.put("apple search", 0.20);
+		m.put("bing", 0.15);
+	}
+
+	// ── DATA: volumeCoefficient() keyword fallback (ordered, first match wins) ─
+	private final Map<String, Double> volumeKeywordMap = new LinkedHashMap<>();
+
+	{
+		Map<String, Double> m = volumeKeywordMap;
+		m.put("ctv/ott", 0.70);
+		m.put("live sports", 0.40);
+		m.put("ctv", 0.65);
+		m.put("ott", 0.55);
+		m.put("netflix", 0.45);
+		m.put("fire tv", 0.40);
+		m.put("google tv", 0.30);
+		m.put("youtube", 0.82);
+		m.put("performance max", 0.78);
+		m.put("instagram", 0.60);
+		m.put("facebook", 0.78);
+		m.put("meta", 0.78);
+		m.put("tiktok", 0.52);
+		m.put("snapchat", 0.45);
+		m.put("pinterest", 0.38);
+		m.put("reddit", 0.30);
+		m.put("linkedin", 0.35);
+		m.put("twitter", 0.30);
+		m.put("twitch", 0.25);
+		m.put("amazon", 0.45);
+		m.put("dooh", 0.45);
+		m.put("podcast", 0.50);
+		m.put("audio", 0.50);
+		m.put("rich media", 0.70);
+		m.put("native", 0.68);
+		m.put("geofencing", 0.65);
+		m.put("mobile", 0.65);
+		m.put("apple search", 0.20);
+		m.put("bing", 0.15);
+		m.put("demand gen", 0.35);
+		m.put("sem", 0.35);
+		m.put("search", 0.35);
+		m.put("gdn", 0.90);
+		m.put("display", 0.90);
+		m.put("video", 0.78);
+	}
+
 	/**
 	 * BQ channel filter for a media-plan tactic name.
 	 *
@@ -377,6 +473,33 @@ public class TacticCatalog {
 			return null;
 		}
 		return kpiMap.get(tacticName.trim().toLowerCase(Locale.ROOT));
+	}
+
+	/**
+	 * Maximum addressable-audience coefficient for a tactic, expressed as a fraction of
+	 * {@code {{market volume}}} (always {@code < 1}). Resolution mirrors {@link #exactKpiType}:
+	 * an exact display-name match is tried first, then an ordered keyword fallback (so raw
+	 * media-plan names such as {@code "Native Display"} or {@code "GDN Specific"} still resolve),
+	 * and finally {@link #DEFAULT_VOLUME_COEFFICIENT} for anything unrecognised.
+	 *
+	 * @param tacticName the {@code {{tactic n}}} display name (may be {@code null})
+	 * @return the channel coefficient in {@code (0, 1)}, or {@link #DEFAULT_VOLUME_COEFFICIENT} when unmapped or null
+	 */
+	public double volumeCoefficient(String tacticName) {
+		if (tacticName == null) {
+			return DEFAULT_VOLUME_COEFFICIENT;
+		}
+		String key = tacticName.trim().toLowerCase(Locale.ROOT);
+		Double exact = volumeExactMap.get(key);
+		if (exact != null) {
+			return exact;
+		}
+		for (Map.Entry<String, Double> e : volumeKeywordMap.entrySet()) {
+			if (key.contains(e.getKey())) {
+				return e.getValue();
+			}
+		}
+		return DEFAULT_VOLUME_COEFFICIENT;
 	}
 
 	/**

@@ -56,6 +56,15 @@ public interface TacticExtractionHelper {
 	String getTacticKpiType(String tacticName);
 
 	/**
+	 * Returns the maximum addressable-audience coefficient (fraction of {@code {{market volume}}}, always
+	 * {@code < 1}) for a tactic, used to derive {@code {{tactic n volume}}}.
+	 *
+	 * @param tacticName the {@code {{tactic n}}} display name (may be {@code null})
+	 * @return the channel coefficient in {@code (0, 1)}, or the default coefficient when unmapped or null
+	 */
+	double volumeCoefficient(String tacticName);
+
+	/**
 	 * Derives a deterministic reduced frequency from the planned max frequency.
 	 *
 	 * @param n       zero-based tactic index

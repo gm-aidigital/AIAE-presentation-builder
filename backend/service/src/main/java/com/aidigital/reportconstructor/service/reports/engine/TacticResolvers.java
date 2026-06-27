@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Per-tactic metric resolvers. Each resolver follows the same source priority:
@@ -45,6 +46,8 @@ public class TacticResolvers {
 	}
 
 	private static final String DASH = "\u2014"; // —
+	private static final double VOLUME_RANDOM_MIN = 0.90;
+	private static final double VOLUME_RANDOM_MAX = 1.10;
 
 	/**
 	 * Resolves the spend value for tactic {@code n}, preferring a manual Adjustments override,
@@ -560,6 +563,52 @@ public class TacticResolvers {
 			}
 		}
 		return new Resolved(label, null, "not_found");
+	}
+
+	/**
+	 * Resolves the maximum addressable-audience volume for tactic {@code n}, preferring a manual
+	 * Adjustments override, then the Media Plan sheet, then a value derived from the channel
+	 * coefficient. The auto value is {@code coefficient × random(0.90–1.10) × market volume},
+	 * clamped to never exceed {@code {{market volume}}} (a channel cannot reach more than the whole
+	 * addressable market), and rendered in compact {@code xxxK / xM} notation.
+	 *
+	 * @param n            one-based tactic index used to build the {@code "Tactic N volume:"} lookup label
+	 * @param tacticName   the {@code {{tactic n}}} display name, used to pick the channel coefficient
+	 * @param marketVolume the raw audience-volume string entered in the UI (may be {@code null} or blank)
+	 * @param sheetRows    Media Plan grid rows searched for the labelled value and the market-volume override
+	 * @param adjRows      manual Adjustments grid rows that take precedence over the sheet
+	 * @return the resolved compact volume with its source tag, or a {@code not_found} placeholder when no
+	 * market volume is available
+	 */
+	public Resolved resolveTacticVolume(int n, String tacticName, String marketVolume,
+	                                    List<List<String>> sheetRows, List<List<String>> adjRows) {
+		String label = "Tactic " + n + " volume:";
+		String fromAdj = sheetUtils.findLabelValue(adjRows, label);
+		if (fromAdj != null) {
+			return new Resolved(label, fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, label);
+		if (fromSheet != null) {
+			return new Resolved(label, fromSheet, "sheet");
+		}
+		Double marketVolumeNum = campaignResolvers.numericMarketVolume(marketVolume, sheetRows, adjRows);
+		if (marketVolumeNum == null || marketVolumeNum <= 0) {
+			return new Resolved(label, null, "not_found");
+		}
+		double coefficient = tacticExtraction.volumeCoefficient(tacticName);
+		double raw = coefficient * volumeMultiplier() * marketVolumeNum;
+		double volume = Math.min(raw, marketVolumeNum);
+		return new Resolved(label + " (auto: coef × rnd × market volume)", fmt.compact(volume), "adj");
+	}
+
+	/**
+	 * Returns the per-report random multiplier applied to the channel coefficient, drawn fresh on every
+	 * call so tactic volumes vary from deck to deck rather than repeating a fixed proportion.
+	 *
+	 * @return a factor in {@code [0.90, 1.10)}
+	 */
+	double volumeMultiplier() {
+		return ThreadLocalRandom.current().nextDouble(VOLUME_RANDOM_MIN, VOLUME_RANDOM_MAX);
 	}
 
 	Tactic tactic(CampaignData data, int n) {

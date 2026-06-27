@@ -93,7 +93,7 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 
 		for (int n = 1; n <= 6; n++) {
 			sections.add(buildPreviewSection("Tactic " + n,
-					buildFullTacticSection(n, sheet, adj, data, ccB, ccC, mediaTactics)));
+					buildFullTacticSection(n, sheet, adj, data, ccB, ccC, mediaTactics, payload.marketVolume())));
 		}
 		sections.add(buildPreviewSection("Tactic 7",
 				buildShortTacticSection(7, sheet, adj, data, ccB, ccC, mediaTactics)));
@@ -112,7 +112,7 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 
 	Map<String, Resolved> buildFullTacticSection(
 			int n, List<List<String>> sheet, List<List<String>> adj, CampaignData data,
-			ClaudeTactical ccB, ClaudeResults ccC, List<String> mediaTactics
+			ClaudeTactical ccB, ClaudeResults ccC, List<String> mediaTactics, String marketVolume
 	) {
 		Resolved info = resolveTacticName(n, sheet, adj, mediaTactics);
 		String tacticName = info.value() == null ? "" : info.value();
@@ -126,7 +126,8 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		m.put("{{tactic " + n + " reach}}", tacticResolvers.resolveTacticReach(n, sheet, adj, data));
 		m.put("{{tactic " + n + " ctr}}", tacticResolvers.resolveTacticCtr(n, tacticName, sheet, adj, data));
 		m.put("{{tactic " + n + " vcr}}", tacticResolvers.resolveTacticVcr(n, tacticName, sheet, adj, data));
-		m.put("{{tactic " + n + " volume}}", campaignResolvers.resolve(sheet, adj, "Tactic " + n + " volume:"));
+		m.put("{{tactic " + n + " volume}}",
+				tacticResolvers.resolveTacticVolume(n, tacticName, marketVolume, sheet, adj));
 		m.put("{{tactic " + n + " \u2013 bench}}", tacticResolvers.resolveTacticBench(n, tacticName, sheet, adj,
 				data));
 		m.put("{{tactic " + n + " male}}", tacticResolvers.resolveTacticGender(n, "male", sheet, adj, ccB));
