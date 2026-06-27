@@ -223,7 +223,7 @@ public class ClaudeBatchPromptBuilder {
 				contextBlock
 						+ "You are a digital media analyst. For each tactic below, estimate:\n"
 						+ "1. Gender split of the reached audience.\n"
-						+ "2. Peak impression time window on WEEKDAYS (format: \"H AM/PM – H AM/PM\", e.g. \"7 PM – 11" +
+						+ "2. Peak impression time window on WEEKDAYS (format: \"H AM/PM – H AM/PM\", e.g. \"7 PM – 9" +
 						" PM\").\n"
 						+ "3. Peak impression time window on WEEKENDS (same format).\n\n"
 						+ "Tactics:\n" + String.join("\n", tacticLines) + "\n\n"
@@ -236,9 +236,14 @@ public class ClaudeBatchPromptBuilder {
 						+ "5. Gender: use campaign context as primary signal. Avoid defaulting to 50/50.\n"
 						+ "6. CRITICAL: Never use multiples of 5 for gender. Use uneven integers like 43,57,61,38.\n"
 						+ "7. Peak windows: whole hours, 2–5 hour range. Format: \"H PM – H PM\" (no leading zeros)" +
-						".\n\n"
-						+ "Example: {\"1\": {\"male\": 38, \"female\": 62, \"weekdays_peak\": \"7 PM – 11 PM\", " +
-						"\"weekends_peak\": \"10 AM – 2 PM\"}}";
+						".\n"
+						+ "8. WEEKDAYS default to an evening window (between 5 PM and midnight) — most audiences " +
+						"consume media after work/school on weekdays. Only pick a daytime or morning weekday window " +
+						"when the tactic's channel or audience clearly behaves otherwise (e.g. a B2B/workplace tactic).\n"
+						+ "9. WEEKENDS default to a midday window (between 10 AM and 4 PM). Only pick an evening " +
+						"weekend window when the tactic specifics clearly support it.\n\n"
+						+ "Example: {\"1\": {\"male\": 38, \"female\": 62, \"weekdays_peak\": \"7 PM – 9 PM\", " +
+						"\"weekends_peak\": \"11 AM – 1 PM\"}}";
 		return Optional.of(prompt);
 	}
 
