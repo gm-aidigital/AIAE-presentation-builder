@@ -148,6 +148,62 @@ class CampaignResolversTest {
 	}
 
 	@Test
+	void resolveReachFact_formatsGivenReachFactValue() {
+		// Given: a reachFact value as computed once by computeFrequencies for this report
+		Resolved r = resolvers.resolveReachFact(1_100_000d, List.of(), List.of());
+
+		// Then:
+		assertThat(r.value()).isEqualTo("1,100,000");
+		assertThat(r.source()).isEqualTo("sheet");
+	}
+
+	@Test
+	void resolveReachFact_notFoundWhenReachFactNull() {
+		// Given: computeFrequencies could not compute a reachFact value
+		Resolved r = resolvers.resolveReachFact(null, List.of(), List.of());
+
+		// Then:
+		assertThat(r.value()).isNull();
+		assertThat(r.source()).isEqualTo("not_found");
+	}
+
+	@Test
+	void resolveReachFact_manualAdjustmentWins() {
+		// Given: a manual "Reach fact:" override in Adjustments
+		List<List<String>> adj = labelRow("Reach fact:", "1.1M unique");
+
+		// When:
+		Resolved r = resolvers.resolveReachFact(1_100_000d, List.of(), adj);
+
+		// Then:
+		assertThat(r.value()).isEqualTo("1.1M unique");
+		assertThat(r.source()).isEqualTo("adj");
+	}
+
+	@Test
+	void resolveReachFactShort_compactsGivenReachFactValue() {
+		// Given: a reachFact value as computed once by computeFrequencies for this report
+		Resolved r = resolvers.resolveReachFactShort(1_200_000d, List.of(), List.of());
+
+		// Then: 1,200,000 -> "1.2M"
+		assertThat(r.value()).isEqualTo("1.2M");
+		assertThat(r.source()).isEqualTo("sheet");
+	}
+
+	@Test
+	void resolveReachFactShort_manualAdjustmentWins() {
+		// Given: a manual "Reach fact short:" override in Adjustments
+		List<List<String>> adj = labelRow("Reach fact short:", "1.1M");
+
+		// When:
+		Resolved r = resolvers.resolveReachFactShort(1_100_000d, List.of(), adj);
+
+		// Then:
+		assertThat(r.value()).isEqualTo("1.1M");
+		assertThat(r.source()).isEqualTo("adj");
+	}
+
+	@Test
 	void resolveMarketVolume_compactsUiValue() {
 		Resolved r = resolvers.resolveMarketVolume("74,542", List.of(), List.of());
 		assertThat(r.value()).isEqualTo("74k");
@@ -176,10 +232,10 @@ class CampaignResolversTest {
 	}
 
 	@Test
-	void computeFrequencies_planRoundedUpAndFactScaledByMultiplier() {
-		// Given: a spy whose fact uplift is fixed at 1.10, 3M impressions, and a 1M reach
+	void computeFrequencies_planRoundedUpAndFactDerivedFromReachFact() {
+		// Given: a spy whose reach-fact uplift is fixed at 1.10, 3M impressions, and a 1M reach
 		CampaignResolvers spyResolvers = spy(ReportsEngineTestSupport.campaignResolvers());
-		doReturn(1.10).when(spyResolvers).factFrequencyMultiplier();
+		doReturn(1.10).when(spyResolvers).reachFactMultiplier();
 		List<List<String>> estimates = List.of(
 				List.of("Media", "Reach"),
 				List.of("Total", "1,000,000"));
@@ -190,16 +246,17 @@ class CampaignResolversTest {
 		// When:
 		CampaignFrequencies freq = spyResolvers.computeFrequencies(estimates, List.of(), List.of(), data);
 
-		// Then: plan = ceil(3M / 1M) = 3, fact = (3M / 1M) * 1.10 = 3.30
+		// Then: plan = ceil(3M / 1M) = 3, reach_f = 1M * 1.10 = 1.1M, fact = 3M / 1.1M = 2.73
 		assertThat(freq.plan()).isEqualTo("3");
-		assertThat(freq.fact()).isEqualTo("3.30");
+		assertThat(freq.fact()).isEqualTo("2.73");
+		assertThat(freq.reachFact()).isEqualTo(1_100_000d);
 	}
 
 	@Test
 	void computeFrequencies_planRoundsUpNonIntegerFrequency() {
 		// Given: 3.2M impressions over 1M reach yields a fractional plan frequency
 		CampaignResolvers spyResolvers = spy(ReportsEngineTestSupport.campaignResolvers());
-		doReturn(1.05).when(spyResolvers).factFrequencyMultiplier();
+		doReturn(1.05).when(spyResolvers).reachFactMultiplier();
 		List<List<String>> estimates = List.of(
 				List.of("Media", "Reach"),
 				List.of("Total", "1,000,000"));
@@ -210,9 +267,10 @@ class CampaignResolversTest {
 		// When:
 		CampaignFrequencies freq = spyResolvers.computeFrequencies(estimates, List.of(), List.of(), data);
 
-		// Then: plan = ceil(3.2) = 4, fact = 3.2 * 1.05 = 3.36
+		// Then: plan = ceil(3.2) = 4, reach_f = 1M * 1.05 = 1.05M, fact = 3.2M / 1.05M = 3.05
 		assertThat(freq.plan()).isEqualTo("4");
-		assertThat(freq.fact()).isEqualTo("3.36");
+		assertThat(freq.fact()).isEqualTo("3.05");
+		assertThat(freq.reachFact()).isEqualTo(1_050_000d);
 	}
 
 	@Test
@@ -231,6 +289,7 @@ class CampaignResolversTest {
 		// Then:
 		assertThat(freq.plan()).isNull();
 		assertThat(freq.fact()).isNull();
+		assertThat(freq.reachFact()).isNull();
 	}
 
 	@Test

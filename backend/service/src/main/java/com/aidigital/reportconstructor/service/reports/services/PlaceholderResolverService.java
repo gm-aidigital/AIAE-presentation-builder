@@ -25,12 +25,14 @@ public interface PlaceholderResolverService {
 	/**
 	 * Generate path — builds the flat {@code {{token}} → value} map used to fill the Slides deck.
 	 *
-	 * @param payload    the constructor request carrying the Media-Plan, Adjustments and other input rows
-	 * @param data       the aggregated campaign/tactic metrics snapshot
-	 * @param ccA        Claude Batch A output (strategic copy)
-	 * @param ccB        Claude Batch B output (per-tactic copy)
-	 * @param ccC        Claude Batch C output (results copy)
-	 * @param geoSummary AI-generated geo summary, or {@code null} when the Geo tab is not used
+	 * @param payload     the constructor request carrying the Media-Plan, Adjustments and other input rows
+	 * @param data        the aggregated campaign/tactic metrics snapshot
+	 * @param ccA         Claude Batch A output (strategic copy)
+	 * @param ccB         Claude Batch B output (per-tactic copy)
+	 * @param ccC         Claude Batch C output (results copy)
+	 * @param geoSummary  AI-generated geo summary, or {@code null} when the Geo tab is not used
+	 * @param frequencies the {@link #computeFrequencies} result for this report, reused so
+	 *                    {@code {{reach_f}} / {{reach_f_pres}}} match the actual reach behind {@code {{f_fact}}}
 	 * @return the ordered map of double-brace placeholder tokens to their final replacement strings
 	 */
 	Map<String, String> buildFlatReplacements(
@@ -39,7 +41,8 @@ public interface PlaceholderResolverService {
 			ClaudeStrategic ccA,
 			ClaudeTactical ccB,
 			ClaudeResults ccC,
-			String geoSummary
+			String geoSummary,
+			CampaignFrequencies frequencies
 	);
 
 	/**

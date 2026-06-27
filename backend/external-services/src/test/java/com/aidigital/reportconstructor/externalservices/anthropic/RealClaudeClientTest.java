@@ -48,7 +48,7 @@ class RealClaudeClientTest {
 				null, "$500,000", "Reach", "Display, CTV", "25-44", "Auto intenders",
 				new Totals(0, 0, 0, 0, null, null), Map.of(), null);
 		String brief = "Drive awareness for the Spring Launch.";
-		CampaignFrequencies frequencies = new CampaignFrequencies(null, null);
+		CampaignFrequencies frequencies = new CampaignFrequencies(null, null, null);
 		String expectedPrompt = promptBuilder.buildBatchCPrompt(data, brief, frequencies).orElseThrow();
 
 		JsonNode response = json.readTree("""

@@ -1,6 +1,7 @@
 package com.aidigital.reportconstructor.service.reports.helpers.impl;
 
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
+import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
@@ -38,7 +39,8 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 			ClaudeStrategic ccA,
 			ClaudeTactical ccB,
 			ClaudeResults ccC,
-			String geoSummary
+			String geoSummary,
+			CampaignFrequencies frequencies
 	) {
 		List<List<String>> sheet = payload.sheetRows();
 		List<List<String>> adj = payload.adjRows();
@@ -81,6 +83,8 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		Map<String, Resolved> totals = new LinkedHashMap<>();
 		totals.put("{{reach}}", campaignResolvers.resolveReach(payload.estimatesRows(), sheet, adj));
 		totals.put("{{reach_p}}", campaignResolvers.resolveReachShort(payload.estimatesRows(), sheet, adj));
+		totals.put("{{reach_f}}", campaignResolvers.resolveReachFact(frequencies.reachFact(), sheet, adj));
+		totals.put("{{reach_f_pres}}", campaignResolvers.resolveReachFactShort(frequencies.reachFact(), sheet, adj));
 		totals.put("{{total imps}}", campaignResolvers.resolveTotalImps(sheet, adj, data));
 		totals.put("{{total ctr}}", campaignResolvers.resolveTotalCtr(sheet, adj, data));
 		totals.put("{{total vcr}}", campaignResolvers.resolveTotalVcr(sheet, adj, data));

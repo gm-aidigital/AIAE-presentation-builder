@@ -68,7 +68,7 @@ class PlaceholderResolverServiceImplTest {
 				new Placeholder("{{a}}", "A", "v1", "sheet"),
 				new Placeholder("{{b}}", "B", "v2", "claude"),
 				new Placeholder("{{c}}", "C", null, "not_found")));
-		when(sectionBuilder.buildSections(any(), any(), any(), any(), any(), any()))
+		when(sectionBuilder.buildSections(any(), any(), any(), any(), any(), any(), any()))
 				.thenReturn(List.of(section));
 		when(labelCollector.collectAllLabels(payload))
 				.thenReturn(new Labels(List.of(), List.of()));
@@ -87,10 +87,10 @@ class PlaceholderResolverServiceImplTest {
 		GeneratePayload payload = payload(List.of(), List.of());
 		List<PreviewSection> sections = List.of(new PreviewSection("S", List.of()));
 		Map<String, String> flat = Map.of("{{x}}", "1");
-		when(sectionBuilder.buildSections(any(), any(), any(), any(), any(), any())).thenReturn(sections);
+		when(sectionBuilder.buildSections(any(), any(), any(), any(), any(), any(), any())).thenReturn(sections);
 		when(valueFlattener.buildFlatReplacements(sections)).thenReturn(flat);
 
-		Map<String, String> result = service.buildFlatReplacements(payload, null, null, null, null, null);
+		Map<String, String> result = service.buildFlatReplacements(payload, null, null, null, null, null, null);
 
 		assertThat(result).isEqualTo(flat);
 	}

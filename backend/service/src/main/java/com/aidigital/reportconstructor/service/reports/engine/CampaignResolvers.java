@@ -782,6 +782,64 @@ public class CampaignResolvers {
 	}
 
 	/**
+	 * Resolves the campaign-level actual ("fact") reach from the single {@code reachFact} value computed once
+	 * by {@link #computeFrequencies} for this report, so the placeholder matches the exact number that seeded
+	 * the Claude {@code {{f_fact}}} narrative rather than drawing its own random uplift. A manual Adjustments
+	 * / Media Plan {@code "Reach fact:"} label still wins over the computed value.
+	 *
+	 * @param reachFact the actual reach computed by {@link #computeFrequencies} for this report, or
+	 *                  {@code null} when not computable
+	 * @param sheetRows Proposal / Media Plan tab rows, scanned for the manual {@code "Reach fact:"} label
+	 * @param adjRows   manual Adjustments tab rows (checked first)
+	 * @return a {@link Resolved} actual-reach string, or a null-valued {@code "not_found"} when no Reach value exists
+	 */
+	public Resolved resolveReachFact(Double reachFact, List<List<String>> sheetRows, List<List<String>> adjRows) {
+
+		String fromAdj = sheetUtils.findLabelValue(adjRows, "Reach fact:");
+		if (fromAdj != null) {
+			return new Resolved("Reach fact:", fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, "Reach fact:");
+		if (fromSheet != null) {
+			return new Resolved("Reach fact:", fromSheet, "sheet");
+		}
+		if (reachFact != null) {
+			return new Resolved("Reach fact (auto: computeFrequencies reachFact)", fmt.intGroup(reachFact), "sheet");
+		}
+		return new Resolved("Reach fact:", null, "not_found");
+	}
+
+	/**
+	 * Resolves the campaign-level actual ("fact") reach in compact notation (e.g. {@code "74k"},
+	 * {@code "1.2M"}). It abbreviates the same {@code reachFact} value that {@link #resolveReachFact} resolves,
+	 * while a manual Adjustments / Media Plan {@code "Reach fact short:"} label wins over the computed value.
+	 *
+	 * @param reachFact the actual reach computed by {@link #computeFrequencies} for this report, or
+	 *                  {@code null} when not computable
+	 * @param sheetRows Proposal / Media Plan tab rows, scanned for the manual {@code "Reach fact short:"} label
+	 * @param adjRows   manual Adjustments tab rows (checked first)
+	 * @return a {@link Resolved} compact actual-reach string, or a null-valued {@code "not_found"} when no Reach
+	 * value exists
+	 */
+	public Resolved resolveReachFactShort(Double reachFact, List<List<String>> sheetRows,
+	                                      List<List<String>> adjRows) {
+
+		String fromAdj = sheetUtils.findLabelValue(adjRows, "Reach fact short:");
+		if (fromAdj != null) {
+			return new Resolved("Reach fact short:", fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, "Reach fact short:");
+		if (fromSheet != null) {
+			return new Resolved("Reach fact short:", fromSheet, "sheet");
+		}
+		if (reachFact != null) {
+			return new Resolved("Reach fact short (auto: computeFrequencies reachFact)", fmt.compact(reachFact),
+					"sheet");
+		}
+		return new Resolved("Reach fact short:", null, "not_found");
+	}
+
+	/**
 	 * Resolves the maximum addressable audience volume in compact notation (e.g.
 	 * {@code "74k"}, {@code "1.2M"}). The value is the figure the user enters in the
 	 * UI from their DV360 audience estimate; it is parsed and abbreviated via
@@ -904,17 +962,20 @@ public class CampaignResolvers {
 
 	/**
 	 * Computes the planned and actual campaign frequency figures (touchpoints per user) that seed the
-	 * Claude frequency narrative, both derived from total impressions ÷ campaign reach (the same reach
-	 * {@code {{reach}}} resolves). The planned figure is rounded up to a whole number; the actual figure is
-	 * the raw division scaled by a fresh random 1–15% uplift (see {@link #factFrequencyMultiplier}) so it
-	 * reads slightly higher than the plan, kept to two decimals. Both are {@code null} when the underlying
-	 * impressions/reach are unavailable.
+	 * Claude frequency narrative, plus the single {@code reachFact} value behind the actual figure. The
+	 * planned figure is total impressions ({@code {{total imps}}}) ÷ campaign reach ({@code {{reach}}}),
+	 * rounded up to a whole number. {@code reachFact} is that same reach scaled once by a random 1–20%
+	 * uplift (see {@link #reachFactMultiplier}), and the actual figure is total impressions ÷ {@code reachFact}
+	 * (kept to two decimals). All three are {@code null} when the underlying impressions/reach are
+	 * unavailable. Callers must reuse the returned {@code reachFact} — e.g. via
+	 * {@link #resolveReachFact(Double, List, List)} — rather than recomputing it, so the same actual-reach
+	 * number is used everywhere in the report.
 	 *
 	 * @param estimatesRows Estimates tab rows (primary reach source)
 	 * @param sheetRows     Media Plan / Proposal tab rows (manual overrides and Estimates fallback)
 	 * @param adjRows       manual Adjustments tab rows (checked first)
 	 * @param data          aggregated campaign data supplying the BigQuery impression total
-	 * @return the computed {@link CampaignFrequencies}; either field may be {@code null}
+	 * @return the computed {@link CampaignFrequencies}; any field may be {@code null}
 	 */
 	public CampaignFrequencies computeFrequencies(List<List<String>> estimatesRows, List<List<String>> sheetRows,
 	                                              List<List<String>> adjRows, CampaignData data) {
@@ -922,22 +983,12 @@ public class CampaignResolvers {
 		Double imps = numericTotalImps(sheetRows, adjRows, data);
 		Double reach = numericReach(estimatesRows, sheetRows, adjRows);
 		if (imps == null || imps <= 0 || reach == null || reach <= 0) {
-			return new CampaignFrequencies(null, null);
+			return new CampaignFrequencies(null, null, null);
 		}
-		double rawFrequency = imps / reach;
-		String plan = String.valueOf((long) Math.ceil(rawFrequency));
-		String fact = freq2(rawFrequency * factFrequencyMultiplier());
-		return new CampaignFrequencies(plan, fact);
-	}
-
-	/**
-	 * Returns the multiplier that scales the raw frequency up by a fresh random 1–15% on every call,
-	 * modelling the actual delivered frequency coming in slightly above plan.
-	 *
-	 * @return a factor in {@code [1.01, 1.15]}
-	 */
-	double factFrequencyMultiplier() {
-		return ThreadLocalRandom.current().nextDouble(1.01, 1.15);
+		String plan = String.valueOf((long) Math.ceil(imps / reach));
+		double reachFact = reachFactFrom(reach);
+		String fact = freq2(imps / reachFact);
+		return new CampaignFrequencies(plan, fact, reachFact);
 	}
 
 	/**
@@ -981,6 +1032,26 @@ public class CampaignResolvers {
 		}
 		Double fromEstimates = bottomReachValue(estimatesRows);
 		return fromEstimates != null ? fromEstimates : bottomReachValue(sheetRows);
+	}
+
+	/**
+	 * Scales a reach value by a fresh random 1–20% uplift, modelling delivered reach coming in slightly above
+	 * the planned/estimated figure.
+	 *
+	 * @param reach the planned/estimated reach to scale
+	 * @return {@code reach} multiplied by a factor in {@code [1.01, 1.2]}
+	 */
+	double reachFactFrom(double reach) {
+		return reach * reachFactMultiplier();
+	}
+
+	/**
+	 * Returns the multiplier that scales a reach value up by a fresh random 1–20% on every call.
+	 *
+	 * @return a factor in {@code [1.01, 1.2]}
+	 */
+	double reachFactMultiplier() {
+		return ThreadLocalRandom.current().nextDouble(1.01, 1.2);
 	}
 
 	/**

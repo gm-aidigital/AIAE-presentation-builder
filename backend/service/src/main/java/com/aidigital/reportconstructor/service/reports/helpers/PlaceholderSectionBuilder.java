@@ -1,6 +1,7 @@
 package com.aidigital.reportconstructor.service.reports.helpers;
 
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
+import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
@@ -17,12 +18,15 @@ public interface PlaceholderSectionBuilder {
 	/**
 	 * Builds every preview section, merging resolver output with Claude batch results.
 	 *
-	 * @param payload    constructor request supplying sheet/adjustments rows and report type
-	 * @param data       aggregated campaign/tactic metrics snapshot
-	 * @param ccA        Claude Batch A strategic copy
-	 * @param ccB        Claude Batch B tactical copy
-	 * @param ccC        Claude Batch C results copy
-	 * @param geoSummary AI geo summary, or {@code null} when not used
+	 * @param payload     constructor request supplying sheet/adjustments rows and report type
+	 * @param data        aggregated campaign/tactic metrics snapshot
+	 * @param ccA         Claude Batch A strategic copy
+	 * @param ccB         Claude Batch B tactical copy
+	 * @param ccC         Claude Batch C results copy
+	 * @param geoSummary  AI geo summary, or {@code null} when not used
+	 * @param frequencies the {@code plan}/{@code fact}/{@code reachFact} figures computed once for this report,
+	 *                    so {@code {{reach_f}} / {{reach_f_pres}}} resolve to the exact same actual-reach
+	 *                    number that seeded the Claude {@code {{f_fact}}} narrative
 	 * @return ordered preview sections with their Russian UI titles
 	 */
 	List<PreviewSection> buildSections(
@@ -31,6 +35,7 @@ public interface PlaceholderSectionBuilder {
 			ClaudeStrategic ccA,
 			ClaudeTactical ccB,
 			ClaudeResults ccC,
-			String geoSummary
+			String geoSummary,
+			CampaignFrequencies frequencies
 	);
 }

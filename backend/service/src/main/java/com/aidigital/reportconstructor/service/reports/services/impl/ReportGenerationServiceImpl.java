@@ -106,7 +106,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 
 			jobProgress.markJobRunningAtStep(jobId, 6, "Building slide deck");
 			Map<String, String> flatReplacements =
-					placeholders.buildFlatReplacements(payload, data, ccA, ccB, ccC, geoSummary);
+					placeholders.buildFlatReplacements(payload, data, ccA, ccB, ccC, geoSummary, frequencies);
 			UserGoogleTokenProvider clerk = userGoogleTokens.getIfAvailable();
 			String userGoogleToken = clerk == null ? null : clerk.googleAccessToken(clerkUserId);
 			String slideUrl = slides.createDeck(String.valueOf(jobId), flatReplacements, userGoogleToken);

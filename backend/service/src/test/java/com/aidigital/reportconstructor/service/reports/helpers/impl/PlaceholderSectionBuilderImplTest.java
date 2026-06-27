@@ -1,6 +1,7 @@
 package com.aidigital.reportconstructor.service.reports.helpers.impl;
 
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
+import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
 import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
 import com.aidigital.reportconstructor.service.reports.dto.Placeholder;
@@ -27,7 +28,8 @@ class PlaceholderSectionBuilderImplTest {
 
 		List<PreviewSection> sections = builder.buildSections(
 				payload, data,
-				claudeDefaults.emptyStrategic(), claudeDefaults.emptyTactical(), claudeDefaults.emptyResults(), null
+				claudeDefaults.emptyStrategic(), claudeDefaults.emptyTactical(), claudeDefaults.emptyResults(), null,
+				new CampaignFrequencies(null, null, null)
 		);
 
 		assertThat(sections).hasSize(13);
@@ -58,7 +60,8 @@ class PlaceholderSectionBuilderImplTest {
 
 		List<PreviewSection> sections = builder.buildSections(
 				payload, data,
-				claudeDefaults.emptyStrategic(), claudeDefaults.emptyTactical(), claudeDefaults.emptyResults(), null
+				claudeDefaults.emptyStrategic(), claudeDefaults.emptyTactical(), claudeDefaults.emptyResults(), null,
+				new CampaignFrequencies(null, null, null)
 		);
 
 		assertThat(sections.get(4).placeholders()).hasSize(18);
@@ -74,7 +77,8 @@ class PlaceholderSectionBuilderImplTest {
 
 		List<PreviewSection> sections = builder.buildSections(
 				payload, data,
-				claudeDefaults.emptyStrategic(), claudeDefaults.emptyTactical(), claudeDefaults.emptyResults(), null
+				claudeDefaults.emptyStrategic(), claudeDefaults.emptyTactical(), claudeDefaults.emptyResults(), null,
+				new CampaignFrequencies(null, null, null)
 		);
 
 		assertThat(sections.get(10).placeholders()).hasSize(14);

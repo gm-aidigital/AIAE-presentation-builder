@@ -41,9 +41,11 @@ public class PlaceholderResolverServiceImpl implements PlaceholderResolverServic
 	@Override
 	public PreviewResult resolve(GeneratePayload payload) {
 		CampaignData data = collectData(payload);
+		CampaignFrequencies frequencies = computeFrequencies(payload, data);
 		List<PreviewSection> sections = sectionBuilder.buildSections(
 				payload, data,
-				claudeDefaults.emptyStrategic(), claudeDefaults.emptyTactical(), claudeDefaults.emptyResults(), null
+				claudeDefaults.emptyStrategic(), claudeDefaults.emptyTactical(), claudeDefaults.emptyResults(), null,
+				frequencies
 		);
 
 		int total = 0;
@@ -69,9 +71,11 @@ public class PlaceholderResolverServiceImpl implements PlaceholderResolverServic
 			ClaudeStrategic ccA,
 			ClaudeTactical ccB,
 			ClaudeResults ccC,
-			String geoSummary
+			String geoSummary,
+			CampaignFrequencies frequencies
 	) {
-		List<PreviewSection> sections = sectionBuilder.buildSections(payload, data, ccA, ccB, ccC, geoSummary);
+		List<PreviewSection> sections = sectionBuilder.buildSections(payload, data, ccA, ccB, ccC, geoSummary,
+				frequencies);
 		return valueFlattener.buildFlatReplacements(sections);
 	}
 
