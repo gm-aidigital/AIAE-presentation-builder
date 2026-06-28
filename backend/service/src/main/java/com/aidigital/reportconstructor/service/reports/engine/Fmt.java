@@ -54,6 +54,18 @@ public class Fmt {
 	}
 
 	/**
+	 * One-decimal percentage in {@code xx.x%} notation (e.g. {@code 2.53 \u2192 "2.5%"}), used for the
+	 * unified {@code {{tactic n KPI}}} value that renders either the CTR or VCR rate depending on the
+	 * tactic's KPI type. The input is an already-scaled percentage, not a {@code [0,1]} ratio.
+	 *
+	 * @param v the rate value as a percentage (e.g. {@code 2.5} for 2.5%)
+	 * @return the value fixed to one fractional digit with a trailing {@code %}
+	 */
+	public String pct1(double v) {
+		return String.format(Locale.US, "%.1f", v) + "%";
+	}
+
+	/**
 	 * Renders a count in compact notation by truncating (not rounding) toward zero:
 	 * millions become one-decimal {@code "M"} (e.g. {@code 1,234,567 \u2192 "1.2M"}) and
 	 * thousands become whole-number lowercase {@code "k"} (e.g. {@code 74,542 \u2192 "74k"},

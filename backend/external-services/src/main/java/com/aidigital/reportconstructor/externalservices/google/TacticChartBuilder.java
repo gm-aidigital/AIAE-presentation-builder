@@ -110,7 +110,8 @@ public class TacticChartBuilder {
 								templates.getDailySlideObjectIds().get(n),
 								"Chart Tactic " + n + " — " + req.campaignTitle(),
 								pivot,
-								"Tactic " + n));
+								"Tactic " + n,
+								req.tacticKpiTypes() == null ? null : req.tacticKpiTypes().get(n)));
 			} catch (IOException ex) {
 				errors.add(chartErrors.describeChartError("Tactic " + n, ex));
 			}
@@ -152,7 +153,8 @@ public class TacticChartBuilder {
 								templates.getMonthlySlideObjectIds().get(n),
 								"Monthly Chart Tactic " + n + " — " + req.campaignTitle(),
 								pivot,
-								"Monthly Tactic " + n));
+								"Monthly Tactic " + n,
+								req.tacticKpiTypes() == null ? null : req.tacticKpiTypes().get(n)));
 			} catch (IOException ex) {
 				errors.add(chartErrors.describeChartError("Monthly Tactic " + n, ex));
 			}
@@ -223,7 +225,7 @@ public class TacticChartBuilder {
 		String copiedId = driveCopier.copyFile(clients.drive(), job.templateId(), job.copyName(), folderId);
 		ChartSpec spec = chartSpecBuilder.readChartSpec(clients.sheets(), job.templateId());
 		String tab = chartSpecBuilder.findDataTab(clients.sheets(), copiedId);
-		chartSheetWriter.writePivot(clients.sheets(), copiedId, tab, job.pivot());
+		chartSheetWriter.writePivot(clients.sheets(), copiedId, tab, job.pivot(), job.kpiType());
 		if (spec != null) {
 			try {
 				boolean withRate = job.pivot().hasClicks() || job.pivot().hasCompletions();

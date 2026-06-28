@@ -91,6 +91,69 @@ class TacticResolversTest {
 	}
 
 	@Test
+	void resolveTacticKpiType_mapsDisplayToCtrAndVideoToVcr() {
+		Resolved ctr = resolvers.resolveTacticKpiType(1, "Programmatic Display", List.of(), List.of());
+		Resolved vcr = resolvers.resolveTacticKpiType(2, "Programmatic CTV", List.of(), List.of());
+		assertThat(ctr.value()).isEqualTo("CTR");
+		assertThat(vcr.value()).isEqualTo("VCR");
+	}
+
+	@Test
+	void resolveTacticKpiType_prefersManualAdjustmentOverride() {
+		List<List<String>> adj = List.of(List.of("Tactic 1 KPI type:", "VCR"));
+		Resolved r = resolvers.resolveTacticKpiType(1, "Programmatic Display", List.of(), adj);
+		assertThat(r.source()).isEqualTo("adj");
+		assertThat(r.value()).isEqualTo("VCR");
+	}
+
+	@Test
+	void resolveTacticKpi_formatsCtrAsTwoDecimalPercent() {
+		Tactic tactic = new Tactic(
+				"Programmatic Display", "Display", null,
+				0, 100_000, 2_530, 0, 2.53, null, null, null,
+				null, null, null, null, null,
+				null, null, null
+		);
+		CampaignData data = new CampaignData(
+				null, null, null, null, null, null, null, null, null, null, null,
+				new Totals(0, 0, 0, 0, null, null),
+				Map.of(1, tactic), null
+		);
+		Resolved r = resolvers.resolveTacticKpi(1, "Programmatic Display", List.of(), List.of(), data);
+		assertThat(r.source()).isEqualTo("adj");
+		assertThat(r.value()).isEqualTo("2.53%");
+	}
+
+	@Test
+	void resolveTacticKpi_usesVcrForVideoTactic() {
+		Tactic tactic = new Tactic(
+				"Programmatic CTV", "Video", null,
+				0, 100_000, 0, 95_700, null, 95.7, null, null,
+				null, null, null, null, null,
+				null, null, null
+		);
+		CampaignData data = new CampaignData(
+				null, null, null, null, null, null, null, null, null, null, null,
+				new Totals(0, 0, 0, 0, null, null),
+				Map.of(1, tactic), null
+		);
+		Resolved r = resolvers.resolveTacticKpi(1, "Programmatic CTV", List.of(), List.of(), data);
+		assertThat(r.value()).isEqualTo("95.7%");
+	}
+
+	@Test
+	void resolveTacticKpi_notFoundWhenRateMissing() {
+		CampaignData data = new CampaignData(
+				null, null, null, null, null, null, null, null, null, null, null,
+				new Totals(0, 0, 0, 0, null, null),
+				Map.of(), null
+		);
+		Resolved r = resolvers.resolveTacticKpi(1, "Programmatic Display", List.of(), List.of(), data);
+		assertThat(r.source()).isEqualTo("not_found");
+		assertThat(r.value()).isNull();
+	}
+
+	@Test
 	void volumeCoefficient_resolvesExactKeywordAndDefault() {
 		assertThat(tacticUtils.volumeCoefficient("Display")).isEqualTo(0.90);
 		assertThat(tacticUtils.volumeCoefficient("CTV/OTT")).isEqualTo(0.70);

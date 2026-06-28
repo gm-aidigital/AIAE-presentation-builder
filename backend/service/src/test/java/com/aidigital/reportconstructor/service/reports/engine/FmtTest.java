@@ -25,6 +25,13 @@ class FmtTest {
 	}
 
 	@Test
+	void pct1_oneDecimalPercent() {
+		assertEquals("2.5%", fmt.pct1(2.53));
+		assertEquals("95.7%", fmt.pct1(95.7));
+		assertEquals("0.0%", fmt.pct1(0));
+	}
+
+	@Test
 	void compact_thousandsTruncateToWholeK() {
 		assertEquals("74k", fmt.compact(74_542));
 		assertEquals("702k", fmt.compact(702_431));

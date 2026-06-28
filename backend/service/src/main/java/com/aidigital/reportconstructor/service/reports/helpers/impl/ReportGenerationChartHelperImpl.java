@@ -60,9 +60,12 @@ public class ReportGenerationChartHelperImpl implements ReportGenerationChartHel
 
 		Map<Integer, String> distNames = new LinkedHashMap<>();
 		Map<Integer, Double> distImps = new LinkedHashMap<>();
+		Map<Integer, String> kpiTypes = new LinkedHashMap<>();
 		for (int n = 1; n <= tacticCount; n++) {
-			distNames.put(n, firstNonBlank(flatReplacements.get("{{tactic " + n + "}}"), "Tactic " + n));
+			String name = firstNonBlank(flatReplacements.get("{{tactic " + n + "}}"), "Tactic " + n);
+			distNames.put(n, name);
 			distImps.put(n, reportNumbers.parseReportNumber(flatReplacements.get("{{tactic " + n + " imps}}")));
+			kpiTypes.put(n, tacticExtraction.getTacticKpiType(name));
 		}
 		double totalImps = reportNumbers.parseReportNumber(flatReplacements.get("{{total imps}}"));
 
@@ -77,6 +80,7 @@ public class ReportGenerationChartHelperImpl implements ReportGenerationChartHel
 					distNames,
 					distImps,
 					totalImps,
+					kpiTypes,
 					userGoogleToken
 			));
 		} catch (RuntimeException ex) {

@@ -99,18 +99,30 @@ public class ChartSheetWriter {
 	 * Writes the pivot into the copied helper sheet, mirroring PHP
 	 * {@code writePivotToSheet}: date (A), impressions (B), metric (D) only — never column C.
 	 *
+	 * <p>The Amount/metric column carries clicks for CTR tactics and completions for VCR tactics; the
+	 * KPI-type ({@code "CTR"}/{@code "VCR"}) header cell is rewritten to match. The choice follows
+	 * {@code kpiType} (the tactic-name channel mapping) when provided, falling back to whichever metric
+	 * the pivot actually carries. The metric and header cells are located via the template placeholders
+	 * {@code {{tactic n amount}}} / {@code {{tactic n amount mon}}} / {@code {{tactic n KPI type}}}
+	 * (legacy {@code {{tactic n clicks}}} / {@code {{tactic n completions}}} and literal {@code CTR}/{@code VCR}
+	 * headers remain supported).
+	 *
 	 * @param sheets        authenticated Sheets client
 	 * @param spreadsheetId id of the copied helper spreadsheet
 	 * @param tabName       data tab to write into
 	 * @param pivot         chronological daily/monthly series for the tactic
+	 * @param kpiType       tactic KPI type ({@code "ctr"}/{@code "vcr"}), or {@code null} to derive the
+	 *                      metric from the pivot's clicks/completions presence
 	 * @throws IOException when a Sheets API call fails
 	 */
-	public void writePivot(Sheets sheets, String spreadsheetId, String tabName, Pivot pivot) throws IOException {
+	public void writePivot(Sheets sheets, String spreadsheetId, String tabName, Pivot pivot, String kpiType)
+			throws IOException {
 		if (pivot.isEmpty()) {
 			return;
 		}
 		boolean hasClicks = pivot.hasClicks();
 		boolean hasCompletions = pivot.hasCompletions();
+		boolean useClicks = kpiType != null ? "ctr".equalsIgnoreCase(kpiType) : hasClicks;
 
 		List<List<Object>> rows = readValues(sheets, spreadsheetId, tabName + "!A1:ZZ3");
 
@@ -121,12 +133,14 @@ public class ChartSheetWriter {
 		int ctrHeaderCol = -1;
 		int headerRow = -1;
 		java.util.regex.Pattern metricPattern = java.util.regex.Pattern.compile(
-				hasClicks ? "\\{\\{tactic\\s+\\d+\\s+clicks?\\}\\}" : "\\{\\{tactic\\s+\\d+\\s+completions?\\}\\}",
+				"\\{\\{tactic\\s+\\d+\\s+(?:clicks?|completions?|amount(?:\\s+mon)?)\\}\\}",
 				java.util.regex.Pattern.CASE_INSENSITIVE);
 		java.util.regex.Pattern datePattern = java.util.regex.Pattern.compile(
 				"\\{\\{tactic\\s+\\d+\\s+date\\}\\}", java.util.regex.Pattern.CASE_INSENSITIVE);
 		java.util.regex.Pattern impsPattern = java.util.regex.Pattern.compile(
 				"\\{\\{tactic\\s+\\d+\\s+impressions?\\}\\}", java.util.regex.Pattern.CASE_INSENSITIVE);
+		java.util.regex.Pattern kpiTypePattern = java.util.regex.Pattern.compile(
+				"\\{\\{tactic\\s+\\d+\\s+kpi\\s+type\\}\\}", java.util.regex.Pattern.CASE_INSENSITIVE);
 
 		for (int ri = 0; ri < rows.size(); ri++) {
 			List<Object> row = rows.get(ri);
@@ -145,7 +159,7 @@ public class ChartSheetWriter {
 					metricCol = ci;
 					dataStartRow = ri;
 				}
-				if (upper.equals("CTR") || upper.equals("VCR")) {
+				if (upper.equals("CTR") || upper.equals("VCR") || kpiTypePattern.matcher(cell).find()) {
 					ctrHeaderCol = ci;
 					headerRow = ri;
 				}
@@ -182,10 +196,10 @@ public class ChartSheetWriter {
 					new BatchUpdateSpreadsheetRequest().setRequests(del)).execute();
 		}
 
-		if (!hasClicks && hasCompletions && ctrHeaderCol >= 0 && headerRow >= 0) {
+		if (!noCdCols && ctrHeaderCol >= 0 && headerRow >= 0) {
 			String hdrRange = tabName + "!" + colLetter(ctrHeaderCol) + (headerRow + 1);
 			sheets.spreadsheets().values().update(spreadsheetId, hdrRange,
-							new ValueRange().setValues(List.of(List.of("VCR"))))
+							new ValueRange().setValues(List.of(List.of(useClicks ? "CTR" : "VCR"))))
 					.setValueInputOption("RAW").execute();
 		}
 
@@ -212,7 +226,7 @@ public class ChartSheetWriter {
 		if (!noCdCols) {
 			List<List<Object>> metrics = new ArrayList<>();
 			for (double[] v : pivot.data().values()) {
-				metrics.add(List.of(Math.round(hasClicks ? v[1] : v[2])));
+				metrics.add(List.of(Math.round(useClicks ? v[1] : v[2])));
 			}
 			data.add(new ValueRange()
 					.setRange(tabName + "!" + colLetter(metricCol) + startRow + ":" + colLetter(metricCol) + endRow)

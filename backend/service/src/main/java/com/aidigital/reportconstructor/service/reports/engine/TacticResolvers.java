@@ -218,6 +218,85 @@ public class TacticResolvers {
 	}
 
 	/**
+	 * Resolves the KPI-type label for tactic {@code n} — {@code "CTR"} for click-led tactics,
+	 * {@code "VCR"} for video/completion-led tactics — derived from the tactic name via the
+	 * {@link TacticExtractionHelper#getTacticKpiType(String) channel mapping}, with manual
+	 * Adjustments / Media Plan overrides taking precedence.
+	 *
+	 * @param n          one-based tactic index used to build the {@code "Tactic N KPI type:"} lookup label
+	 * @param tacticName display name of the tactic, used to derive the KPI type (CTR vs VCR)
+	 * @param sheetRows  Media Plan grid rows searched for the labelled value
+	 * @param adjRows    manual Adjustments grid rows that take precedence over the sheet
+	 * @return the resolved {@code "CTR"}/{@code "VCR"} label with its source tag, or a {@code not_found}
+	 * placeholder when the tactic name maps to neither KPI type
+	 */
+	public Resolved resolveTacticKpiType(int n, String tacticName, List<List<String>> sheetRows,
+	                                     List<List<String>> adjRows) {
+		String label = "Tactic " + n + " KPI type:";
+		String fromAdj = sheetUtils.findLabelValue(adjRows, label);
+		if (fromAdj != null) {
+			return new Resolved(label, fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, label);
+		if (fromSheet != null) {
+			return new Resolved(label, fromSheet, "sheet");
+		}
+		String kpiType = tacticExtraction.getTacticKpiType(tacticName);
+		if ("ctr".equals(kpiType)) {
+			return new Resolved(label + " (auto: tactic mapping)", "CTR", "adj");
+		}
+		if ("vcr".equals(kpiType)) {
+			return new Resolved(label + " (auto: tactic mapping)", "VCR", "adj");
+		}
+		return new Resolved(label, null, "not_found");
+	}
+
+	/**
+	 * Resolves the unified KPI value for tactic {@code n}: the achieved CTR for click-led tactics or
+	 * the achieved VCR for video/completion-led tactics, chosen by the tactic-name KPI mapping. CTR is
+	 * rendered with two decimals ({@code x.xx%}) and VCR with one decimal ({@code xx.x%}). Both rates are
+	 * computed over the flight window (clicks/impressions or completions/impressions × 100) by the campaign
+	 * aggregation. Manual Adjustments / Media Plan overrides take precedence.
+	 *
+	 * @param n          one-based tactic index used to build the {@code "Tactic N KPI:"} lookup label
+	 * @param tacticName display name of the tactic, used to derive the KPI type (CTR vs VCR)
+	 * @param sheetRows  Media Plan grid rows searched for the labelled value
+	 * @param adjRows    manual Adjustments grid rows that take precedence over the sheet
+	 * @param data       campaign data providing the computed CTR/VCR rate for the tactic
+	 * @return the resolved {@code xx.x%} KPI value with its source tag, or a {@code not_found}
+	 * placeholder when the mapped rate is not computable
+	 */
+	public Resolved resolveTacticKpi(int n, String tacticName, List<List<String>> sheetRows,
+	                                 List<List<String>> adjRows, CampaignData data) {
+		String label = "Tactic " + n + " KPI:";
+		String fromAdj = sheetUtils.findLabelValue(adjRows, label);
+		if (fromAdj != null) {
+			return new Resolved(label, fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, label);
+		if (fromSheet != null) {
+			return new Resolved(label, fromSheet, "sheet");
+		}
+		String kpiType = tacticExtraction.getTacticKpiType(tacticName);
+		Tactic t = tactic(data, n);
+		if ("vcr".equals(kpiType)) {
+			Double vcr = t == null ? null : t.vcr();
+			if (vcr != null) {
+				return new Resolved(label + " (auto: Completions/Imps)", fmt.pct1(vcr), "adj");
+			}
+			return new Resolved(label, null, "not_found");
+		}
+		if ("ctr".equals(kpiType)) {
+			Double ctr = t == null ? null : t.ctr();
+			if (ctr != null) {
+				return new Resolved(label + " (auto: Clicks/Imps)", fmt.dec2(ctr) + "%", "adj");
+			}
+			return new Resolved(label, null, "not_found");
+		}
+		return new Resolved(label, null, "not_found");
+	}
+
+	/**
 	 * Resolves the average frequency for tactic {@code n}, preferring a manual Adjustments override,
 	 * then the Media Plan sheet, then a value derived from the planned max frequency (the auto label
 	 * notes the percentage reduction applied below that cap).

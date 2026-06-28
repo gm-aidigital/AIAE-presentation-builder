@@ -126,6 +126,8 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		m.put("{{tactic " + n + " reach}}", tacticResolvers.resolveTacticReach(n, sheet, adj, data));
 		m.put("{{tactic " + n + " ctr}}", tacticResolvers.resolveTacticCtr(n, tacticName, sheet, adj, data));
 		m.put("{{tactic " + n + " vcr}}", tacticResolvers.resolveTacticVcr(n, tacticName, sheet, adj, data));
+		m.put("{{tactic " + n + " KPI type}}", tacticResolvers.resolveTacticKpiType(n, tacticName, sheet, adj));
+		m.put("{{tactic " + n + " KPI}}", tacticResolvers.resolveTacticKpi(n, tacticName, sheet, adj, data));
 		m.put("{{tactic " + n + " volume}}",
 				tacticResolvers.resolveTacticVolume(n, tacticName, marketVolume, sheet, adj));
 		m.put("{{tactic " + n + " \u2013 bench}}", tacticResolvers.resolveTacticBench(n, tacticName, sheet, adj,
@@ -160,6 +162,8 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		m.put("{{tactic " + n + " reach}}", tacticResolvers.resolveTacticReach(n, sheet, adj, data));
 		m.put("{{tactic " + n + " ctr}}", tacticResolvers.resolveTacticCtr(n, tacticName, sheet, adj, data));
 		m.put("{{tactic " + n + " vcr}}", tacticResolvers.resolveTacticVcr(n, tacticName, sheet, adj, data));
+		m.put("{{tactic " + n + " KPI type}}", tacticResolvers.resolveTacticKpiType(n, tacticName, sheet, adj));
+		m.put("{{tactic " + n + " KPI}}", tacticResolvers.resolveTacticKpi(n, tacticName, sheet, adj, data));
 		m.put("{{tactic " + n + " \u2013 bench}}", tacticResolvers.resolveTacticBench(n, tacticName, sheet, adj,
 				data));
 		m.put("{{tactic " + n + " male}}", tacticResolvers.resolveTacticGender(n, "male", sheet, adj, ccB));
