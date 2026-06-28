@@ -116,7 +116,8 @@ class ReportGenerationServiceImplTest {
 		GeneratePayload payload = new GeneratePayload(
 				"Campaign brief.", "standard", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "");
 		when(claude.isLive()).thenReturn(false);
-		when(placeholders.buildFlatReplacements(any(), any(), any(), any(), any(), any(), any())).thenReturn(Map.of());
+		when(placeholders.buildFlatReplacements(any(), any(), any(), any(), any(), any(), any(), any()))
+				.thenReturn(Map.of());
 		when(slides.createDeck(eq("7"), any(), isNull())).thenReturn("http://deck");
 		when(chartHelper.buildCharts(eq("http://deck"), any(), any(), any(), isNull())).thenReturn(List.of());
 		when(warnings.serializeWarnings(List.of())).thenReturn("[]");

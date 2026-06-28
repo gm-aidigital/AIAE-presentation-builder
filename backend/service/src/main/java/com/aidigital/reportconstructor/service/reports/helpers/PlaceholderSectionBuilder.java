@@ -23,6 +23,7 @@ public interface PlaceholderSectionBuilder {
 	 * @param ccA         Claude Batch A strategic copy
 	 * @param ccB         Claude Batch B tactical copy
 	 * @param ccC         Claude Batch C results copy
+	 * @param primaryKpis AI-generated primary-KPIs line, or {@code null} when not used
 	 * @param geoSummary  AI geo summary, or {@code null} when not used
 	 * @param frequencies the {@code plan}/{@code fact}/{@code reachFact} figures computed once for this report,
 	 *                    so {@code {{reach_f}} / {{reach_f_pres}}} resolve to the exact same actual-reach
@@ -35,6 +36,7 @@ public interface PlaceholderSectionBuilder {
 			ClaudeStrategic ccA,
 			ClaudeTactical ccB,
 			ClaudeResults ccC,
+			String primaryKpis,
 			String geoSummary,
 			CampaignFrequencies frequencies
 	);

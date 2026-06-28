@@ -281,4 +281,17 @@ public class RealClaudeClient implements ClaudeClient {
 		}
 		return normalizer.limitGeoSummary(normalizer.extractText(resp));
 	}
+
+	@Override
+	public String summarizePrimaryKpis(CampaignData data) {
+		var prompt = promptBuilder.buildPrimaryKpisPrompt(data);
+		if (prompt.isEmpty()) {
+			return null;
+		}
+		JsonNode resp = messagesClient.callRaw(prompt.get(), 60, 30, "PrimaryKpis");
+		if (resp == null) {
+			return null;
+		}
+		return normalizer.limitPrimaryKpis(normalizer.extractText(resp));
+	}
 }

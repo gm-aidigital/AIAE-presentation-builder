@@ -426,4 +426,25 @@ public class ClaudeResponseNormalizer {
 		}
 		return text.isEmpty() ? null : text;
 	}
+
+	/**
+	 * Collapses whitespace in the primary-KPIs line, strips any surrounding quotes/backticks and a trailing
+	 * period, and caps it at 60 characters, so the model's reply renders as a single clean KPI string.
+	 *
+	 * @param text raw primary-KPIs text from the model (may be null or blank)
+	 * @return the cleaned, length-capped KPI line, or {@code null} when blank
+	 */
+	public String limitPrimaryKpis(String text) {
+		if (text == null || text.isBlank()) {
+			return null;
+		}
+		text = text.replaceAll("\\s*[\\r\\n]+\\s*", " ").replaceAll("\\s{2,}", " ").trim();
+		text = text.replaceAll("^[\"'`]+", "").trim();
+		text = text.replaceAll("[\"'`.\\s]+$", "").trim();
+		if (text.length() > 60) {
+			text = text.substring(0, 60).trim();
+			text = stripTrailingComma(text);
+		}
+		return text.isEmpty() ? null : text;
+	}
 }

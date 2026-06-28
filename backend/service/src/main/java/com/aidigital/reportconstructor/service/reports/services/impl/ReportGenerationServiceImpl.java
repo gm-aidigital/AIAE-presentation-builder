@@ -104,9 +104,13 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 			String geoSummary = (live && placeholders.needGeoSummary(payload))
 					? claude.summarizeGeo(payload.geoRows()) : null;
 
+			String primaryKpis = (live && placeholders.needPrimaryKpis(payload))
+					? claude.summarizePrimaryKpis(data) : null;
+
 			jobProgress.markJobRunningAtStep(jobId, 6, "Building slide deck");
 			Map<String, String> flatReplacements =
-					placeholders.buildFlatReplacements(payload, data, ccA, ccB, ccC, geoSummary, frequencies);
+					placeholders.buildFlatReplacements(payload, data, ccA, ccB, ccC, primaryKpis, geoSummary,
+							frequencies);
 			UserGoogleTokenProvider clerk = userGoogleTokens.getIfAvailable();
 			String userGoogleToken = clerk == null ? null : clerk.googleAccessToken(clerkUserId);
 			String slideUrl = slides.createDeck(String.valueOf(jobId), flatReplacements, userGoogleToken);

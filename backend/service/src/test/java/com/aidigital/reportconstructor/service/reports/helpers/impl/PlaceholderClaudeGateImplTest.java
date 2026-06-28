@@ -63,6 +63,40 @@ class PlaceholderClaudeGateImplTest {
 	}
 
 	@Test
+	void shouldNeedGeoSummaryWhenGeoTabReferencedWithQuotesTest() {
+		// Given: the Geo cell points at the tab using the quoted form "See 'Geo' Tab"
+		GeneratePayload payload = payloadWithRows(
+				List.of(
+						List.of("Geo", "Markets"),
+						List.of("See 'Geo' Tab", "")
+				),
+				List.of()
+		);
+
+		// When-Then: quotes/punctuation around "Geo" must not stop the gate from firing
+		assertThat(gate.needGeoSummary(payload)).isTrue();
+	}
+
+	@Test
+	void shouldNeedPrimaryKpisWhenNoManualValueTest() {
+		// Given: neither the Adjustments nor the Media Plan rows carry a "Primary KPIs:" label
+		GeneratePayload payload = payloadWithRows(List.of(List.of("Campaign:", "Spring")), List.of());
+
+		// When-Then:
+		assertThat(gate.needPrimaryKpis(payload)).isTrue();
+	}
+
+	@Test
+	void shouldNotNeedPrimaryKpisWhenManualValuePresentTest() {
+		// Given: a manual "Primary KPIs:" value is present in the Media Plan rows
+		GeneratePayload payload = payloadWithRows(
+				List.of(List.of("Primary KPIs:", "Imps, CTR, R&F")), List.of());
+
+		// When-Then:
+		assertThat(gate.needPrimaryKpis(payload)).isFalse();
+	}
+
+	@Test
 	void shouldNotNeedGeoSummaryWhenGeoLocationsManualTest() {
 		GeneratePayload payload = payloadWithRows(
 				List.of(List.of("Geo locations:", "NYC")),

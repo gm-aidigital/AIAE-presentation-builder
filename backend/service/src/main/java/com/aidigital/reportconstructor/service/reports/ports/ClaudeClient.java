@@ -49,4 +49,13 @@ public interface ClaudeClient {
 	 * Geo-tab → short ≤40-char comma-separated location string (or null).
 	 */
 	String summarizeGeo(List<List<String>> geoRows);
+
+	/**
+	 * Media plan → single-line primary-KPIs string (e.g. {@code "Imps, CTR, VCR, R&F"}) reflecting the KPIs
+	 * relevant to the campaign's tactic mix, or {@code null} when no tactics/KPIs can be inferred.
+	 *
+	 * @param data parsed campaign data whose tactic mix drives the KPI selection
+	 * @return the comma-separated primary-KPIs line, or {@code null}
+	 */
+	String summarizePrimaryKpis(CampaignData data);
 }

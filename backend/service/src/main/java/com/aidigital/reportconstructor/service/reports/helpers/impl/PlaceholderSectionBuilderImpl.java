@@ -39,6 +39,7 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 			ClaudeStrategic ccA,
 			ClaudeTactical ccB,
 			ClaudeResults ccC,
+			String primaryKpis,
 			String geoSummary,
 			CampaignFrequencies frequencies
 	) {
@@ -59,7 +60,7 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		}
 		start.put("{{flight_dates}}", campaignResolvers.resolveFlightDates(sheet, adj));
 		start.put("{{total_investment}}", campaignResolvers.resolveTotalInvestment(sheet, adj, data));
-		start.put("{{primary_kpis}}", campaignResolvers.resolvePrimaryKpis(sheet, adj));
+		start.put("{{primary_kpis}}", campaignResolvers.resolvePrimaryKpis(sheet, adj, primaryKpis));
 		start.put("{{audience_age}}", campaignResolvers.resolveAudienceAge(sheet, adj, ccA.audienceAge()));
 		start.put("{{audience_segments}}", campaignResolvers.resolveAudienceSegments(sheet, adj,
 				ccA.audienceSegments()));

@@ -29,6 +29,16 @@ public interface SheetRowHelper {
 	String findLabelValueBelow(List<List<String>> rows, String label);
 
 	/**
+	 * Reports whether a resolved geo value merely points at the "Geo" tab instead of naming locations
+	 * (e.g. {@code "See Geo tab"}, {@code "See 'Geo' Tab"}), so the caller can push the Geo tab to Claude.
+	 * Matching ignores case, surrounding quotes, and other punctuation between the words.
+	 *
+	 * @param value the resolved geo cell value (may be {@code null})
+	 * @return {@code true} when the value references the Geo tab rather than listing locations
+	 */
+	boolean referencesGeoTab(String value);
+
+	/**
 	 * Reads Flight Start / Flight End columns and returns the min/max flight window.
 	 *
 	 * @param rows sheet grid containing flight columns (may be {@code null})

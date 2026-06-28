@@ -607,4 +607,54 @@ public class ClaudeBatchPromptBuilder {
 				+ "naming the most important regions/cities/states. No explanation — return only the string.\n\n"
 				+ tab;
 	}
+
+	/**
+	 * Builds the primary-KPIs prompt from the campaign tactic mix, or empty when there are no tactics.
+	 *
+	 * <p>Each tactic line carries the metrics actually present in the plan ({@code CTR} signals a
+	 * display/banner format, {@code VCR} a video/CTV/audio format) so Claude can pick the right KPI per
+	 * tactic and return a single de-duplicated comma-separated line.
+	 *
+	 * @param data parsed campaign data whose tactic map drives the KPI selection
+	 * @return a prompt asking Claude for a single comma-separated primary-KPIs line, or empty when no tactics exist
+	 */
+	public Optional<String> buildPrimaryKpisPrompt(CampaignData data) {
+		if (data == null || data.tactics() == null || data.tactics().isEmpty()) {
+			return Optional.empty();
+		}
+
+		List<String> tacticLines = new ArrayList<>();
+		for (Map.Entry<Integer, Tactic> e : data.tactics().entrySet()) {
+			Tactic t = e.getValue();
+			StringBuilder line = new StringBuilder("  - " + t.name());
+			List<String> metrics = new ArrayList<>();
+			if (t.ctr() != null) {
+				metrics.add("has CTR");
+			}
+			if (t.vcr() != null) {
+				metrics.add("has VCR");
+			}
+			if (!metrics.isEmpty()) {
+				line.append(" (").append(String.join(", ", metrics)).append(')');
+			}
+			tacticLines.add(line.toString());
+		}
+
+		String prompt =
+				"You are a digital media analyst. Below is the tactic mix of a single advertising campaign.\n"
+						+ "Output the campaign's PRIMARY KPIs as ONE short comma-separated line, naming only the KPIs "
+						+ "relevant to this tactic mix.\n\n"
+						+ "Rules:\n"
+						+ "- Always start with \"Imps\".\n"
+						+ "- Include \"CTR\" if any tactic is a display/banner/native format (or has CTR).\n"
+						+ "- Include \"VCR\" if any tactic is a video/CTV/OTT/pre-roll/audio format (or has VCR).\n"
+						+ "- Always end with \"R&F\".\n"
+						+ "- De-duplicate; keep this order: Imps, CTR, VCR, R&F (omit CTR or VCR when not relevant).\n"
+						+ "- Return ONLY the single line — no markdown, no backticks, no explanation, no trailing "
+						+ "period.\n"
+						+ "- Examples: \"Imps, CTR, R&F\" (display only), \"Imps, VCR, R&F\" (video only), "
+						+ "\"Imps, CTR, VCR, R&F\" (mixed).\n\n"
+						+ "Tactics:\n" + String.join("\n", tacticLines);
+		return Optional.of(prompt);
+	}
 }

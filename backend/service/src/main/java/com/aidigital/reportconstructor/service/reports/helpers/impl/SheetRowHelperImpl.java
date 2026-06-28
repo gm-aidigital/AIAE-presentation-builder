@@ -70,6 +70,16 @@ public class SheetRowHelperImpl implements SheetRowHelper {
 	}
 
 	@Override
+	public boolean referencesGeoTab(String value) {
+
+		if (value == null) {
+			return false;
+		}
+		String normalized = value.toLowerCase(Locale.ROOT).replaceAll("[^a-z]+", " ").trim();
+		return normalized.contains("geo tab");
+	}
+
+	@Override
 	public FlightDates extractFlightTimestamps(List<List<String>> rows) {
 
 		if (rows == null) {

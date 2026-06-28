@@ -93,15 +93,17 @@ public class CampaignResolvers {
 	}
 
 	/**
-	 * Resolves the primary KPIs, auto-deriving them from the distinct Channel
-	 * values (Display vs Video) under the "Channel" header when not labelled.
+	 * Resolves the primary KPIs, preferring a manual value, then Claude's per-tactic KPI line, and finally
+	 * auto-deriving them from the distinct Channel values (Display vs Video) under the "Channel" header.
 	 *
-	 * @param sheetRows Media Plan tab rows
-	 * @param adjRows   manual Adjustments tab rows (also scanned for the Channel column)
-	 * @return a {@link Resolved} KPI string such as {@code "Imps, CTR, R&F"} or {@code "Multiple tactics"}, or
+	 * @param sheetRows  Media Plan tab rows
+	 * @param adjRows    manual Adjustments tab rows (also scanned for the Channel column)
+	 * @param claudeKpis Claude-generated single-line KPI string derived from the media plan, used when no manual
+	 *                   value exists (may be null)
+	 * @return a {@link Resolved} KPI string such as {@code "Imps, CTR, R&F"} or {@code "Imps, CTR, VCR, R&F"}, or
 	 * {@code "not_found"}
 	 */
-	public Resolved resolvePrimaryKpis(List<List<String>> sheetRows, List<List<String>> adjRows) {
+	public Resolved resolvePrimaryKpis(List<List<String>> sheetRows, List<List<String>> adjRows, String claudeKpis) {
 
 		String fromAdj = sheetUtils.findLabelValue(adjRows, "Primary KPIs:");
 		if (fromAdj != null) {
@@ -110,6 +112,9 @@ public class CampaignResolvers {
 		String fromSheet = sheetUtils.findLabelValue(sheetRows, "Primary KPIs:");
 		if (fromSheet != null) {
 			return new Resolved("Primary KPIs:", fromSheet, "sheet");
+		}
+		if (notBlank(claudeKpis)) {
+			return new Resolved("Primary KPIs (auto: Claude from media plan)", claudeKpis, "claude");
 		}
 
 		int headerRowIdx = -1;
@@ -247,12 +252,8 @@ public class CampaignResolvers {
 
 		String below = sheetUtils.findLabelValueBelow(sheetRows, "Geo");
 		if (below != null) {
-			String lc = below.toLowerCase(Locale.ROOT);
-			if (lc.contains("see geo tab") || lc.contains("geo tab")) {
-				if (geoSummary != null && !geoSummary.isBlank()) {
-					return new Resolved("Geo (from Geo tab via Claude)", geoSummary, "claude");
-				}
-				return new Resolved("Geo (value below)", below, "sheet");
+			if (sheetUtils.referencesGeoTab(below) && geoSummary != null && !geoSummary.isBlank()) {
+				return new Resolved("Geo (from Geo tab via Claude)", geoSummary, "claude");
 			}
 			return new Resolved("Geo (value below)", below, "sheet");
 		}

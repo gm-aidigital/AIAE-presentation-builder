@@ -124,6 +124,21 @@ class ClaudeResponseNormalizerTest {
 	}
 
 	@Test
+	void shouldStripQuotesAndTrailingPeriodFromPrimaryKpisTest() {
+		// Given: the model wrapped the KPI line in quotes and added a trailing period
+		String out = normalizer.limitPrimaryKpis("\"Imps, CTR, VCR, R&F\".");
+
+		// Then: the quotes and trailing period are removed, leaving a clean single line
+		assertThat(out).isEqualTo("Imps, CTR, VCR, R&F");
+	}
+
+	@Test
+	void shouldReturnNullForBlankPrimaryKpisTest() {
+		// When-Then:
+		assertThat(normalizer.limitPrimaryKpis("   ")).isNull();
+	}
+
+	@Test
 	void limitResultsOverview_uses380Budget() {
 		String longText = "x".repeat(500);
 		String out = normalizer.limitResultsOverview(longText);

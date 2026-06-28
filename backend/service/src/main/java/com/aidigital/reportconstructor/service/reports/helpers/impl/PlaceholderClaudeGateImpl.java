@@ -8,7 +8,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
-import java.util.Locale;
 
 /**
  * Spring bean implementation of {@link PlaceholderClaudeGate}.
@@ -102,12 +101,12 @@ public class PlaceholderClaudeGateImpl implements PlaceholderClaudeGate {
 		if (sheetUtils.findLabelValue(sheet, "Geo locations:") != null) {
 			return false;
 		}
-		String below = sheetUtils.findLabelValueBelow(sheet, "Geo");
-		if (below == null) {
-			return false;
-		}
-		String lc = below.toLowerCase(Locale.ROOT);
-		return lc.contains("see geo tab") || lc.contains("geo tab");
+		return sheetUtils.referencesGeoTab(sheetUtils.findLabelValueBelow(sheet, "Geo"));
+	}
+
+	@Override
+	public boolean needPrimaryKpis(GeneratePayload payload) {
+		return bothNull(payload.adjRows(), payload.sheetRows(), "Primary KPIs:");
 	}
 
 	boolean bothNull(List<List<String>> adj, List<List<String>> sheet, String label) {
