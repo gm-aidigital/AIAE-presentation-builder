@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useClerk, useUser } from "@clerk/clerk-react";
-import { readSheetTab } from "@/shared/api/sheets";
+import { GEO_TAB_CANDIDATES, readSheetTab, resolveTabName } from "@/shared/api/sheets";
 import type { LineItemMatchResult, PreviewResult, ReportType } from "@/shared/api/types";
 import { WizardProvider, useWizard } from "@/shared/wizard/WizardContext";
 import { useMatchLineItems } from "../api/useMatchLineItems";
@@ -104,7 +104,7 @@ function PageInner() {
             });
             setReq((r) => ({ ...r, sheet: false }));
             showToast(`${p.title} — ${p.rows} rows loaded`);
-            void loadOptionalTabs(url);
+            void loadOptionalTabs(url, p.tabs);
         } catch (e) {
             showToast(e instanceof Error ? e.message : "Could not read sheet", true);
         } finally {
@@ -112,7 +112,7 @@ function PageInner() {
         }
     }
 
-    function loadOptionalTabs(url: string) {
+    function loadOptionalTabs(url: string, tabs: string[]) {
         readSheetTab(url, "Audience&Inventory")
             .then((r) => {
                 if (r.ok && r.rawRows) {
@@ -137,14 +137,17 @@ function PageInner() {
                 }
             })
             .catch((err) => console.warn("Estimates:", err));
-        readSheetTab(url, "Geo")
-            .then((r) => {
-                if (r.ok && r.rawRows) {
-                    w.updateMediaPlanTabs({ geoRows: r.rawRows });
-                    showToast(`Geo tab loaded (${r.rows} rows)`);
-                }
-            })
-            .catch((err) => console.warn("Geo:", err));
+        const geoTab = resolveTabName(tabs, GEO_TAB_CANDIDATES, "geo");
+        if (geoTab) {
+            readSheetTab(url, geoTab)
+                .then((r) => {
+                    if (r.ok && r.rawRows) {
+                        w.updateMediaPlanTabs({ geoRows: r.rawRows });
+                        showToast(`Geo tab "${geoTab}" loaded (${r.rows} rows)`);
+                    }
+                })
+                .catch((err) => console.warn("Geo:", err));
+        }
     }
 
     async function pullElevate(url: string) {
