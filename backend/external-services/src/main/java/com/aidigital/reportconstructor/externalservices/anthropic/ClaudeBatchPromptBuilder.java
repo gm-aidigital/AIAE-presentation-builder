@@ -587,12 +587,13 @@ public class ClaudeBatchPromptBuilder {
 	}
 
 	/**
-	 * Builds the geo-tab summarisation prompt from spreadsheet rows.
+	 * Builds the geo summarisation prompt from the whole media-plan workbook.
 	 *
-	 * @param geoRows rows of the media-plan "Geo" tab; each inner list is one row whose cells are joined with {@code
-	 * " | "} (null rows are skipped)
-	 * @return a prompt asking Claude to condense the listed locations into a single short comma-separated string of
-	 * key regions
+	 * @param geoRows every tab of the media-plan workbook flattened into one grid, each tab introduced by a
+	 *                {@code "### TAB: <name> ###"} marker row; each inner list is one row whose cells are joined with
+	 *                {@code " | "} (null rows are skipped)
+	 * @return a prompt asking Claude to locate the geographic targeting anywhere in the workbook and condense it into
+	 * a single short comma-separated string of key regions
 	 */
 	public String buildGeoPrompt(List<List<String>> geoRows) {
 		StringBuilder tab = new StringBuilder();
@@ -602,9 +603,10 @@ public class ClaudeBatchPromptBuilder {
 			}
 			tab.append(String.join(" | ", row)).append('\n');
 		}
-		return "Below is a 'Geo' tab from a media plan listing geographic targeting locations.\n"
-				+ "Summarise the locations into a single short comma-separated string (≤40 characters), "
-				+ "naming the most important regions/cities/states. No explanation — return only the string.\n\n"
+		return "Below are the tabs of a media-plan workbook (each tab preceded by a '### TAB: <name> ###' marker).\n"
+				+ "Find the campaign's geographic targeting locations anywhere in this data and summarise them into a "
+				+ "single short comma-separated string (≤40 characters), naming the most important "
+				+ "regions/cities/states. Ignore non-geographic data. No explanation — return only the string.\n\n"
 				+ tab;
 	}
 

@@ -27,7 +27,7 @@ export interface MediaPlanState extends ConnectedSheet {
     sheetRows: Rows2D; // Proposal (primary)
     audienceRows: Rows2D; // Audience&Inventory (optional)
     estimatesRows: Rows2D; // Estimates (optional, falls back to Proposal)
-    geoRows: Rows2D; // Geo (optional)
+    geoRows: Rows2D; // all workbook tabs bundled (each prefixed "### TAB: <name> ###") for Claude geo extraction
 }
 
 export interface ElevateState extends ConnectedSheet {

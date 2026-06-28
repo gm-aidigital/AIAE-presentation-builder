@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useClerk, useUser } from "@clerk/clerk-react";
-import { GEO_TAB_CANDIDATES, readSheetTab, resolveTabName } from "@/shared/api/sheets";
-import type { LineItemMatchResult, PreviewResult, ReportType } from "@/shared/api/types";
+import { readSheetTab } from "@/shared/api/sheets";
+import type { LineItemMatchResult, PreviewResult, ReportType, Rows2D } from "@/shared/api/types";
 import { WizardProvider, useWizard } from "@/shared/wizard/WizardContext";
 import { useMatchLineItems } from "../api/useMatchLineItems";
 import { usePreviewPlaceholders } from "../api/usePreviewPlaceholders";
@@ -14,6 +14,21 @@ import { SheetCard } from "./SheetCard";
 import { ToastProvider, useToast } from "./ToastContext";
 import { IconCheck, IconChevron, IconLink2, IconLogo } from "./icons";
 import "./report-constructor.css";
+
+/**
+ * Flattens every loaded workbook tab into a single 2-D grid, prefixing each tab's
+ * rows with a `### TAB: <name> ###` marker row so Claude can tell the tabs apart
+ * when it scans the bundle for geo targeting.
+ */
+function buildWorkbookRows(loaded: { tab: string; rows: Rows2D }[]): Rows2D {
+    const out: Rows2D = [];
+    for (const { tab, rows } of loaded) {
+        out.push([`### TAB: ${tab} ###`]);
+        for (const row of rows) out.push(row);
+        out.push([""]);
+    }
+    return out;
+}
 
 export function ReportConstructorPage() {
     return (
@@ -112,42 +127,32 @@ function PageInner() {
         }
     }
 
-    function loadOptionalTabs(url: string, tabs: string[]) {
-        readSheetTab(url, "Audience&Inventory")
-            .then((r) => {
-                if (r.ok && r.rawRows) {
-                    w.updateMediaPlanTabs({ audienceRows: r.rawRows });
-                    showToast(`Audience&Inventory tab loaded (${r.rows} rows)`);
-                }
-            })
-            .catch((err) => console.warn("Audience&Inventory:", err));
-        readSheetTab(url, "Estimates")
-            .then(async (r) => {
-                if (r.ok && r.rawRows) {
-                    w.updateMediaPlanTabs({ estimatesRows: r.rawRows });
-                    showToast(`Estimates tab loaded (${r.rows} rows)`);
-                    return;
-                }
-                if (r.error === "tab_not_found") {
-                    const fb = await readSheetTab(url, "Proposal").catch(() => null);
-                    if (fb && fb.ok) {
-                        w.updateMediaPlanTabs({ estimatesRows: fb.rawRows });
-                        showToast(`Plan data loaded from Proposal tab (${fb.rows} rows)`);
-                    }
-                }
-            })
-            .catch((err) => console.warn("Estimates:", err));
-        const geoTab = resolveTabName(tabs, GEO_TAB_CANDIDATES, "geo");
-        if (geoTab) {
-            readSheetTab(url, geoTab)
-                .then((r) => {
-                    if (r.ok && r.rawRows) {
-                        w.updateMediaPlanTabs({ geoRows: r.rawRows });
-                        showToast(`Geo tab "${geoTab}" loaded (${r.rows} rows)`);
-                    }
-                })
-                .catch((err) => console.warn("Geo:", err));
-        }
+    async function loadOptionalTabs(url: string, tabs: string[]) {
+        // Read every tab in the workbook once. The Audience and Estimates tabs feed
+        // their own resolvers; the full set is bundled into geoRows so Claude can
+        // find the geo targeting wherever it lives (its tab name varies per file).
+        const loaded = (
+            await Promise.all(
+                tabs.map((tab) =>
+                    readSheetTab(url, tab)
+                        .then((r) => (r.ok && r.rawRows ? { tab, rows: r.rawRows } : null))
+                        .catch((err) => {
+                            console.warn(`${tab}:`, err);
+                            return null;
+                        })
+                )
+            )
+        ).filter((t): t is { tab: string; rows: Rows2D } => t !== null);
+
+        const byName = (name: string) =>
+            loaded.find((t) => t.tab.trim().toLowerCase() === name.toLowerCase())?.rows;
+
+        w.updateMediaPlanTabs({
+            audienceRows: byName("Audience&Inventory") ?? [],
+            estimatesRows: byName("Estimates") ?? byName("Proposal") ?? [],
+            geoRows: buildWorkbookRows(loaded),
+        });
+        showToast(`Loaded ${loaded.length} tab${loaded.length === 1 ? "" : "s"} for analysis`);
     }
 
     async function pullElevate(url: string) {

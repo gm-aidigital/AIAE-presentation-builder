@@ -17,7 +17,8 @@ import java.util.List;
  *                        values
  * @param audienceRows    raw audience-breakdown grid rows used to build audience tables and charts
  * @param estimatesRows   raw per-tactic estimates grid rows parsed into expected impression/spend figures
- * @param geoRows         raw geographic-performance grid rows summarized by Claude into the geo narrative
+ * @param geoRows         every workbook tab flattened into one grid (each tab prefixed by a {@code "### TAB: <name>
+ *                        ###"} marker row), scanned by Claude to extract the geo targeting wherever it lives
  * @param lineItemMapping mapping from media-plan tactics to their BigQuery line-item IDs, driving chart data queries
  * @param bqSheetId       Google Sheet ID backing the BigQuery export; when blank, chart generation is skipped
  */
