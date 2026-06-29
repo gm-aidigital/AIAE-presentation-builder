@@ -24,6 +24,16 @@ import java.util.concurrent.ThreadLocalRandom;
 @Component
 public class CampaignResolvers {
 
+	/**
+	 * De-duplication factor applied when a multi-tactic media plan has no totals row to read reach
+	 * from: the per-tactic reaches are summed and scaled by this to approximate the unique campaign
+	 * reach (the raw sum double-counts users hit by more than one tactic).
+	 */
+	private static final double MULTI_TACTIC_REACH_FACTOR = 0.8;
+
+	/** Number of leading cells scanned for a "total" label when classifying a media-plan row. */
+	private static final int TOTAL_LABEL_SCAN_COLUMNS = 5;
+
 	private final SheetRowHelper sheetUtils;
 	private final Fmt fmt;
 	private final TacticExtractionHelper tacticExtraction;
@@ -895,11 +905,11 @@ public class CampaignResolvers {
 	}
 
 	/**
-	 * Finds the "Reach" column in a media-plan grid and returns its bottom-most
-	 * populated numeric value (the totals row) formatted with comma grouping.
+	 * Derives the campaign reach from a media-plan grid's "Reach" column (see
+	 * {@link #bottomReachValue}) and formats it with comma grouping.
 	 *
 	 * @param rows media-plan grid rows to scan for a Reach column
-	 * @return the formatted bottom Reach value, or {@code null} when no Reach column or numeric value is present
+	 * @return the formatted Reach value, or {@code null} when no Reach column or numeric value is present
 	 */
 	String bottomReach(List<List<String>> rows) {
 
@@ -908,11 +918,20 @@ public class CampaignResolvers {
 	}
 
 	/**
-	 * Finds the "Reach" column in a media-plan grid and returns its bottom-most
-	 * populated numeric value (the totals row) as a raw count.
+	 * Finds the "Reach" column in a media-plan grid and derives the campaign reach from it.
+	 *
+	 * <p>The Reach column rarely has a value on the very bottom row, so rather than blindly
+	 * taking the bottom-most cell this classifies each populated row below the header into a
+	 * totals row or a tactic row (see {@link #isTotalRow}), then:
+	 * <ul>
+	 *   <li>a totals row with a Reach value wins outright (single- or multi-tactic plans);</li>
+	 *   <li>otherwise a single tactic row supplies the reach directly;</li>
+	 *   <li>otherwise (several tactics, no usable total) the tactic reaches are summed and scaled
+	 *       by {@link #MULTI_TACTIC_REACH_FACTOR} to approximate de-duplicated unique reach.</li>
+	 * </ul>
 	 *
 	 * @param rows media-plan grid rows to scan for a Reach column
-	 * @return the bottom Reach count, or {@code null} when no Reach column or numeric value is present
+	 * @return the derived Reach count, or {@code null} when no Reach column or numeric value is present
 	 */
 	Double bottomReachValue(List<List<String>> rows) {
 
@@ -923,14 +942,81 @@ public class CampaignResolvers {
 		if (header == null) {
 			return null;
 		}
-		Double bottom = null;
+		int mediaCol = findMediaColumn(rows);
+		Double totalReach = null;
+		List<Double> tacticReaches = new ArrayList<>();
 		for (int i = header[0] + 1; i < rows.size(); i++) {
-			Double v = parseReachCell(cellAt(rows.get(i), header[1]));
-			if (v != null) {
-				bottom = v;
+			List<String> row = rows.get(i);
+			Double v = parseReachCell(cellAt(row, header[1]));
+			if (v == null) {
+				continue;
+			}
+			if (isTotalRow(row, mediaCol)) {
+				totalReach = v;
+			} else {
+				tacticReaches.add(v);
 			}
 		}
-		return bottom;
+		if (totalReach != null) {
+			return totalReach;
+		}
+		if (tacticReaches.isEmpty()) {
+			return null;
+		}
+		if (tacticReaches.size() == 1) {
+			return tacticReaches.get(0);
+		}
+		double sum = 0;
+		for (Double r : tacticReaches) {
+			sum += r;
+		}
+		return sum * MULTI_TACTIC_REACH_FACTOR;
+	}
+
+	/**
+	 * Reports whether a media-plan row is a totals/subtotals row rather than a single tactic line.
+	 * Totals rows are not always labelled, so two signals are used: an explicit "total" token in a
+	 * leading label cell (e.g. "Total", "Grand Total"), or — when the Media/name column is known —
+	 * a populated metric row whose Media cell is blank (the common unlabelled totals layout).
+	 *
+	 * @param row      the media-plan row to inspect
+	 * @param mediaCol the Media/name column index, or {@code -1} when no Media column was found
+	 * @return {@code true} when the row holds campaign-level totals, {@code false} otherwise
+	 */
+	boolean isTotalRow(List<String> row, int mediaCol) {
+
+		if (row == null) {
+			return false;
+		}
+		int limit = Math.min(row.size(), TOTAL_LABEL_SCAN_COLUMNS);
+		for (int j = 0; j < limit; j++) {
+			if (cell(row, j).toLowerCase(Locale.ROOT).contains("total")) {
+				return true;
+			}
+		}
+		return mediaCol >= 0 && cellAt(row, mediaCol).isEmpty();
+	}
+
+	/**
+	 * Locates the "Media" (tactic name) column header in a media-plan grid, used to tell tactic rows
+	 * (named) apart from an unlabelled totals row (blank name cell).
+	 *
+	 * @param rows media-plan grid rows to scan
+	 * @return the Media column index, or {@code -1} when no "Media" header is present
+	 */
+	int findMediaColumn(List<List<String>> rows) {
+
+		for (List<String> row : rows) {
+			if (row == null) {
+				continue;
+			}
+			for (int j = 0; j < row.size(); j++) {
+				if (cell(row, j).toLowerCase(Locale.ROOT).equals("media")) {
+					return j;
+				}
+			}
+		}
+		return -1;
 	}
 
 	/**

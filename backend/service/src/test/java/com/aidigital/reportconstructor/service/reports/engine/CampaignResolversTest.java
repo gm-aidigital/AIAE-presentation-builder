@@ -114,6 +114,78 @@ class CampaignResolversTest {
 	}
 
 	@Test
+	void resolveReach_usesSingleTacticReachWhenNoTotalRow() {
+		// Given: a media plan with exactly one tactic and no totals row
+		List<List<String>> estimates = List.of(
+				List.of("Media", "Impressions", "Reach"),
+				List.of("CTV", "1,800,000", "900,000"));
+		// When: resolving reach
+		Resolved r = resolvers.resolveReach(estimates, List.of(), List.of());
+		// Then: the lone tactic's reach is used directly
+		assertThat(r.value()).isEqualTo("900,000");
+		assertThat(r.source()).isEqualTo("sheet");
+	}
+
+	@Test
+	void resolveReach_sumsTacticReachesScaledWhenSeveralTacticsAndNoTotalRow() {
+		// Given: several tactics and no totals row to read a campaign reach from
+		List<List<String>> estimates = List.of(
+				List.of("Media", "Impressions", "Reach"),
+				List.of("CTV", "1,800,000", "900,000"),
+				List.of("Display", "8,000,000", "2,500,000"));
+		// When: resolving reach
+		Resolved r = resolvers.resolveReach(estimates, List.of(), List.of());
+		// Then: the tactic reaches are summed and de-duplicated by the 0.8 factor: (900k + 2.5M) * 0.8
+		assertThat(r.value()).isEqualTo("2,720,000");
+		assertThat(r.source()).isEqualTo("sheet");
+	}
+
+	@Test
+	void resolveReach_prefersTotalRowOverScaledTacticSum() {
+		// Given: several tactics plus a labelled totals row carrying a reach value
+		List<List<String>> estimates = List.of(
+				List.of("Media", "Impressions", "Reach"),
+				List.of("CTV", "1,800,000", "900,000"),
+				List.of("Display", "8,000,000", "2,500,000"),
+				List.of("Total", "9,800,000", "3,100,000"));
+		// When: resolving reach
+		Resolved r = resolvers.resolveReach(estimates, List.of(), List.of());
+		// Then: the totals row wins outright over the scaled tactic sum
+		assertThat(r.value()).isEqualTo("3,100,000");
+		assertThat(r.source()).isEqualTo("sheet");
+	}
+
+	@Test
+	void resolveReach_treatsBlankMediaCellRowAsUnlabelledTotal() {
+		// Given: several tactics and an unlabelled totals row (blank Media cell) carrying a reach value
+		List<List<String>> estimates = List.of(
+				List.of("Media", "Impressions", "Reach"),
+				List.of("CTV", "1,800,000", "900,000"),
+				List.of("Display", "8,000,000", "2,500,000"),
+				List.of("", "9,800,000", "3,100,000"));
+		// When: resolving reach
+		Resolved r = resolvers.resolveReach(estimates, List.of(), List.of());
+		// Then: the blank-name row is recognised as the total and wins over the scaled tactic sum
+		assertThat(r.value()).isEqualTo("3,100,000");
+		assertThat(r.source()).isEqualTo("sheet");
+	}
+
+	@Test
+	void resolveReach_sumsTacticReachesWhenTotalRowHasNoReachValue() {
+		// Given: several tactics and a totals row whose Reach cell is blank
+		List<List<String>> estimates = List.of(
+				List.of("Media", "Impressions", "Reach"),
+				List.of("CTV", "1,800,000", "900,000"),
+				List.of("Display", "8,000,000", "2,500,000"),
+				List.of("Total", "9,800,000", ""));
+		// When: resolving reach
+		Resolved r = resolvers.resolveReach(estimates, List.of(), List.of());
+		// Then: with no usable total, the scaled tactic sum is used: (900k + 2.5M) * 0.8
+		assertThat(r.value()).isEqualTo("2,720,000");
+		assertThat(r.source()).isEqualTo("sheet");
+	}
+
+	@Test
 	void resolveReachShort_compactsBottomEstimatesReachValue() {
 		List<List<String>> estimates = List.of(
 				List.of("Media", "Reach"),
