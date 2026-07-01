@@ -6,6 +6,7 @@ import com.aidigital.reportconstructor.service.reports.dto.SheetData;
 import com.google.api.client.http.HttpRequestInitializer;
 import com.google.api.services.sheets.v4.Sheets;
 import com.google.api.services.sheets.v4.model.Sheet;
+import com.google.api.services.sheets.v4.model.SheetProperties;
 import com.google.api.services.sheets.v4.model.Spreadsheet;
 import com.google.api.services.sheets.v4.model.ValueRange;
 import com.google.auth.http.HttpCredentialsAdapter;
@@ -69,13 +70,18 @@ public class RealGoogleSheetsProvider implements GoogleSheetsProvider {
 		String sheetId = m.group(1);
 		try {
 			Spreadsheet meta = sheetsClient.spreadsheets().get(sheetId)
-					.setFields("properties.title,sheets.properties.title")
+					.setFields("properties.title,sheets.properties.title,sheets.properties.hidden")
 					.execute();
 			String title = meta.getProperties() == null ? "Untitled" : meta.getProperties().getTitle();
+			// Expose visible tabs only. Media plans routinely keep stale copies of
+			// "Proposal"/"Estimates" as hidden tabs (often duplicating the visible
+			// tab's name modulo a trailing space); including them lets the tool read
+			// an outdated proposal. The latest data always lives on a visible tab.
 			List<String> tabs = new ArrayList<>();
 			for (Sheet s : meta.getSheets()) {
-				if (s.getProperties() != null && s.getProperties().getTitle() != null) {
-					tabs.add(s.getProperties().getTitle());
+				SheetProperties props = s.getProperties();
+				if (props != null && props.getTitle() != null && !Boolean.TRUE.equals(props.getHidden())) {
+					tabs.add(props.getTitle());
 				}
 			}
 
@@ -83,13 +89,17 @@ public class RealGoogleSheetsProvider implements GoogleSheetsProvider {
 			// range. Optional tabs (e.g. "Geo") are often absent, and Google
 			// reports a missing sheet as a confusing "Unable to parse range" 400.
 			// Surface a clean 404 instead — the frontend already treats these
-			// optional fetches as best-effort (.catch(() => null)).
-			if (!tabs.contains(tab)) {
+			// optional fetches as best-effort (.catch(() => null)). Resolve against
+			// the visible tabs, tolerating trailing whitespace/case, so a request
+			// for "Proposal" lands on a visible "Proposal " rather than a hidden
+			// exact-name duplicate that no longer exists in the list.
+			String resolvedTab = resolveVisibleTab(tab, tabs);
+			if (resolvedTab == null) {
 				throw new AppException(ErrorReason.C001,
-						"Tab \"" + tab + "\" not found. Available tabs: " + String.join(", ", tabs));
+						"Tab \"" + tab + "\" not found among visible tabs: " + String.join(", ", tabs));
 			}
 
-			String range = "'" + tab.replace("'", "''") + "'!A1:ZZ";
+			String range = "'" + resolvedTab.replace("'", "''") + "'!A1:ZZ";
 			ValueRange vr = sheetsClient.spreadsheets().values().get(sheetId, range).execute();
 			List<List<Object>> values = vr.getValues() == null ? List.of() : vr.getValues();
 			List<List<String>> rows = new ArrayList<>(values.size());
@@ -102,7 +112,7 @@ public class RealGoogleSheetsProvider implements GoogleSheetsProvider {
 			}
 			List<String> headers = rows.isEmpty() ? List.of() : rows.get(0);
 			return new SheetData(
-					sheetId, title, tab, tabs,
+					sheetId, title, resolvedTab, tabs,
 					rows.size(), headers.size(), headers,
 					rows.stream().limit(5).toList(),
 					rows
@@ -129,6 +139,33 @@ public class RealGoogleSheetsProvider implements GoogleSheetsProvider {
 			log.error("[sheets] fetch failed for {} tab={}", sheetId, tab, ex);
 			throw new AppException(ErrorReason.C000, "Google Sheets fetch failed: " + ex.getMessage());
 		}
+	}
+
+	/**
+	 * Resolves a requested tab name against the visible tabs of the spreadsheet.
+	 * Prefers an exact match; falls back to a trimmed, case-insensitive match so a
+	 * request for {@code "Proposal"} still resolves when the current tab is named
+	 * {@code "Proposal "} (a common pattern where an old exact-named tab was
+	 * hidden and a fresh copy with a trailing space kept visible).
+	 *
+	 * @param requested   the tab name the caller asked for
+	 * @param visibleTabs the titles of the spreadsheet's visible tabs
+	 * @return the actual visible tab title to read, or {@code null} when none match
+	 */
+	String resolveVisibleTab(String requested, List<String> visibleTabs) {
+		if (requested == null) {
+			return null;
+		}
+		if (visibleTabs.contains(requested)) {
+			return requested;
+		}
+		String normalized = requested.trim().toLowerCase();
+		for (String candidate : visibleTabs) {
+			if (candidate.trim().toLowerCase().equals(normalized)) {
+				return candidate;
+			}
+		}
+		return null;
 	}
 
 	/**
