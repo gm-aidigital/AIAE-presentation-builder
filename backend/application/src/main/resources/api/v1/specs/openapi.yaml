@@ -188,6 +188,41 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerErrorV1"
 
+  /api/v1/placeholders/date-range:
+    post:
+      tags: [ Placeholders ]
+      operationId: detectDateRange
+      summary: Detect the raw-data (Elevate "Basic" tab) delivery date range
+      description: |
+        Scans the raw-data delivery rows and returns the earliest/latest delivery
+        date. The UI shows this window for the user to confirm or correct before
+        generating the report; the confirmed window then gates which rows contribute
+        and fills {{flight_dates}}. The media plan is never consulted for dates.
+        Touches no Google Drive/Slides.
+      security:
+        - bearerAuth: [ ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DateRangeRequestV1"
+      responses:
+        "200":
+          description: Detected raw-data date range (fields null when none found).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DateRangeResultV1"
+        "400":
+          $ref: "#/components/responses/BadRequestV1"
+        "401":
+          $ref: "#/components/responses/UnauthorizedV1"
+        "403":
+          $ref: "#/components/responses/ForbiddenV1"
+        "500":
+          $ref: "#/components/responses/InternalServerErrorV1"
+
   /api/v1/report-jobs:
     post:
       tags: [ ReportJobs ]
@@ -379,6 +414,59 @@ components:
         the section/placeholder catalog is identical for both values.
       enum: [ EOC, EOM ]
 
+    DateFilterModeV1:
+      type: string
+      description: |
+        How raw-data (BigQuery export) rows are date-filtered before aggregation
+        and charting. ALL = include every date present in the raw data. RANGE =
+        include only rows whose date falls within [start, end] inclusive.
+        This is independent of the media-plan flight window, which only feeds
+        the {{flight_dates}} placeholder.
+      enum: [ ALL, RANGE ]
+
+    DateFilterV1:
+      type: object
+      description: |
+        User-selected date window applied to the raw-data rows for the report.
+        When omitted the server defaults to ALL (every date in the raw data).
+      required: [ mode ]
+      properties:
+        mode: { $ref: "#/components/schemas/DateFilterModeV1" }
+        start:
+          type: string
+          format: date
+          description: "First day to include (inclusive). Required when mode = RANGE; ignored when mode = ALL."
+        end:
+          type: string
+          format: date
+          description: "Last day to include (inclusive). Required when mode = RANGE; ignored when mode = ALL."
+
+    DateRangeRequestV1:
+      type: object
+      description: |
+        Raw-data rows to scan for the delivery date range shown to the user for
+        confirmation before generation.
+      required: [ adjRows ]
+      properties:
+        adjRows: { $ref: "#/components/schemas/Rows2DV1" }
+
+    DateRangeResultV1:
+      type: object
+      description: |
+        Inclusive min/max delivery date detected in the raw-data ("Basic" tab)
+        rows. Both fields are null when no dated delivery rows are present.
+      properties:
+        start:
+          type: string
+          format: date
+          nullable: true
+          description: "Earliest delivery date found in the raw data, or null."
+        end:
+          type: string
+          format: date
+          nullable: true
+          description: "Latest delivery date found in the raw data, or null."
+
     # ── DataSource ──────────────────────────────────────────────────────────────
     GoogleConnectionStatusV1:
       type: object
@@ -515,6 +603,7 @@ components:
         lineItemMapping:
           type: array
           items: { $ref: "#/components/schemas/MappingEntryV1" }
+        dateFilter: { $ref: "#/components/schemas/DateFilterV1" }
 
     PlaceholderEntryV1:
       type: object
@@ -593,6 +682,7 @@ components:
           description: |
             Spreadsheet id of the Elevate/BQ sheet. PRESENCE-GATE ONLY — gates the
             chart step; the server does NOT re-read it (BQ pivots read adjRows).
+        dateFilter: { $ref: "#/components/schemas/DateFilterV1" }
 
     ReportJobCreatedV1:
       type: object

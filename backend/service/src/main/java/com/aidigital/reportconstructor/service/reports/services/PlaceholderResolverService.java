@@ -5,8 +5,10 @@ import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
+import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -21,6 +23,16 @@ public interface PlaceholderResolverService {
 	 * @return preview sections plus label chips and resolved/total/sheet/adj counts for the UI
 	 */
 	PreviewResult resolve(GeneratePayload payload);
+
+	/**
+	 * Detects the full min/max date range present in the raw-data (Elevate "Basic" tab) rows so the UI
+	 * can show the flight window for the user to confirm or correct before generation. This is the same
+	 * range the generation pipeline uses when the confirmed filter is ALL; the media plan is never read.
+	 *
+	 * @param adjRows the raw-data grid rows uploaded/connected as the Elevate dashboard export
+	 * @return the inclusive detected date range, or {@code null} when no dated delivery rows are present
+	 */
+	FlightDates detectDateRange(List<List<String>> adjRows);
 
 	/**
 	 * Generate path — builds the flat {@code {{token}} → value} map used to fill the Slides deck.

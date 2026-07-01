@@ -73,36 +73,6 @@ public class CampaignResolvers {
 	}
 
 	/**
-	 * Resolves the campaign flight window, falling back to deriving it from the
-	 * "Flight Start" / "Flight End" columns when no explicit label is present.
-	 *
-	 * @param sheetRows Media Plan tab rows
-	 * @param adjRows   manual Adjustments tab rows (checked before the sheet)
-	 * @return a {@link Resolved} holding the flight-date range, or a null-valued {@code "not_found"}
-	 */
-	public Resolved resolveFlightDates(List<List<String>> sheetRows, List<List<String>> adjRows) {
-
-		String fromAdj = sheetUtils.findLabelValue(adjRows, "Flight dates:");
-		if (fromAdj != null) {
-			return new Resolved("Flight dates:", fromAdj, "adj");
-		}
-		String fromSheet = sheetUtils.findLabelValue(sheetRows, "Flight dates:");
-		if (fromSheet != null) {
-			return new Resolved("Flight dates:", fromSheet, "sheet");
-		}
-
-		String fromAdjAuto = sheetUtils.extractFlightDates(adjRows);
-		if (fromAdjAuto != null) {
-			return new Resolved("Flight Start / Flight End columns", fromAdjAuto, "adj");
-		}
-		String fromSheetAuto = sheetUtils.extractFlightDates(sheetRows);
-		if (fromSheetAuto != null) {
-			return new Resolved("Flight Start / Flight End columns", fromSheetAuto, "sheet");
-		}
-		return new Resolved("Flight Start / Flight End columns", null, "not_found");
-	}
-
-	/**
 	 * Resolves the primary KPIs, preferring a manual value, then Claude's per-tactic KPI line, and finally
 	 * auto-deriving them from the distinct Channel values (Display vs Video) under the "Channel" header.
 	 *

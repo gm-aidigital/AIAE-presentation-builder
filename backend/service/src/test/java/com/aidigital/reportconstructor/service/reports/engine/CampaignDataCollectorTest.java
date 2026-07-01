@@ -29,12 +29,12 @@ class CampaignDataCollectorTest {
 				List.of("2026-03-01", "Display", "50", "1000", "10")
 		);
 
-		CampaignData data = collector.collect(sheet, adj, List.of(), List.of(), List.of());
+		CampaignData data = collector.collect(sheet, adj, List.of(), List.of(), List.of(), null);
 
 		assertThat(data.client()).isEqualTo("Adj Client");
 		assertThat(data.campaign()).isEqualTo("Adj Campaign");
 
-		CampaignData bqOnly = collector.collect(List.of(), bq, List.of(), List.of(), List.of());
+		CampaignData bqOnly = collector.collect(List.of(), bq, List.of(), List.of(), List.of(), null);
 		assertThat(bqOnly.totals()).isNotNull();
 		assertThat(bqOnly.totals().imps()).isEqualTo(1000);
 	}
@@ -48,7 +48,7 @@ class CampaignDataCollectorTest {
 		);
 		CampaignData data = collector.collect(
 				sheet, List.of(), List.of(), List.of(),
-				List.of(new LineItemMapping("Display Tactic", "111", 1)));
+				List.of(new LineItemMapping("Display Tactic", "111", 1)), null);
 
 		assertThat(data.tactics()).containsKey(1);
 		assertThat(data.tactics().get(1).name()).contains("Display");

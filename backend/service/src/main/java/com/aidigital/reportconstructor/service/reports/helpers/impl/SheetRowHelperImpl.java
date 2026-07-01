@@ -1,7 +1,6 @@
 package com.aidigital.reportconstructor.service.reports.helpers.impl;
 
 import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
-import com.aidigital.reportconstructor.service.reports.engine.TacticCatalog;
 import com.aidigital.reportconstructor.service.reports.helpers.SheetRowHelper;
 import org.springframework.stereotype.Component;
 
@@ -20,12 +19,6 @@ import java.util.Locale;
  */
 @Component
 public class SheetRowHelperImpl implements SheetRowHelper {
-
-	private final TacticCatalog catalog;
-
-	public SheetRowHelperImpl(TacticCatalog catalog) {
-		this.catalog = catalog;
-	}
 
 	@Override
 	public String findLabelValue(List<List<String>> rows, String label) {
@@ -80,78 +73,72 @@ public class SheetRowHelperImpl implements SheetRowHelper {
 	}
 
 	@Override
-	public FlightDates extractFlightTimestamps(List<List<String>> rows) {
+	public FlightDates detectDataDateRange(List<List<String>> rows) {
 
 		if (rows == null) {
 			return null;
 		}
 		int headerRowIdx = -1;
-		int startCol = -1;
-		int endCol = -1;
+		int dateCol = -1;
 
 		for (int i = 0; i < rows.size(); i++) {
 			List<String> row = rows.get(i);
 			if (row == null) {
 				continue;
 			}
+			int dCol = -1;
+			boolean hasChannel = false;
+			boolean hasCost = false;
+			boolean hasImps = false;
 			for (int j = 0; j < row.size(); j++) {
 				String val = cell(row, j).toLowerCase(Locale.ROOT);
-				if (val.equals("flight start")) {
-					headerRowIdx = i;
-					startCol = j;
-				}
-				if (val.equals("flight end")) {
-					endCol = j;
+				switch (val) {
+					case "date" -> dCol = j;
+					case "channel" -> hasChannel = true;
+					case "cost" -> hasCost = true;
+					case "impressions" -> hasImps = true;
+					default -> {
+					}
 				}
 			}
-			if (headerRowIdx >= 0 && startCol >= 0 && endCol >= 0) {
+			if (dCol >= 0 && hasChannel && hasCost && hasImps) {
+				headerRowIdx = i;
+				dateCol = dCol;
 				break;
 			}
 		}
 
-		if (headerRowIdx < 0 || startCol < 0 || endCol < 0) {
+		if (headerRowIdx < 0) {
 			return null;
 		}
 
-		LocalDate minStart = null;
-		LocalDate maxEnd = null;
-
-		outer:
+		LocalDate min = null;
+		LocalDate max = null;
 		for (int i = headerRowIdx + 1; i < rows.size(); i++) {
 			List<String> row = rows.get(i);
 			if (row == null) {
 				continue;
 			}
-			String rowText = joinLower(row, 4);
-			for (String stop : catalog.sheetStopWords()) {
-				if (rowText.contains(stop)) {
-					break outer;
-				}
-			}
-
-			String startVal = cellAt(row, startCol);
-			String endVal = cellAt(row, endCol);
-			if (startVal.isEmpty()) {
+			String val = cellAt(row, dateCol);
+			if (val.isEmpty()) {
 				continue;
 			}
-			LocalDate ds = parseDate(startVal);
-			if (ds == null) {
+			LocalDate d = parseDate(val);
+			if (d == null) {
 				continue;
 			}
-
-			if (minStart == null || ds.isBefore(minStart)) {
-				minStart = ds;
+			if (min == null || d.isBefore(min)) {
+				min = d;
 			}
-			LocalDate de = endVal.isEmpty() ? null : parseDate(endVal);
-			if (de != null && (maxEnd == null || de.isAfter(maxEnd))) {
-				maxEnd = de;
+			if (max == null || d.isAfter(max)) {
+				max = d;
 			}
 		}
 
-		if (minStart == null) {
+		if (min == null) {
 			return null;
 		}
-		return new FlightDates(minStart, maxEnd != null ? maxEnd : minStart);
+		return new FlightDates(min, max);
 	}
 
 	@Override
@@ -164,77 +151,6 @@ public class SheetRowHelperImpl implements SheetRowHelper {
 			return MD.format(minStart) + " \u2013 " + MDY.format(maxEnd);
 		}
 		return MDY.format(minStart) + " \u2013 " + MDY.format(maxEnd);
-	}
-
-	@Override
-	public String extractFlightDates(List<List<String>> rows) {
-
-		FlightDates fd = extractFlightTimestamps(rows);
-		return fd == null ? null : formatFlightDates(fd.start(), fd.end());
-	}
-
-	@Override
-	public FlightDates parseFlightDateRange(String dateStr) {
-
-		if (dateStr == null) {
-			return null;
-		}
-		String s = dateStr
-				.replace('\u00A0', ' ')
-				.replace('\u2013', '\u2013')
-				.replace('\u2014', '\u2013')
-				.trim();
-
-		String[] parts = s.split("\\s*[\u2013\\-]\\s*", 2);
-		if (parts.length == 2) {
-			String rawStart = parts[0];
-			String rawEnd = parts[1];
-			if (!rawStart.matches(".*\\d{4}.*")) {
-				java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d{4})").matcher(rawEnd);
-				if (m.find()) {
-					rawStart = rawStart + ", " + m.group(1);
-				}
-			}
-			LocalDate ds = parseDate(rawStart.trim());
-			LocalDate de = parseDate(rawEnd.trim());
-			if (ds != null && de != null) {
-				return new FlightDates(ds, de);
-			}
-		}
-
-		LocalDate single = parseDate(s);
-		if (single != null) {
-			return new FlightDates(single, single);
-		}
-		return null;
-	}
-
-	/**
-	 * Implementation note: resolution priority is manual "Flight dates:" in adjustments →
-	 * manual in sheet → auto-detected flight columns in adjustments → in sheet.
-	 */
-	@Override
-	public FlightDates resolveFlightTimestamps(List<List<String>> sheetRows, List<List<String>> adjRows) {
-
-		String manual = findLabelValue(adjRows, "Flight dates:");
-		if (manual != null) {
-			FlightDates parsed = parseFlightDateRange(manual);
-			if (parsed != null) {
-				return parsed;
-			}
-		}
-		manual = findLabelValue(sheetRows, "Flight dates:");
-		if (manual != null) {
-			FlightDates parsed = parseFlightDateRange(manual);
-			if (parsed != null) {
-				return parsed;
-			}
-		}
-		FlightDates fromAdj = extractFlightTimestamps(adjRows);
-		if (fromAdj != null) {
-			return fromAdj;
-		}
-		return extractFlightTimestamps(sheetRows);
 	}
 
 	// ── date parsing (handles the date formats Sheets emits) ──

@@ -21,6 +21,10 @@ import java.util.List;
  *                        ###"} marker row), scanned by Claude to extract the geo targeting wherever it lives
  * @param lineItemMapping mapping from media-plan tactics to their BigQuery line-item IDs, driving chart data queries
  * @param bqSheetId       Google Sheet ID backing the BigQuery export; when blank, chart generation is skipped
+ * @param dateFilter      user-confirmed raw-data date window (ALL or an inclusive RANGE); when {@code null} or ALL the
+ *                        full date range present in the raw data ("Basic" tab) is used. This is the sole source of the
+ *                        report flight window: it gates which delivery rows contribute and fills {@code {{flight_dates}}}.
+ *                        The media plan is never consulted for dates.
  */
 public record GeneratePayload(
 		String brief,
@@ -32,7 +36,8 @@ public record GeneratePayload(
 		List<List<String>> estimatesRows,
 		List<List<String>> geoRows,
 		List<LineItemMapping> lineItemMapping,
-		String bqSheetId
+		String bqSheetId,
+		DateFilter dateFilter
 ) {
 
 }

@@ -58,7 +58,7 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		} else {
 			start.put("{{report_type}}", campaignResolvers.resolve(sheet, adj, "Report type:"));
 		}
-		start.put("{{flight_dates}}", campaignResolvers.resolveFlightDates(sheet, adj));
+		start.put("{{flight_dates}}", flightDatesResolved(data));
 		start.put("{{total_investment}}", campaignResolvers.resolveTotalInvestment(sheet, adj, data));
 		start.put("{{primary_kpis}}", campaignResolvers.resolvePrimaryKpis(sheet, adj, primaryKpis));
 		start.put("{{audience_age}}", campaignResolvers.resolveAudienceAge(sheet, adj, ccA.audienceAge()));
@@ -189,6 +189,21 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 					tacticExtraction.normalizeTacticDisplayName(mediaTactics.get(idx)), "sheet");
 		}
 		return new Resolved("Tactic " + n + ":", null, "not_found");
+	}
+
+	/**
+	 * Builds the {@code {{flight_dates}}} value from the report's confirmed date window, which the
+	 * collector derives from the user-confirmed raw-data date filter (never the media plan).
+	 *
+	 * @param data the collected campaign data carrying the formatted flight-date range
+	 * @return a resolved flight-date entry sourced from the raw data, or a {@code not_found} entry
+	 */
+	Resolved flightDatesResolved(CampaignData data) {
+		String value = data == null ? null : data.flightDates();
+		if (value == null || value.isBlank()) {
+			return new Resolved("Raw-data date range (confirmed)", null, "not_found");
+		}
+		return new Resolved("Raw-data date range (confirmed)", value, "adj");
 	}
 
 	PreviewSection buildPreviewSection(String title, Map<String, Resolved> entries) {

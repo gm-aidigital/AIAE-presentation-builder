@@ -39,12 +39,17 @@ public interface SheetRowHelper {
 	boolean referencesGeoTab(String value);
 
 	/**
-	 * Reads Flight Start / Flight End columns and returns the min/max flight window.
+	 * Detects the full min/max date range present in the raw-data (Elevate "Basic" tab / BigQuery
+	 * export) rows. Locates the delivery header row (a row carrying {@code date}, {@code channel},
+	 * {@code cost} and {@code impressions} columns) and returns the earliest/latest parseable value
+	 * in its {@code date} column. This is the source of truth for the report flight window and the
+	 * {@code {{flight_dates}}} placeholder; the media plan is never consulted for dates.
 	 *
-	 * @param rows sheet grid containing flight columns (may be {@code null})
-	 * @return parsed flight boundaries, or {@code null} when headers or dates are missing
+	 * @param rows raw-data grid to scan (may be {@code null})
+	 * @return the inclusive {@link FlightDates} range covering every dated row, or {@code null} when
+	 *         no delivery header or no parseable date is found
 	 */
-	FlightDates extractFlightTimestamps(List<List<String>> rows);
+	FlightDates detectDataDateRange(List<List<String>> rows);
 
 	/**
 	 * Formats a flight date pair for display in placeholders.
@@ -54,31 +59,6 @@ public interface SheetRowHelper {
 	 * @return formatted flight-date range string
 	 */
 	String formatFlightDates(LocalDate minStart, LocalDate maxEnd);
-
-	/**
-	 * Extracts and formats flight dates from a sheet grid.
-	 *
-	 * @param rows sheet grid containing flight columns (may be {@code null})
-	 * @return formatted flight-date range, or {@code null} when none can be extracted
-	 */
-	String extractFlightDates(List<List<String>> rows);
-
-	/**
-	 * Parses a formatted flight-date range string back into boundaries.
-	 *
-	 * @param dateStr formatted range or single date (may be {@code null})
-	 * @return parsed start/end dates, or {@code null} when parsing fails
-	 */
-	FlightDates parseFlightDateRange(String dateStr);
-
-	/**
-	 * Resolves flight boundaries from adjustments and sheet rows.
-	 *
-	 * @param sheetRows main data sheet rows (lower precedence)
-	 * @param adjRows   adjustments rows (higher precedence)
-	 * @return resolved flight window, or {@code null} when none found
-	 */
-	FlightDates resolveFlightTimestamps(List<List<String>> sheetRows, List<List<String>> adjRows);
 
 	/**
 	 * Parses a single date string from common Sheets formats.

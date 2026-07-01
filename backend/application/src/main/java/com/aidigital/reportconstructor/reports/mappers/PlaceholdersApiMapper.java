@@ -1,5 +1,6 @@
 package com.aidigital.reportconstructor.reports.mappers;
 
+import com.aidigital.reportconstructor.api.v1.model.DateRangeResultV1;
 import com.aidigital.reportconstructor.api.v1.model.GenerateRequestV1;
 import com.aidigital.reportconstructor.api.v1.model.LabelPairV1;
 import com.aidigital.reportconstructor.api.v1.model.PlaceholderEntryV1;
@@ -8,6 +9,7 @@ import com.aidigital.reportconstructor.api.v1.model.PreviewResultV1;
 import com.aidigital.reportconstructor.api.v1.model.SectionV1;
 import com.aidigital.reportconstructor.api.v1.model.SourceV1;
 import com.aidigital.reportconstructor.config.ApplicationMapperConfig;
+import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
 import com.aidigital.reportconstructor.service.reports.dto.LineItemMapping;
 import com.aidigital.reportconstructor.service.reports.dto.Placeholder;
@@ -47,6 +49,15 @@ public interface PlaceholdersApiMapper {
 	@Mapping(target = "reportType", expression = "java(body.getReportType().getValue())")
 	@Mapping(target = "bqSheetId", ignore = true)
 	GeneratePayload toPayload(PreviewRequestV1 body);
+
+	/**
+	 * Converts the detected raw-data flight window into its V1 date-range response. A {@code null}
+	 * window yields an empty response with {@code null} start/end (no dated rows found).
+	 *
+	 * @param range the detected inclusive date window, or {@code null} when none was found
+	 * @return the V1 date-range response DTO
+	 */
+	DateRangeResultV1 toDateRangeResponse(FlightDates range);
 
 	/**
 	 * Converts an API mapping entry into a service line-item mapping.

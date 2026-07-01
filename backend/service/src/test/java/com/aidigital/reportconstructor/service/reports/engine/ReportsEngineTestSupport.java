@@ -28,7 +28,7 @@ public final class ReportsEngineTestSupport {
 	}
 
 	static SheetRowHelper sheetRowHelper() {
-		return new SheetRowHelperImpl(tacticCatalog());
+		return new SheetRowHelperImpl();
 	}
 
 	static LineItemNamingHelper lineItemNamingHelper() {

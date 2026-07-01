@@ -28,7 +28,8 @@ class PlaceholderLabelCollectorImplTest {
 				List.of(),
 				List.of(),
 				List.of(),
-				""
+				"",
+				null
 		);
 
 		Labels labels = collector.collectAllLabels(payload);

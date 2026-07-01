@@ -5,6 +5,7 @@ import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
+import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
 import com.aidigital.reportconstructor.service.reports.dto.Placeholder;
 import com.aidigital.reportconstructor.service.reports.dto.PreviewSection;
@@ -15,6 +16,7 @@ import com.aidigital.reportconstructor.service.reports.helpers.PlaceholderClaude
 import com.aidigital.reportconstructor.service.reports.helpers.PlaceholderLabelCollector;
 import com.aidigital.reportconstructor.service.reports.helpers.PlaceholderSectionBuilder;
 import com.aidigital.reportconstructor.service.reports.helpers.PlaceholderValueFlattener;
+import com.aidigital.reportconstructor.service.reports.helpers.SheetRowHelper;
 import com.aidigital.reportconstructor.service.reports.services.PlaceholderResolverService;
 import com.aidigital.reportconstructor.service.reports.services.PreviewResult;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +34,7 @@ public class PlaceholderResolverServiceImpl implements PlaceholderResolverServic
 
 	private final CampaignDataCollector campaignDataCollector;
 	private final CampaignResolvers campaignResolvers;
+	private final SheetRowHelper sheetUtils;
 	private final PlaceholderSectionBuilder sectionBuilder;
 	private final PlaceholderClaudeGate claudeGate;
 	private final PlaceholderLabelCollector labelCollector;
@@ -66,6 +69,11 @@ public class PlaceholderResolverServiceImpl implements PlaceholderResolverServic
 	}
 
 	@Override
+	public FlightDates detectDateRange(List<List<String>> adjRows) {
+		return sheetUtils.detectDataDateRange(adjRows);
+	}
+
+	@Override
 	public Map<String, String> buildFlatReplacements(
 			GeneratePayload payload,
 			CampaignData data,
@@ -85,7 +93,7 @@ public class PlaceholderResolverServiceImpl implements PlaceholderResolverServic
 	public CampaignData collectData(GeneratePayload payload) {
 		return campaignDataCollector.collect(
 				payload.sheetRows(), payload.adjRows(), payload.audienceRows(),
-				payload.estimatesRows(), payload.lineItemMapping()
+				payload.estimatesRows(), payload.lineItemMapping(), payload.dateFilter()
 		);
 	}
 

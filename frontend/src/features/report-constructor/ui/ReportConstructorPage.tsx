@@ -3,9 +3,11 @@ import { useClerk, useUser } from "@clerk/clerk-react";
 import { readSheetTab } from "@/shared/api/sheets";
 import type { LineItemMatchResult, PreviewResult, ReportType, Rows2D } from "@/shared/api/types";
 import { WizardProvider, useWizard } from "@/shared/wizard/WizardContext";
+import { useDetectDateRange } from "../api/useDetectDateRange";
 import { useMatchLineItems } from "../api/useMatchLineItems";
 import { usePreviewPlaceholders } from "../api/usePreviewPlaceholders";
 import { fetchReportJob, startReportJob } from "../api/useReportJob";
+import { FlightDatesCard } from "./FlightDatesCard";
 import { GeneratingOverlay } from "./GeneratingOverlay";
 import { MatchModal } from "./MatchModal";
 import { PreviewPanel } from "./PreviewPanel";
@@ -48,6 +50,8 @@ function PageInner() {
 
     const matchMutation = useMatchLineItems();
     const previewMutation = usePreviewPlaceholders();
+    const detectDateRangeMutation = useDetectDateRange();
+    const [datesDetected, setDatesDetected] = useState(false);
 
     const [mediaPulling, setMediaPulling] = useState(false);
     const [elevatePulling, setElevatePulling] = useState(false);
@@ -180,10 +184,27 @@ function PageInner() {
             });
             setReq((r) => ({ ...r, adj: false }));
             showToast(`${b.title} — ${b.rows} rows loaded`);
+            void detectDates(b.rawRows);
         } catch (e) {
             showToast(e instanceof Error ? e.message : "Could not read sheet", true);
         } finally {
             setElevatePulling(false);
+        }
+    }
+
+    // Detect the flight window from the raw-data ("Basic" tab) so the user can
+    // confirm or correct it before generating. Best-effort: on failure or no
+    // dated rows, the user enters the dates manually in the FlightDatesCard.
+    async function detectDates(adjRows: Rows2D) {
+        setDatesDetected(false);
+        try {
+            const r = await detectDateRangeMutation.mutateAsync(adjRows);
+            if (r.start && r.end) {
+                w.setDateWindow(r.start, r.end);
+                setDatesDetected(true);
+            }
+        } catch {
+            /* detection is optional — the user can still enter dates by hand */
         }
     }
 
@@ -236,6 +257,10 @@ function PageInner() {
                 estimatesRows: w.mediaPlan?.estimatesRows ?? [],
                 geoRows: w.mediaPlan?.geoRows ?? [],
                 lineItemMapping: w.mapping ?? undefined,
+                dateFilter:
+                    w.dateStart && w.dateEnd
+                        ? { mode: "RANGE", start: w.dateStart, end: w.dateEnd }
+                        : undefined,
             },
             {
                 onSuccess: (d) => {
@@ -264,6 +289,11 @@ function PageInner() {
             return;
         }
         if (!w.mediaPlan || !w.elevate) return;
+        if (!w.dateConfirmed) {
+            showToast("Confirm the flight dates before generating", true);
+            document.getElementById("s5")?.scrollIntoView({ behavior: "smooth", block: "start" });
+            return;
+        }
         setReq({ brief: false, sheet: false, adj: false, marketVolume: false });
         setResultUrl(null);
         setGenerating(true);
@@ -279,6 +309,7 @@ function PageInner() {
             geoRows: w.mediaPlan.geoRows,
             lineItemMapping: w.mapping ?? undefined,
             bqSheetId: w.elevate.sheetId,
+            dateFilter: { mode: "RANGE", start: w.dateStart, end: w.dateEnd },
         })
             .then((jobId) => {
                 setProgress({ step: 1, total: 7, label: "Queued…" });
@@ -325,6 +356,7 @@ function PageInner() {
         w.setMarketVolume("");
         w.disconnectMediaPlan();
         w.disconnectElevate();
+        setDatesDetected(false);
         setMatchData(null);
         setPreviewData(null);
         setPreviewVisible(false);
@@ -553,14 +585,27 @@ function PageInner() {
                         onDisconnect={() => {
                             w.disconnectElevate();
                             setMatchData(null);
+                            setDatesDetected(false);
                         }}
                     />
 
-                    {/* 05 Settings */}
-                    <div className={`settings-card${settingsOpen ? " open" : ""}`} id="s5">
+                    {/* 05 Flight Dates */}
+                    <FlightDatesCard
+                        connected={!!w.elevate}
+                        detecting={detectDateRangeMutation.isPending}
+                        detected={datesDetected}
+                        start={w.dateStart}
+                        end={w.dateEnd}
+                        confirmed={w.dateConfirmed}
+                        onChange={(s, e) => w.setDateWindow(s, e)}
+                        onConfirm={w.confirmDates}
+                    />
+
+                    {/* 06 Settings */}
+                    <div className={`settings-card${settingsOpen ? " open" : ""}`} id="s6">
                         <button className="settings-toggle" onClick={() => setSettingsOpen((v) => !v)}>
                             <div className="settings-toggle-left">
-                                <div className="settings-toggle-num">05</div>
+                                <div className="settings-toggle-num">06</div>
                                 <div>
                                     <div className="settings-toggle-title">Additional Settings</div>
                                     <div className="settings-toggle-desc">Report type and output options</div>

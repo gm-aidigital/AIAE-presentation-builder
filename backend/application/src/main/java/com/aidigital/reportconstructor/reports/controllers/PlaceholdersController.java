@@ -1,6 +1,8 @@
 package com.aidigital.reportconstructor.reports.controllers;
 
 import com.aidigital.reportconstructor.api.v1.PlaceholdersApi;
+import com.aidigital.reportconstructor.api.v1.model.DateRangeRequestV1;
+import com.aidigital.reportconstructor.api.v1.model.DateRangeResultV1;
 import com.aidigital.reportconstructor.api.v1.model.PreviewRequestV1;
 import com.aidigital.reportconstructor.api.v1.model.PreviewResultV1;
 import com.aidigital.reportconstructor.reports.mappers.PlaceholdersApiMapper;
@@ -23,5 +25,11 @@ public class PlaceholdersController implements PlaceholdersApi {
 	public ResponseEntity<PreviewResultV1> previewPlaceholders(PreviewRequestV1 body) {
 		var result = placeholders.resolve(mapper.toPayload(body));
 		return ResponseEntity.ok(mapper.toPreviewResponse(result));
+	}
+
+	@Override
+	public ResponseEntity<DateRangeResultV1> detectDateRange(DateRangeRequestV1 body) {
+		var range = placeholders.detectDateRange(body.getAdjRows());
+		return ResponseEntity.ok(mapper.toDateRangeResponse(range));
 	}
 }

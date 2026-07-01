@@ -67,7 +67,7 @@ class ReportGenerationServiceImplTest {
 	@Test
 	void shouldThrowAppExceptionWhenBriefIsBlankTest() {
 		GeneratePayload payload = new GeneratePayload(
-				"  ", "standard", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "");
+				"  ", "standard", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null);
 
 		Throwable thrown = catchThrowable(() -> service.start("user-1", "clerk-1", payload));
 
@@ -84,7 +84,7 @@ class ReportGenerationServiceImplTest {
 		queued.setTotal(7);
 		queued.setOwnerUserId("user-1");
 		GeneratePayload payload = new GeneratePayload(
-				"Campaign brief.", "standard", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "");
+				"Campaign brief.", "standard", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null);
 		when(jobProgress.createQueuedJob("user-1", "standard")).thenReturn(queued);
 
 		ReportJobEntity job = service.enqueue("user-1", payload);
@@ -98,7 +98,7 @@ class ReportGenerationServiceImplTest {
 	@Test
 	void shouldEnqueueAndKickOffAsyncRunOnStartTest() {
 		GeneratePayload payload = new GeneratePayload(
-				"Campaign brief.", "standard", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "");
+				"Campaign brief.", "standard", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null);
 		ReportJobEntity queued = new ReportJobEntity();
 		queued.setId(5L);
 		when(jobProgress.createQueuedJob("user-1", "standard")).thenReturn(queued);
@@ -114,7 +114,7 @@ class ReportGenerationServiceImplTest {
 	@Test
 	void shouldRunPipelineAndMarkJobDoneWhenClaudeOfflineTest() {
 		GeneratePayload payload = new GeneratePayload(
-				"Campaign brief.", "standard", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "");
+				"Campaign brief.", "standard", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null);
 		when(claude.isLive()).thenReturn(false);
 		when(placeholders.buildFlatReplacements(any(), any(), any(), any(), any(), any(), any(), any()))
 				.thenReturn(Map.of());
@@ -131,7 +131,7 @@ class ReportGenerationServiceImplTest {
 	@Test
 	void shouldMarkJobFailedWhenPipelineThrowsTest() {
 		GeneratePayload payload = new GeneratePayload(
-				"Campaign brief.", "standard", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "");
+				"Campaign brief.", "standard", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null);
 		when(placeholders.collectData(payload)).thenThrow(new RuntimeException("boom"));
 
 		service.run(8L, payload, "clerk-1");

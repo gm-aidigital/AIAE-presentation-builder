@@ -1,6 +1,7 @@
 package com.aidigital.reportconstructor.service.reports.engine;
 
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
+import com.aidigital.reportconstructor.service.reports.dto.DateFilter;
 import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
 import com.aidigital.reportconstructor.service.reports.dto.LineItemMapping;
 import com.aidigital.reportconstructor.service.reports.dto.Tactic;
@@ -62,7 +63,8 @@ public class CampaignDataCollector {
 			List<List<String>> adjRows,
 			List<List<String>> audienceRows,
 			List<List<String>> estimatesRows,
-			List<LineItemMapping> lineItemMapping
+			List<LineItemMapping> lineItemMapping,
+			DateFilter dateFilter
 	) {
 		if (sheetRows == null) {
 			sheetRows = List.of();
@@ -96,8 +98,8 @@ public class CampaignDataCollector {
 		String kpis = coalesce(sheetUtils.findLabelValue(adjRows, "Primary KPIs:"),
 				sheetUtils.findLabelValue(sheetRows, "Primary KPIs:"));
 
-		// ── 2. Flight ─────────────────────────────────────────────────────────
-		FlightDates flightTs = sheetUtils.resolveFlightTimestamps(sheetRows, adjRows);
+		// ── 2. Flight window: user-confirmed date filter over the raw data ────
+		FlightDates flightTs = resolveDateWindow(dateFilter, adjRows);
 		String flightDates = flightTs != null ? sheetUtils.formatFlightDates(flightTs.start(), flightTs.end()) : null;
 
 		// ── 3. Tactics list ───────────────────────────────────────────────────
@@ -440,6 +442,27 @@ public class CampaignDataCollector {
 				tacticsData,
 				audienceTabText
 		);
+	}
+
+	/**
+	 * Resolves the report's date window from the user-confirmed filter, falling back to the full
+	 * raw-data range. A {@code RANGE} filter clips delivery rows and the {@code {{flight_dates}}}
+	 * placeholder to its own bounds; {@code ALL} or a {@code null} filter spans every date present in
+	 * the raw data ("Basic" tab). The media plan is never consulted for dates.
+	 *
+	 * @param dateFilter user-selected filter (may be {@code null})
+	 * @param adjRows    raw-data rows scanned for the full date range when no explicit range applies
+	 * @return the inclusive window, or {@code null} when no dates can be detected
+	 */
+	FlightDates resolveDateWindow(DateFilter dateFilter, List<List<String>> adjRows) {
+
+		if (dateFilter != null) {
+			FlightDates window = dateFilter.toWindow();
+			if (window != null) {
+				return window;
+			}
+		}
+		return sheetUtils.detectDataDateRange(adjRows);
 	}
 
 	// ── Estimates parser ──────────────────────────────────────────────────────

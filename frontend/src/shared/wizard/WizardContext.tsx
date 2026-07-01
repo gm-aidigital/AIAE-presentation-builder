@@ -44,6 +44,11 @@ interface WizardContextValue {
     elevate: ElevateState | null;
     mapping: MappingEntry[] | null;
     matchConfirmed: boolean;
+    // Flight window confirmed by the user, derived from the raw-data ("Basic" tab)
+    // date range. Dates are ISO yyyy-MM-dd; the media plan is never used for dates.
+    dateStart: string;
+    dateEnd: string;
+    dateConfirmed: boolean;
 
     setBrief(value: string): void;
     setReportType(value: ReportType): void;
@@ -56,6 +61,9 @@ interface WizardContextValue {
     setMapping(mapping: MappingEntry[]): void;
     confirmMatch(): void;
     resetMatch(): void;
+    setDateWindow(start: string, end: string): void;
+    confirmDates(): void;
+    resetDates(): void;
 }
 
 const WizardContext = createContext<WizardContextValue | null>(null);
@@ -68,10 +76,21 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     const [elevate, setElevate] = useState<ElevateState | null>(null);
     const [mapping, setMappingState] = useState<MappingEntry[] | null>(null);
     const [matchConfirmed, setMatchConfirmed] = useState(false);
+    const [dateStart, setDateStart] = useState("");
+    const [dateEnd, setDateEnd] = useState("");
+    const [dateConfirmed, setDateConfirmed] = useState(false);
 
     const invalidateMatch = useCallback(() => {
         setMappingState(null);
         setMatchConfirmed(false);
+    }, []);
+
+    // Reconnecting/disconnecting the Elevate raw data replaces the "Basic" tab the
+    // date window is derived from, so any previously confirmed window is stale.
+    const invalidateDates = useCallback(() => {
+        setDateStart("");
+        setDateEnd("");
+        setDateConfirmed(false);
     }, []);
 
     const value = useMemo<WizardContextValue>(
@@ -83,6 +102,9 @@ export function WizardProvider({ children }: { children: ReactNode }) {
             elevate,
             mapping,
             matchConfirmed,
+            dateStart,
+            dateEnd,
+            dateConfirmed,
             setBrief: setBriefState,
             setReportType: setReportTypeState,
             setMarketVolume: setMarketVolumeState,
@@ -99,10 +121,12 @@ export function WizardProvider({ children }: { children: ReactNode }) {
             connectElevate: (v) => {
                 setElevate(v);
                 invalidateMatch();
+                invalidateDates();
             },
             disconnectElevate: () => {
                 setElevate(null);
                 invalidateMatch();
+                invalidateDates();
             },
             setMapping: (m) => {
                 setMappingState(m);
@@ -110,8 +134,28 @@ export function WizardProvider({ children }: { children: ReactNode }) {
             },
             confirmMatch: () => setMatchConfirmed(true),
             resetMatch: invalidateMatch,
+            setDateWindow: (start, end) => {
+                setDateStart(start);
+                setDateEnd(end);
+                setDateConfirmed(false);
+            },
+            confirmDates: () => setDateConfirmed(true),
+            resetDates: invalidateDates,
         }),
-        [brief, reportType, marketVolume, mediaPlan, elevate, mapping, matchConfirmed, invalidateMatch]
+        [
+            brief,
+            reportType,
+            marketVolume,
+            mediaPlan,
+            elevate,
+            mapping,
+            matchConfirmed,
+            dateStart,
+            dateEnd,
+            dateConfirmed,
+            invalidateMatch,
+            invalidateDates,
+        ]
     );
 
     return <WizardContext.Provider value={value}>{children}</WizardContext.Provider>;

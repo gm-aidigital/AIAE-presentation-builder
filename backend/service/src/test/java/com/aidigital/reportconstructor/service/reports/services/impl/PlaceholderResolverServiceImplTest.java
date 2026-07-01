@@ -1,6 +1,7 @@
 package com.aidigital.reportconstructor.service.reports.services.impl;
 
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
+import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
 import com.aidigital.reportconstructor.service.reports.dto.Placeholder;
 import com.aidigital.reportconstructor.service.reports.dto.PreviewSection;
@@ -11,6 +12,7 @@ import com.aidigital.reportconstructor.service.reports.helpers.PlaceholderClaude
 import com.aidigital.reportconstructor.service.reports.helpers.PlaceholderLabelCollector;
 import com.aidigital.reportconstructor.service.reports.helpers.PlaceholderSectionBuilder;
 import com.aidigital.reportconstructor.service.reports.helpers.PlaceholderValueFlattener;
+import com.aidigital.reportconstructor.service.reports.helpers.SheetRowHelper;
 import com.aidigital.reportconstructor.service.reports.services.Labels;
 import com.aidigital.reportconstructor.service.reports.services.PreviewResult;
 import org.junit.jupiter.api.Test;
@@ -44,6 +46,8 @@ class PlaceholderResolverServiceImplTest {
 	PlaceholderValueFlattener valueFlattener;
 	@Mock
 	ReportClaudeDefaults claudeDefaults;
+	@Mock
+	SheetRowHelper sheetUtils;
 
 	@InjectMocks
 	PlaceholderResolverServiceImpl service;
@@ -51,7 +55,7 @@ class PlaceholderResolverServiceImplTest {
 	private static GeneratePayload payload(List<List<String>> sheetRows, List<List<String>> adjRows) {
 		return new GeneratePayload(
 				"brief", "standard", sheetRows, adjRows,
-				List.of(), List.of(), List.of(), List.of(), "");
+				List.of(), List.of(), List.of(), List.of(), "", null);
 	}
 
 	private static CampaignData emptyData() {
@@ -99,14 +103,29 @@ class PlaceholderResolverServiceImplTest {
 	void shouldDelegateCollectDataToCollectorTest() {
 		GeneratePayload payload = payload(List.of(List.of("r")), List.of());
 		CampaignData data = emptyData();
-		when(campaignDataCollector.collect(any(), any(), any(), any(), any())).thenReturn(data);
+		when(campaignDataCollector.collect(any(), any(), any(), any(), any(), any())).thenReturn(data);
 
 		CampaignData result = service.collectData(payload);
 
 		assertThat(result).isSameAs(data);
 		verify(campaignDataCollector).collect(
 				payload.sheetRows(), payload.adjRows(), payload.audienceRows(),
-				payload.estimatesRows(), payload.lineItemMapping());
+				payload.estimatesRows(), payload.lineItemMapping(), payload.dateFilter());
+	}
+
+	@Test
+	void shouldDelegateDetectDateRangeToSheetHelperTest() {
+		// Given: raw-data rows and a detected window from the sheet helper
+		List<List<String>> adjRows = List.of(List.of("Date", "Channel", "Cost", "Impressions"));
+		FlightDates window = new FlightDates(java.time.LocalDate.of(2026, 1, 1), java.time.LocalDate.of(2026, 1, 31));
+		when(sheetUtils.detectDataDateRange(adjRows)).thenReturn(window);
+
+		// When: the service detects the date range
+		FlightDates result = service.detectDateRange(adjRows);
+
+		// Then: it returns exactly what the helper produced
+		assertThat(result).isSameAs(window);
+		verify(sheetUtils).detectDataDateRange(adjRows);
 	}
 
 	@Test

@@ -24,13 +24,17 @@ class SheetUtilsTest {
 	}
 
 	@Test
-	void extractFlightTimestamps_usesMinStartAndMaxEnd() {
+	void detectDataDateRange_returnsMinAndMaxOfDateColumn() {
+		// Given: a raw-data ("Basic" tab) grid with a delivery header and dated rows
 		List<List<String>> rows = List.of(
-				List.of("Flight Start", "Flight End"),
-				List.of("2026-03-01", "2026-03-10"),
-				List.of("2026-03-05", "2026-03-31")
+				List.of("Date", "Channel", "Cost", "Impressions"),
+				List.of("2026-03-05", "Display", "10", "1000"),
+				List.of("2026-03-01", "Video", "20", "2000"),
+				List.of("2026-03-31", "Display", "30", "3000")
 		);
-		FlightDates fd = sheetUtils.extractFlightTimestamps(rows);
+		// When: the raw-data date range is detected
+		FlightDates fd = sheetUtils.detectDataDateRange(rows);
+		// Then: it spans the earliest and latest dates present, ignoring row order
 		assertThat(fd).isNotNull();
 		assertThat(fd.start()).isEqualTo(LocalDate.of(2026, 3, 1));
 		assertThat(fd.end()).isEqualTo(LocalDate.of(2026, 3, 31));
