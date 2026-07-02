@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useClerk, useUser } from "@clerk/clerk-react";
-import { readSheetTab } from "@/shared/api/sheets";
+import { MEDIA_PLAN_FALLBACK_TAB, MEDIA_PLAN_PRIMARY_TAB, readSheetTab } from "@/shared/api/sheets";
 import type { LineItemMatchResult, PreviewResult, ReportType, Rows2D } from "@/shared/api/types";
 import { WizardProvider, useWizard } from "@/shared/wizard/WizardContext";
 import { useDetectDateRange } from "../api/useDetectDateRange";
@@ -99,10 +99,18 @@ function PageInner() {
         setMediaPulling(true);
         setMatchData(null);
         try {
-            const p = await readSheetTab(url, "Proposal");
+            // Prefer the "Proposal" tab; when the workbook has none (e.g. an RFP
+            // export that only ships a visible "Estimates" tab), fall back to
+            // Estimates as the primary media-plan source.
+            let p = await readSheetTab(url, MEDIA_PLAN_PRIMARY_TAB);
+            if (!p.ok && p.error === "tab_not_found") {
+                p = await readSheetTab(url, MEDIA_PLAN_FALLBACK_TAB);
+            }
             if (!p.ok) {
                 showToast(
-                    p.error === "tab_not_found" ? 'Tab "Proposal" not found' : p.error || "Could not read sheet",
+                    p.error === "tab_not_found"
+                        ? `No "${MEDIA_PLAN_PRIMARY_TAB}" or "${MEDIA_PLAN_FALLBACK_TAB}" tab found`
+                        : p.error || "Could not read sheet",
                     true
                 );
                 return;

@@ -9,10 +9,11 @@ import java.util.Map;
 public interface TacticExtractionHelper {
 
 	/**
-	 * Extracts tactic names from the Media column in top-to-bottom order.
+	 * Extracts tactic names from the Media column in top-to-bottom order, keeping only
+	 * recognised tactics and skipping interleaved section-label and added-value rows.
 	 *
 	 * @param rows media-plan grid rows (may be {@code null})
-	 * @return tactic names under the Media header, in sheet order
+	 * @return recognised tactic names under the Media header, in sheet order
 	 */
 	List<String> extractTacticsFromMedia(List<List<String>> rows);
 
@@ -23,6 +24,15 @@ public interface TacticExtractionHelper {
 	 * @return number of known tactics found below Media
 	 */
 	int countTacticsInMediaPlan(List<List<String>> rows);
+
+	/**
+	 * Reports whether a Media-column cell names a recognised tactic, used to keep
+	 * tactic-row scanning aligned across resolvers.
+	 *
+	 * @param mediaCell the Media-column cell value (may be {@code null})
+	 * @return {@code true} when the value is a known tactic
+	 */
+	boolean isKnownTactic(String mediaCell);
 
 	/**
 	 * Maps a raw media-plan tactic name to its Slides display label.

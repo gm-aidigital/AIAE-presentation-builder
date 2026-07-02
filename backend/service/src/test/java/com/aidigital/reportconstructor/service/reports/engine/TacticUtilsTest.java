@@ -38,6 +38,28 @@ class TacticUtilsTest {
 	}
 
 	@Test
+	void extractTacticsFromMedia_skipsSectionLabelsAndAddedValueRows() {
+		// Given: a grouped media plan (no "Proposal" tab) where each tactic sits under
+		// a section-label row with an empty Media cell, followed by added-value rows.
+		List<List<String>> rows = List.of(
+				List.of("", "Flight Start", "Flight End", "Geo", "Media", "Comments"),
+				List.of("", "Pool Renovation", "", "", "", ""),
+				List.of("", "2026-04-06", "2026-06-30", "See Geo", "Programmatic Display", ""),
+				List.of("", "New Pool", "", "", "", ""),
+				List.of("", "2026-04-06", "2026-06-30", "See Geo", "Programmatic Display", ""),
+				List.of("", "Added Value Reports", "", "", "", ""),
+				List.of("", "2026-04-06", "2026-06-30", "", "AI Digital Insights Reporting", ""),
+				List.of("", "Totals:", "", "", "", "")
+		);
+
+		// When: extracting the Media-column tactics.
+		List<String> tactics = tacticUtils.extractTacticsFromMedia(rows);
+
+		// Then: only the recognised tactics are kept, in sheet order.
+		assertThat(tactics).containsExactly("Programmatic Display", "Programmatic Display");
+	}
+
+	@Test
 	void normalizeTacticDisplayName_mapsCtvAlias() {
 		assertThat(tacticUtils.normalizeTacticDisplayName("programmatic ctv")).isEqualTo("CTV");
 		assertThat(catalog.displayFor("unknown tactic")).isEqualTo("unknown tactic");

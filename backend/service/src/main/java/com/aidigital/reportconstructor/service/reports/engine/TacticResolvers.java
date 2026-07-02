@@ -440,8 +440,11 @@ public class TacticResolvers {
 			if (stop) {
 				break;
 			}
-			if (c.isEmpty()) {
-				break;
+			// Skip section-label rows (empty Media cell) and added-value/reporting
+			// description rows (non-tactic Media cell) so the n-th tactic row stays
+			// aligned with the Media-column tactic extraction.
+			if (c.isEmpty() || !tacticExtraction.isKnownTactic(c)) {
+				continue;
 			}
 			tacticRows.add(row);
 		}

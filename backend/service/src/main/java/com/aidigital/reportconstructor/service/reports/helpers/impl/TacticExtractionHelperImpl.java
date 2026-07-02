@@ -73,12 +73,22 @@ public class TacticExtractionHelperImpl implements TacticExtractionHelper {
 			if (stop) {
 				break;
 			}
-			if (c.isEmpty()) {
-				break;
+			// Media plans interleave tactic rows with section-label rows (empty Media
+			// cell) and added-value/reporting description rows (non-tactic Media cell).
+			// Skip those and keep only recognised tactics rather than stopping at the
+			// first gap, so grouped plans without a "Proposal" tab still parse.
+			if (c.isEmpty() || !catalog.isKnownTactic(c)) {
+				continue;
 			}
 			out.add(c);
 		}
 		return out;
+	}
+
+	@Override
+	public boolean isKnownTactic(String mediaCell) {
+
+		return mediaCell != null && catalog.isKnownTactic(mediaCell);
 	}
 
 	@Override

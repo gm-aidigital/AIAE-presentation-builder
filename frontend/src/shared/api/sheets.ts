@@ -4,6 +4,9 @@ import { apiClient } from "./client";
 import type { SheetReadResult } from "./types";
 
 export const MEDIA_PLAN_PRIMARY_TAB = "Proposal";
+// Workbooks without a "Proposal" tab (e.g. RFP exports) keep the media plan on the
+// visible "Estimates" tab; fall back to it as the primary media-plan source.
+export const MEDIA_PLAN_FALLBACK_TAB = "Estimates";
 export const MEDIA_PLAN_OPTIONAL_TABS = ["Audience&Inventory", "Estimates", "Geo"] as const;
 export const ELEVATE_TAB = "Basic";
 
