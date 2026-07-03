@@ -1,12 +1,12 @@
 package com.aidigital.reportconstructor.service.reports.helpers.impl;
 
+import com.aidigital.reportconstructor.service.reports.dto.PlanTactic;
 import com.aidigital.reportconstructor.service.reports.engine.TacticCatalog;
-import com.aidigital.reportconstructor.service.reports.helpers.SheetRowHelper;
+import com.aidigital.reportconstructor.service.reports.helpers.MediaPlanTacticExtractor;
 import com.aidigital.reportconstructor.service.reports.helpers.TacticExtractionHelper;
 
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -23,11 +23,11 @@ public class TacticExtractionHelperImpl implements TacticExtractionHelper {
 
 
 	private final TacticCatalog catalog;
-	private final SheetRowHelper sheetRows;
+	private final MediaPlanTacticExtractor tacticExtractor;
 
-	public TacticExtractionHelperImpl(TacticCatalog catalog, SheetRowHelper sheetRows) {
+	public TacticExtractionHelperImpl(TacticCatalog catalog, MediaPlanTacticExtractor tacticExtractor) {
 		this.catalog = catalog;
-		this.sheetRows = sheetRows;
+		this.tacticExtractor = tacticExtractor;
 	}
 
 	// ── Media column extraction ───────────────────────────────────────────────
@@ -35,54 +35,7 @@ public class TacticExtractionHelperImpl implements TacticExtractionHelper {
 	@Override
 	public List<String> extractTacticsFromMedia(List<List<String>> rows) {
 
-		List<String> out = new ArrayList<>();
-		if (rows == null) {
-			return out;
-		}
-		int mediaRow = -1;
-		int mediaCol = -1;
-		outer:
-		for (int i = 0; i < rows.size(); i++) {
-			List<String> row = rows.get(i);
-			if (row == null) {
-				continue;
-			}
-			for (int j = 0; j < row.size(); j++) {
-				if (sheetRows.cellAt(row, j).toLowerCase(Locale.ROOT).equals("media")) {
-					mediaRow = i;
-					mediaCol = j;
-					break outer;
-				}
-			}
-		}
-		if (mediaRow < 0) {
-			return out;
-		}
-
-		for (int i = mediaRow + 1; i < rows.size(); i++) {
-			List<String> row = rows.get(i);
-			String c = sheetRows.cellAt(row, mediaCol);
-			String rowText = sheetRows.joinLower(row, 4);
-			boolean stop = false;
-			for (String sw : catalog.sheetStopWords()) {
-				if (rowText.contains(sw)) {
-					stop = true;
-					break;
-				}
-			}
-			if (stop) {
-				break;
-			}
-			// Media plans interleave tactic rows with section-label rows (empty Media
-			// cell) and added-value/reporting description rows (non-tactic Media cell).
-			// Skip those and keep only recognised tactics rather than stopping at the
-			// first gap, so grouped plans without a "Proposal" tab still parse.
-			if (c.isEmpty() || !catalog.isKnownTactic(c)) {
-				continue;
-			}
-			out.add(c);
-		}
-		return out;
+		return tacticExtractor.extract(rows).stream().map(PlanTactic::name).toList();
 	}
 
 	@Override
@@ -94,40 +47,7 @@ public class TacticExtractionHelperImpl implements TacticExtractionHelper {
 	@Override
 	public int countTacticsInMediaPlan(List<List<String>> rows) {
 
-		if (rows == null) {
-			return 0;
-		}
-		int mediaRow = -1;
-		int mediaCol = -1;
-		outer:
-		for (int i = 0; i < rows.size(); i++) {
-			List<String> row = rows.get(i);
-			if (row == null) {
-				continue;
-			}
-			for (int j = 0; j < row.size(); j++) {
-				if (sheetRows.cellAt(row, j).toLowerCase(Locale.ROOT).equals("media")) {
-					mediaRow = i;
-					mediaCol = j;
-					break outer;
-				}
-			}
-		}
-		if (mediaRow < 0) {
-			return 0;
-		}
-		int count = 0;
-		int limit = Math.min(mediaRow + 20, rows.size() - 1);
-		for (int i = mediaRow + 1; i <= limit; i++) {
-			String c = sheetRows.cellAt(rows.get(i), mediaCol);
-			if (c.isEmpty()) {
-				continue;
-			}
-			if (catalog.isKnownTactic(c)) {
-				count++;
-			}
-		}
-		return count;
+		return tacticExtractor.extract(rows).size();
 	}
 
 	@Override

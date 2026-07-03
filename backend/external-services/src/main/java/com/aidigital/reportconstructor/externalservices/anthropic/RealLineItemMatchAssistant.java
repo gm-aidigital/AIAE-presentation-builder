@@ -28,7 +28,7 @@ import java.util.Set;
 @ConditionalOnExpression("'${external.anthropic.api-key:}' != ''")
 public class RealLineItemMatchAssistant implements LineItemMatchAssistant {
 
-	private static final int MAX_TOKENS = 400;
+	private static final int MAX_TOKENS = 1024;
 	private static final int TIMEOUT_SECONDS = 30;
 	private static final int MAX_CONTEXT_CHARS = 300;
 

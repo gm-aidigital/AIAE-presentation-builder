@@ -3,7 +3,6 @@ package com.aidigital.reportconstructor.service.reports.engine;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -273,7 +272,11 @@ public class TacticCatalog {
 				"100% live sports package", "college football live sport package", "amazon fire tv",
 				"google tv", "youtube in-feed", "mix of 50% youtube tv and 50% youtube ctv (up to 15 sec)",
 				"mix of 50% youtube tv and 50% youtube ctv (up to 30 sec)", "app (google uac)",
-				"google uac", "apple search ads"
+				"google uac", "apple search ads",
+				"amazon display", "amazon video", "amazon audio",
+				"amazon audio (amazon & publisher network)", "rich media html 5",
+				"any live sports package (up to 50% live sports inventory / up to 50% shoulder inventory)",
+				"college football live sport package (up to 50% live sports inventory / up to 50% shoulder inventory)"
 		};
 		for (String k : keys) {
 			knownTactics.put(k, Boolean.TRUE);
@@ -500,14 +503,5 @@ public class TacticCatalog {
 			}
 		}
 		return DEFAULT_VOLUME_COEFFICIENT;
-	}
-
-	/**
-	 * Lowercase row-prefix stop phrases used when scanning sheet and media rows.
-	 *
-	 * @return the immutable list of stop-word prefixes
-	 */
-	public List<String> sheetStopWords() {
-		return List.of("added value", "totals", "please note", "total:");
 	}
 }

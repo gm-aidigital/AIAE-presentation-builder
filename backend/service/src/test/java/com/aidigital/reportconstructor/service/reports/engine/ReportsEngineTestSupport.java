@@ -1,10 +1,12 @@
 package com.aidigital.reportconstructor.service.reports.engine;
 
 import com.aidigital.reportconstructor.service.reports.helpers.LineItemNamingHelper;
+import com.aidigital.reportconstructor.service.reports.helpers.MediaPlanTacticExtractor;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportNumberParser;
 import com.aidigital.reportconstructor.service.reports.helpers.SheetRowHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.TacticExtractionHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.impl.LineItemNamingHelperImpl;
+import com.aidigital.reportconstructor.service.reports.helpers.impl.MediaPlanTacticExtractorImpl;
 import com.aidigital.reportconstructor.service.reports.helpers.impl.PlaceholderClaudeGateImpl;
 import com.aidigital.reportconstructor.service.reports.helpers.impl.PlaceholderSectionBuilderImpl;
 import com.aidigital.reportconstructor.service.reports.helpers.impl.ReportNumberParserImpl;
@@ -24,7 +26,11 @@ public final class ReportsEngineTestSupport {
 	}
 
 	static TacticExtractionHelper tacticExtractionHelper() {
-		return new TacticExtractionHelperImpl(tacticCatalog(), sheetRowHelper());
+		return new TacticExtractionHelperImpl(tacticCatalog(), mediaPlanTacticExtractor());
+	}
+
+	static MediaPlanTacticExtractor mediaPlanTacticExtractor() {
+		return new MediaPlanTacticExtractorImpl(tacticCatalog(), sheetRowHelper());
 	}
 
 	static SheetRowHelper sheetRowHelper() {

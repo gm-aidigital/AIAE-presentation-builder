@@ -1,6 +1,10 @@
 package com.aidigital.reportconstructor.service.reports.services.impl;
 
+import com.aidigital.reportconstructor.service.reports.engine.TacticCatalog;
+import com.aidigital.reportconstructor.service.reports.helpers.MediaPlanTacticExtractor;
 import com.aidigital.reportconstructor.service.reports.helpers.impl.LineItemNamingHelperImpl;
+import com.aidigital.reportconstructor.service.reports.helpers.impl.MediaPlanTacticExtractorImpl;
+import com.aidigital.reportconstructor.service.reports.helpers.impl.SheetRowHelperImpl;
 import com.aidigital.reportconstructor.service.reports.ports.LineItemMatchAssistant;
 import com.aidigital.reportconstructor.service.reports.services.MatchResult;
 import org.junit.jupiter.api.Test;
@@ -12,43 +16,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class LineItemMatcherServiceTest {
 
+	private final MediaPlanTacticExtractor extractor =
+			new MediaPlanTacticExtractorImpl(new TacticCatalog(), new SheetRowHelperImpl());
 	private final LineItemMatcherServiceImpl matcher =
-			new LineItemMatcherServiceImpl(new LineItemNamingHelperImpl(), (tactics, options) -> Map.of());
+			new LineItemMatcherServiceImpl(new LineItemNamingHelperImpl(), (tactics, options) -> Map.of(), extractor);
 
 	@Test
 	void extractLineItemId_readsIndexEight() {
 		assertThat(matcher.extractLineItemId("a_b_c_d_e_f_g_h_42_tail")).isEqualTo("42");
 		assertThat(matcher.extractLineItemId("short_name")).isNull();
-	}
-
-	@Test
-	void extractTactics_skipsStopPhrasesAndNonWhitelist() {
-		List<List<String>> plan = List.of(
-				List.of("Media", "Comments"),
-				List.of("Total media", ""),
-				List.of("Programmatic Display", "note"),
-				List.of("Not A Real Tactic", ""),
-				List.of("Meta (CPM)", "")
-		);
-		assertThat(matcher.extractTactics(plan)).containsExactly("Programmatic Display", "Meta (CPM)");
-	}
-
-	@Test
-	void extractTacticRows_capturesGroupLabelAndRowContext() {
-		// Given: a plan with a section label above the tactic and targeting on the tactic row
-		List<List<String>> plan = List.of(
-				List.of("Media", "Comments", "Targeting"),
-				List.of("Grapevine Vintage Railroad", "", ""),
-				List.of("Google SEM", "Even-paced", "Keyword-based")
-		);
-
-		// When
-		var rows = matcher.extractTacticRows(plan);
-
-		// Then: the group label and the row's other cells are joined into the context
-		assertThat(rows).hasSize(1);
-		assertThat(rows.getFirst().name()).isEqualTo("Google SEM");
-		assertThat(rows.getFirst().context()).contains("Grapevine Vintage Railroad", "Even-paced", "Keyword-based");
 	}
 
 	@Test
@@ -83,7 +59,7 @@ class LineItemMatcherServiceTest {
 				List.of("Programmatic Display", "Whitelist Strategy", "Curated List")
 		);
 		LineItemMatchAssistant assistant = (tactics, options) -> Map.of(1, "616641", 2, "616642");
-		var aiMatcher = new LineItemMatcherServiceImpl(new LineItemNamingHelperImpl(), assistant);
+		var aiMatcher = new LineItemMatcherServiceImpl(new LineItemNamingHelperImpl(), assistant, extractor);
 
 		// When
 		MatchResult result = aiMatcher.match(bq, plan);
@@ -110,7 +86,7 @@ class LineItemMatcherServiceTest {
 				List.of("Programmatic Display", "Whitelist Strategy")
 		);
 		LineItemMatchAssistant assistant = (tactics, options) -> Map.of(1, "999", 2, "616642");
-		var aiMatcher = new LineItemMatcherServiceImpl(new LineItemNamingHelperImpl(), assistant);
+		var aiMatcher = new LineItemMatcherServiceImpl(new LineItemNamingHelperImpl(), assistant, extractor);
 
 		// When
 		MatchResult result = aiMatcher.match(bq, plan);

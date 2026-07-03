@@ -26,15 +26,20 @@ class TacticUtilsTest {
 	}
 
 	@Test
-	void extractTacticsFromMedia_stopsAtTotalsRow() {
+	void extractTacticsFromMedia_skipsSubtotalRowsWithoutStopping() {
+		// Given: a sub-total row sits between two tactic rows
 		List<List<String>> rows = List.of(
 				List.of("x", "Media", "y"),
 				List.of("", "Programmatic Display", ""),
-				List.of("", "Meta (CPM)", ""),
-				List.of("Totals", "", "")
+				List.of("Totals", "", ""),
+				List.of("", "Meta (CPM)", "")
 		);
-		assertThat(tacticUtils.extractTacticsFromMedia(rows))
-				.containsExactly("Programmatic Display", "Meta (CPM)");
+
+		// When: extracting the Media-column tactics
+		List<String> tactics = tacticUtils.extractTacticsFromMedia(rows);
+
+		// Then: the tactic below the sub-total row is still captured (the scan no longer stops)
+		assertThat(tactics).containsExactly("Programmatic Display", "Meta (CPM)");
 	}
 
 	@Test

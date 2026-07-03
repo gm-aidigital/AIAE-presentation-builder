@@ -6,6 +6,7 @@ import com.aidigital.reportconstructor.service.reports.dto.LineItemMatchOption;
 import com.aidigital.reportconstructor.service.reports.dto.LineItemMatchTactic;
 import com.aidigital.reportconstructor.service.reports.dto.PlanTactic;
 import com.aidigital.reportconstructor.service.reports.helpers.LineItemNamingHelper;
+import com.aidigital.reportconstructor.service.reports.helpers.MediaPlanTacticExtractor;
 import com.aidigital.reportconstructor.service.reports.ports.LineItemMatchAssistant;
 import com.aidigital.reportconstructor.service.reports.services.LineItemMatcherService;
 import com.aidigital.reportconstructor.service.reports.services.LineItemMeta;
@@ -30,125 +31,25 @@ import java.util.Set;
  * "unique ID" rule: a tactic auto-matches only when its expected BQ Channel has
  * exactly one line item ID).
  *
- * <p>Tactic extraction uses a {@link #WHITELIST whitelist} of recognised tactic
- * names, a {@link #STOP_PHRASES stop-phrase} prefix filter and a cap of
- * {@value #MAX_TACTICS}. Tactics are emitted in Media-column order so the response
- * index (tactic number) lines up with the collector's tactic numbering.
+ * <p>Tactic extraction is delegated to {@link MediaPlanTacticExtractor} so the tactic numbering
+ * always matches the collector's; tactics are emitted in Media-column order and the response index
+ * (tactic number) lines up with the collector's tactic numbering.
  */
 @Service
 public class LineItemMatcherServiceImpl implements LineItemMatcherService {
 
 	private final LineItemNamingHelper lineItemNaming;
 	private final LineItemMatchAssistant matchAssistant;
+	private final MediaPlanTacticExtractor tacticExtractor;
 
-	public LineItemMatcherServiceImpl(LineItemNamingHelper lineItemNaming, LineItemMatchAssistant matchAssistant) {
+	public LineItemMatcherServiceImpl(
+			LineItemNamingHelper lineItemNaming,
+			LineItemMatchAssistant matchAssistant,
+			MediaPlanTacticExtractor tacticExtractor) {
 		this.lineItemNaming = lineItemNaming;
 		this.matchAssistant = matchAssistant;
+		this.tacticExtractor = tacticExtractor;
 	}
-
-	/**
-	 * Cap on the number of tactics pulled from the Media column.
-	 */
-	private static final int MAX_TACTICS = 7;
-
-	/**
-	 * Prefix stop phrases that exclude a Media-column row from the tactic list
-	 * (matched as a {@code startsWith} prefix).
-	 */
-	private static final List<String> STOP_PHRASES = List.of(
-			"total", "grand total", "subtotal", "totals", "total media",
-			"added value reports",
-			"ai digital insights reporting",
-			"brand safety & guard",
-			"brand safety and guard",
-			"eoc or qbr insights report",
-			"eoc or qbr",
-			"ai digital brand study",
-			"foot traffic lift study",
-			"3rd party brand study"
-	);
-
-	/**
-	 * Recognised tactic names (lowercase). Only rows whose normalised Media value
-	 * is in this set become tactics.
-	 */
-	private static final Set<String> WHITELIST = Set.of(
-			"blended set ctv/ott", "blended set ctv ott",
-			"programmatic display",
-			"rich media (html 5)", "rich media html 5",
-			"geofencing (display)", "geofencing display",
-			"programmatic mobile display",
-			"native display",
-			"native video",
-			"programmatic video",
-			"programmatic audio",
-			"blended programmatic audio",
-			"ott precision reach",
-			"programmatic ctv",
-			"streaming tv",
-			"ctv precision reach",
-			"ctv select",
-			"network select bundle ctv",
-			"network exclusive",
-			"live news",
-			"live tv",
-			"local ctv",
-			"zip code targeted ctv",
-			"100% live sports package (100% live and in-game inventory)",
-			"100% live sports package",
-			"any live sports package (up to 50% live sports inventory / up to 50% shoulder inventory)",
-			"any live sports package (up to 50% live sports inventory / up to 50% ancillary inventory)",
-			"any live sports package",
-			"college football live sport package (up to 50% live sports inventory / up to 50% shoulder inventory)",
-			"college football live sport package",
-			"amazon fire tv",
-			"google tv",
-			"netflix (up to 10 sec creative)",
-			"netflix (up to 15 sec creative)",
-			"netflix (up to 30 sec creative)",
-			"netflix",
-			"youtube skippable in-stream (cpm)",
-			"youtube skippable in-stream",
-			"youtube non-skippable in-stream",
-			"youtube ctv skippable in-stream",
-			"youtube ctv non-skippable in-stream",
-			"youtube in-feed (ex. discovery)",
-			"youtube in-feed",
-			"youtube bumper ads",
-			"youtube demand gen",
-			"gdn specific",
-			"youtube shorts",
-			"youtube tv (up to 15 sec)",
-			"youtube tv (up to 30 sec)",
-			"mix of 50% youtube tv and 50% youtube ctv (up to 15 sec)",
-			"mix of 50% youtube tv and 50% youtube ctv (up to 30 sec)",
-			"meta (cpm)", "meta (cpc)",
-			"facebook specific",
-			"meta lead forms",
-			"meta boosted posts",
-			"instagram specific",
-			"twitter",
-			"linkedin (cpm)", "linkedin (cpc)",
-			"tiktok (cpm)", "tiktok (cpc)",
-			"tiktok spark ads (cpm)", "tiktok spark ads (cpc)",
-			"tiktok search ads",
-			"pinterest (cpm)", "pinterest (cpc)",
-			"reddit (cpm)", "reddit (cpc)",
-			"snapchat (cpm)",
-			"bing",
-			"performance max",
-			"google sem",
-			"demand gen",
-			"dooh",
-			"amazon display (amazon & publisher network)", "amazon display",
-			"amazon video (amazon & publisher network)", "amazon video",
-			"amazon audio (amazon & publisher network)", "amazon audio",
-			"amazon podcast ads",
-			"twitch",
-			"amazon sponsored ads",
-			"app (google uac)", "google uac",
-			"apple search ads"
-	);
 
 	/**
 	 * Tactic (lowercase) &rarr; expected BQ Channel value(s). The first channel
@@ -311,7 +212,7 @@ public class LineItemMatcherServiceImpl implements LineItemMatcherService {
 				.toList();
 		List<LineItemMeta> lineItems = uniqueIds.stream().map(byId::get).toList();
 
-		List<PlanTactic> tactics = extractTacticRows(planRows);
+		List<PlanTactic> tactics = tacticExtractor.extract(planRows);
 		int size = tactics.size();
 		List<String> matchedIds = new ArrayList<>(Collections.nCopies(size, ""));
 		List<String> confidences = new ArrayList<>(Collections.nCopies(size, "none"));
@@ -432,121 +333,6 @@ public class LineItemMatcherServiceImpl implements LineItemMatcherService {
 
 	String extractLineItemId(String naming) {
 		return lineItemNaming.extractLineItemId(naming);
-	}
-
-	List<String> extractTactics(List<List<String>> planRows) {
-
-		return extractTacticRows(planRows).stream().map(PlanTactic::name).toList();
-	}
-
-	/**
-	 * Extracts whitelisted tactics from the Media column together with the context used to
-	 * disambiguate duplicate tactic names: the most recent section/group label plus the tactic
-	 * row's own cells (comments, targeting, goal…). Same order, whitelist, stop-phrase filter and
-	 * {@link #MAX_TACTICS} cap as {@link #extractTactics}.
-	 *
-	 * @param planRows the Media Plan grid (may be null/empty)
-	 * @return the tactics with context, in Media-column order
-	 */
-	List<PlanTactic> extractTacticRows(List<List<String>> planRows) {
-
-		List<PlanTactic> tactics = new ArrayList<>();
-		if (planRows == null || planRows.isEmpty()) {
-			return tactics;
-		}
-
-		int mediaRow = -1;
-		int mediaCol = -1;
-		outer:
-		for (int i = 0; i < planRows.size(); i++) {
-			List<String> row = planRows.get(i);
-			for (int j = 0; j < row.size(); j++) {
-				if (cell(row, j).trim().equalsIgnoreCase("media")) {
-					mediaRow = i;
-					mediaCol = j;
-					break outer;
-				}
-			}
-		}
-		if (mediaRow < 0) {
-			return tactics;
-		}
-
-		String group = "";
-		for (int i = mediaRow + 1; i < planRows.size(); i++) {
-			List<String> row = planRows.get(i);
-			String value = cell(row, mediaCol).trim();
-			if (value.isEmpty()) {
-				// Section-label rows (e.g. "Grapevine Vintage Railroad") have an empty Media cell but
-				// a label elsewhere; remember it as the group for the tactics beneath it.
-				String label = firstNonEmpty(row);
-				if (!label.isEmpty()) {
-					group = label;
-				}
-				continue;
-			}
-			String lower = value.toLowerCase(Locale.ROOT);
-			// Stop-phrase prefix filter.
-			boolean stop = STOP_PHRASES.stream().anyMatch(lower::startsWith);
-			if (stop) {
-				continue;
-			}
-			// Whitelist: only recognised tactic names pass.
-			if (!WHITELIST.contains(lower)) {
-				continue;
-			}
-			tactics.add(new PlanTactic(value, buildContext(group, row, mediaCol)));
-			if (tactics.size() >= MAX_TACTICS) {
-				break;
-			}
-		}
-		return tactics;
-	}
-
-	/**
-	 * Joins the current group label with the tactic row's other non-empty cells into a single
-	 * context string (Media cell excluded, whitespace collapsed).
-	 *
-	 * @param group    the most recent section/group label ("" when none)
-	 * @param row      the tactic row
-	 * @param mediaCol the Media column index to skip
-	 * @return the joined context string
-	 */
-	String buildContext(String group, List<String> row, int mediaCol) {
-
-		List<String> parts = new ArrayList<>();
-		if (!group.isEmpty()) {
-			parts.add(group);
-		}
-		for (int j = 0; j < row.size(); j++) {
-			if (j == mediaCol) {
-				continue;
-			}
-			String c = cell(row, j).trim();
-			if (!c.isEmpty()) {
-				parts.add(c);
-			}
-		}
-		return String.join(" · ", parts).replaceAll("\\s+", " ").trim();
-	}
-
-	/**
-	 * Returns the first non-empty, trimmed cell of a row, or "" when the row is empty/blank.
-	 *
-	 * @param row the row to scan
-	 * @return the first non-empty cell value, or ""
-	 */
-	String firstNonEmpty(List<String> row) {
-
-		if (row == null) {
-			return "";
-		}
-		for (String c : row) {
-			if (c != null && !c.trim().isEmpty()) {
-				return c.trim();
-			}
-		}
-		return "";
 	}
 
 	int indexOfHeader(List<String> headers, java.util.function.Predicate<String> match) {
