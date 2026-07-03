@@ -42,10 +42,11 @@ public interface PlaceholderResolverService {
 	 * @param ccA         Claude Batch A output (strategic copy)
 	 * @param ccB         Claude Batch B output (per-tactic copy)
 	 * @param ccC         Claude Batch C output (results copy)
-	 * @param primaryKpis AI-generated primary-KPIs line, or {@code null} when a manual value is used instead
-	 * @param geoSummary  AI-generated geo summary, or {@code null} when the Geo tab is not used
-	 * @param frequencies the {@link #computeFrequencies} result for this report, reused so
-	 *                    {@code {{reach_f}} / {{reach_f_pres}}} match the actual reach behind {@code {{f_fact}}}
+	 * @param primaryKpis   AI-generated primary-KPIs line, or {@code null} when a manual value is used instead
+	 * @param geoSummary    AI-generated geo summary, or {@code null} when the Geo tab is not used
+	 * @param funnelSummary AI-generated funnel-stage summary, or {@code null} when a manual/column value is used instead
+	 * @param frequencies   the {@link #computeFrequencies} result for this report, reused so
+	 *                      {@code {{reach_f}} / {{reach_f_pres}}} match the actual reach behind {@code {{f_fact}}}
 	 * @return the ordered map of double-brace placeholder tokens to their final replacement strings
 	 */
 	Map<String, String> buildFlatReplacements(
@@ -56,6 +57,7 @@ public interface PlaceholderResolverService {
 			ClaudeResults ccC,
 			String primaryKpis,
 			String geoSummary,
+			String funnelSummary,
 			CampaignFrequencies frequencies
 	);
 
@@ -111,6 +113,15 @@ public interface PlaceholderResolverService {
 	 * @return {@code true} if the geo summary must be generated from the Geo tab
 	 */
 	boolean needGeoSummary(GeneratePayload payload);
+
+	/**
+	 * Gates the AI funnel-stage summary when manual funnel stages are absent and the media plan carries
+	 * no funnel/goal column.
+	 *
+	 * @param payload the constructor request whose adjustments and sheet rows are inspected
+	 * @return {@code true} if the funnel-stage summary must be generated from the workbook
+	 */
+	boolean needFunnelSummary(GeneratePayload payload);
 
 	/**
 	 * Gates the AI primary-KPIs generation when no manual primary-KPIs value is present.

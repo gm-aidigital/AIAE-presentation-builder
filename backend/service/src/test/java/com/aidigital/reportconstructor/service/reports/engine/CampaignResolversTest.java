@@ -386,6 +386,74 @@ class CampaignResolversTest {
 		assertThat(r.source()).isEqualTo("not_found");
 	}
 
+	@Test
+	void shouldResolveGeoFromColumnBelowHeaderAcrossSectionRowTest() {
+		// Given: a real media-plan grid where the "Geo" header is followed by a section-title row,
+		// then the actual locations across several line items
+		List<List<String>> sheet = List.of(
+				List.of("Flight Start", "Geo", "Media", "Goal"),
+				List.of("Evergreen", "", "", ""),
+				List.of("2026-06-08", "Texas", "Programmatic Display", "Awareness"),
+				List.of("2026-06-08", "Oklahoma", "Google SEM", "Website Traffic"),
+				List.of("2026-06-08", "Texas", "Meta", "Website Traffic"),
+				List.of("Totals:", "", "", ""));
+
+		// When: geo resolves without any Claude summary
+		Resolved r = resolvers.resolveGeoLocations(sheet, List.of(), null);
+
+		// Then: the distinct column values are collected in order, skipping the section row and totals
+		assertThat(r.value()).isEqualTo("Texas, Oklahoma");
+		assertThat(r.source()).isEqualTo("sheet");
+	}
+
+	@Test
+	void shouldFallBackToClaudeGeoSummaryWhenColumnPointsAtTabTest() {
+		// Given: every geo cell merely references the Geo tab
+		List<List<String>> sheet = List.of(
+				List.of("Geo", "Media"),
+				List.of("See Geo Tab", "Programmatic Display"),
+				List.of("See Geo Tab", "Google SEM"));
+
+		// When: a Claude workbook summary is supplied
+		Resolved r = resolvers.resolveGeoLocations(sheet, List.of(), "Texas, Oklahoma, Arkansas");
+
+		// Then: the summary is used instead of the tab pointer
+		assertThat(r.value()).isEqualTo("Texas, Oklahoma, Arkansas");
+		assertThat(r.source()).isEqualTo("claude");
+	}
+
+	@Test
+	void shouldResolveFunnelStagesFromGoalColumnDedupedTest() {
+		// Given: a "Goal" column with repeated stages across line items, below a section row
+		List<List<String>> sheet = List.of(
+				List.of("Geo", "Media", "Goal"),
+				List.of("", "", ""),
+				List.of("Texas", "Programmatic Display", "Consideration & Engagement"),
+				List.of("Texas", "Programmatic Display", "Consideration & Engagement"),
+				List.of("Oklahoma", "Google SEM", "Website Traffic"),
+				List.of("Totals:", "", ""));
+
+		// When: funnel stages resolve without a Claude summary
+		Resolved r = resolvers.resolveFunnelStages(sheet, List.of(), null);
+
+		// Then: distinct stages are joined in first-seen order
+		assertThat(r.value()).isEqualTo("Consideration & Engagement, Website Traffic");
+		assertThat(r.source()).isEqualTo("sheet");
+	}
+
+	@Test
+	void shouldFallBackToClaudeFunnelSummaryWhenNoColumnTest() {
+		// Given: a media plan with no funnel/goal column
+		List<List<String>> sheet = List.of(List.of("Campaign:", "Spring"));
+
+		// When: a Claude funnel summary is supplied
+		Resolved r = resolvers.resolveFunnelStages(sheet, List.of(), "Awareness, Consideration, Conversion");
+
+		// Then: the summary is used
+		assertThat(r.value()).isEqualTo("Awareness, Consideration, Conversion");
+		assertThat(r.source()).isEqualTo("claude");
+	}
+
 	private static List<List<String>> labelRow(String label, String value) {
 		return List.of(List.of(label, value, "", ""));
 	}

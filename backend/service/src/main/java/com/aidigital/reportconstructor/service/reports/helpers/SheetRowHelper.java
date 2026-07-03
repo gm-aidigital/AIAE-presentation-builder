@@ -4,6 +4,7 @@ import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Label/value lookups, safe cell access, and flight-date parsing over sheet row grids.
@@ -29,12 +30,31 @@ public interface SheetRowHelper {
 	String findLabelValueBelow(List<List<String>> rows, String label);
 
 	/**
-	 * Reports whether a resolved geo value merely points at the "Geo" tab instead of naming locations
-	 * (e.g. {@code "See Geo tab"}, {@code "See 'Geo' Tab"}), so the caller can push the Geo tab to Claude.
-	 * Matching ignores case, surrounding quotes, and other punctuation between the words.
+	 * Collects the distinct, non-empty values running down the column beneath the first header cell
+	 * whose normalised text matches one of {@code headerSynonyms}.
+	 *
+	 * <p>Unlike {@link #findLabelValueBelow(List, String)} — which reads only the single cell directly
+	 * beneath the header and therefore misses real media-plan grids where a section-title row sits
+	 * between the header and the data — this walks every row below the header, gathering the column's
+	 * values until a totals/footer row (a leading cell starting with {@code "total"}) or a scan cap is
+	 * reached. Values are de-duplicated case-insensitively, preserving first-seen order and original
+	 * casing, so a field repeated across many line items collapses to one entry.
+	 *
+	 * @param rows           2-D sheet grid to scan (may be {@code null})
+	 * @param headerSynonyms normalised header texts (lowercase, punctuation collapsed to single spaces) any of which
+	 *                       identifies the target column; see {@code MediaPlanColumn}
+	 * @return the ordered, de-duplicated column values, or an empty list when no header matches
+	 */
+	List<String> collectColumnValuesBelow(List<List<String>> rows, Set<String> headerSynonyms);
+
+	/**
+	 * Reports whether a resolved geo value merely points at another workbook tab instead of naming
+	 * locations (e.g. {@code "See Geo tab"}, {@code "See 'Geo' Tab"}, {@code "see locations sheet"}), so
+	 * the caller can push the whole workbook to Claude for summarisation. Matching ignores case,
+	 * surrounding quotes, and other punctuation between the words.
 	 *
 	 * @param value the resolved geo cell value (may be {@code null})
-	 * @return {@code true} when the value references the Geo tab rather than listing locations
+	 * @return {@code true} when the value references another tab rather than listing locations
 	 */
 	boolean referencesGeoTab(String value);
 

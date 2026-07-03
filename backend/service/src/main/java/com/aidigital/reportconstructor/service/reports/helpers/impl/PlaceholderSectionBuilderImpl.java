@@ -41,6 +41,7 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 			ClaudeResults ccC,
 			String primaryKpis,
 			String geoSummary,
+			String funnelSummary,
 			CampaignFrequencies frequencies
 	) {
 		List<List<String>> sheet = payload.sheetRows();
@@ -66,7 +67,7 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 				ccA.audienceSegments()));
 		start.put("{{market volume}}", campaignResolvers.resolveMarketVolume(payload.marketVolume(), sheet, adj));
 		start.put("{{geo_locations}}", campaignResolvers.resolveGeoLocations(sheet, adj, geoSummary));
-		start.put("{{funnel_stages}}", campaignResolvers.resolveFunnelStages(sheet, adj));
+		start.put("{{funnel_stages}}", campaignResolvers.resolveFunnelStages(sheet, adj, funnelSummary));
 		start.put("{{tactics_list}}", campaignResolvers.resolveTacticsList(sheet, adj));
 		sections.add(buildPreviewSection("Start", start));
 

@@ -51,6 +51,16 @@ public interface ClaudeClient {
 	String summarizeGeo(List<List<String>> geoRows);
 
 	/**
+	 * Whole workbook → short comma-separated marketing-funnel-stage string (e.g.
+	 * {@code "Awareness, Consideration, Conversion"}), or {@code null}. Used as a fallback when the media
+	 * plan carries no explicit funnel/goal column.
+	 *
+	 * @param geoRows every tab of the media-plan workbook flattened into one grid (same shape as {@link #summarizeGeo})
+	 * @return the comma-separated funnel-stage line, or {@code null}
+	 */
+	String summarizeFunnelStages(List<List<String>> geoRows);
+
+	/**
 	 * Media plan → single-line primary-KPIs string (e.g. {@code "Imps, CTR, VCR, R&F"}) reflecting the KPIs
 	 * relevant to the campaign's tactic mix, or {@code null} when no tactics/KPIs can be inferred.
 	 *

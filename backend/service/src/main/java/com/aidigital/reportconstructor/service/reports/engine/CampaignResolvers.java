@@ -205,17 +205,16 @@ public class CampaignResolvers {
 	}
 
 	/**
-	 * Resolves the geo locations, preferring an explicit label, then the value
-	 * directly below a "Geo" cell, and substituting a Claude summary when that
-	 * value merely points at the Geo tab.
+	 * Resolves the geo locations, preferring an explicit label, then the distinct literal values in the
+	 * geo/location column of the media-plan grid, and finally a Claude workbook summary when the column
+	 * is absent or merely points at another tab.
 	 *
-	 * <p>{@code geoSummary} is the Claude-summarised Geo-tab string, pre-computed by
-	 * the orchestrator only when the "Geo" cell points at the Geo tab.
+	 * <p>{@code geoSummary} is the Claude summary of the whole workbook, pre-computed by the orchestrator
+	 * only when {@code needGeoSummary} fires (no manual value and no literal geo column).
 	 *
 	 * @param sheetRows  Media Plan tab rows
 	 * @param adjRows    manual Adjustments tab rows (checked first)
-	 * @param geoSummary Claude summary of the Geo tab, used only when the sheet value references the Geo tab (may be
-	 *                   null)
+	 * @param geoSummary Claude workbook geo summary, used only when the column lists no literal locations (may be null)
 	 * @return a {@link Resolved} geo string (source {@code "claude"} when the summary is used), or a null-valued
 	 * {@code "not_found"}
 	 */
@@ -230,25 +229,32 @@ public class CampaignResolvers {
 			return new Resolved("Geo locations:", fromSheet, "sheet");
 		}
 
-		String below = sheetUtils.findLabelValueBelow(sheetRows, "Geo");
-		if (below != null) {
-			if (sheetUtils.referencesGeoTab(below) && geoSummary != null && !geoSummary.isBlank()) {
-				return new Resolved("Geo (from Geo tab via Claude)", geoSummary, "claude");
-			}
-			return new Resolved("Geo (value below)", below, "sheet");
+		List<String> column = sheetUtils.collectColumnValuesBelow(sheetRows, MediaPlanColumn.GEO.getSynonyms());
+		List<String> literals = column.stream().filter(v -> !sheetUtils.referencesGeoTab(v)).toList();
+		if (!literals.isEmpty()) {
+			return new Resolved("Geo (media-plan column)", String.join(", ", literals), "sheet");
+		}
+		// Column is empty or merely points at another tab: fall back to the Claude workbook summary.
+		if (geoSummary != null && !geoSummary.isBlank()) {
+			return new Resolved("Geo (from workbook via Claude)", geoSummary, "claude");
 		}
 		return new Resolved("Geo locations:", null, "not_found");
 	}
 
 	/**
-	 * Resolves the marketing funnel stages, falling back to the value directly
-	 * below a "Goal" cell in the sheet.
+	 * Resolves the marketing funnel stages, preferring an explicit label, then the distinct values in
+	 * the "Goal"/"Funnel"/"Objective" column of the media-plan grid, and finally a Claude workbook
+	 * summary when the column is absent.
 	 *
-	 * @param sheetRows Media Plan tab rows
-	 * @param adjRows   manual Adjustments tab rows (checked first)
-	 * @return a {@link Resolved} funnel-stages string, or a null-valued {@code "not_found"}
+	 * @param sheetRows     Media Plan tab rows
+	 * @param adjRows       manual Adjustments tab rows (checked first)
+	 * @param funnelSummary Claude summary of the funnel stages, used only when no manual value and no funnel column are
+	 *                      present (may be {@code null})
+	 * @return a {@link Resolved} funnel-stages string (source {@code "claude"} when the summary is used), or a
+	 * null-valued {@code "not_found"}
 	 */
-	public Resolved resolveFunnelStages(List<List<String>> sheetRows, List<List<String>> adjRows) {
+	public Resolved resolveFunnelStages(List<List<String>> sheetRows, List<List<String>> adjRows,
+			String funnelSummary) {
 
 		String fromAdj = sheetUtils.findLabelValue(adjRows, "Funnel stages:");
 		if (fromAdj != null) {
@@ -258,9 +264,12 @@ public class CampaignResolvers {
 		if (fromSheet != null) {
 			return new Resolved("Funnel stages:", fromSheet, "sheet");
 		}
-		String below = sheetUtils.findLabelValueBelow(sheetRows, "Goal");
-		if (below != null) {
-			return new Resolved("Goal (value below)", below, "sheet");
+		List<String> column = sheetUtils.collectColumnValuesBelow(sheetRows, MediaPlanColumn.FUNNEL.getSynonyms());
+		if (!column.isEmpty()) {
+			return new Resolved("Funnel stages (media-plan column)", String.join(", ", column), "sheet");
+		}
+		if (funnelSummary != null && !funnelSummary.isBlank()) {
+			return new Resolved("Funnel stages (from workbook via Claude)", funnelSummary, "claude");
 		}
 		return new Resolved("Funnel stages:", null, "not_found");
 	}

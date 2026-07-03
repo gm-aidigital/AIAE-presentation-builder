@@ -611,6 +611,31 @@ public class ClaudeBatchPromptBuilder {
 	}
 
 	/**
+	 * Builds the funnel-stage summarisation prompt from the whole media-plan workbook.
+	 *
+	 * @param geoRows every tab of the media-plan workbook flattened into one grid, each tab introduced by a
+	 *                {@code "### TAB: <name> ###"} marker row; each inner list is one row whose cells are joined with
+	 *                {@code " | "} (null rows are skipped)
+	 * @return a prompt asking Claude to infer the campaign's marketing funnel stages anywhere in the workbook and
+	 * condense them into a single short comma-separated string
+	 */
+	public String buildFunnelPrompt(List<List<String>> geoRows) {
+		StringBuilder tab = new StringBuilder();
+		for (List<String> row : geoRows) {
+			if (row == null) {
+				continue;
+			}
+			tab.append(String.join(" | ", row)).append('\n');
+		}
+		return "Below are the tabs of a media-plan workbook (each tab preceded by a '### TAB: <name> ###' marker).\n"
+				+ "Determine the marketing funnel stages the campaign targets (typically some of "
+				+ "Awareness, Consideration, Conversion, Retention/Loyalty), inferring them from the goals, objectives, "
+				+ "tactics and KPIs anywhere in this data. Return a single short comma-separated string (≤60 characters) "
+				+ "ordered top-of-funnel first. No explanation — return only the string.\n\n"
+				+ tab;
+	}
+
+	/**
 	 * Builds the primary-KPIs prompt from the campaign tactic mix, or empty when there are no tactics.
 	 *
 	 * <p>Each tactic line carries the metrics actually present in the plan ({@code CTR} signals a

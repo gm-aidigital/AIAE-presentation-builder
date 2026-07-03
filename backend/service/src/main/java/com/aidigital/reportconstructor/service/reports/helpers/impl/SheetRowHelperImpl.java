@@ -8,8 +8,11 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.time.format.ResolverStyle;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * Low-level lookups over the 2-D {@code raw_rows} grids returned by the Sheets API.
@@ -19,6 +22,12 @@ import java.util.Locale;
  */
 @Component
 public class SheetRowHelperImpl implements SheetRowHelper {
+
+	/** Maximum number of rows scanned below a matched column header before giving up. */
+	private static final int COLUMN_SCAN_LIMIT = 200;
+
+	/** Number of leading cells inspected for a {@code "total"} label when detecting a footer row. */
+	private static final int FOOTER_LABEL_SCAN_COLUMNS = 5;
 
 	@Override
 	public String findLabelValue(List<List<String>> rows, String label) {
@@ -63,13 +72,95 @@ public class SheetRowHelperImpl implements SheetRowHelper {
 	}
 
 	@Override
+	public List<String> collectColumnValuesBelow(List<List<String>> rows, Set<String> headerSynonyms) {
+
+		if (rows == null || headerSynonyms == null || headerSynonyms.isEmpty()) {
+			return List.of();
+		}
+		int headerRow = -1;
+		int headerCol = -1;
+		outer:
+		for (int i = 0; i < rows.size(); i++) {
+			List<String> row = rows.get(i);
+			if (row == null) {
+				continue;
+			}
+			for (int j = 0; j < row.size(); j++) {
+				if (headerSynonyms.contains(normalizeHeader(cell(row, j)))) {
+					headerRow = i;
+					headerCol = j;
+					break outer;
+				}
+			}
+		}
+		if (headerRow < 0) {
+			return List.of();
+		}
+
+		Set<String> seen = new LinkedHashSet<>();
+		List<String> values = new ArrayList<>();
+		int limit = Math.min(rows.size(), headerRow + 1 + COLUMN_SCAN_LIMIT);
+		for (int i = headerRow + 1; i < limit; i++) {
+			List<String> row = rows.get(i);
+			if (row == null) {
+				continue;
+			}
+			if (isFooterRow(row)) {
+				break;
+			}
+			String value = cellAt(row, headerCol);
+			if (value.isEmpty()) {
+				continue;
+			}
+			if (seen.add(value.toLowerCase(Locale.ROOT))) {
+				values.add(value);
+			}
+		}
+		return values;
+	}
+
+	/**
+	 * Normalises a header cell for synonym matching: lowercased, every run of non-alphanumeric
+	 * characters collapsed to a single space, and trimmed.
+	 *
+	 * @param raw the raw header cell text
+	 * @return the normalised header token (e.g. {@code "Targeted\nLocations"} → {@code "targeted locations"})
+	 */
+	String normalizeHeader(String raw) {
+
+		return raw.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", " ").trim();
+	}
+
+	/**
+	 * Reports whether a row is a totals/footer row, detected by any of its leading cells starting with
+	 * {@code "total"} (e.g. {@code "Totals:"}), so column collection stops before summary rows.
+	 *
+	 * @param row the row to inspect
+	 * @return {@code true} when the row looks like a totals/footer row
+	 */
+	boolean isFooterRow(List<String> row) {
+
+		int limit = Math.min(FOOTER_LABEL_SCAN_COLUMNS, row.size());
+		for (int j = 0; j < limit; j++) {
+			if (cell(row, j).toLowerCase(Locale.ROOT).startsWith("total")) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	@Override
 	public boolean referencesGeoTab(String value) {
 
 		if (value == null) {
 			return false;
 		}
 		String normalized = value.toLowerCase(Locale.ROOT).replaceAll("[^a-z]+", " ").trim();
-		return normalized.contains("geo tab");
+		if (normalized.contains("geo tab") || normalized.contains("geo sheet")) {
+			return true;
+		}
+		// Generic pointer to another tab/sheet, e.g. "see locations tab", "see targeting sheet".
+		return normalized.startsWith("see ") && (normalized.endsWith(" tab") || normalized.endsWith(" sheet"));
 	}
 
 	@Override

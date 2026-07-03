@@ -283,6 +283,20 @@ public class RealClaudeClient implements ClaudeClient {
 	}
 
 	@Override
+	public String summarizeFunnelStages(List<List<String>> geoRows) {
+		if (geoRows == null || geoRows.isEmpty()) {
+			return null;
+		}
+		String prompt = promptBuilder.buildFunnelPrompt(geoRows);
+		JsonNode resp = messagesClient.callRaw(prompt, 60, 30, "Funnel");
+		if (resp == null) {
+			return null;
+		}
+		String text = normalizer.extractText(resp);
+		return text == null || text.isBlank() ? null : text.trim();
+	}
+
+	@Override
 	public String summarizePrimaryKpis(CampaignData data) {
 		var prompt = promptBuilder.buildPrimaryKpisPrompt(data);
 		if (prompt.isEmpty()) {

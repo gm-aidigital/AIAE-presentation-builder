@@ -54,6 +54,11 @@ public class StubClaudeClient implements ClaudeClient {
 	}
 
 	@Override
+	public String summarizeFunnelStages(List<List<String>> geoRows) {
+		return null;
+	}
+
+	@Override
 	public String summarizePrimaryKpis(CampaignData data) {
 		return null;
 	}

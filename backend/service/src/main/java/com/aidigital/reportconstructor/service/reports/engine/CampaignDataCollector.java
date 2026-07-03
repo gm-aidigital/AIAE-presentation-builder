@@ -89,10 +89,10 @@ public class CampaignDataCollector {
 				sheetUtils.findLabelValue(sheetRows, "Campaign:"));
 		String geo = coalesce(sheetUtils.findLabelValue(adjRows, "Geo locations:"),
 				coalesce(sheetUtils.findLabelValue(sheetRows, "Geo locations:"),
-						sheetUtils.findLabelValueBelow(sheetRows, "Geo")));
+						joinColumn(sheetRows, MediaPlanColumn.GEO)));
 		String goal = coalesce(sheetUtils.findLabelValue(adjRows, "Funnel stages:"),
 				coalesce(sheetUtils.findLabelValue(sheetRows, "Funnel stages:"),
-						sheetUtils.findLabelValueBelow(sheetRows, "Goal")));
+						joinColumn(sheetRows, MediaPlanColumn.FUNNEL)));
 		String budget = coalesce(sheetUtils.findLabelValue(adjRows, "Total investment:"),
 				sheetUtils.findLabelValue(sheetRows, "Total investment:"));
 		String kpis = coalesce(sheetUtils.findLabelValue(adjRows, "Primary KPIs:"),
@@ -619,6 +619,20 @@ public class CampaignDataCollector {
 	String coalesce(String a, String b) {
 
 		return a != null ? a : b;
+	}
+
+	/**
+	 * Joins the distinct values of a media-plan grid column into a comma-separated string for the
+	 * campaign-data snapshot, or {@code null} when the column is absent.
+	 *
+	 * @param sheetRows Media Plan tab rows
+	 * @param column    the media-plan column whose header synonyms locate the values
+	 * @return the comma-separated column values, or {@code null} when no matching column is found
+	 */
+	String joinColumn(List<List<String>> sheetRows, MediaPlanColumn column) {
+
+		List<String> values = sheetUtils.collectColumnValuesBelow(sheetRows, column.getSynonyms());
+		return values.isEmpty() ? null : String.join(", ", values);
 	}
 
 	String cell(List<String> row, int idx) {

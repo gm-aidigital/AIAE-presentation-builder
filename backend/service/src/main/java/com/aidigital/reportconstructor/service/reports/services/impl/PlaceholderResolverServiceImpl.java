@@ -48,7 +48,7 @@ public class PlaceholderResolverServiceImpl implements PlaceholderResolverServic
 		List<PreviewSection> sections = sectionBuilder.buildSections(
 				payload, data,
 				claudeDefaults.emptyStrategic(), claudeDefaults.emptyTactical(), claudeDefaults.emptyResults(),
-				null, null,
+				null, null, null,
 				frequencies
 		);
 
@@ -82,10 +82,11 @@ public class PlaceholderResolverServiceImpl implements PlaceholderResolverServic
 			ClaudeResults ccC,
 			String primaryKpis,
 			String geoSummary,
+			String funnelSummary,
 			CampaignFrequencies frequencies
 	) {
 		List<PreviewSection> sections = sectionBuilder.buildSections(payload, data, ccA, ccB, ccC, primaryKpis,
-				geoSummary, frequencies);
+				geoSummary, funnelSummary, frequencies);
 		return valueFlattener.buildFlatReplacements(sections);
 	}
 
@@ -121,6 +122,11 @@ public class PlaceholderResolverServiceImpl implements PlaceholderResolverServic
 	@Override
 	public boolean needGeoSummary(GeneratePayload payload) {
 		return claudeGate.needGeoSummary(payload);
+	}
+
+	@Override
+	public boolean needFunnelSummary(GeneratePayload payload) {
+		return claudeGate.needFunnelSummary(payload);
 	}
 
 	@Override

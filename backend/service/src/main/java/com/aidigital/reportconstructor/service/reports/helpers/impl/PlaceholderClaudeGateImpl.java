@@ -2,6 +2,7 @@ package com.aidigital.reportconstructor.service.reports.helpers.impl;
 
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
+import com.aidigital.reportconstructor.service.reports.engine.MediaPlanColumn;
 import com.aidigital.reportconstructor.service.reports.helpers.PlaceholderClaudeGate;
 import com.aidigital.reportconstructor.service.reports.helpers.SheetRowHelper;
 import lombok.RequiredArgsConstructor;
@@ -101,7 +102,22 @@ public class PlaceholderClaudeGateImpl implements PlaceholderClaudeGate {
 		if (sheetUtils.findLabelValue(sheet, "Geo locations:") != null) {
 			return false;
 		}
-		return sheetUtils.referencesGeoTab(sheetUtils.findLabelValueBelow(sheet, "Geo"));
+		List<String> column = sheetUtils.collectColumnValuesBelow(sheet, MediaPlanColumn.GEO.getSynonyms());
+		boolean hasLiteralLocations = column.stream().anyMatch(value -> !sheetUtils.referencesGeoTab(value));
+		return !hasLiteralLocations;
+	}
+
+	@Override
+	public boolean needFunnelSummary(GeneratePayload payload) {
+		List<List<String>> adj = payload.adjRows();
+		List<List<String>> sheet = payload.sheetRows();
+		if (sheetUtils.findLabelValue(adj, "Funnel stages:") != null) {
+			return false;
+		}
+		if (sheetUtils.findLabelValue(sheet, "Funnel stages:") != null) {
+			return false;
+		}
+		return sheetUtils.collectColumnValuesBelow(sheet, MediaPlanColumn.FUNNEL.getSynonyms()).isEmpty();
 	}
 
 	@Override

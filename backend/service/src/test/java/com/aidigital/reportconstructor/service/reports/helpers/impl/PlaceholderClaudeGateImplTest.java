@@ -107,6 +107,70 @@ class PlaceholderClaudeGateImplTest {
 	}
 
 	@Test
+	void shouldNotNeedGeoSummaryWhenGeoColumnListsLiteralLocationsTest() {
+		// Given: the "Geo" column names real locations across line items (below a section-title row)
+		GeneratePayload payload = payloadWithRows(
+				List.of(
+						List.of("Geo", "Media"),
+						List.of("", ""),
+						List.of("Texas", "Programmatic Display"),
+						List.of("Oklahoma", "Google SEM")
+				),
+				List.of()
+		);
+
+		// When-Then: literal locations are usable directly, so no Claude summary is needed
+		assertThat(gate.needGeoSummary(payload)).isFalse();
+	}
+
+	@Test
+	void shouldNeedGeoSummaryWhenNoGeoColumnPresentTest() {
+		// Given: the media plan has no geo/location column at all
+		GeneratePayload payload = payloadWithRows(List.of(List.of("Campaign:", "Spring")), List.of());
+
+		// When-Then: fall back to a workbook-wide Claude summary
+		assertThat(gate.needGeoSummary(payload)).isTrue();
+	}
+
+	@Test
+	void shouldNeedFunnelSummaryWhenNoFunnelColumnPresentTest() {
+		// Given: neither a manual "Funnel stages:" value nor a Goal/Funnel column is present
+		GeneratePayload payload = payloadWithRows(List.of(List.of("Campaign:", "Spring")), List.of());
+
+		// When-Then: the funnel summary must be generated from the workbook
+		assertThat(gate.needFunnelSummary(payload)).isTrue();
+	}
+
+	@Test
+	void shouldNotNeedFunnelSummaryWhenGoalColumnPresentTest() {
+		// Given: a "Goal" column carries funnel stages below a section-title row
+		GeneratePayload payload = payloadWithRows(
+				List.of(
+						List.of("Goal", "Media"),
+						List.of("", ""),
+						List.of("Awareness", "Programmatic Display"),
+						List.of("Consideration", "Google SEM")
+				),
+				List.of()
+		);
+
+		// When-Then: the column supplies the stages directly, so no Claude summary is needed
+		assertThat(gate.needFunnelSummary(payload)).isFalse();
+	}
+
+	@Test
+	void shouldNotNeedFunnelSummaryWhenFunnelStagesManualTest() {
+		// Given: a manual "Funnel stages:" value is present
+		GeneratePayload payload = payloadWithRows(
+				List.of(List.of("Funnel stages:", "Awareness, Consideration")),
+				List.of()
+		);
+
+		// When-Then:
+		assertThat(gate.needFunnelSummary(payload)).isFalse();
+	}
+
+	@Test
 	void shouldNeedTacticalWhenTacticMaleMissingTest() {
 		GeneratePayload payload = payloadWithRows(List.of(), List.of());
 		CampaignData data = campaignWithTactic(1);
