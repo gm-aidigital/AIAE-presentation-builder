@@ -2,7 +2,11 @@ package com.aidigital.reportconstructor.service.reports.services.impl;
 
 import com.aidigital.reportconstructor.service.common.error.AppException;
 import com.aidigital.reportconstructor.service.common.error.ErrorReason;
+import com.aidigital.reportconstructor.service.reports.dto.LineItemMatchOption;
+import com.aidigital.reportconstructor.service.reports.dto.LineItemMatchTactic;
+import com.aidigital.reportconstructor.service.reports.dto.PlanTactic;
 import com.aidigital.reportconstructor.service.reports.helpers.LineItemNamingHelper;
+import com.aidigital.reportconstructor.service.reports.ports.LineItemMatchAssistant;
 import com.aidigital.reportconstructor.service.reports.services.LineItemMatcherService;
 import com.aidigital.reportconstructor.service.reports.services.LineItemMeta;
 import com.aidigital.reportconstructor.service.reports.services.MatchResult;
@@ -11,6 +15,8 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigInteger;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -33,9 +39,11 @@ import java.util.Set;
 public class LineItemMatcherServiceImpl implements LineItemMatcherService {
 
 	private final LineItemNamingHelper lineItemNaming;
+	private final LineItemMatchAssistant matchAssistant;
 
-	public LineItemMatcherServiceImpl(LineItemNamingHelper lineItemNaming) {
+	public LineItemMatcherServiceImpl(LineItemNamingHelper lineItemNaming, LineItemMatchAssistant matchAssistant) {
 		this.lineItemNaming = lineItemNaming;
+		this.matchAssistant = matchAssistant;
 	}
 
 	/**
@@ -303,30 +311,123 @@ public class LineItemMatcherServiceImpl implements LineItemMatcherService {
 				.toList();
 		List<LineItemMeta> lineItems = uniqueIds.stream().map(byId::get).toList();
 
-		List<String> tactics = extractTactics(planRows);
-		List<TacticSuggestion> suggestions = new ArrayList<>();
-		for (String tactic : tactics) {
-			String normName = tactic.trim().toLowerCase(Locale.ROOT);
-			List<String> channels = TACTIC_CHANNEL_MAP.get(normName);
+		List<PlanTactic> tactics = extractTacticRows(planRows);
+		int size = tactics.size();
+		List<String> matchedIds = new ArrayList<>(Collections.nCopies(size, ""));
+		List<String> confidences = new ArrayList<>(Collections.nCopies(size, "none"));
 
-			String matchedId = null;
-			if (channels != null) {
-				// Pick the first expected channel that has exactly one line item ID.
-				for (String ch : channels) {
-					List<String> ids = channelToIds.getOrDefault(ch, List.of());
-					if (ids.size() == 1) {
-						matchedId = ids.get(0);
-						break;
-					}
+		// Pass 1 — deterministic unique-ID rule: a tactic auto-matches when its expected
+		// channel holds exactly one line item ID.
+		for (int i = 0; i < size; i++) {
+			List<String> channels = tacticChannels(tactics.get(i).name());
+			if (channels == null) {
+				continue;
+			}
+			for (String ch : channels) {
+				List<String> ids = channelToIds.getOrDefault(ch, List.of());
+				if (ids.size() == 1) {
+					matchedIds.set(i, ids.get(0));
+					confidences.set(i, "auto");
+					break;
 				}
 			}
+		}
 
-			suggestions.add(new TacticSuggestion(
-					tactic,
-					matchedId == null ? "" : matchedId,
-					matchedId == null ? "none" : "auto"));
+		// Pass 2 — AI disambiguation for channels the unique-ID rule left ambiguous
+		// (several tactics + several IDs sharing a channel).
+		applyAiDisambiguation(tactics, matchedIds, confidences, channelToIds, byId);
+
+		List<TacticSuggestion> suggestions = new ArrayList<>();
+		for (int i = 0; i < size; i++) {
+			suggestions.add(new TacticSuggestion(tactics.get(i).name(), matchedIds.get(i), confidences.get(i)));
 		}
 		return new MatchResult(suggestions, lineItems, uniqueIds);
+	}
+
+	/**
+	 * Runs the AI matcher over tactics still unmatched after the unique-ID pass whose expected channel
+	 * holds more than one line item ID, then applies each returned assignment defensively: the ID must
+	 * be unassigned and belong to the tactic's expected channel. Mutates {@code matchedIds} and
+	 * {@code confidences} in place; a no-op when nothing is ambiguous or the assistant is stubbed.
+	 *
+	 * @param tactics      the extracted tactics (parallel to the id/confidence lists)
+	 * @param matchedIds   per-tactic matched line item ID ("" when unmatched), mutated in place
+	 * @param confidences  per-tactic confidence ("none"/"auto"), mutated in place
+	 * @param channelToIds channel &rarr; its distinct line item IDs
+	 * @param byId         line item ID &rarr; its metadata (used for the channel guard)
+	 */
+	void applyAiDisambiguation(
+			List<PlanTactic> tactics,
+			List<String> matchedIds,
+			List<String> confidences,
+			Map<String, List<String>> channelToIds,
+			Map<String, LineItemMeta> byId) {
+
+		Set<String> assigned = new HashSet<>(matchedIds);
+		assigned.remove("");
+
+		List<LineItemMatchTactic> ambiguous = new ArrayList<>();
+		Set<String> wantedChannels = new HashSet<>();
+		for (int i = 0; i < tactics.size(); i++) {
+			if (!matchedIds.get(i).isEmpty()) {
+				continue;
+			}
+			List<String> channels = tacticChannels(tactics.get(i).name());
+			if (channels == null) {
+				continue;
+			}
+			boolean multi = channels.stream().anyMatch(ch -> channelToIds.getOrDefault(ch, List.of()).size() > 1);
+			if (!multi) {
+				continue;
+			}
+			String channel = channels.get(0);
+			wantedChannels.add(channel);
+			ambiguous.add(new LineItemMatchTactic(i + 1, tactics.get(i).name(), channel, tactics.get(i).context()));
+		}
+		if (ambiguous.isEmpty()) {
+			return;
+		}
+
+		List<LineItemMatchOption> options = new ArrayList<>();
+		for (String channel : wantedChannels) {
+			for (String id : channelToIds.getOrDefault(channel, List.of())) {
+				if (assigned.contains(id)) {
+					continue;
+				}
+				LineItemMeta meta = byId.get(id);
+				options.add(new LineItemMatchOption(id, channel, meta == null ? "" : meta.naming()));
+			}
+		}
+		if (options.isEmpty()) {
+			return;
+		}
+
+		Map<Integer, String> picks = matchAssistant.match(ambiguous, options);
+		for (Map.Entry<Integer, String> pick : picks.entrySet()) {
+			int idx = pick.getKey() - 1;
+			String id = pick.getValue();
+			if (idx < 0 || idx >= tactics.size() || !matchedIds.get(idx).isEmpty() || assigned.contains(id)) {
+				continue;
+			}
+			List<String> channels = tacticChannels(tactics.get(idx).name());
+			LineItemMeta meta = byId.get(id);
+			if (channels == null || meta == null || !channels.contains(meta.channel())) {
+				continue;
+			}
+			matchedIds.set(idx, id);
+			confidences.set(idx, "auto");
+			assigned.add(id);
+		}
+	}
+
+	/**
+	 * Looks up the expected BQ channel(s) for a Media-Plan tactic name.
+	 *
+	 * @param tacticName the tactic name in original casing
+	 * @return the expected channel list, or {@code null} when the tactic is unknown
+	 */
+	List<String> tacticChannels(String tacticName) {
+		return TACTIC_CHANNEL_MAP.get(tacticName.trim().toLowerCase(Locale.ROOT));
 	}
 
 	String extractLineItemId(String naming) {
@@ -335,7 +436,21 @@ public class LineItemMatcherServiceImpl implements LineItemMatcherService {
 
 	List<String> extractTactics(List<List<String>> planRows) {
 
-		List<String> tactics = new ArrayList<>();
+		return extractTacticRows(planRows).stream().map(PlanTactic::name).toList();
+	}
+
+	/**
+	 * Extracts whitelisted tactics from the Media column together with the context used to
+	 * disambiguate duplicate tactic names: the most recent section/group label plus the tactic
+	 * row's own cells (comments, targeting, goal…). Same order, whitelist, stop-phrase filter and
+	 * {@link #MAX_TACTICS} cap as {@link #extractTactics}.
+	 *
+	 * @param planRows the Media Plan grid (may be null/empty)
+	 * @return the tactics with context, in Media-column order
+	 */
+	List<PlanTactic> extractTacticRows(List<List<String>> planRows) {
+
+		List<PlanTactic> tactics = new ArrayList<>();
 		if (planRows == null || planRows.isEmpty()) {
 			return tactics;
 		}
@@ -357,9 +472,17 @@ public class LineItemMatcherServiceImpl implements LineItemMatcherService {
 			return tactics;
 		}
 
+		String group = "";
 		for (int i = mediaRow + 1; i < planRows.size(); i++) {
-			String value = cell(planRows.get(i), mediaCol).trim();
+			List<String> row = planRows.get(i);
+			String value = cell(row, mediaCol).trim();
 			if (value.isEmpty()) {
+				// Section-label rows (e.g. "Grapevine Vintage Railroad") have an empty Media cell but
+				// a label elsewhere; remember it as the group for the tactics beneath it.
+				String label = firstNonEmpty(row);
+				if (!label.isEmpty()) {
+					group = label;
+				}
 				continue;
 			}
 			String lower = value.toLowerCase(Locale.ROOT);
@@ -372,12 +495,58 @@ public class LineItemMatcherServiceImpl implements LineItemMatcherService {
 			if (!WHITELIST.contains(lower)) {
 				continue;
 			}
-			tactics.add(value);
+			tactics.add(new PlanTactic(value, buildContext(group, row, mediaCol)));
 			if (tactics.size() >= MAX_TACTICS) {
 				break;
 			}
 		}
 		return tactics;
+	}
+
+	/**
+	 * Joins the current group label with the tactic row's other non-empty cells into a single
+	 * context string (Media cell excluded, whitespace collapsed).
+	 *
+	 * @param group    the most recent section/group label ("" when none)
+	 * @param row      the tactic row
+	 * @param mediaCol the Media column index to skip
+	 * @return the joined context string
+	 */
+	String buildContext(String group, List<String> row, int mediaCol) {
+
+		List<String> parts = new ArrayList<>();
+		if (!group.isEmpty()) {
+			parts.add(group);
+		}
+		for (int j = 0; j < row.size(); j++) {
+			if (j == mediaCol) {
+				continue;
+			}
+			String c = cell(row, j).trim();
+			if (!c.isEmpty()) {
+				parts.add(c);
+			}
+		}
+		return String.join(" · ", parts).replaceAll("\\s+", " ").trim();
+	}
+
+	/**
+	 * Returns the first non-empty, trimmed cell of a row, or "" when the row is empty/blank.
+	 *
+	 * @param row the row to scan
+	 * @return the first non-empty cell value, or ""
+	 */
+	String firstNonEmpty(List<String> row) {
+
+		if (row == null) {
+			return "";
+		}
+		for (String c : row) {
+			if (c != null && !c.trim().isEmpty()) {
+				return c.trim();
+			}
+		}
+		return "";
 	}
 
 	int indexOfHeader(List<String> headers, java.util.function.Predicate<String> match) {

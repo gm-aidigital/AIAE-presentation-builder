@@ -221,6 +221,10 @@ textarea:focus { border-color: var(--blue); background: var(--white); box-shadow
   background: var(--gray-light); border-radius: 3px; padding: 2px 6px; flex-shrink: 0;
 }
 .match-tactic-name { font-size: 13px; font-weight: 500; color: var(--black); flex: 1; min-width: 0; }
+.match-tactic-meta {
+  font-size: 11px; color: var(--text-muted); font-family: 'DM Mono', monospace;
+  margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .match-tactic-badge { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .match-id-pill {
   font-family: 'DM Mono', monospace; font-size: 11px; font-weight: 600;
@@ -252,6 +256,12 @@ textarea:focus { border-color: var(--blue); background: var(--white); box-shadow
 .match-id-card.dragging { opacity: 0.45; cursor: grabbing; }
 .match-id-card-num { font-family: 'DM Mono', monospace; font-size: 12px; font-weight: 600; color: var(--blue); flex-shrink: 0; min-width: 64px; }
 .match-id-card-naming { font-size: 10px; color: var(--text-muted); font-family: 'DM Mono', monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.match-id-card-tail {
+  align-self: flex-start; max-width: 100%;
+  font-size: 11px; font-weight: 600; color: var(--blue);
+  background: var(--blue-light); border-radius: 4px; padding: 2px 7px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .match-drag-hint { font-size: 11px; color: var(--text-muted); text-align: center; padding: 10px; font-style: italic; }
 
 .btn-match-run {

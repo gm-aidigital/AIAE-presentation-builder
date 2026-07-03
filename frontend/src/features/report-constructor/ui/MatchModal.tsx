@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { LineItemMatchResult, MappingEntry } from "@/shared/api/types";
 import { useWizard } from "@/shared/wizard/WizardContext";
+import { extractTacticBudgets, namingTail, type TacticBudget } from "../lib/mediaPlanBudget";
 import { IconCheck, IconInfo, IconLink2, IconRefresh, IconSpinner } from "./icons";
 
 interface Props {
@@ -19,9 +20,35 @@ function abbreviateNaming(naming: string): string {
     return naming.substring(0, 55) + (naming.length > 55 ? "…" : "");
 }
 
+const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+
+function compactUnits(n: number): string {
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1).replace(/\.0$/, "")}M`;
+    if (n >= 10_000) return `${Math.round(n / 1000)}K`;
+    return new Intl.NumberFormat("en-US").format(n);
+}
+
+/** One compact line for the left panel, e.g. "$64,000 · 9.1M @ $7 CPM". */
+function budgetLine(b: TacticBudget): string {
+    const seg: string[] = [];
+    if (b.amount > 0) seg.push(usd.format(Math.round(b.amount)));
+    if (b.units > 0) {
+        const rate = b.rateType ? ` @ $${b.unitPrice} ${b.rateType.toUpperCase()}` : "";
+        seg.push(`${compactUnits(b.units)}${rate}`);
+    }
+    return seg.join(" · ");
+}
+
 export function MatchModal({ open, matchData, running, onClose, onRun, onConfirm }: Props) {
-    const { mapping, setMapping } = useWizard();
+    const { mapping, setMapping, mediaPlan } = useWizard();
     const [dragOver, setDragOver] = useState<number | null>(null);
+
+    // Budget/volume per tactic, aligned to the mapping order so duplicated
+    // tactic labels ("Programmatic Display" twice) each get their own row.
+    const budgets = useMemo(
+        () => extractTacticBudgets(mediaPlan?.sheetRows ?? null, (mapping ?? []).map((m) => m.tacticName)),
+        [mediaPlan, mapping]
+    );
 
     useEffect(() => {
         document.body.style.overflow = open ? "hidden" : "";
@@ -131,6 +158,14 @@ export function MatchModal({ open, matchData, running, onClose, onRun, onConfirm
                                             <span className="match-tactic-num">{row.tacticNum}</span>
                                             <div style={{ flex: 1, minWidth: 0 }}>
                                                 <div className="match-tactic-name">{row.tacticName}</div>
+                                                {budgets[idx] && budgetLine(budgets[idx] as TacticBudget) && (
+                                                    <div
+                                                        className="match-tactic-meta"
+                                                        title="Planned budget · volume from the media plan"
+                                                    >
+                                                        {budgetLine(budgets[idx] as TacticBudget)}
+                                                    </div>
+                                                )}
                                                 {hasId && naming && (
                                                     <div
                                                         title={naming}
@@ -184,6 +219,7 @@ export function MatchModal({ open, matchData, running, onClose, onRun, onConfirm
                                             <>
                                                 {pool.map((id) => {
                                                     const info = idNamings[id] ?? { naming: "", channel: "", tactic: "" };
+                                                    const tail = namingTail(info.naming, id);
                                                     return (
                                                         <div
                                                             key={id}
@@ -195,6 +231,11 @@ export function MatchModal({ open, matchData, running, onClose, onRun, onConfirm
                                                             }
                                                         >
                                                             <span className="match-id-card-num">{id}</span>
+                                                            {tail && (
+                                                                <span className="match-id-card-tail" title={info.naming}>
+                                                                    {tail}
+                                                                </span>
+                                                            )}
                                                             {info.channel && (
                                                                 <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
                                                                     <span style={{ opacity: 0.6 }}>ch:</span> {info.channel}
