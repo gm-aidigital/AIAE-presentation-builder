@@ -3,6 +3,7 @@ package com.aidigital.reportconstructor.externalservices.anthropic;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
+import com.aidigital.reportconstructor.service.reports.dto.ClaudeSheetBatch;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
 import com.aidigital.reportconstructor.service.reports.dto.Recommendation;
@@ -153,6 +154,59 @@ public class RealClaudeClient implements ClaudeClient {
 			result.put(n, new TacticInsight(male, female, weekdays, weekends));
 		}
 		return new ClaudeTactical(result);
+	}
+
+	@Override
+	public ClaudeSheetBatch batchSheet(CampaignData data, String brief) {
+		var prompt = promptBuilder.buildBatchSheetPrompt(data, brief);
+		if (prompt.isEmpty()) {
+			return claudeDefaults.emptySheetBatch();
+		}
+		JsonNode parsed = messagesClient.callJsonObject(prompt.get(), 2000, 60, "BatchSheet", false);
+		if (parsed == null) {
+			return claudeDefaults.emptySheetBatch();
+		}
+
+		String age = normalizer.textOrNull(parsed.get("audience_age"));
+		if (age != null) {
+			age = age.replaceAll("\\s+", " ").trim();
+			if ("not specified".equals(age.toLowerCase(Locale.ROOT))) {
+				age = null;
+			}
+		}
+
+		String seg = normalizer.limitAudienceSegments(normalizer.textOrNull(parsed.get("audience_segments")));
+
+		Map<Integer, TacticInsight> result = new LinkedHashMap<>();
+		JsonNode tactics = parsed.get("tactics");
+		if (tactics != null && tactics.isObject()) {
+			var fields = tactics.fields();
+			while (fields.hasNext()) {
+				var ent = fields.next();
+				int n;
+				try {
+					n = Integer.parseInt(ent.getKey().trim());
+				} catch (NumberFormatException ex) {
+					continue;
+				}
+				JsonNode vals = ent.getValue();
+				if (!data.tactics().containsKey(n) || vals == null || !vals.isObject()) {
+					continue;
+				}
+				int male = Math.clamp(vals.path("male").asInt(50), 0, 100);
+				int female = 100 - male;
+				String weekdays = normalizer.textOrNull(vals.get("weekdays_peak"));
+				String weekends = normalizer.textOrNull(vals.get("weekends_peak"));
+				if (weekdays != null) {
+					weekdays = weekdays.trim();
+				}
+				if (weekends != null) {
+					weekends = weekends.trim();
+				}
+				result.put(n, new TacticInsight(male, female, weekdays, weekends));
+			}
+		}
+		return new ClaudeSheetBatch(age, seg, result);
 	}
 
 	@Override

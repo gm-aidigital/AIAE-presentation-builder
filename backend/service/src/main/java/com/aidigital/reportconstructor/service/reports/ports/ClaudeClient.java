@@ -3,6 +3,7 @@ package com.aidigital.reportconstructor.service.reports.ports;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
+import com.aidigital.reportconstructor.service.reports.dto.ClaudeSheetBatch;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
 
@@ -33,6 +34,19 @@ public interface ClaudeClient {
 	 * Batch B — per-tactic gender split + weekday/weekend peak windows.
 	 */
 	ClaudeTactical batchTactical(CampaignData data, String brief);
+
+	/**
+	 * Generate Sheet batch — a single call covering only the fields the sheet template consumes:
+	 * the Batch A {@code audience_age}/{@code audience_segments} narrative plus the Batch B per-tactic
+	 * gender split and weekday/weekend peak windows. The field instructions and parsing mirror Batches A
+	 * and B exactly; the Batch A proposal/strategic-insight copy and all Batch C copy are never requested
+	 * because the sheet does not use them.
+	 *
+	 * @param data  parsed campaign data whose plan/tactic context drives the audience and per-tactic estimates
+	 * @param brief free-text campaign brief used as the {@code === CAMPAIGN BRIEF ===} context section
+	 * @return the parsed audience + per-tactic copy for the sheet
+	 */
+	ClaudeSheetBatch batchSheet(CampaignData data, String brief);
 
 	/**
 	 * Batch C — results overview, thoughts on performance, tactic overviews, plus the frequency

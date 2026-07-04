@@ -248,6 +248,144 @@ public class ClaudeBatchPromptBuilder {
 	}
 
 	/**
+	 * Builds the Generate Sheet prompt: a single call that asks only for the fields the sheet template
+	 * consumes — the Batch A {@code audience_age}/{@code audience_segments} narrative and the Batch B
+	 * per-tactic gender split and weekday/weekend peak windows. The context block mirrors {@link
+	 * #buildBatchAPrompt} and every field instruction is copied verbatim from Batches A and B so the sheet
+	 * copy is generated identically to the slide deck, just without the unused proposal/strategic/results
+	 * fields.
+	 *
+	 * @param data  parsed campaign plan and per-tactic performance used to assemble the context blocks and
+	 *                 the per-tactic JSON keys
+	 * @param brief free-text campaign brief prepended as the {@code === CAMPAIGN BRIEF ===} section (treated
+	 *                as empty when null)
+	 * @return the merged sheet prompt requesting audience + per-tactic JSON, or empty when no context block
+	 * could be built
+	 */
+	public Optional<String> buildBatchSheetPrompt(CampaignData data, String brief) {
+		String brf = brief == null ? "" : brief;
+		List<String> planLines = new ArrayList<>();
+		if (normalizer.notBlank(data.client())) {
+			planLines.add("Client:       " + data.client());
+		}
+		if (normalizer.notBlank(data.campaign())) {
+			planLines.add("Campaign:     " + data.campaign());
+		}
+		if (normalizer.notBlank(data.geo())) {
+			planLines.add("Geo:          " + data.geo());
+		}
+		if (normalizer.notBlank(data.goal())) {
+			planLines.add("Goal:         " + data.goal());
+		}
+		if (normalizer.notBlank(data.flightDates())) {
+			planLines.add("Flight:       " + data.flightDates());
+		}
+		if (normalizer.notBlank(data.budget())) {
+			planLines.add("Budget:       " + data.budget());
+		}
+		if (normalizer.notBlank(data.primaryKpis())) {
+			planLines.add("KPIs:         " + data.primaryKpis());
+		}
+		if (normalizer.notBlank(data.tacticsList())) {
+			planLines.add("Tactics:      " + data.tacticsList());
+		}
+		if (normalizer.notBlank(data.audienceAge())) {
+			planLines.add("Audience age: " + data.audienceAge());
+		}
+
+		List<String> tacticLines = new ArrayList<>();
+		for (Map.Entry<Integer, Tactic> e : data.tactics().entrySet()) {
+			Tactic t = e.getValue();
+			StringBuilder line = new StringBuilder("  Tactic " + e.getKey() + " — " + t.name() + ":");
+			if (t.spend() > 0) {
+				line.append(" Spend $").append(fmt.intGroup(Math.round(t.spend())));
+			}
+			if (t.imps() > 0) {
+				line.append(" | Imps ").append(fmt.intGroup(t.imps()));
+			}
+			if (t.ctr() != null) {
+				line.append(" | CTR ").append(fmt.dec2(t.ctr())).append('%');
+			}
+			if (t.vcr() != null) {
+				line.append(" | VCR ").append(fmt.dec2(t.vcr())).append('%');
+			}
+			tacticLines.add(line.toString());
+		}
+
+		List<String> ctx = new ArrayList<>();
+		if (!brf.isEmpty()) {
+			ctx.add("=== CAMPAIGN BRIEF ===\n" + brf);
+		}
+		if (!planLines.isEmpty()) {
+			ctx.add("=== CAMPAIGN PLAN ===\n" + String.join("\n", planLines));
+		}
+		if (!tacticLines.isEmpty()) {
+			ctx.add("=== TACTIC PERFORMANCE ===\n" + String.join("\n", tacticLines));
+		}
+		if (normalizer.notBlank(data.audienceTab())) {
+			ctx.add("=== AUDIENCE & INVENTORY TAB ===\n" + data.audienceTab());
+		}
+		if (ctx.isEmpty()) {
+			return Optional.empty();
+		}
+		String context = String.join("\n\n", ctx);
+
+		List<String> keys = new ArrayList<>();
+		for (Integer k : data.tactics().keySet()) {
+			keys.add("\"" + k + "\"");
+		}
+		String tacticKeys = "[" + String.join(",", keys) + "]";
+
+		String prompt =
+				"You are a senior digital media strategist at an advertising agency writing a client-facing campaign " +
+						"report.\n\n"
+						+ "ANALYTICAL PRINCIPLES — apply to every text field you generate:\n"
+						+ "1. INTERPRET, NEVER ENUMERATE. Every metric must answer \"What does this mean for the " +
+						"campaign?\" "
+						+ "Raw data repeated as prose is not analysis. Transform each data point into a business " +
+						"implication.\n"
+						+ "2. NO GENERIC LANGUAGE. Every sentence must be specific to this campaign's data. "
+						+ "If a sentence could appear in any other campaign report unchanged — rewrite it.\n"
+						+ "3. SPECIFICITY IS MANDATORY. Name the specific tactic, channel, audience segment, or geo.\n\n"
+						+ "Read the campaign data below and return a JSON object with EXACTLY these keys:\n\n"
+						+ "{\n"
+						+ "  \"audience_age\": string,        // target audience age, e.g. \"25-44 years old\" or " +
+						"\"35+\". "
+						+ "Exact range if stated; lower bound only if a floor; generation → range (Millennials=25-40, "
+						+ "GenZ=18-27, GenX=41-56, Boomers=57-75); null if not specified.\n"
+						+ "  \"audience_segments\": string,   // ≤80 chars. WHO is targeted — natural phrase like "
+						+ "\"Affluent auto-intenders, HHI $100K+\". No platforms/budgets/KPIs. null if no info.\n"
+						+ "  \"tactics\": {                    // Per-tactic gender split + peak windows. Keys are tactic " +
+						"numbers as strings: " + tacticKeys + "\n"
+						+ "    \"N\": {\"male\": int, \"female\": int, \"weekdays_peak\": \"H AM/PM – H AM/PM\", " +
+						"\"weekends_peak\": \"H AM/PM – H AM/PM\"}\n"
+						+ "  //  1. Gender split of the reached audience. male + female = 100. All integers.\n"
+						+ "  //  2. Peak impression time window on WEEKDAYS (format: \"H AM/PM – H AM/PM\", e.g. \"7 PM " +
+						"– 9 PM\").\n"
+						+ "  //  3. Peak impression time window on WEEKENDS (same format).\n"
+						+ "  //  Gender: use campaign context as primary signal. Avoid defaulting to 50/50.\n"
+						+ "  //  CRITICAL: Never use multiples of 5 for gender. Use uneven integers like 43,57,61,38.\n"
+						+ "  //  Peak windows: whole hours, 2–5 hour range. Format: \"H PM – H PM\" (no leading zeros).\n"
+						+ "  //  WEEKDAYS default to an evening window (between 5 PM and midnight) — most audiences " +
+						"consume media after work/school on weekdays. Only pick a daytime or morning weekday window " +
+						"when the tactic's channel or audience clearly behaves otherwise (e.g. a B2B/workplace tactic).\n"
+						+ "  //  WEEKENDS default to a midday window (between 10 AM and 4 PM). Only pick an evening " +
+						"weekend window when the tactic specifics clearly support it.\n"
+						+ "  //  Example: {\"1\": {\"male\": 38, \"female\": 62, \"weekdays_peak\": \"7 PM – 9 PM\", " +
+						"\"weekends_peak\": \"11 AM – 1 PM\"}}\n"
+						+ "  }\n"
+						+ "}\n\n"
+						+ "Rules:\n"
+						+ "- Return ONLY the JSON object — no markdown, no backticks, no explanation.\n"
+						+ "- null for any audience field where there is genuinely no data.\n"
+						+ "- tactics: include a key for every tactic number listed above.\n"
+						+ "- Do NOT invent facts. Base everything strictly on the provided data.\n"
+						+ "- Output in English regardless of input language.\n\n"
+						+ "Campaign data:\n" + context;
+		return Optional.of(prompt);
+	}
+
+	/**
 	 * Builds the Batch C (results) prompt, or empty when there is no campaign context to send.
 	 *
 	 * @param data        parsed campaign data including overall totals and actual-vs-plan tactic metrics used for the

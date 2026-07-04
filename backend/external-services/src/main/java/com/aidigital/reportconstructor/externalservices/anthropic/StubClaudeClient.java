@@ -3,6 +3,7 @@ package com.aidigital.reportconstructor.externalservices.anthropic;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
+import com.aidigital.reportconstructor.service.reports.dto.ClaudeSheetBatch;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
 import com.aidigital.reportconstructor.service.reports.engine.ReportClaudeDefaults;
@@ -41,6 +42,11 @@ public class StubClaudeClient implements ClaudeClient {
 	@Override
 	public ClaudeTactical batchTactical(CampaignData data, String brief) {
 		return claudeDefaults.emptyTactical();
+	}
+
+	@Override
+	public ClaudeSheetBatch batchSheet(CampaignData data, String brief) {
+		return claudeDefaults.emptySheetBatch();
 	}
 
 	@Override

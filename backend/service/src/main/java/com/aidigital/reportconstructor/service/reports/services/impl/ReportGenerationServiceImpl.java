@@ -6,6 +6,7 @@ import com.aidigital.reportconstructor.service.common.error.ErrorReason;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
+import com.aidigital.reportconstructor.service.reports.dto.ClaudeSheetBatch;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
@@ -90,19 +91,36 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 			jobProgress.markJobRunningAtStep(jobId, 2, "Resolving placeholders");
 
 			boolean live = claude.isLive();
-
-			jobProgress.markJobRunningAtStep(jobId, 3, "Claude — campaign batch (A)");
-			ClaudeStrategic ccA = (live && placeholders.needStrategic(payload))
-					? claude.batchStrategic(data, brief) : claudeDefaults.emptyStrategic();
-
-			jobProgress.markJobRunningAtStep(jobId, 4, "Claude — tactics batch (B)");
-			ClaudeTactical ccB = (live && placeholders.needTactical(payload, data))
-					? claude.batchTactical(data, brief) : claudeDefaults.emptyTactical();
-
-			jobProgress.markJobRunningAtStep(jobId, 5, "Claude — executive batch (C)");
 			CampaignFrequencies frequencies = placeholders.computeFrequencies(payload, data);
-			ClaudeResults ccC = (live && placeholders.needResults(payload, data))
-					? claude.batchResults(data, brief, frequencies) : claudeDefaults.emptyResults();
+
+			ClaudeStrategic ccA;
+			ClaudeTactical ccB;
+			ClaudeResults ccC;
+
+			if (target == GenerationTarget.SHEET) {
+				// The sheet template consumes only the Batch A audience fields and the Batch B per-tactic
+				// gender/daypart fields — never any Batch C copy — so a single merged call covers both and
+				// the (expensive) executive batch is skipped entirely for this target.
+				jobProgress.markJobRunningAtStep(jobId, 3, "Claude — sheet batch");
+				ClaudeSheetBatch sheetBatch =
+						(live && (placeholders.needStrategic(payload) || placeholders.needTactical(payload, data)))
+								? claude.batchSheet(data, brief) : claudeDefaults.emptySheetBatch();
+				ccA = new ClaudeStrategic(sheetBatch.audienceAge(), sheetBatch.audienceSegments(), null, List.of());
+				ccB = new ClaudeTactical(sheetBatch.byTactic());
+				ccC = claudeDefaults.emptyResults();
+			} else {
+				jobProgress.markJobRunningAtStep(jobId, 3, "Claude — campaign batch (A)");
+				ccA = (live && placeholders.needStrategic(payload))
+						? claude.batchStrategic(data, brief) : claudeDefaults.emptyStrategic();
+
+				jobProgress.markJobRunningAtStep(jobId, 4, "Claude — tactics batch (B)");
+				ccB = (live && placeholders.needTactical(payload, data))
+						? claude.batchTactical(data, brief) : claudeDefaults.emptyTactical();
+
+				jobProgress.markJobRunningAtStep(jobId, 5, "Claude — executive batch (C)");
+				ccC = (live && placeholders.needResults(payload, data))
+						? claude.batchResults(data, brief, frequencies) : claudeDefaults.emptyResults();
+			}
 
 			String geoSummary = (live && placeholders.needGeoSummary(payload))
 					? claude.summarizeGeo(payload.geoRows()) : null;

@@ -1,6 +1,7 @@
 package com.aidigital.reportconstructor.service.reports.engine;
 
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
+import com.aidigital.reportconstructor.service.reports.dto.ClaudeSheetBatch;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
 import org.springframework.stereotype.Component;
@@ -30,6 +31,15 @@ public class ReportClaudeDefaults {
 	 */
 	public ClaudeTactical emptyTactical() {
 		return new ClaudeTactical(Map.of());
+	}
+
+	/**
+	 * Builds a placeholder sheet batch used when the Generate Sheet Claude call is skipped or returns nothing.
+	 *
+	 * @return a {@link ClaudeSheetBatch} with null audience fields and an empty per-tactic insight map
+	 */
+	public ClaudeSheetBatch emptySheetBatch() {
+		return new ClaudeSheetBatch(null, null, Map.of());
 	}
 
 	/**
