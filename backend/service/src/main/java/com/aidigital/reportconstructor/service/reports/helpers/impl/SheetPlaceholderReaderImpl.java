@@ -5,12 +5,12 @@ import com.aidigital.reportconstructor.service.reports.helpers.SheetRowHelper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -40,8 +40,12 @@ public class SheetPlaceholderReaderImpl implements SheetPlaceholderReader {
 	/** Header cell that anchors the per-tactic summary table. */
 	private static final String SUMMARY_ANCHOR_HEADER = "Tactic name";
 
-	/** In-block anchor cell labelling each per-tactic "Main slide" detail block. */
-	private static final String MAIN_SLIDE_ANCHOR = "Main slide";
+	/**
+	 * Matches a per-tactic detail block's anchor cell, {@code "Main slide N"} (1-based tactic
+	 * number in group 1). The writer emits one such cell per block, so the reader keys each
+	 * block by its explicit number rather than its position — mirroring the sheet layout.
+	 */
+	private static final Pattern MAIN_SLIDE_ANCHOR = Pattern.compile("(?i)^main slide\\s+(\\d+)$");
 
 	/** Rows below the "Main slide" anchor row that a detail block can span. */
 	private static final int MAIN_SLIDE_WINDOW = 20;
@@ -228,32 +232,38 @@ public class SheetPlaceholderReaderImpl implements SheetPlaceholderReader {
 	}
 
 	/**
-	 * Reads the per-tactic "Main slide" detail blocks. Blocks are found by every {@link #MAIN_SLIDE_ANCHOR}
-	 * cell on a single row; their columns, sorted left-to-right, assign tactic numbers 1..N. Within each
-	 * block, every {@link #MAIN_SLIDE_SUFFIXES} label is located in the block's anchor column and its value
-	 * read from the next column.
+	 * Reads the per-tactic "Main slide" detail blocks. Every {@link #MAIN_SLIDE_ANCHOR} cell in the
+	 * grid anchors one block; its captured number is the block's 1-based tactic number, so blocks are
+	 * keyed by their explicit label ({@code "Main slide 1"} … {@code "Main slide 7"}) rather than their
+	 * position. Within each block, every {@link #MAIN_SLIDE_SUFFIXES} label is located in the block's
+	 * anchor column and its value read from the next column.
 	 *
 	 * @param grid the workbook grid
 	 * @param out  the accumulating placeholder map
 	 */
 	void readMainSlideBlocks(List<List<String>> grid, Map<String, String> out) {
-		int anchorRow = findRowContaining(grid, MAIN_SLIDE_ANCHOR);
-		if (anchorRow < 0) {
-			return;
-		}
-		List<Integer> blockCols = anchorColumns(grid.get(anchorRow), MAIN_SLIDE_ANCHOR);
-		int tactic = 0;
-		for (int col : blockCols) {
-			if (++tactic > MAX_TACTICS) {
-				return;
+		for (int r = 0; r < grid.size(); r++) {
+			List<String> row = grid.get(r);
+			if (row == null) {
+				continue;
 			}
-			readMainSlideBlock(grid, anchorRow, col, tactic, out);
+			for (int c = 0; c < row.size(); c++) {
+				Matcher m = MAIN_SLIDE_ANCHOR.matcher(rows.cellAt(row, c));
+				if (m.matches()) {
+					int tactic = Integer.parseInt(m.group(1));
+					if (tactic >= 1 && tactic <= MAX_TACTICS) {
+						readMainSlideBlock(grid, r, c, tactic, out);
+					}
+				}
+			}
 		}
 	}
 
 	/**
 	 * Reads one "Main slide" block: for each field label, scans down the block's anchor column within
-	 * {@link #MAIN_SLIDE_WINDOW} rows and emits the value from the adjacent column.
+	 * {@link #MAIN_SLIDE_WINDOW} rows and emits the value from the adjacent column. The scan stops early
+	 * at the next {@link #MAIN_SLIDE_ANCHOR} cell so a block stacked directly below does not leak its
+	 * values into this tactic's placeholders.
 	 *
 	 * @param grid      the workbook grid
 	 * @param anchorRow row of the block's "Main slide" anchor cell
@@ -265,6 +275,9 @@ public class SheetPlaceholderReaderImpl implements SheetPlaceholderReader {
 		int limit = Math.min(grid.size(), anchorRow + 1 + MAIN_SLIDE_WINDOW);
 		for (int r = anchorRow + 1; r < limit; r++) {
 			String label = rows.cellAt(grid.get(r), col);
+			if (MAIN_SLIDE_ANCHOR.matcher(label).matches()) {
+				return;
+			}
 			String suffix = MAIN_SLIDE_SUFFIXES.get(label);
 			if (suffix != null) {
 				emit(out, "{{tactic " + tactic + suffix + "}}", rows.cellAt(grid.get(r), col + 1));
@@ -313,27 +326,6 @@ public class SheetPlaceholderReaderImpl implements SheetPlaceholderReader {
 			}
 		}
 		return -1;
-	}
-
-	/**
-	 * Collects, in ascending order, the columns of a row whose cell equals (case-insensitively)
-	 * the given anchor text — one per detail block.
-	 *
-	 * @param row  the anchor row
-	 * @param text the anchor text to match
-	 * @return the matching column indices, left-to-right
-	 */
-	List<Integer> anchorColumns(List<String> row, String text) {
-		List<Integer> cols = new ArrayList<>();
-		if (row == null) {
-			return cols;
-		}
-		for (int c = 0; c < row.size(); c++) {
-			if (text.equalsIgnoreCase(rows.cellAt(row, c))) {
-				cols.add(c);
-			}
-		}
-		return cols;
 	}
 
 	/**

@@ -106,23 +106,27 @@ class SheetPlaceholderReaderImplTest {
 	}
 
 	@Test
-	void shouldReadMainSlideBlocksLeftToRightAsTacticsTest() {
-		// Given: two "Main slide" blocks side by side (anchor columns 0 and 4)
+	void shouldReadMainSlideBlocksByExplicitNumberAsTacticsTest() {
+		// Given: two "Main slide N" blocks stacked vertically, each anchored by its numbered cell
 		List<List<String>> grid = List.of(
-				List.of("Main slide", "", "", "", "Main slide", ""),
-				List.of("Tactic Goal", "Drive reach", "", "", "Tactic Goal", "Drive clicks"),
-				List.of("Weekdays", "60%", "", "", "Weekdays", "55%"),
-				List.of("Weekends", "40%", "", "", "Weekends", "45%"),
-				List.of("Male", "48%", "", "", "Male", "51%"),
-				List.of("Female", "52%", "", "", "Female", "49%"),
-				List.of("Creative Name:", "Hero15", "", "", "Creative Name:", "Banner A"),
-				List.of("Impressions:", "600,000", "", "", "Impressions:", "300,000"),
-				List.of("Clicks:", "1,200", "", "", "Clicks:", "900"));
+				List.of("Main slide 1"),
+				List.of("Tactic Goal", "Drive reach"),
+				List.of("Weekdays", "60%"),
+				List.of("Weekends", "40%"),
+				List.of("Male", "48%"),
+				List.of("Female", "52%"),
+				List.of("Creative Name:", "Hero15"),
+				List.of("Impressions:", "600,000"),
+				List.of("Clicks:", "1,200"),
+				List.of("Main slide 2"),
+				List.of("Tactic Goal", "Drive clicks"),
+				List.of("Weekends", "45%"),
+				List.of("Creative Name:", "Banner A"));
 
 		// When: the placeholders are read
 		Map<String, String> out = reader.readPlaceholders(grid);
 
-		// Then: the leftmost block is tactic 1, the next is tactic 2
+		// Then: each block maps to the tactic number in its anchor cell
 		assertThat(out)
 				.containsEntry("{{tactic 1 goal}}", "Drive reach")
 				.containsEntry("{{tactic 1 weekdays}}", "60%")
@@ -144,7 +148,7 @@ class SheetPlaceholderReaderImplTest {
 				List.of("Tactic name", "Benchmark", "Spend Fact", "Reach"),
 				List.of("CTV", "0.5%", "$10,000", "800,000"),
 				List.of("Total", "", "$15,000", "1,200,000"),
-				List.of("Main slide"),
+				List.of("Main slide 1"),
 				List.of("Tactic Goal", "Drive reach"));
 		List<List<String>> shifted = new ArrayList<>();
 		shifted.add(List.of());

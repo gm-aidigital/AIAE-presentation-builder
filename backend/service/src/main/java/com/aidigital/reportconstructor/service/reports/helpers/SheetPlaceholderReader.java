@@ -17,8 +17,9 @@ import java.util.Map;
  *       label (and {@code {{RFP info}}} beneath the {@code "RFP Input"} header);</li>
  *   <li>the per-tactic summary table — anchored on its {@code "Tactic name"/"Benchmark"/…}
  *       header row, one data row per tactic down to the {@code "Total"} row;</li>
- *   <li>the per-tactic "Main slide" detail blocks — laid out left-to-right, each field
- *       located by its in-block label ({@code "Tactic Goal"}, {@code "Weekdays"}, {@code "Male"}, …).</li>
+ *   <li>the per-tactic "Main slide" detail blocks — each anchored by a {@code "Main slide N"} cell
+ *       that keys the block to tactic {@code N}, each field located by its in-block label
+ *       ({@code "Tactic Goal"}, {@code "Weekdays"}, {@code "Male"}, …).</li>
  * </ol>
  *
  * <p>Narrative placeholders the sheet does not carry (strategic points, recommendations,
