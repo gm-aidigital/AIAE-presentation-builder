@@ -1,21 +1,46 @@
-import { useEffect, useRef, useState } from "react";
-import { useClerk, useUser } from "@clerk/clerk-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { MEDIA_PLAN_FALLBACK_TAB, MEDIA_PLAN_PRIMARY_TAB, readSheetTab } from "@/shared/api/sheets";
-import type { LineItemMatchResult, PreviewResult, ReportType, Rows2D } from "@/shared/api/types";
+import type { GenerateRequest, LineItemMatchResult, Rows2D } from "@/shared/api/types";
 import { WizardProvider, useWizard } from "@/shared/wizard/WizardContext";
+import { extractTacticBudgets, type TacticBudget } from "../lib/mediaPlanBudget";
 import { useDetectDateRange } from "../api/useDetectDateRange";
 import { useMatchLineItems } from "../api/useMatchLineItems";
-import { usePreviewPlaceholders } from "../api/usePreviewPlaceholders";
 import { fetchReportJob, startReportJob } from "../api/useReportJob";
-import { FlightDatesCard } from "./FlightDatesCard";
-import { GeneratingOverlay } from "./GeneratingOverlay";
 import { MatchModal } from "./MatchModal";
-import { PreviewPanel } from "./PreviewPanel";
-import { Sidebar } from "./Sidebar";
-import { SheetCard } from "./SheetCard";
+import { Stepper } from "./Stepper";
+import { StepBreakdowns, type BreakdownId, type BreakdownState, type TacticView } from "./StepBreakdowns";
+import { StepDataInputs, type InputErrors } from "./StepDataInputs";
+import { StepGenerate, type GenStatus } from "./StepGenerate";
+import { StepReportType } from "./StepReportType";
+import { StepReviewSheet, type ReviewRow } from "./StepReviewSheet";
 import { ToastProvider, useToast } from "./ToastContext";
-import { IconCheck, IconChevron, IconLink2, IconLogo } from "./icons";
+import { TopBar } from "./TopBar";
 import "./report-constructor.css";
+
+const DEFAULT_BREAKDOWNS: BreakdownState = { tp: true, ca: true, geo: false, aud: true, dev: false };
+const NO_ERRORS: InputErrors = { brief: false, marketVolume: false, sheet: false, adj: false, dates: false };
+const JOB_TOTAL = 7;
+
+const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+const grouped = new Intl.NumberFormat("en-US");
+
+function compactUnits(n: number): string {
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1).replace(/\.0$/, "")}M`;
+    if (n >= 10_000) return `${Math.round(n / 1000)}K`;
+    return grouped.format(n);
+}
+
+/** One compact media-plan line, e.g. "$25,518 · 10M @ $2.5 CPM". */
+function budgetLine(b: TacticBudget | null): string {
+    if (!b) return "";
+    const seg: string[] = [];
+    if (b.amount > 0) seg.push(usd.format(Math.round(b.amount)));
+    if (b.units > 0) {
+        const rate = b.rateType ? ` @ $${b.unitPrice} ${b.rateType.toUpperCase()}` : "";
+        seg.push(`${compactUnits(b.units)}${rate}`);
+    }
+    return seg.join(" · ");
+}
 
 /**
  * Flattens every loaded workbook tab into a single 2-D grid, prefixing each tab's
@@ -45,34 +70,31 @@ export function ReportConstructorPage() {
 function PageInner() {
     const w = useWizard();
     const { showToast } = useToast();
-    const { user } = useUser();
-    const { signOut } = useClerk();
 
     const matchMutation = useMatchLineItems();
-    const previewMutation = usePreviewPlaceholders();
     const detectDateRangeMutation = useDetectDateRange();
-    const [datesDetected, setDatesDetected] = useState(false);
 
+    const [step, setStep] = useState(0);
+    const [errors, setErrors] = useState<InputErrors>(NO_ERRORS);
     const [mediaPulling, setMediaPulling] = useState(false);
     const [elevatePulling, setElevatePulling] = useState(false);
-    const [req, setReq] = useState({ brief: false, sheet: false, adj: false, marketVolume: false });
-    const [settingsOpen, setSettingsOpen] = useState(false);
-    const [activeStep, setActiveStep] = useState(0);
 
     const [matchOpen, setMatchOpen] = useState(false);
     const [matchData, setMatchData] = useState<LineItemMatchResult | null>(null);
 
-    const [previewData, setPreviewData] = useState<PreviewResult | null>(null);
-    const [previewVisible, setPreviewVisible] = useState(false);
+    // Per-tactic breakdown toggles (cosmetic — no backend effect yet), keyed by tacticNum.
+    const [breakdowns, setBreakdowns] = useState<Record<number, BreakdownState>>({});
 
-    // Imperative generation state (stable — never derived from a live query, so
-    // polling/retries can't make the overlay flicker). Mirrors the POC.
-    const [generating, setGenerating] = useState(false);
-    const [progress, setProgress] = useState({ step: 0, total: 7, label: "" });
+    // Sheet-assembly (target=SHEET) job → produces the review sheet.
+    const [building, setBuilding] = useState(false);
+    const [sheetUrl, setSheetUrl] = useState<string | null>(null);
+
+    // Final report (target=SLIDES_FROM_SHEET) job → produces the deck from the sheet.
+    const [genStatus, setGenStatus] = useState<GenStatus>("idle");
+    const [genStep, setGenStep] = useState(0);
     const [resultUrl, setResultUrl] = useState<string | null>(null);
-    const [resultKind, setResultKind] = useState<"slides" | "sheet">("slides");
-    const pollRef = useRef<number | null>(null);
 
+    const pollRef = useRef<number | null>(null);
     function stopPolling() {
         if (pollRef.current) {
             window.clearInterval(pollRef.current);
@@ -81,32 +103,15 @@ function PageInner() {
     }
     useEffect(() => () => stopPolling(), []);
 
-    // Scroll-spy for the sticky stepper.
-    useEffect(() => {
-        function onScroll() {
-            ["s1", "s2", "s3", "s4"].forEach((id, i) => {
-                const el = document.getElementById(id);
-                if (!el) return;
-                const r = el.getBoundingClientRect();
-                if (r.top < 180 && r.bottom > 0) setActiveStep(i);
-            });
-        }
-        window.addEventListener("scroll", onScroll);
-        return () => window.removeEventListener("scroll", onScroll);
-    }, []);
+    const clearError = (key: keyof InputErrors) => setErrors((e) => ({ ...e, [key]: false }));
 
     // ── Sheet connect handlers ────────────────────────────────────────────
     async function pullMediaPlan(url: string) {
         setMediaPulling(true);
         setMatchData(null);
         try {
-            // Prefer the "Proposal" tab; when the workbook has none (e.g. an RFP
-            // export that only ships a visible "Estimates" tab), fall back to
-            // Estimates as the primary media-plan source.
             let p = await readSheetTab(url, MEDIA_PLAN_PRIMARY_TAB);
-            if (!p.ok && p.error === "tab_not_found") {
-                p = await readSheetTab(url, MEDIA_PLAN_FALLBACK_TAB);
-            }
+            if (!p.ok && p.error === "tab_not_found") p = await readSheetTab(url, MEDIA_PLAN_FALLBACK_TAB);
             if (!p.ok) {
                 showToast(
                     p.error === "tab_not_found"
@@ -130,7 +135,7 @@ function PageInner() {
                 estimatesRows: [],
                 geoRows: [],
             });
-            setReq((r) => ({ ...r, sheet: false }));
+            setErrors((e) => ({ ...e, sheet: false }));
             showToast(`${p.title} — ${p.rows} rows loaded`);
             void loadOptionalTabs(url, p.tabs);
         } catch (e) {
@@ -141,9 +146,6 @@ function PageInner() {
     }
 
     async function loadOptionalTabs(url: string, tabs: string[]) {
-        // Read every tab in the workbook once. The Audience and Estimates tabs feed
-        // their own resolvers; the full set is bundled into geoRows so Claude can
-        // find the geo targeting wherever it lives (its tab name varies per file).
         const loaded = (
             await Promise.all(
                 tabs.map((tab) =>
@@ -165,7 +167,6 @@ function PageInner() {
             estimatesRows: byName("Estimates") ?? byName("Proposal") ?? [],
             geoRows: buildWorkbookRows(loaded),
         });
-        showToast(`Loaded ${loaded.length} tab${loaded.length === 1 ? "" : "s"} for analysis`);
     }
 
     async function pullElevate(url: string) {
@@ -191,7 +192,7 @@ function PageInner() {
                 preview: b.preview,
                 adjRows: b.rawRows,
             });
-            setReq((r) => ({ ...r, adj: false }));
+            setErrors((e) => ({ ...e, adj: false }));
             showToast(`${b.title} — ${b.rows} rows loaded`);
             void detectDates(b.rawRows);
         } catch (e) {
@@ -201,19 +202,14 @@ function PageInner() {
         }
     }
 
-    // Detect the flight window from the raw-data ("Basic" tab) so the user can
-    // confirm or correct it before generating. Best-effort: on failure or no
-    // dated rows, the user enters the dates manually in the FlightDatesCard.
+    // Prefill the flight-date field from the raw-data ("Basic" tab) so the user can
+    // confirm or correct it. Best-effort — on failure the user enters dates by hand.
     async function detectDates(adjRows: Rows2D) {
-        setDatesDetected(false);
         try {
             const r = await detectDateRangeMutation.mutateAsync(adjRows);
-            if (r.start && r.end) {
-                w.setDateWindow(r.start, r.end);
-                setDatesDetected(true);
-            }
+            if (r.start && r.end) w.setDateWindow(r.start, r.end);
         } catch {
-            /* detection is optional — the user can still enter dates by hand */
+            /* detection is optional */
         }
     }
 
@@ -249,117 +245,144 @@ function PageInner() {
         showToast(`Mapping confirmed — ${matched}/${w.mapping.length} tactics`);
     }
 
-    // ── Preview ───────────────────────────────────────────────────────────
-    function previewPlaceholders() {
-        if (!w.mediaPlan && !w.elevate) {
-            showToast("Connect at least one sheet first", true);
-            return;
-        }
-        previewMutation.mutate(
-            {
-                brief: w.brief,
-                reportType: w.reportType,
-                marketVolume: w.marketVolume,
-                sheetRows: w.mediaPlan?.sheetRows ?? [],
-                adjRows: w.elevate?.adjRows ?? [],
-                audienceRows: w.mediaPlan?.audienceRows ?? [],
-                estimatesRows: w.mediaPlan?.estimatesRows ?? [],
-                geoRows: w.mediaPlan?.geoRows ?? [],
-                lineItemMapping: w.mapping ?? undefined,
-                dateFilter:
-                    w.dateStart && w.dateEnd
-                        ? { mode: "RANGE", start: w.dateStart, end: w.dateEnd }
-                        : undefined,
-            },
-            {
-                onSuccess: (d) => {
-                    setPreviewData(d);
-                    setPreviewVisible(true);
-                    requestAnimationFrame(() =>
-                        document.getElementById("preview-panel")?.scrollIntoView({ behavior: "smooth", block: "start" })
-                    );
-                },
-                onError: (e) => showToast(e.message, true),
-            }
-        );
-    }
-
-    // ── Generate ──────────────────────────────────────────────────────────
-    // Both the "Generate Slides" and "Generate Sheet" buttons share the same
-    // gating, payload, and progress polling; only the `target` differs and drives
-    // which artifact the backend renders and how the result card is labelled.
-    function generate() {
-        runGeneration("SLIDES");
-    }
-
-    function generateSheet() {
-        runGeneration("SHEET");
-    }
-
-    function runGeneration(target: "SLIDES" | "SHEET") {
-        const errs = {
+    // ── Step 2 → 3 gate ───────────────────────────────────────────────────
+    function confirmInputs() {
+        const errs: InputErrors = {
             brief: !w.brief.trim(),
+            marketVolume: !w.marketVolume.trim(),
             sheet: !w.mediaPlan,
             adj: !w.elevate,
-            marketVolume: !w.marketVolume.trim(),
+            dates: !(w.dateStart && w.dateEnd),
         };
-        if (errs.brief || errs.sheet || errs.adj || errs.marketVolume) {
-            setReq(errs);
-            showToast("Please complete all required sections", true);
+        setErrors(errs);
+        if (errs.brief || errs.marketVolume || errs.sheet || errs.adj || errs.dates) {
+            showToast("Please complete all required fields", true);
             return;
         }
-        if (!w.mediaPlan || !w.elevate) return;
-        if (!w.dateConfirmed) {
-            showToast("Confirm the flight dates before generating", true);
-            document.getElementById("s5")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        if (!w.matchConfirmed) {
+            showToast("Confirm the line-item mapping first", true);
+            openMatch();
             return;
         }
-        const kind = target === "SHEET" ? "sheet" : "slides";
-        setReq({ brief: false, sheet: false, adj: false, marketVolume: false });
-        setResultUrl(null);
-        setResultKind(kind);
-        setGenerating(true);
-        setProgress({ step: 0, total: 7, label: "Starting…" });
-        startReportJob({
+        setStep(2);
+    }
+
+    // ── Derived tactics + review rows ─────────────────────────────────────
+    const budgets = useMemo(
+        () => extractTacticBudgets(w.mediaPlan?.sheetRows ?? null, (w.mapping ?? []).map((m) => m.tacticName)),
+        [w.mediaPlan, w.mapping]
+    );
+
+    const tactics: TacticView[] = useMemo(
+        () =>
+            (w.mapping ?? []).map((m, i) => ({
+                tacticNum: m.tacticNum,
+                name: m.tacticName,
+                channel: m.expectedChannel ?? "",
+                meta: budgetLine(budgets[i] ?? null),
+                on: breakdowns[m.tacticNum] ?? DEFAULT_BREAKDOWNS,
+            })),
+        [w.mapping, budgets, breakdowns]
+    );
+
+    const reviewRows: ReviewRow[] = useMemo(
+        () =>
+            (w.mapping ?? []).map((m, i) => {
+                const b = budgets[i] ?? null;
+                return {
+                    tactic: m.tacticName,
+                    lineId: m.lineItemId ?? null,
+                    spend: b && b.amount > 0 ? usd.format(Math.round(b.amount)) : null,
+                    impressions: b && b.units > 0 ? grouped.format(Math.round(b.units)) : null,
+                    clicks: null,
+                    ctr: null,
+                };
+            }),
+        [w.mapping, budgets]
+    );
+
+    function toggleBreakdown(tacticNum: number, id: BreakdownId) {
+        setBreakdowns((prev) => {
+            const cur = prev[tacticNum] ?? DEFAULT_BREAKDOWNS;
+            return { ...prev, [tacticNum]: { ...cur, [id]: !cur[id] } };
+        });
+    }
+
+    // ── Generation jobs (shared payload) ──────────────────────────────────
+    function basePayload(): GenerateRequest {
+        return {
             brief: w.brief,
             reportType: w.reportType,
-            target,
             marketVolume: w.marketVolume,
-            sheetRows: w.mediaPlan.sheetRows,
-            adjRows: w.elevate.adjRows,
-            audienceRows: w.mediaPlan.audienceRows,
-            estimatesRows: w.mediaPlan.estimatesRows,
-            geoRows: w.mediaPlan.geoRows,
+            sheetRows: w.mediaPlan?.sheetRows ?? [],
+            adjRows: w.elevate?.adjRows ?? [],
+            audienceRows: w.mediaPlan?.audienceRows ?? [],
+            estimatesRows: w.mediaPlan?.estimatesRows ?? [],
+            geoRows: w.mediaPlan?.geoRows ?? [],
             lineItemMapping: w.mapping ?? undefined,
-            bqSheetId: w.elevate.sheetId,
-            dateFilter: { mode: "RANGE", start: w.dateStart, end: w.dateEnd },
-        })
+            bqSheetId: w.elevate?.sheetId,
+            dateFilter:
+                w.dateStart && w.dateEnd
+                    ? { mode: "RANGE", start: w.dateStart, end: w.dateEnd }
+                    : { mode: "ALL" },
+        };
+    }
+
+    // Build the collected Google Sheet (step 3 → 4).
+    function buildSheet() {
+        if (building) return;
+        setBuilding(true);
+        startReportJob({ ...basePayload(), target: "SHEET" })
             .then((jobId) => {
-                setProgress({ step: 1, total: 7, label: "Queued…" });
-                let polls = 0;
                 pollRef.current = window.setInterval(async () => {
-                    polls += 1;
-                    if (polls > 240) {
-                        stopPolling();
-                        setGenerating(false);
-                        showToast("Generation timeout — please try again", true);
-                        return;
-                    }
                     try {
                         const p = await fetchReportJob(jobId);
-                        if (!p) return; // transient miss — keep polling
-                        if (p.step > 0) {
-                            setProgress({ step: p.step, total: p.total || 7, label: p.label ?? "Working…" });
-                        }
+                        if (!p) return;
                         if (p.status === "done") {
                             stopPolling();
-                            setProgress({ step: 7, total: 7, label: "Done!" });
-                            setResultUrl(p.slideUrl ?? "");
-                            setGenerating(false);
-                            showToast(kind === "sheet" ? "Sheet ready!" : "Presentation ready!");
+                            setBuilding(false);
+                            setSheetUrl(p.slideUrl ?? null);
+                            setStep(3);
+                            showToast("Sheet assembled — review it");
                         } else if (p.status === "error") {
                             stopPolling();
-                            setGenerating(false);
+                            setBuilding(false);
+                            showToast(p.error ?? "Sheet build failed", true);
+                        }
+                    } catch {
+                        /* transient poll error — keep polling */
+                    }
+                }, 1500);
+            })
+            .catch((e) => {
+                setBuilding(false);
+                showToast(e instanceof Error ? e.message : "Launch failed", true);
+            });
+    }
+
+    // Generate the final report from the reviewed sheet (step 5).
+    function generateReport() {
+        if (genStatus !== "idle") return;
+        setResultUrl(null);
+        setGenStatus("running");
+        setGenStep(0);
+        startReportJob({ ...basePayload(), target: "SLIDES_FROM_SHEET", sheetUrl: sheetUrl ?? undefined })
+            .then((jobId) => {
+                pollRef.current = window.setInterval(async () => {
+                    try {
+                        const p = await fetchReportJob(jobId);
+                        if (!p) return;
+                        if (p.step > 0) setGenStep(p.step);
+                        if (p.status === "done") {
+                            stopPolling();
+                            setGenStep(JOB_TOTAL);
+                            setGenStatus("done");
+                            setResultUrl(p.slideUrl ?? null);
+                            showToast("Report ready!");
+                        } else if (p.status === "error") {
+                            stopPolling();
+                            setGenStatus("idle");
+                            setGenStep(0);
                             showToast(p.error ?? "Generation failed", true);
                         }
                     } catch {
@@ -368,323 +391,78 @@ function PageInner() {
                 }, 1500);
             })
             .catch((e) => {
-                setGenerating(false);
+                setGenStatus("idle");
                 showToast(e instanceof Error ? e.message : "Launch failed", true);
             });
     }
 
-    function clearAll() {
-        w.setBrief("");
-        w.setReportType("EOC");
-        w.setMarketVolume("");
-        w.disconnectMediaPlan();
-        w.disconnectElevate();
-        setDatesDetected(false);
-        setMatchData(null);
-        setPreviewData(null);
-        setPreviewVisible(false);
+    function runAgain() {
         stopPolling();
-        setGenerating(false);
+        setGenStatus("idle");
+        setGenStep(0);
         setResultUrl(null);
-        setResultKind("slides");
-        setProgress({ step: 0, total: 7, label: "" });
-        setReq({ brief: false, sheet: false, adj: false, marketVolume: false });
     }
 
-    // ── Derived UI ────────────────────────────────────────────────────────
-    const briefLen = w.brief.length;
-    const hasMarketVolume = w.marketVolume.trim().length > 0;
-    const steps = [
-        { label: "Campaign Brief", done: w.brief.trim().length > 0, href: "#s1" },
-        { label: "Market Volume", done: hasMarketVolume, href: "#s2" },
-        { label: "Media Plan", done: !!w.mediaPlan, href: "#s3" },
-        { label: "Elevate Dashboard", done: !!w.elevate, href: "#s4" },
-    ];
-    const bothConnected = !!w.mediaPlan && !!w.elevate;
-    const matched = (w.mapping ?? []).filter((m) => m.lineItemId).length;
-    const matchTotal = (w.mapping ?? []).length;
-
-    const matchBanner = (
-        <div
-            className={
-                "match-status-banner " +
-                (bothConnected ? (w.matchConfirmed ? "visible" : "pending visible") : "pending")
-            }
-        >
-            <div className="match-status-banner-icon">
-                <IconLink2 size={13} />
-            </div>
-            <div className="match-status-banner-text">
-                <div className="match-status-banner-label">
-                    {!bothConnected
-                        ? "Line Items — connect both files"
-                        : w.matchConfirmed
-                          ? "✓ Mapping confirmed"
-                          : "Line Items — needs review"}
-                </div>
-                <div className="match-status-banner-sub">
-                    {!bothConnected
-                        ? "First load the Media Plan and BQ export"
-                        : w.matchConfirmed
-                          ? `${matched} of ${matchTotal} tactics linked to a Line Item ID`
-                          : "Run matching and confirm before generating"}
-                </div>
-            </div>
-            <button className="btn-match-open" disabled={!bothConnected} onClick={openMatch}>
-                {w.matchConfirmed ? "Edit →" : "Match →"}
-            </button>
-        </div>
-    );
+    // Map the 7-step job progress onto the 5 displayed generation stages.
+    const stagesCompleted = genStatus === "done" ? 5 : Math.min(5, Math.round((genStep / JOB_TOTAL) * 5));
 
     return (
-        <>
-            <nav>
-                <a className="nav-logo" href="#">
-                    <div className="nav-logo-mark">
-                        <IconLogo />
-                    </div>
-                    <span className="nav-logo-text">
-                        AI Digital <span>Studio</span>
-                    </span>
-                </a>
-                <div className="nav-right">
-                    <div className="nav-badge">Report Constructor</div>
-                    <div className="nav-user">
-                        <span className="nav-user-dot" />
-                        {user?.fullName ?? user?.primaryEmailAddress?.emailAddress ?? ""}
-                    </div>
-                    <button className="btn-signout" onClick={() => signOut()}>
-                        Sign out
-                    </button>
-                </div>
-            </nav>
+        <div className="rc-app">
+            <TopBar />
+            <Stepper active={step} />
 
-            <div className="hero">
-                <div className="hero-dots" />
-                <div className="hero-inner">
-                    <div className="hero-tag">
-                        <span className="hero-tag-dot" />
-                        Campaign Report Generator
-                    </div>
-                    <h1>
-                        One button.
-                        <br />
-                        <em>Ready presentation.</em>
-                    </h1>
-                    <p className="hero-sub">
-                        Connect your Google Sheets — Claude reads the data, applies your brief, and builds a
-                        structured presentation.
-                    </p>
-                </div>
-            </div>
+            {step === 0 && <StepReportType onContinue={() => setStep(1)} />}
 
-            <div className="progress-wrap">
-                <div className="progress-inner">
-                    {steps.map((s, i) => (
-                        <a
-                            key={s.label}
-                            className={`progress-step${activeStep === i ? " active" : ""}${s.done ? " done" : ""}`}
-                            href={s.href}
-                        >
-                            <div className="step-circle">
-                                <span className="step-num">{i + 1}</span>
-                                <span className="step-check">
-                                    <IconCheck size={11} />
-                                </span>
-                            </div>
-                            <span className="step-label">{s.label}</span>
-                        </a>
-                    ))}
-                </div>
-            </div>
-
-            <div className="page-body">
-                <div className="form-area">
-                    {/* 01 Brief */}
-                    <div className="section-card" id="s1">
-                        <div className="card-header">
-                            <div className="card-num">01</div>
-                            <div>
-                                <div className="card-title">Campaign Brief</div>
-                                <div className="card-desc">
-                                    Core context — client, goals, audience, KPIs, flight dates
-                                </div>
-                            </div>
-                        </div>
-                        <div className="card-body">
-                            <div className="textarea-wrap">
-                                <textarea
-                                    placeholder="Describe the campaign…&#10;&#10;Include: client name, campaign goals, target audience, budget, flight dates, KPIs, channels used."
-                                    value={w.brief}
-                                    onChange={(e) => {
-                                        w.setBrief(e.target.value);
-                                        setReq((r) => ({ ...r, brief: false }));
-                                    }}
-                                />
-                                <span className={`char-count${briefLen > 0 ? " active" : ""}`}>
-                                    {briefLen.toLocaleString()} chars
-                                </span>
-                            </div>
-                            <div className={`field-error${req.brief ? " visible" : ""}`}>
-                                Campaign brief is required.
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* 02 Market Volume */}
-                    <div className="section-card" id="s2">
-                        <div className="card-header">
-                            <div className="card-num">02</div>
-                            <div>
-                                <div className="card-title">Market Volume</div>
-                                <div className="card-desc">Maximum addressable audience size — required</div>
-                            </div>
-                        </div>
-                        <div className="card-body">
-                            <div className="sheets-hint">
-                                Open <strong>DV360</strong>, select your advertiser, and enter your socio-demographic
-                                and audience targeting. Read off the <strong>maximum audience volume</strong> the
-                                estimate reports, and paste that number here. It fills the{" "}
-                                <strong>{"{{market volume}}"}</strong> placeholder, shortened automatically (e.g.
-                                74,542 → 74k, 1,234,567 → 1.2M).
-                            </div>
-                            <input
-                                className="input-field"
-                                type="text"
-                                inputMode="numeric"
-                                placeholder="e.g. 1 234 567"
-                                value={w.marketVolume}
-                                onChange={(e) => {
-                                    w.setMarketVolume(e.target.value);
-                                    setReq((r) => ({ ...r, marketVolume: false }));
-                                }}
-                            />
-                            <div className={`field-error${req.marketVolume ? " visible" : ""}`}>
-                                Market volume is required.
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* 03 Media Plan */}
-                    <SheetCard
-                        num="03"
-                        id="s3"
-                        title="Media Plan"
-                        desc="Channel allocations, budgets, targeting — Google Sheets link"
-                        hint={
-                            <>
-                                <strong>Tip:</strong> Make sure the sheet is accessible to the service account (share
-                                it or set it to "Anyone with the link").
-                            </>
-                        }
-                        sheet={w.mediaPlan}
-                        pulling={mediaPulling}
-                        requiredError={req.sheet}
-                        requiredMsg="Media plan is required."
-                        onPull={pullMediaPlan}
-                        onDisconnect={() => {
-                            w.disconnectMediaPlan();
-                            setMatchData(null);
-                        }}
-                    />
-
-                    {/* 04 Elevate */}
-                    <SheetCard
-                        num="04"
-                        id="s4"
-                        title="Elevate Dashboard Datasheet"
-                        desc='BigQuery export — actual performance data, tab "Basic"'
-                        hint={
-                            <>
-                                <strong>Tip:</strong> Paste the Google Sheets link with the BigQuery export. The{" "}
-                                <strong>Basic</strong> tab will be read.
-                            </>
-                        }
-                        sheet={w.elevate}
-                        pulling={elevatePulling}
-                        requiredError={req.adj}
-                        requiredMsg="Elevate Dashboard Datasheet is required."
-                        footer={matchBanner}
-                        onPull={pullElevate}
-                        onDisconnect={() => {
-                            w.disconnectElevate();
-                            setMatchData(null);
-                            setDatesDetected(false);
-                        }}
-                    />
-
-                    {/* 05 Flight Dates */}
-                    <FlightDatesCard
-                        connected={!!w.elevate}
-                        detecting={detectDateRangeMutation.isPending}
-                        detected={datesDetected}
-                        start={w.dateStart}
-                        end={w.dateEnd}
-                        confirmed={w.dateConfirmed}
-                        onChange={(s, e) => w.setDateWindow(s, e)}
-                        onConfirm={w.confirmDates}
-                    />
-
-                    {/* 06 Settings */}
-                    <div className={`settings-card${settingsOpen ? " open" : ""}`} id="s6">
-                        <button className="settings-toggle" onClick={() => setSettingsOpen((v) => !v)}>
-                            <div className="settings-toggle-left">
-                                <div className="settings-toggle-num">06</div>
-                                <div>
-                                    <div className="settings-toggle-title">Additional Settings</div>
-                                    <div className="settings-toggle-desc">Report type and output options</div>
-                                </div>
-                            </div>
-                            <div className="settings-toggle-right">
-                                <span className="settings-active-badge">{w.reportType}</span>
-                                <IconChevron className="settings-chevron" size={15} />
-                            </div>
-                        </button>
-                        <div className="settings-body">
-                            <div className="settings-body-inner">
-                                <div className="setting-row">
-                                    <div className="setting-label">
-                                        Report Type
-                                        <span className="setting-label-sub">— select the reporting period</span>
-                                    </div>
-                                    <div className="report-type-group">
-                                        {(["EOC", "EOM"] as ReportType[]).map((t) => (
-                                            <button
-                                                key={t}
-                                                className={`report-type-btn${w.reportType === t ? " active" : ""}`}
-                                                onClick={() => w.setReportType(t)}
-                                            >
-                                                <span className="report-type-badge">{t}</span>
-                                                <span className="report-type-sub">
-                                                    {t === "EOC" ? "End of Campaign" : "End of Month"}
-                                                </span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <Sidebar
-                    resultUrl={resultUrl}
-                    resultKind={resultKind}
-                    previewLoading={previewMutation.isPending}
-                    generating={generating}
-                    onPreview={previewPlaceholders}
-                    onGenerate={generate}
-                    onGenerateSheet={generateSheet}
-                    onClear={clearAll}
+            {step === 1 && (
+                <StepDataInputs
+                    errors={errors}
+                    mediaPulling={mediaPulling}
+                    elevatePulling={elevatePulling}
+                    datesDetecting={detectDateRangeMutation.isPending}
+                    matchRunning={matchMutation.isPending}
+                    onConnectMediaPlan={pullMediaPlan}
+                    onConnectElevate={pullElevate}
+                    onDisconnectMediaPlan={() => {
+                        w.disconnectMediaPlan();
+                        setMatchData(null);
+                    }}
+                    onDisconnectElevate={() => {
+                        w.disconnectElevate();
+                        setMatchData(null);
+                    }}
+                    onOpenMatch={openMatch}
+                    onConfirm={confirmInputs}
+                    clearError={clearError}
                 />
-            </div>
-
-            {generating && (
-                <GeneratingOverlay step={progress.step} total={progress.total} label={progress.label} />
             )}
 
-            {previewVisible && previewData && (
-                <PreviewPanel data={previewData} onClose={() => setPreviewVisible(false)} />
+            {step === 2 && (
+                <StepBreakdowns
+                    tactics={tactics}
+                    building={building}
+                    onToggle={toggleBreakdown}
+                    onBuild={buildSheet}
+                />
+            )}
+
+            {step === 3 && (
+                <StepReviewSheet
+                    reportType={w.reportType}
+                    sheetUrl={sheetUrl}
+                    rows={reviewRows}
+                    onConfirm={() => setStep(4)}
+                />
+            )}
+
+            {step === 4 && (
+                <StepGenerate
+                    reportType={w.reportType}
+                    status={genStatus}
+                    completed={stagesCompleted}
+                    resultUrl={resultUrl}
+                    onGenerate={generateReport}
+                    onRunAgain={runAgain}
+                />
             )}
 
             <MatchModal
@@ -695,6 +473,19 @@ function PageInner() {
                 onRun={runMatching}
                 onConfirm={confirmMatching}
             />
-        </>
+
+            {building && (
+                <div className="rc-overlay">
+                    <div className="rc-overlay__card">
+                        <div className="rc-overlay__spinner" />
+                        <div className="rc-overlay__title">Assembling your sheet…</div>
+                        <div className="rc-overlay__sub">
+                            Reading the sources, matching line items and collecting every tactic into one Google
+                            Sheet.
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
     );
 }
