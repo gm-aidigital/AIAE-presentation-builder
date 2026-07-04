@@ -9,6 +9,7 @@ import com.google.api.services.drive.model.File;
 import com.google.api.services.sheets.v4.Sheets;
 import com.google.api.services.sheets.v4.model.BatchUpdateSpreadsheetRequest;
 import com.google.api.services.sheets.v4.model.CellData;
+import com.google.api.services.sheets.v4.model.CopyPasteRequest;
 import com.google.api.services.sheets.v4.model.FindReplaceRequest;
 import com.google.api.services.sheets.v4.model.GridRange;
 import com.google.api.services.sheets.v4.model.RepeatCellRequest;
@@ -66,6 +67,17 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 	 */
 	private static final int MAIN_SLIDE_ROWS_DOWN = 14;
 	private static final int MAIN_SLIDE_COLS_RIGHT = 1;
+
+	/**
+	 * Column-0 label of the summary table's totals row.
+	 */
+	private static final String TOTALS_LABEL = "Total";
+
+	/**
+	 * How many rows below the fixed 7 tactic slots to search for {@link #TOTALS_LABEL},
+	 * bounding the scan rather than assuming a single fixed offset.
+	 */
+	private static final int TOTALS_SEARCH_WINDOW = 20;
 
 	private final GoogleCredentialsFactory creds;
 	private final Sheets sheets;
@@ -167,14 +179,21 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 	}
 
 	/**
-	 * Builds the clear requests for the unused rows of the per-tactic summary table
-	 * (anchored by its {@link #SUMMARY_HEADER} row, one data row per tactic slot 1..7
-	 * directly below it). A no-op when the header cannot be located.
+	 * Builds the clear/relocate requests for the unused rows of the per-tactic summary
+	 * table (anchored by its {@link #SUMMARY_HEADER} row, one data row per tactic slot
+	 * 1..7 directly below it). A no-op when the header cannot be located.
+	 *
+	 * <p>When some tactic slots are unused, the totals row is moved up to sit directly
+	 * under the last real tactic — the first freed slot — instead of leaving it below
+	 * a block of cleared rows; its old position is then cleared like the rest. Rows
+	 * are relocated via copy/paste, never deleted, so the sheet's row count and any
+	 * content below the table stay in place. When the totals row cannot be located,
+	 * every unused slot is simply cleared in place.
 	 *
 	 * @param grid        the workbook's first tab, read as trimmed cell strings
 	 * @param sheetId     numeric id of that tab, used to build the {@link GridRange}s
 	 * @param tacticCount number of real tactics; slots above this are cleared
-	 * @return clear requests for the unused summary-table rows, or an empty list
+	 * @return clear/relocate requests for the unused summary-table rows, or an empty list
 	 */
 	List<Request> summaryRowClearRequests(List<List<String>> grid, int sheetId, int tacticCount) {
 		int headerRow = findSummaryHeaderRow(grid);
@@ -183,8 +202,19 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 			return List.of();
 		}
 		int tableWidth = tableWidth(grid.get(headerRow));
+		int firstFreedRow = headerRow + tacticCount + 1;
+		int totalsRow = findTotalsRow(grid, headerRow);
+
 		List<Request> requests = new ArrayList<>();
-		for (int t = tacticCount + 1; t <= 7; t++) {
+		int clearFrom = tacticCount + 1;
+		if (totalsRow > firstFreedRow) {
+			requests.add(moveRowRequest(sheetId, totalsRow, firstFreedRow, tableWidth));
+			requests.add(clearRequest(sheetId, totalsRow, totalsRow + 1, 0, tableWidth));
+			// The first freed slot now holds the relocated totals row; only the
+			// remaining unused slots still need clearing.
+			clearFrom = tacticCount + 2;
+		}
+		for (int t = clearFrom; t <= 7; t++) {
 			int rowIndex = headerRow + t;
 			requests.add(clearRequest(sheetId, rowIndex, rowIndex + 1, 0, tableWidth));
 		}
@@ -216,6 +246,57 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 					anchor[1], anchor[1] + MAIN_SLIDE_COLS_RIGHT + 1));
 		}
 		return requests;
+	}
+
+	/**
+	 * Finds the summary table's totals row: the first row at or below the fixed
+	 * 7 tactic slots whose column-0 cell is exactly {@link #TOTALS_LABEL}, searched
+	 * within a bounded window so an unrelated "Total" elsewhere in the tab isn't matched.
+	 *
+	 * @param grid      the workbook tab, read as trimmed cell strings
+	 * @param headerRow the summary table's header row index
+	 * @return the totals row's zero-based index, or {@code -1} when none is found
+	 */
+	int findTotalsRow(List<List<String>> grid, int headerRow) {
+		int searchStart = headerRow + 8;
+		int searchEnd = Math.min(grid.size(), searchStart + TOTALS_SEARCH_WINDOW);
+		for (int r = searchStart; r < searchEnd; r++) {
+			List<String> row = grid.get(r);
+			if (!row.isEmpty() && TOTALS_LABEL.equalsIgnoreCase(row.get(0))) {
+				return r;
+			}
+		}
+		return -1;
+	}
+
+	/**
+	 * Builds a request that copies a row's values and formatting to another row of
+	 * the same tab, used to relocate the totals row onto the first freed tactic slot.
+	 * The source row is left untouched by this request — callers clear it separately.
+	 *
+	 * @param sheetId    numeric id of the tab to copy within
+	 * @param sourceRow  zero-based row index to copy from
+	 * @param destRow    zero-based row index to copy to
+	 * @param tableWidth number of columns (from column 0) to copy
+	 * @return the {@code CopyPaste} request
+	 */
+	Request moveRowRequest(int sheetId, int sourceRow, int destRow, int tableWidth) {
+		GridRange source = new GridRange()
+				.setSheetId(sheetId)
+				.setStartRowIndex(sourceRow)
+				.setEndRowIndex(sourceRow + 1)
+				.setStartColumnIndex(0)
+				.setEndColumnIndex(tableWidth);
+		GridRange destination = new GridRange()
+				.setSheetId(sheetId)
+				.setStartRowIndex(destRow)
+				.setEndRowIndex(destRow + 1)
+				.setStartColumnIndex(0)
+				.setEndColumnIndex(tableWidth);
+		return new Request().setCopyPaste(new CopyPasteRequest()
+				.setSource(source)
+				.setDestination(destination)
+				.setPasteType("PASTE_NORMAL"));
 	}
 
 	/**

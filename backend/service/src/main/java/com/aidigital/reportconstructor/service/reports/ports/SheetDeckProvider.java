@@ -41,8 +41,10 @@ public interface SheetDeckProvider {
 	 * slots, without deleting whole spreadsheet rows or columns. The unused rows
 	 * of the per-tactic summary table and the unused "Main slide N" detail blocks
 	 * are located by scanning the sheet for their header/anchor labels rather than
-	 * fixed cell references, so the trim survives template layout edits. A no-op
-	 * when {@code tacticCount >= 7}; slots whose anchor cannot be found are skipped.
+	 * fixed cell references, so the trim survives template layout edits. The
+	 * summary table's totals row is relocated (copy, not delete) to sit directly
+	 * under the last real tactic instead of below a block of cleared rows. A
+	 * no-op when {@code tacticCount >= 7}; slots whose anchor cannot be found are skipped.
 	 *
 	 * @param spreadsheetId         the workbook to trim
 	 * @param tacticCount           number of real tactics (clamped 1..7)
