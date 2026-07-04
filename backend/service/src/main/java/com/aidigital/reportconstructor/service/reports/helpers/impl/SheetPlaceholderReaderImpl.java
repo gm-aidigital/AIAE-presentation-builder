@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.regex.Pattern;
 
 /**
  * Spring bean implementation of {@link SheetPlaceholderReader}. Pure logic over the
@@ -27,6 +28,14 @@ public class SheetPlaceholderReaderImpl implements SheetPlaceholderReader {
 
 	/** Column-0 tactic-name cell that marks the summary table's totals row. */
 	private static final String TOTALS_LABEL = "Total";
+
+	/**
+	 * Matches a tactic-name cell that carries no real tactic: empty, whitespace, or only dash
+	 * characters (ASCII hyphen and the Unicode hyphen/dash block {@code ‐}-{@code ―}).
+	 * The EOC template leaves such a dash in unused summary rows, and treating it as a tactic
+	 * would inflate the tactic count and leave those rows in the generated deck.
+	 */
+	private static final Pattern BLANK_OR_DASH = Pattern.compile("[-\\s\\u2010-\\u2015]*");
 
 	/** Header cell that anchors the per-tactic summary table. */
 	private static final String SUMMARY_ANCHOR_HEADER = "Tactic name";
@@ -172,7 +181,7 @@ public class SheetPlaceholderReaderImpl implements SheetPlaceholderReader {
 				readSummaryColumns(row, headerCols, SUMMARY_TOTAL_TOKENS, out);
 				return;
 			}
-			if (name.isEmpty()) {
+			if (isBlankOrDash(name)) {
 				continue;
 			}
 			if (++tactic > MAX_TACTICS) {
@@ -335,6 +344,18 @@ public class SheetPlaceholderReaderImpl implements SheetPlaceholderReader {
 	 * @param token the full placeholder token key
 	 * @param value the cell value (may be {@code null})
 	 */
+	/**
+	 * Tells whether a tactic-name cell holds no real tactic — it is {@code null}, empty, whitespace,
+	 * or only dash characters. Unused summary rows in the EOC template carry a dash, and must not be
+	 * counted as tactics.
+	 *
+	 * @param name the raw tactic-name cell value (may be {@code null})
+	 * @return {@code true} when the cell marks an unused tactic slot
+	 */
+	boolean isBlankOrDash(String name) {
+		return name == null || BLANK_OR_DASH.matcher(name.trim()).matches();
+	}
+
 	void emit(Map<String, String> out, String token, String value) {
 		if (value == null) {
 			return;

@@ -80,6 +80,32 @@ class SheetPlaceholderReaderImplTest {
 	}
 
 	@Test
+	void shouldTreatDashFilledSummaryRowsAsUnusedTacticsTest() {
+		// Given: two real tactics followed by the template's dash-filled unused rows, then totals
+		List<List<String>> grid = List.of(
+				List.of("Tactic name", "Benchmark", "Impressions Fact", "Spend Fact"),
+				List.of("Display", "0.17%", "251,633", "$1,500"),
+				List.of("Video", "60%", "125,219", "$1,500"),
+				List.of("—", "—", "—", "—"),
+				List.of("—", "—", "—", "—"),
+				List.of("-", "-", "-", "-"),
+				List.of("Total", "", "376,852", "$3,000"));
+
+		// When: the placeholders are read
+		Map<String, String> out = reader.readPlaceholders(grid);
+
+		// Then: only the two real tactics are emitted; the dash rows are not counted as tactics
+		assertThat(out)
+				.containsEntry("{{tactic 1}}", "Display")
+				.containsEntry("{{tactic 2}}", "Video")
+				.doesNotContainKey("{{tactic 3}}")
+				.doesNotContainKey("{{tactic 4}}")
+				.doesNotContainKey("{{tactic 5}}");
+		// And: the totals row is still read through, past the dash rows
+		assertThat(out).containsEntry("{{total imps}}", "376,852");
+	}
+
+	@Test
 	void shouldReadMainSlideBlocksLeftToRightAsTacticsTest() {
 		// Given: two "Main slide" blocks side by side (anchor columns 0 and 4)
 		List<List<String>> grid = List.of(
