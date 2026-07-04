@@ -33,6 +33,28 @@ class CampaignResolversTest {
 	}
 
 	@Test
+	void resolveRfpInfo_fallsBackToCampaignBrief() {
+		Resolved r = resolvers.resolveRfpInfo(List.of(), List.of(), "Campaign brief text");
+		assertThat(r.source()).isEqualTo("adj");
+		assertThat(r.value()).isEqualTo("Campaign brief text");
+	}
+
+	@Test
+	void resolveRfpInfo_manualAdjustmentWins() {
+		List<List<String>> adj = labelRow("RFP info:", "Manual RFP override");
+		Resolved r = resolvers.resolveRfpInfo(List.of(), adj, "Campaign brief text");
+		assertThat(r.source()).isEqualTo("adj");
+		assertThat(r.value()).isEqualTo("Manual RFP override");
+	}
+
+	@Test
+	void resolveRfpInfo_notFoundWhenBriefBlank() {
+		Resolved r = resolvers.resolveRfpInfo(List.of(), List.of(), "  ");
+		assertThat(r.source()).isEqualTo("not_found");
+		assertThat(r.value()).isNull();
+	}
+
+	@Test
 	void resolveTotalImps_autoUsesAdjSourceTag() {
 		CampaignData data = new CampaignData(
 				null, null, null, null, null, null, null, null, null, null, null,

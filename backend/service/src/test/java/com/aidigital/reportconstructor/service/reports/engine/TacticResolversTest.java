@@ -154,6 +154,132 @@ class TacticResolversTest {
 	}
 
 	@Test
+	void resolveTacticSpendPlan_fallsBackToEstimatesPlanSpend() {
+		Tactic tactic = new Tactic(
+				"Display", "Display", null,
+				0, 0, 0, 0, null, null, null, null,
+				45_000.0, null, null, null, null,
+				null, null, null
+		);
+		CampaignData data = new CampaignData(
+				null, null, null, null, null, null, null, null, null, null, null,
+				new Totals(0, 0, 0, 0, null, null),
+				Map.of(1, tactic), null
+		);
+		Resolved r = resolvers.resolveTacticSpendPlan(1, "Display", List.of(), List.of(), data);
+		assertThat(r.source()).isEqualTo("adj");
+		assertThat(r.value()).isEqualTo("$45,000");
+	}
+
+	@Test
+	void resolveTacticSpendPlan_prefersManualAdjustmentOverride() {
+		List<List<String>> adj = List.of(List.of("Tactic 1 spend plan:", "$50,000"));
+		Resolved r = resolvers.resolveTacticSpendPlan(1, "Display", List.of(), adj, null);
+		assertThat(r.source()).isEqualTo("adj");
+		assertThat(r.value()).isEqualTo("$50,000");
+	}
+
+	@Test
+	void resolveTacticImpsPlan_fallsBackToEstimatesPlanImps() {
+		Tactic tactic = new Tactic(
+				"Display", "Display", null,
+				0, 0, 0, 0, null, null, null, null,
+				null, 250_000.0, null, null, null,
+				null, null, null
+		);
+		CampaignData data = new CampaignData(
+				null, null, null, null, null, null, null, null, null, null, null,
+				new Totals(0, 0, 0, 0, null, null),
+				Map.of(1, tactic), null
+		);
+		Resolved r = resolvers.resolveTacticImpsPlan(1, "Display", List.of(), List.of(), data);
+		assertThat(r.source()).isEqualTo("adj");
+		assertThat(r.value()).isEqualTo("250,000");
+	}
+
+	@Test
+	void resolveTacticCtrPlan_formatsEstimatesCtrAsTwoDecimalPercent() {
+		Tactic tactic = new Tactic(
+				"Display", "Display", null,
+				0, 0, 0, 0, null, null, null, null,
+				null, null, 0.45, null, null,
+				null, null, null
+		);
+		CampaignData data = new CampaignData(
+				null, null, null, null, null, null, null, null, null, null, null,
+				new Totals(0, 0, 0, 0, null, null),
+				Map.of(1, tactic), null
+		);
+		Resolved r = resolvers.resolveTacticCtrPlan(1, "Display", List.of(), List.of(), data);
+		assertThat(r.value()).isEqualTo("0.45%");
+	}
+
+	@Test
+	void resolveTacticVcrPlan_roundsEstimatesVcr() {
+		Tactic tactic = new Tactic(
+				"CTV", "Video", null,
+				0, 0, 0, 0, null, null, null, null,
+				null, null, null, 95.7, null,
+				null, null, null
+		);
+		CampaignData data = new CampaignData(
+				null, null, null, null, null, null, null, null, null, null, null,
+				new Totals(0, 0, 0, 0, null, null),
+				Map.of(1, tactic), null
+		);
+		Resolved r = resolvers.resolveTacticVcrPlan(1, "CTV", List.of(), List.of(), data);
+		assertThat(r.value()).isEqualTo("96%");
+	}
+
+	@Test
+	void resolveTacticClicks_fallsBackToElevateRawDataClicks() {
+		Tactic tactic = new Tactic(
+				"Display", "Display", null,
+				0, 100_000, 2_530, 0, null, null, null, null,
+				null, null, null, null, null,
+				null, null, null
+		);
+		CampaignData data = new CampaignData(
+				null, null, null, null, null, null, null, null, null, null, null,
+				new Totals(0, 0, 0, 0, null, null),
+				Map.of(1, tactic), null
+		);
+		Resolved r = resolvers.resolveTacticClicks(1, List.of(), List.of(), data);
+		assertThat(r.source()).isEqualTo("adj");
+		assertThat(r.value()).isEqualTo("2,530");
+	}
+
+	@Test
+	void resolveTacticCompletions_dashWhenTacticHasNoCompletions() {
+		Tactic tactic = new Tactic(
+				"Display", "Display", null,
+				0, 100_000, 2_530, 0, null, null, null, null,
+				null, null, null, null, null,
+				null, null, null
+		);
+		CampaignData data = new CampaignData(
+				null, null, null, null, null, null, null, null, null, null, null,
+				new Totals(0, 0, 0, 0, null, null),
+				Map.of(1, tactic), null
+		);
+		Resolved r = resolvers.resolveTacticCompletions(1, List.of(), List.of(), data);
+		assertThat(r.source()).isEqualTo("adj");
+		assertThat(r.value()).isEqualTo("—");
+	}
+
+	@Test
+	void resolveTacticCompletions_notFoundWhenTacticMissing() {
+		CampaignData data = new CampaignData(
+				null, null, null, null, null, null, null, null, null, null, null,
+				new Totals(0, 0, 0, 0, null, null),
+				Map.of(), null
+		);
+		Resolved r = resolvers.resolveTacticCompletions(1, List.of(), List.of(), data);
+		assertThat(r.source()).isEqualTo("not_found");
+		assertThat(r.value()).isNull();
+	}
+
+	@Test
 	void volumeCoefficient_resolvesExactKeywordAndDefault() {
 		assertThat(tacticUtils.volumeCoefficient("Display")).isEqualTo(0.90);
 		assertThat(tacticUtils.volumeCoefficient("CTV/OTT")).isEqualTo(0.70);

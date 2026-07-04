@@ -69,6 +69,7 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		start.put("{{geo_locations}}", campaignResolvers.resolveGeoLocations(sheet, adj, geoSummary));
 		start.put("{{funnel_stages}}", campaignResolvers.resolveFunnelStages(sheet, adj, funnelSummary));
 		start.put("{{tactics_list}}", campaignResolvers.resolveTacticsList(sheet, adj));
+		start.put("{{RFP info}}", campaignResolvers.resolveRfpInfo(sheet, adj, payload.brief()));
 		sections.add(buildPreviewSection("Start", start));
 
 		Map<String, Resolved> overview = new LinkedHashMap<>();
@@ -124,10 +125,18 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		m.put("{{tactic " + n + " goal}}", tacticResolvers.resolveTacticGoal(n, sheet, adj));
 		m.put("{{tactic " + n + " overview}}", tacticResolvers.resolveTacticOverview(n, sheet, adj, ccC));
 		m.put("{{tactic " + n + " spend}}", tacticResolvers.resolveTacticSpend(n, tacticName, sheet, adj, data));
+		m.put("{{tactic " + n + " spend plan}}",
+				tacticResolvers.resolveTacticSpendPlan(n, tacticName, sheet, adj, data));
 		m.put("{{tactic " + n + " imps}}", tacticResolvers.resolveTacticImps(n, tacticName, sheet, adj, data));
+		m.put("{{tactic " + n + " imps plan}}",
+				tacticResolvers.resolveTacticImpsPlan(n, tacticName, sheet, adj, data));
 		m.put("{{tactic " + n + " reach}}", tacticResolvers.resolveTacticReach(n, sheet, adj, data));
 		m.put("{{tactic " + n + " ctr}}", tacticResolvers.resolveTacticCtr(n, tacticName, sheet, adj, data));
+		m.put("{{tactic " + n + " ctr plan}}", tacticResolvers.resolveTacticCtrPlan(n, tacticName, sheet, adj, data));
 		m.put("{{tactic " + n + " vcr}}", tacticResolvers.resolveTacticVcr(n, tacticName, sheet, adj, data));
+		m.put("{{tactic " + n + " vcr plan}}", tacticResolvers.resolveTacticVcrPlan(n, tacticName, sheet, adj, data));
+		m.put("{{tactic " + n + " clicks}}", tacticResolvers.resolveTacticClicks(n, sheet, adj, data));
+		m.put("{{tactic " + n + " completions}}", tacticResolvers.resolveTacticCompletions(n, sheet, adj, data));
 		m.put("{{tactic " + n + " KPI type}}", tacticResolvers.resolveTacticKpiType(n, tacticName, sheet, adj));
 		m.put("{{tactic " + n + " KPI}}", tacticResolvers.resolveTacticKpi(n, tacticName, sheet, adj, data));
 		m.put("{{tactic " + n + " volume}}",
@@ -160,10 +169,18 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		m.put("{{tactic " + n + " goal}}", tacticResolvers.resolveTacticGoal(n, sheet, adj));
 		m.put("{{tactic " + n + " overview}}", tacticResolvers.resolveTacticOverview(n, sheet, adj, ccC));
 		m.put("{{tactic " + n + " spend}}", tacticResolvers.resolveTacticSpend(n, tacticName, sheet, adj, data));
+		m.put("{{tactic " + n + " spend plan}}",
+				tacticResolvers.resolveTacticSpendPlan(n, tacticName, sheet, adj, data));
 		m.put("{{tactic " + n + " imps}}", tacticResolvers.resolveTacticImps(n, tacticName, sheet, adj, data));
+		m.put("{{tactic " + n + " imps plan}}",
+				tacticResolvers.resolveTacticImpsPlan(n, tacticName, sheet, adj, data));
 		m.put("{{tactic " + n + " reach}}", tacticResolvers.resolveTacticReach(n, sheet, adj, data));
 		m.put("{{tactic " + n + " ctr}}", tacticResolvers.resolveTacticCtr(n, tacticName, sheet, adj, data));
+		m.put("{{tactic " + n + " ctr plan}}", tacticResolvers.resolveTacticCtrPlan(n, tacticName, sheet, adj, data));
 		m.put("{{tactic " + n + " vcr}}", tacticResolvers.resolveTacticVcr(n, tacticName, sheet, adj, data));
+		m.put("{{tactic " + n + " vcr plan}}", tacticResolvers.resolveTacticVcrPlan(n, tacticName, sheet, adj, data));
+		m.put("{{tactic " + n + " clicks}}", tacticResolvers.resolveTacticClicks(n, sheet, adj, data));
+		m.put("{{tactic " + n + " completions}}", tacticResolvers.resolveTacticCompletions(n, sheet, adj, data));
 		m.put("{{tactic " + n + " KPI type}}", tacticResolvers.resolveTacticKpiType(n, tacticName, sheet, adj));
 		m.put("{{tactic " + n + " KPI}}", tacticResolvers.resolveTacticKpi(n, tacticName, sheet, adj, data));
 		m.put("{{tactic " + n + " \u2013 bench}}", tacticResolvers.resolveTacticBench(n, tacticName, sheet, adj,

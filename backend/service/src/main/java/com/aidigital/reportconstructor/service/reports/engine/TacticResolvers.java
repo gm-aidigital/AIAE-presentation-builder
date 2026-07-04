@@ -108,6 +108,193 @@ public class TacticResolvers {
 	}
 
 	/**
+	 * Resolves the planned spend target for tactic {@code n}, preferring a manual Adjustments override,
+	 * then the Media Plan sheet, then the Estimates "Total Cost" figure joined onto the tactic.
+	 *
+	 * @param n          one-based tactic index used to build the {@code "Tactic N spend plan:"} lookup label
+	 * @param tacticName display name of the tactic (unused for spend plan; kept for resolver-signature parity)
+	 * @param sheetRows  Media Plan grid rows searched for the labelled value
+	 * @param adjRows    manual Adjustments grid rows that take precedence over the sheet
+	 * @param data       campaign data providing the Estimates-derived planned spend fallback
+	 * @return the resolved planned spend with its source tag, or a {@code not_found} placeholder when no value exists
+	 */
+	public Resolved resolveTacticSpendPlan(int n, String tacticName, List<List<String>> sheetRows,
+	                                       List<List<String>> adjRows, CampaignData data) {
+		String label = "Tactic " + n + " spend plan:";
+		String fromAdj = sheetUtils.findLabelValue(adjRows, label);
+		if (fromAdj != null) {
+			return new Resolved(label, fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, label);
+		if (fromSheet != null) {
+			return new Resolved(label, fromSheet, "sheet");
+		}
+		Tactic t = tactic(data, n);
+		Double planSpend = t == null ? null : t.planSpend();
+		if (planSpend != null && planSpend > 0) {
+			return new Resolved(label + " (auto: Estimates Total Cost)", "$" + fmt.intGroup(planSpend), "adj");
+		}
+		return new Resolved(label, null, "not_found");
+	}
+
+	/**
+	 * Resolves the planned impressions target for tactic {@code n}, preferring a manual Adjustments
+	 * override, then the Media Plan sheet, then the Estimates "Impressions" figure joined onto the tactic.
+	 *
+	 * @param n          one-based tactic index used to build the {@code "Tactic N imps plan:"} lookup label
+	 * @param tacticName display name of the tactic (unused for imps plan; kept for resolver-signature parity)
+	 * @param sheetRows  Media Plan grid rows searched for the labelled value
+	 * @param adjRows    manual Adjustments grid rows that take precedence over the sheet
+	 * @param data       campaign data providing the Estimates-derived planned impressions fallback
+	 * @return the resolved planned impressions with its source tag, or a {@code not_found} placeholder
+	 * when no value exists
+	 */
+	public Resolved resolveTacticImpsPlan(int n, String tacticName, List<List<String>> sheetRows,
+	                                      List<List<String>> adjRows, CampaignData data) {
+		String label = "Tactic " + n + " imps plan:";
+		String fromAdj = sheetUtils.findLabelValue(adjRows, label);
+		if (fromAdj != null) {
+			return new Resolved(label, fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, label);
+		if (fromSheet != null) {
+			return new Resolved(label, fromSheet, "sheet");
+		}
+		Tactic t = tactic(data, n);
+		Double planImps = t == null ? null : t.planImps();
+		if (planImps != null && planImps > 0) {
+			return new Resolved(label + " (auto: Estimates Impressions)", fmt.intGroup(planImps), "adj");
+		}
+		return new Resolved(label, null, "not_found");
+	}
+
+	/**
+	 * Resolves the planned click-through rate for tactic {@code n}, preferring a manual Adjustments
+	 * override, then the Media Plan sheet, then the Estimates "CTR" figure joined onto the tactic.
+	 *
+	 * @param n          one-based tactic index used to build the {@code "Tactic N ctr plan:"} lookup label
+	 * @param tacticName display name of the tactic (unused for ctr plan; kept for resolver-signature parity)
+	 * @param sheetRows  Media Plan grid rows searched for the labelled value
+	 * @param adjRows    manual Adjustments grid rows that take precedence over the sheet
+	 * @param data       campaign data providing the Estimates-derived planned CTR fallback
+	 * @return the resolved planned CTR percentage with its source tag, or a {@code not_found} placeholder
+	 * when no value exists
+	 */
+	public Resolved resolveTacticCtrPlan(int n, String tacticName, List<List<String>> sheetRows,
+	                                     List<List<String>> adjRows, CampaignData data) {
+		String label = "Tactic " + n + " ctr plan:";
+		String fromAdj = sheetUtils.findLabelValue(adjRows, label);
+		if (fromAdj != null) {
+			return new Resolved(label, fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, label);
+		if (fromSheet != null) {
+			return new Resolved(label, fromSheet, "sheet");
+		}
+		Tactic t = tactic(data, n);
+		Double planCtr = t == null ? null : t.planCtr();
+		if (planCtr != null) {
+			return new Resolved(label + " (auto: Estimates CTR)", fmt.dec2(planCtr) + "%", "adj");
+		}
+		return new Resolved(label, null, "not_found");
+	}
+
+	/**
+	 * Resolves the planned video-completion rate for tactic {@code n}, preferring a manual Adjustments
+	 * override, then the Media Plan sheet, then the Estimates "VCR" figure joined onto the tactic.
+	 *
+	 * @param n          one-based tactic index used to build the {@code "Tactic N vcr plan:"} lookup label
+	 * @param tacticName display name of the tactic (unused for vcr plan; kept for resolver-signature parity)
+	 * @param sheetRows  Media Plan grid rows searched for the labelled value
+	 * @param adjRows    manual Adjustments grid rows that take precedence over the sheet
+	 * @param data       campaign data providing the Estimates-derived planned VCR fallback
+	 * @return the resolved planned VCR percentage with its source tag, or a {@code not_found} placeholder
+	 * when no value exists
+	 */
+	public Resolved resolveTacticVcrPlan(int n, String tacticName, List<List<String>> sheetRows,
+	                                     List<List<String>> adjRows, CampaignData data) {
+		String label = "Tactic " + n + " vcr plan:";
+		String fromAdj = sheetUtils.findLabelValue(adjRows, label);
+		if (fromAdj != null) {
+			return new Resolved(label, fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, label);
+		if (fromSheet != null) {
+			return new Resolved(label, fromSheet, "sheet");
+		}
+		Tactic t = tactic(data, n);
+		Double planVcr = t == null ? null : t.planVcr();
+		if (planVcr != null) {
+			return new Resolved(label + " (auto: Estimates VCR)", Math.round(planVcr) + "%", "adj");
+		}
+		return new Resolved(label, null, "not_found");
+	}
+
+	/**
+	 * Resolves the achieved click count for tactic {@code n} (from the Elevate raw-data export),
+	 * preferring a manual Adjustments override, then the Media Plan sheet, then the aggregated
+	 * BigQuery click total for the tactic.
+	 *
+	 * @param n          one-based tactic index used to build the {@code "Tactic N clicks:"} lookup label
+	 * @param sheetRows  Media Plan grid rows searched for the labelled value
+	 * @param adjRows    manual Adjustments grid rows that take precedence over the sheet
+	 * @param data       campaign data providing the BigQuery-derived click total fallback
+	 * @return the resolved click count with its source tag, or a {@code not_found} placeholder when no value exists
+	 */
+	public Resolved resolveTacticClicks(int n, List<List<String>> sheetRows,
+	                                    List<List<String>> adjRows, CampaignData data) {
+		String label = "Tactic " + n + " clicks:";
+		String fromAdj = sheetUtils.findLabelValue(adjRows, label);
+		if (fromAdj != null) {
+			return new Resolved(label, fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, label);
+		if (fromSheet != null) {
+			return new Resolved(label, fromSheet, "sheet");
+		}
+		Tactic t = tactic(data, n);
+		if (t != null && t.clicks() > 0) {
+			return new Resolved(label + " (auto: Elevate raw-data Clicks)", fmt.intGroup(t.clicks()), "adj");
+		}
+		return new Resolved(label, null, "not_found");
+	}
+
+	/**
+	 * Resolves the achieved completion count for tactic {@code n} (from the Elevate raw-data export),
+	 * preferring a manual Adjustments override, then the Media Plan sheet, then the aggregated
+	 * BigQuery completion total for the tactic; a present-but-completion-less tactic yields an
+	 * em-dash placeholder.
+	 *
+	 * @param n          one-based tactic index used to build the {@code "Tactic N completions:"} lookup label
+	 * @param sheetRows  Media Plan grid rows searched for the labelled value
+	 * @param adjRows    manual Adjustments grid rows that take precedence over the sheet
+	 * @param data       campaign data providing the BigQuery-derived completion total fallback
+	 * @return the resolved completion count with its source tag, an em-dash when the tactic exists but
+	 * has no completions, or a {@code not_found} placeholder when the tactic is missing
+	 */
+	public Resolved resolveTacticCompletions(int n, List<List<String>> sheetRows,
+	                                         List<List<String>> adjRows, CampaignData data) {
+		String label = "Tactic " + n + " completions:";
+		String fromAdj = sheetUtils.findLabelValue(adjRows, label);
+		if (fromAdj != null) {
+			return new Resolved(label, fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, label);
+		if (fromSheet != null) {
+			return new Resolved(label, fromSheet, "sheet");
+		}
+		Tactic t = tactic(data, n);
+		if (t != null && t.completions() > 0) {
+			return new Resolved(label + " (auto: Elevate raw-data Completions)", fmt.intGroup(t.completions()),
+					"adj");
+		}
+		if (t != null) {
+			return new Resolved(label + " (auto: no completions)", DASH, "adj");
+		}
+		return new Resolved(label, null, "not_found");
+	}
+
+	/**
 	 * Resolves the performance benchmark for tactic {@code n}, preferring a manual Adjustments
 	 * override, then the Media Plan sheet, then the planned CTR or VCR estimate chosen by the
 	 * tactic's KPI type.

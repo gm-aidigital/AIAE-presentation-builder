@@ -73,6 +73,31 @@ public class CampaignResolvers {
 	}
 
 	/**
+	 * Resolves the RFP/Campaign Brief text, preferring a manual Adjustments override, then the Media
+	 * Plan sheet, then the free-text brief ingested through the RFP/Campaign Brief UI.
+	 *
+	 * @param sheetRows Media Plan tab rows
+	 * @param adjRows   manual Adjustments tab rows (take priority over the sheet)
+	 * @param brief     free-text campaign brief/RFP content submitted through the request payload
+	 * @return a {@link Resolved} RFP info string, or a null-valued {@code not_found} entry when no value exists
+	 */
+	public Resolved resolveRfpInfo(List<List<String>> sheetRows, List<List<String>> adjRows, String brief) {
+
+		String fromAdj = sheetUtils.findLabelValue(adjRows, "RFP info:");
+		if (fromAdj != null) {
+			return new Resolved("RFP info:", fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, "RFP info:");
+		if (fromSheet != null) {
+			return new Resolved("RFP info:", fromSheet, "sheet");
+		}
+		if (notBlank(brief)) {
+			return new Resolved("RFP info (auto: Campaign Brief)", brief, "adj");
+		}
+		return new Resolved("RFP info:", null, "not_found");
+	}
+
+	/**
 	 * Resolves the primary KPIs, preferring a manual value, then Claude's per-tactic KPI line, and finally
 	 * auto-deriving them from the distinct Channel values (Display vs Video) under the "Channel" header.
 	 *
