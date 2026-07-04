@@ -95,6 +95,16 @@ public class ReportSheetHelperImpl implements ReportSheetHelper {
 		}
 	}
 
+	@Override
+	public List<List<String>> readSheetGrid(String sheetUrl, String userGoogleToken) {
+		String spreadsheetId = extractSpreadsheetId(sheetUrl);
+		if (spreadsheetId == null) {
+			log.warn("[sheets] readSheetGrid: could not determine spreadsheet id from {}", sheetUrl);
+			return List.of();
+		}
+		return sheets.readSheetGrid(spreadsheetId, userGoogleToken);
+	}
+
 	/**
 	 * Parses the spreadsheet id out of a Google Sheets URL (the {@code /d/<id>} segment).
 	 *

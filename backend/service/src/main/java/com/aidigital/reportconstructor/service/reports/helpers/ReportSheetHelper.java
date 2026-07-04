@@ -51,4 +51,16 @@ public interface ReportSheetHelper {
 	List<String> writePacingTables(
 			String sheetUrl, GeneratePayload payload, CampaignData data,
 			Map<String, String> flatReplacements, String userGoogleToken);
+
+	/**
+	 * Reads the generated workbook's first tab back as a cell grid for the "Slides from Sheet"
+	 * flow, resolving the spreadsheet id from its URL. The read-back counterpart of
+	 * {@link #buildSheet}.
+	 *
+	 * @param sheetUrl        URL of the generated Google Sheet
+	 * @param userGoogleToken OAuth token for Google Sheets API, or null when unavailable
+	 * @return the first tab's rows as trimmed cell strings; an empty list when the URL carries
+	 *         no parseable spreadsheet id
+	 */
+	List<List<String>> readSheetGrid(String sheetUrl, String userGoogleToken);
 }

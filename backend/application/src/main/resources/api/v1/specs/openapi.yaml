@@ -420,9 +420,11 @@ components:
         Which artifact the generation job produces from the resolved placeholders.
         SLIDES clones the Google Slides deck template (default, "Generate Slides").
         SHEET clones the Google Sheets template and fills it ("Generate Sheet").
-        The placeholder catalog and data pipeline are identical for both; only the
+        SLIDES_FROM_SHEET clones the deck but fills it from a previously generated
+        (and user-edited) Google Sheet named by sheetUrl, instead of the raw grids.
+        The placeholder catalog and data pipeline are identical across them; only the
         final render step and the unused-tactic trimming differ. Omitted → SLIDES.
-      enum: [ SLIDES, SHEET ]
+      enum: [ SLIDES, SHEET, SLIDES_FROM_SHEET ]
 
     DateFilterModeV1:
       type: string
@@ -699,6 +701,12 @@ components:
             Spreadsheet id of the Elevate/BQ sheet. PRESENCE-GATE ONLY — gates the
             chart step; the server does NOT re-read it (BQ pivots read adjRows).
         dateFilter: { $ref: "#/components/schemas/DateFilterV1" }
+        sheetUrl:
+          type: string
+          description: |
+            URL of a previously generated (and user-edited) Google Sheet. Used only
+            when target=SLIDES_FROM_SHEET, where the deck is filled from this sheet's
+            values instead of the raw grids. Ignored for SLIDES and SHEET.
 
     ReportJobCreatedV1:
       type: object

@@ -17,6 +17,8 @@ import com.aidigital.reportconstructor.service.reports.helpers.ReportGenerationC
 import com.aidigital.reportconstructor.service.reports.helpers.ReportGenerationWarningsHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportJobProgressHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportSheetHelper;
+import com.aidigital.reportconstructor.service.reports.helpers.SheetCampaignReader;
+import com.aidigital.reportconstructor.service.reports.helpers.SheetPlaceholderReader;
 import com.aidigital.reportconstructor.service.reports.ports.ClaudeClient;
 import com.aidigital.reportconstructor.service.reports.ports.SlidesProvider;
 import com.aidigital.reportconstructor.service.reports.ports.UserGoogleTokenProvider;
@@ -29,6 +31,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -46,6 +49,8 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	private final ReportGenerationWarningsHelper warnings;
 	private final ReportGenerationChartHelper chartHelper;
 	private final ReportSheetHelper sheetHelper;
+	private final SheetPlaceholderReader placeholderReader;
+	private final SheetCampaignReader sheetCampaign;
 	private final PlaceholderResolverService placeholders;
 	private final ClaudeClient claude;
 	private final SlidesProvider slides;
@@ -61,6 +66,10 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	public ReportJobEntity start(String userId, String clerkUserId, GeneratePayload payload, GenerationTarget target) {
 		if (payload.brief() == null || payload.brief().isBlank()) {
 			throw new AppException(ErrorReason.C002, "Brief is required");
+		}
+		if (target == GenerationTarget.SLIDES_FROM_SHEET
+				&& (payload.sheetUrl() == null || payload.sheetUrl().isBlank())) {
+			throw new AppException(ErrorReason.C002, "Sheet URL is required for the slides-from-sheet flow");
 		}
 		ReportJobEntity job = enqueue(userId, payload);
 		self.getObject().run(job.getId(), payload, clerkUserId, target);
@@ -84,6 +93,14 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	@Async
 	public void run(Long jobId, GeneratePayload payload, String clerkUserId, GenerationTarget target) {
 		try {
+			if (target == GenerationTarget.SLIDES_FROM_SHEET) {
+				// Step 2 of the sheet-as-source flow: the user-reviewed sheet is the only input, so
+				// none of the raw-grid collection or the Batch A/B copy runs here — they are already
+				// baked into the sheet by step 1. This branch reads the sheet back and fills the deck.
+				runSlidesFromSheet(jobId, payload, clerkUserId);
+				return;
+			}
+
 			jobProgress.markJobRunningAtStep(jobId, 1, "Reading sheet data");
 			CampaignData data = placeholders.collectData(payload);
 			String brief = payload.brief();
@@ -164,6 +181,77 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 			log.error("[report] job {} failed", jobId, ex);
 			jobProgress.markJobFailed(jobId, ex.getMessage());
 		}
+	}
+
+	/**
+	 * Builds a slide deck from a previously generated, user-edited Google Sheet. Reads the sheet grid
+	 * into the placeholder map, generates only the narrative copy the sheet never carried (Batch A
+	 * strategic + Batch C executive), overlays the sheet's own values on top so every reviewed field
+	 * wins, then fills the deck and renders the pacing/distribution charts from the sheet's numbers.
+	 *
+	 * <p>No source grid is re-collected and the sheet's own numbers, audience copy and per-tactic
+	 * daypart (Batch B) are only read — never recomputed — so no Claude work is duplicated: Batch A/C
+	 * are requested here for the first time because step 1 never produced them.
+	 *
+	 * @param jobId       id of the queued job to build and update
+	 * @param payload     generation request carrying the source {@code sheetUrl} and report type
+	 * @param clerkUserId Clerk identity used to fetch the Google access token for sheet/deck access
+	 */
+	void runSlidesFromSheet(Long jobId, GeneratePayload payload, String clerkUserId) {
+		jobProgress.markJobRunningAtStep(jobId, 1, "Reading sheet data");
+		UserGoogleTokenProvider clerk = userGoogleTokens.getIfAvailable();
+		String userGoogleToken = clerk == null ? null : clerk.googleAccessToken(clerkUserId);
+
+		List<List<String>> grid = sheetHelper.readSheetGrid(payload.sheetUrl(), userGoogleToken);
+		Map<String, String> sheetValues = placeholderReader.readPlaceholders(grid);
+		int tacticCount = deriveTacticCount(sheetValues);
+
+		jobProgress.markJobRunningAtStep(jobId, 3, "Claude — narrative");
+		String brief = payload.brief();
+		CampaignData data = sheetCampaign.read(sheetValues, tacticCount);
+		CampaignFrequencies frequencies = placeholders.computeFrequencies(payload, data);
+		boolean live = claude.isLive();
+		ClaudeStrategic ccA = live ? claude.batchStrategic(data, brief) : claudeDefaults.emptyStrategic();
+		ClaudeResults ccC = live ? claude.batchResults(data, brief, frequencies) : claudeDefaults.emptyResults();
+
+		// Build the narrative placeholder map from the reconstructed context, then overlay the sheet's
+		// own values so every field the user reviewed wins; only the sheet-less narrative keys (proposal
+		// overview, strategic points, results overview, recommendations, frequency and tactic copy)
+		// survive from the Claude output.
+		Map<String, String> narrative = placeholders.buildFlatReplacements(
+				payload, data, ccA, claudeDefaults.emptyTactical(), ccC, null, null, null, frequencies);
+		Map<String, String> flatReplacements = new LinkedHashMap<>(narrative);
+		flatReplacements.putAll(sheetValues);
+
+		jobProgress.markJobRunningAtStep(jobId, 6, "Building slide deck");
+		String slideUrl = slides.createDeck(String.valueOf(jobId), flatReplacements, userGoogleToken);
+		chartHelper.trimUnusedTactics(slideUrl, tacticCount, userGoogleToken);
+
+		jobProgress.markJobRunningAtStep(jobId, 7, "Building charts");
+		List<String> chartWarnings = chartHelper.buildChartsFromSheet(
+				slideUrl, grid, flatReplacements, tacticCount, userGoogleToken);
+
+		jobProgress.markJobDone(jobId, slideUrl, warnings.serializeWarnings(chartWarnings));
+	}
+
+	/**
+	 * Derives the active tactic count from a sheet-read placeholder map: the number of leading
+	 * {@code {{tactic n}}} name tokens that carry a non-blank value, clamped to 1..7. Counting stops
+	 * at the first missing or blank slot so trailing gaps never inflate the count.
+	 *
+	 * @param flatReplacements the placeholder map read back from the sheet
+	 * @return the active tactic count (1..7)
+	 */
+	int deriveTacticCount(Map<String, String> flatReplacements) {
+		int count = 0;
+		for (int n = 1; n <= 7; n++) {
+			String name = flatReplacements.get("{{tactic " + n + "}}");
+			if (name == null || name.isBlank()) {
+				break;
+			}
+			count = n;
+		}
+		return Math.clamp(count, 1, 7);
 	}
 
 	/**

@@ -50,7 +50,7 @@ class ReportSheetHelperImplTest {
 	@Test
 	void shouldSkipPacingTablesWhenRequiredInputsMissingTest() {
 		GeneratePayload payload = new GeneratePayload(
-				"brief", "standard", "", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null);
+				"brief", "standard", "", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null, null);
 
 		List<String> warnings = helper.writePacingTables(
 				"https://docs.google.com/spreadsheets/d/abc/edit", payload, emptyCampaignData(), Map.of(), "token");
@@ -95,6 +95,33 @@ class ReportSheetHelperImplTest {
 		assertThat(req.userGoogleAccessToken()).isEqualTo("token");
 	}
 
+	@Test
+	void shouldReadSheetGridByExtractedSpreadsheetIdTest() {
+		// Given: the provider returns a grid for the id parsed from the sheet URL
+		List<List<String>> grid = List.of(List.of("Client name:", "Acme"));
+		when(sheets.readSheetGrid("sheet-id", "token")).thenReturn(grid);
+
+		// When: the helper reads the grid from a full sheet URL
+		List<List<String>> result = helper.readSheetGrid(
+				"https://docs.google.com/spreadsheets/d/sheet-id/edit", "token");
+
+		// Then: the id is extracted and the provider's grid is returned
+		assertThat(result).isEqualTo(grid);
+		verify(sheets).readSheetGrid("sheet-id", "token");
+	}
+
+	@Test
+	void shouldReturnEmptyGridWhenSpreadsheetIdMissingTest() {
+		// Given: a URL that carries no /d/<id> segment
+
+		// When: the helper is asked to read its grid
+		List<List<String>> result = helper.readSheetGrid("https://example.com/no-id", "token");
+
+		// Then: an empty grid is returned and the provider is never called
+		assertThat(result).isEmpty();
+		verify(sheets, never()).readSheetGrid(any(), any());
+	}
+
 	private static GeneratePayload payloadWithPacingInputs() {
 		return new GeneratePayload(
 				"brief",
@@ -107,6 +134,7 @@ class ReportSheetHelperImplTest {
 				List.of(),
 				List.of(new LineItemMapping("Display", "99", 1)),
 				"sheet-id",
+				null,
 				null
 		);
 	}

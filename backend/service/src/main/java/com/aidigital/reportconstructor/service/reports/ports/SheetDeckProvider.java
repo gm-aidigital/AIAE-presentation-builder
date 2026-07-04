@@ -67,4 +67,17 @@ public interface SheetDeckProvider {
 	 * @return human-readable error strings for any per-tactic failures (empty on full success)
 	 */
 	List<String> writePacingTables(String spreadsheetId, PacingTablesRequest request);
+
+	/**
+	 * Reads the workbook's first tab back as a rectangular-tolerant grid of trimmed cell
+	 * strings, so the "Slides from Sheet" flow can re-read the numbers and metrics the user
+	 * reviewed and edited. The reverse of {@link #createSheet}: reads the same tab
+	 * {@link #writePacingTables} writes into.
+	 *
+	 * @param spreadsheetId         the workbook to read
+	 * @param userGoogleAccessToken optional signed-in user's Google OAuth token; falls back
+	 *                              to the service account when blank
+	 * @return the first tab's rows, each cell trimmed; an empty list when the workbook has no tabs
+	 */
+	List<List<String>> readSheetGrid(String spreadsheetId, String userGoogleAccessToken);
 }

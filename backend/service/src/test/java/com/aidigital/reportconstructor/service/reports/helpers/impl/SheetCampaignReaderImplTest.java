@@ -1,0 +1,61 @@
+package com.aidigital.reportconstructor.service.reports.helpers.impl;
+
+import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
+import com.aidigital.reportconstructor.service.reports.dto.Tactic;
+import org.junit.jupiter.api.Test;
+
+import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class SheetCampaignReaderImplTest {
+
+	private final SheetCampaignReaderImpl reader = new SheetCampaignReaderImpl(new ReportNumberParserImpl());
+
+	@Test
+	void shouldReconstructCampaignContextFromPlaceholdersTest() {
+		// Given: a sheet-read placeholder map for one tactic, with formatted numbers and one blank metric
+		Map<String, String> flat = Map.ofEntries(
+				Map.entry("{{client_name}}", "Acme"),
+				Map.entry("{{Campaign_name}}", "Spring"),
+				Map.entry("{{geo_locations}}", "Texas"),
+				Map.entry("{{primary_kpis}}", "CTR"),
+				Map.entry("{{total imps}}", "1,500,000"),
+				Map.entry("{{total_investment}}", "$15,000"),
+				Map.entry("{{tactic 1}}", "Display"),
+				Map.entry("{{tactic 1 spend}}", "$10,000"),
+				Map.entry("{{tactic 1 imps}}", "1,000,000"),
+				Map.entry("{{tactic 1 ctr}}", "0.20%"),
+				Map.entry("{{tactic 1 vcr}}", ""));
+
+		// When: the campaign context is reconstructed for one tactic
+		CampaignData data = reader.read(flat, 1);
+
+		// Then: campaign-level and total fields parse, and the tactic's metrics parse with blanks as null
+		assertThat(data.client()).isEqualTo("Acme");
+		assertThat(data.campaign()).isEqualTo("Spring");
+		assertThat(data.geo()).isEqualTo("Texas");
+		assertThat(data.primaryKpis()).isEqualTo("CTR");
+		assertThat(data.totals().imps()).isEqualTo(1_500_000.0);
+		Tactic tactic = data.tactics().get(1);
+		assertThat(tactic.name()).isEqualTo("Display");
+		assertThat(tactic.spend()).isEqualTo(10_000.0);
+		assertThat(tactic.imps()).isEqualTo(1_000_000.0);
+		assertThat(tactic.ctr()).isEqualTo(0.20);
+		assertThat(tactic.vcr()).isNull();
+	}
+
+	@Test
+	void shouldClampTacticCountAndTolerateMissingValuesTest() {
+		// Given: a nearly empty map and an over-range tactic count
+
+		// When: reconstructed with a count above the template maximum
+		CampaignData data = reader.read(Map.of("{{client_name}}", "Acme"), 9);
+
+		// Then: the count is clamped to seven and missing numbers default to zero without failing
+		assertThat(data.tactics()).hasSize(7);
+		assertThat(data.totals().spend()).isZero();
+		assertThat(data.tactics().get(1).spend()).isZero();
+		assertThat(data.tactics().get(1).name()).isEmpty();
+	}
+}

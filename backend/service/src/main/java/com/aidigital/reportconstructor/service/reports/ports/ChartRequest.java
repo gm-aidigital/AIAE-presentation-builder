@@ -2,6 +2,7 @@ package com.aidigital.reportconstructor.service.reports.ports;
 
 import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
 import com.aidigital.reportconstructor.service.reports.dto.LineItemMapping;
+import com.aidigital.reportconstructor.service.reports.engine.Pivot;
 
 import java.util.List;
 import java.util.Map;
@@ -10,8 +11,9 @@ import java.util.Map;
  * Inputs for {@link ChartProvider#buildCharts(ChartRequest)}.
  *
  * @param presentationId        id of the cloned deck whose placeholder charts get replaced
- * @param bqRows                raw BigQuery export rows (the Adjustments / actuals grid)
- * @param lineItemMapping       tactic-number &rarr; line-item-id mapping
+ * @param bqRows                raw BigQuery export rows (the Adjustments / actuals grid); empty when the pacing
+ *                              pivots are supplied pre-computed via {@code dailyPivots}/{@code monthlyPivots}
+ * @param lineItemMapping       tactic-number &rarr; line-item-id mapping; empty when pivots are pre-computed
  * @param flightTs              resolved flight window, or {@code null}
  * @param tacticCount           number of active tactics (1..7)
  * @param campaignTitle         deck title, used for folder / file names
@@ -25,6 +27,9 @@ import java.util.Map;
  * @param userGoogleAccessToken optional signed-in user token; when present the
  *                              charts are built under that user's Drive, matching
  *                              where the deck was created
+ * @param dailyPivots           pre-computed daily pacing pivots per tactic for the "Slides from Sheet" flow;
+ *                              {@code null} means pivot the BigQuery rows instead (the default flow)
+ * @param monthlyPivots         pre-computed monthly pacing pivots per tactic; {@code null} for the BigQuery flow
  */
 public record ChartRequest(
 		String presentationId,
@@ -37,7 +42,9 @@ public record ChartRequest(
 		Map<Integer, Double> distTacticImps,
 		double distTotalImps,
 		Map<Integer, String> tacticKpiTypes,
-		String userGoogleAccessToken
+		String userGoogleAccessToken,
+		Map<Integer, Pivot> dailyPivots,
+		Map<Integer, Pivot> monthlyPivots
 ) {
 
 }

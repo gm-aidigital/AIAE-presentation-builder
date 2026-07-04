@@ -43,4 +43,10 @@ public class StubSheetDeckProvider implements SheetDeckProvider {
 		// No-op: the stub never clones a real workbook, so there are no tables to write.
 		return List.of();
 	}
+
+	@Override
+	public List<List<String>> readSheetGrid(String spreadsheetId, String userGoogleAccessToken) {
+		// No workbook is ever cloned offline, so there is no grid to read back.
+		return List.of();
+	}
 }

@@ -199,6 +199,26 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 		}
 	}
 
+	@Override
+	public List<List<String>> readSheetGrid(String spreadsheetId, String userGoogleAccessToken) {
+		boolean asUser = userGoogleAccessToken != null && !userGoogleAccessToken.isBlank();
+		Sheets sheetsClient = asUser ? buildSheets(userGoogleAccessToken) : sheets;
+		try {
+			Map<String, Integer> tabSheetIds = fetchSheetIds(sheetsClient, spreadsheetId);
+			if (tabSheetIds.isEmpty()) {
+				return List.of();
+			}
+			// The EOC workbook keeps all placeholders on its first tab — the same tab
+			// writePacingTables writes into — so reading it back is enough.
+			String firstTab = tabSheetIds.keySet().iterator().next();
+			return readGrid(sheetsClient, spreadsheetId, firstTab);
+		} catch (IOException ex) {
+			log.error("[sheets] readSheetGrid failed for {}", spreadsheetId, ex);
+			throw new AppException(ErrorReason.C000,
+					"Google Sheets read failed: " + ex.getMessage());
+		}
+	}
+
 	/**
 	 * Builds the clear/relocate requests for the unused rows of the per-tactic summary
 	 * table (anchored by its {@link #SUMMARY_HEADER} row, one data row per tactic slot

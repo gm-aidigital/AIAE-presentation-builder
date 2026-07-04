@@ -105,6 +105,7 @@ class PlaceholderSectionBuilderImplTest {
 				List.of(),
 				List.of(),
 				"",
+				null,
 				null
 		);
 	}

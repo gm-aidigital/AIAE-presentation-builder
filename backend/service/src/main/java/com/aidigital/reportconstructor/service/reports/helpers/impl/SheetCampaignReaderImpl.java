@@ -1,0 +1,127 @@
+package com.aidigital.reportconstructor.service.reports.helpers.impl;
+
+import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
+import com.aidigital.reportconstructor.service.reports.dto.Tactic;
+import com.aidigital.reportconstructor.service.reports.dto.Totals;
+import com.aidigital.reportconstructor.service.reports.helpers.ReportNumberParser;
+import com.aidigital.reportconstructor.service.reports.helpers.SheetCampaignReader;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Component;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+/**
+ * Spring bean implementation of {@link SheetCampaignReader}. Pure logic over the placeholder map —
+ * no Google or grid access — so it is unit-testable in isolation.
+ */
+@Component
+@RequiredArgsConstructor
+public class SheetCampaignReaderImpl implements SheetCampaignReader {
+
+	private final ReportNumberParser numbers;
+
+	@Override
+	public CampaignData read(Map<String, String> flat, int tacticCount) {
+		int count = Math.clamp(tacticCount, 0, 7);
+		Map<Integer, Tactic> tactics = new LinkedHashMap<>();
+		for (int n = 1; n <= count; n++) {
+			tactics.put(n, readTactic(flat, n));
+		}
+		Totals totals = new Totals(
+				num(flat, "{{total_investment}}"),
+				num(flat, "{{total imps}}"),
+				num(flat, "{{total clicks}}"),
+				num(flat, "{{total complitions}}"),
+				nullableNum(flat, "{{total ctr}}"),
+				nullableNum(flat, "{{total vcr}}"));
+		return new CampaignData(
+				str(flat, "{{client_name}}"),
+				str(flat, "{{Campaign_name}}"),
+				str(flat, "{{geo_locations}}"),
+				str(flat, "{{funnel_stages}}"),
+				str(flat, "{{flight_dates}}"),
+				null,
+				str(flat, "{{total_investment}}"),
+				str(flat, "{{primary_kpis}}"),
+				str(flat, "{{tactics_list}}"),
+				str(flat, "{{audience_age}}"),
+				str(flat, "{{audience_segments}}"),
+				totals,
+				tactics,
+				null);
+	}
+
+	/**
+	 * Reconstructs one tactic's metrics from its {@code {{tactic n ...}}} placeholders. Frequency,
+	 * daypart and line-item fields are left null: they are not read by the Claude prompts and the
+	 * daypart copy already lives in the sheet.
+	 *
+	 * @param flat the placeholder map
+	 * @param n    1-based tactic number
+	 * @return the reconstructed tactic
+	 */
+	Tactic readTactic(Map<String, String> flat, int n) {
+		String prefix = "{{tactic " + n;
+		String name = str(flat, prefix + "}}");
+		return new Tactic(
+				name,
+				name,
+				null,
+				num(flat, prefix + " spend}}"),
+				num(flat, prefix + " imps}}"),
+				num(flat, prefix + " clicks}}"),
+				num(flat, prefix + " complitions}}"),
+				nullableNum(flat, prefix + " ctr}}"),
+				nullableNum(flat, prefix + " vcr}}"),
+				null,
+				null,
+				nullableNum(flat, prefix + " spend plan}}"),
+				nullableNum(flat, prefix + " imps plan}}"),
+				nullableNum(flat, prefix + " ctr plan}}"),
+				nullableNum(flat, prefix + " vcr plan}}"),
+				null,
+				str(flat, prefix + " top creative name}}"),
+				nullableNum(flat, prefix + " top creative imps}}"),
+				nullableNum(flat, prefix + " top creative clicks}}"));
+	}
+
+	/**
+	 * Returns the trimmed placeholder value, or an empty string when absent.
+	 *
+	 * @param flat the placeholder map
+	 * @param key  the {@code {{token}}} key
+	 * @return the value, never {@code null}
+	 */
+	String str(Map<String, String> flat, String key) {
+		String v = flat.get(key);
+		return v == null ? "" : v.trim();
+	}
+
+	/**
+	 * Parses a placeholder value as a primitive double (0.0 when blank/unparseable).
+	 *
+	 * @param flat the placeholder map
+	 * @param key  the {@code {{token}}} key
+	 * @return the parsed value, or 0.0
+	 */
+	double num(Map<String, String> flat, String key) {
+		return numbers.parseReportNumber(flat.get(key));
+	}
+
+	/**
+	 * Parses a placeholder value as a boxed double, returning {@code null} when the cell is blank so
+	 * "no data" stays distinct from a real zero in the Claude prompt context.
+	 *
+	 * @param flat the placeholder map
+	 * @param key  the {@code {{token}}} key
+	 * @return the parsed value, or {@code null} when blank
+	 */
+	Double nullableNum(Map<String, String> flat, String key) {
+		String v = flat.get(key);
+		if (v == null || v.isBlank()) {
+			return null;
+		}
+		return numbers.parseReportNumber(v);
+	}
+}

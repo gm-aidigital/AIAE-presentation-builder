@@ -25,6 +25,9 @@ import java.util.List;
  *                        full date range present in the raw data ("Basic" tab) is used. This is the sole source of the
  *                        report flight window: it gates which delivery rows contribute and fills {@code {{flight_dates}}}.
  *                        The media plan is never consulted for dates.
+ * @param sheetUrl        URL of a previously generated (and user-edited) Google Sheet; the sole input when the target is
+ *                        {@code SLIDES_FROM_SHEET}, where the deck is filled from this sheet's values instead of the raw
+ *                        grids. {@code null}/blank for the SLIDES and SHEET flows.
  */
 public record GeneratePayload(
 		String brief,
@@ -37,7 +40,8 @@ public record GeneratePayload(
 		List<List<String>> geoRows,
 		List<LineItemMapping> lineItemMapping,
 		String bqSheetId,
-		DateFilter dateFilter
+		DateFilter dateFilter,
+		String sheetUrl
 ) {
 
 }

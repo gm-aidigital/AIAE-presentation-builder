@@ -12,6 +12,8 @@ import com.aidigital.reportconstructor.service.reports.helpers.ReportGenerationC
 import com.aidigital.reportconstructor.service.reports.helpers.ReportGenerationWarningsHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportJobProgressHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportSheetHelper;
+import com.aidigital.reportconstructor.service.reports.helpers.SheetCampaignReader;
+import com.aidigital.reportconstructor.service.reports.helpers.SheetPlaceholderReader;
 import com.aidigital.reportconstructor.service.reports.ports.ClaudeClient;
 import com.aidigital.reportconstructor.service.reports.ports.SlidesProvider;
 import com.aidigital.reportconstructor.service.reports.ports.UserGoogleTokenProvider;
@@ -20,6 +22,7 @@ import com.aidigital.reportconstructor.service.reports.services.ReportGeneration
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.ObjectProvider;
@@ -33,6 +36,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -48,6 +52,10 @@ class ReportGenerationServiceImplTest {
 	ReportGenerationChartHelper chartHelper;
 	@Mock
 	ReportSheetHelper sheetHelper;
+	@Mock
+	SheetPlaceholderReader placeholderReader;
+	@Mock
+	SheetCampaignReader sheetCampaign;
 	@Mock
 	PlaceholderResolverService placeholders;
 	@Mock
@@ -66,14 +74,14 @@ class ReportGenerationServiceImplTest {
 	@BeforeEach
 	void setUp() {
 		service = new ReportGenerationServiceImpl(
-				jobProgress, warnings, chartHelper, sheetHelper, placeholders, claude, slides,
-				userGoogleTokens, self, claudeDefaults);
+				jobProgress, warnings, chartHelper, sheetHelper, placeholderReader, sheetCampaign, placeholders,
+				claude, slides, userGoogleTokens, self, claudeDefaults);
 	}
 
 	@Test
 	void shouldThrowAppExceptionWhenBriefIsBlankTest() {
 		GeneratePayload payload = new GeneratePayload(
-				"  ", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null);
+				"  ", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null, null);
 
 		Throwable thrown = catchThrowable(() -> service.start("user-1", "clerk-1", payload, GenerationTarget.SLIDES));
 
@@ -90,7 +98,7 @@ class ReportGenerationServiceImplTest {
 		queued.setTotal(7);
 		queued.setOwnerUserId("user-1");
 		GeneratePayload payload = new GeneratePayload(
-				"Campaign brief.", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null);
+				"Campaign brief.", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null, null);
 		when(jobProgress.createQueuedJob("user-1", "standard")).thenReturn(queued);
 
 		ReportJobEntity job = service.enqueue("user-1", payload);
@@ -104,7 +112,7 @@ class ReportGenerationServiceImplTest {
 	@Test
 	void shouldEnqueueAndKickOffAsyncRunOnStartTest() {
 		GeneratePayload payload = new GeneratePayload(
-				"Campaign brief.", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null);
+				"Campaign brief.", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null, null);
 		ReportJobEntity queued = new ReportJobEntity();
 		queued.setId(5L);
 		when(jobProgress.createQueuedJob("user-1", "standard")).thenReturn(queued);
@@ -120,7 +128,7 @@ class ReportGenerationServiceImplTest {
 	@Test
 	void shouldRunPipelineAndMarkJobDoneWhenClaudeOfflineTest() {
 		GeneratePayload payload = new GeneratePayload(
-				"Campaign brief.", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null);
+				"Campaign brief.", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null, null);
 		when(claude.isLive()).thenReturn(false);
 		when(placeholders.buildFlatReplacements(any(), any(), any(), any(), any(), any(), any(), any(), any()))
 				.thenReturn(Map.of());
@@ -138,7 +146,7 @@ class ReportGenerationServiceImplTest {
 	void shouldBuildSheetAndSkipChartsWhenTargetIsSheetTest() {
 		// Given:
 		GeneratePayload payload = new GeneratePayload(
-				"Campaign brief.", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null);
+				"Campaign brief.", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null, null);
 		when(claude.isLive()).thenReturn(false);
 		when(claudeDefaults.emptySheetBatch()).thenReturn(new ClaudeSheetBatch(null, null, Map.of()));
 		when(placeholders.buildFlatReplacements(any(), any(), any(), any(), any(), any(), any(), any(), any()))
@@ -159,9 +167,49 @@ class ReportGenerationServiceImplTest {
 	}
 
 	@Test
+	void shouldFillDeckFromSheetWithNarrativeOverlaidBySheetValuesTest() {
+		// Given: a step-2 request naming the user-edited sheet, whose grid yields two filled tactics
+		GeneratePayload payload = new GeneratePayload(
+				"Campaign brief.", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(),
+				List.of(), "", null, "http://sheet");
+		List<List<String>> grid = List.of(List.of("Tactic name"), List.of("CTV"), List.of("Display"));
+		Map<String, String> sheetValues = Map.of(
+				"{{client_name}}", "Acme", "{{tactic 1}}", "CTV", "{{tactic 2}}", "Display");
+		// Narrative carries a sheet-less recommendation and a client name the sheet must override
+		Map<String, String> narrative = Map.of("{{client_name}}", "From Claude", "{{recommendation 1}}", "Do X");
+		when(sheetHelper.readSheetGrid("http://sheet", null)).thenReturn(grid);
+		when(placeholderReader.readPlaceholders(grid)).thenReturn(sheetValues);
+		when(claude.isLive()).thenReturn(false);
+		when(placeholders.buildFlatReplacements(
+				any(), any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(narrative);
+		when(slides.createDeck(eq("11"), any(), isNull())).thenReturn("http://deck");
+		when(chartHelper.buildChartsFromSheet(eq("http://deck"), eq(grid), any(), eq(2), isNull()))
+				.thenReturn(List.of());
+		when(warnings.serializeWarnings(List.of())).thenReturn("[]");
+
+		// When: the slides-from-sheet job runs
+		service.run(11L, payload, "clerk-1", GenerationTarget.SLIDES_FROM_SHEET);
+
+		// Then: it reconstructs campaign context from the sheet, then merges narrative UNDER the sheet values
+		verify(sheetCampaign).read(sheetValues, 2);
+		ArgumentCaptor<Map<String, String>> deckMap = ArgumentCaptor.forClass(Map.class);
+		verify(slides).createDeck(eq("11"), deckMap.capture(), isNull());
+		assertThat(deckMap.getValue())
+				.containsEntry("{{client_name}}", "Acme")
+				.containsEntry("{{recommendation 1}}", "Do X");
+		verify(chartHelper).trimUnusedTactics("http://deck", 2, null);
+		verify(chartHelper).buildChartsFromSheet(eq("http://deck"), eq(grid), any(), eq(2), isNull());
+		verify(jobProgress).markJobDone(11L, "http://deck", "[]");
+		// And: the raw-grid collection and the offline Claude batches never run — no duplicate work
+		verify(placeholders, never()).collectData(any());
+		verify(claude, never()).batchStrategic(any(), any());
+		verify(claude, never()).batchResults(any(), any(), any());
+	}
+
+	@Test
 	void shouldMarkJobFailedWhenPipelineThrowsTest() {
 		GeneratePayload payload = new GeneratePayload(
-				"Campaign brief.", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null);
+				"Campaign brief.", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null, null);
 		when(placeholders.collectData(payload)).thenThrow(new RuntimeException("boom"));
 
 		service.run(8L, payload, "clerk-1", GenerationTarget.SLIDES);

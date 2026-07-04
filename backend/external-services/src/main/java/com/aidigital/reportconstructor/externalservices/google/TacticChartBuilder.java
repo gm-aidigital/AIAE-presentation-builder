@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -88,20 +89,25 @@ public class TacticChartBuilder {
 	 */
 	List<String> buildDailyCharts(ChartClients clients, ChartRequest req, Headers headers, String folderId) {
 		List<String> errors = new ArrayList<>();
-		if (!headers.valid()) {
+		boolean fromSheet = req.dailyPivots() != null;
+		if (!fromSheet && !headers.valid()) {
 			errors.add("Daily: BQ sheet — Date or Impressions column not found");
 			return errors;
 		}
-		Map<Integer, List<String>> tacticLineItems = lineItemGrouper.groupByTactic(req.lineItemMapping());
+		Map<Integer, List<String>> tacticLineItems =
+				fromSheet ? Map.of() : lineItemGrouper.groupByTactic(req.lineItemMapping());
 		Map<String, ElementTransform> transforms =
 				slideChartSwapper.loadTransforms(clients.slides(), req.presentationId(), errors, "Daily");
 
 		for (int n = 1; n <= req.tacticCount(); n++) {
 			List<String> liIds = tacticLineItems.getOrDefault(n, List.of());
 			try {
-				Pivot pivot = chartPivot.buildDailyPivot(req.bqRows(), liIds, headers, req.flightTs());
+				Pivot pivot = fromSheet
+						? req.dailyPivots().getOrDefault(n, emptyPivot())
+						: chartPivot.buildDailyPivot(req.bqRows(), liIds, headers, req.flightTs());
 				if (pivot.isEmpty()) {
-					errors.add("Tactic " + n + ": no BQ data (line item ids: " + String.join(",", liIds) + ")");
+					errors.add("Tactic " + n + ": no pacing data"
+							+ (fromSheet ? " in sheet" : " (line item ids: " + String.join(",", liIds) + ")"));
 					continue;
 				}
 				renderComboChart(clients, req.presentationId(), folderId, transforms, errors,
@@ -130,21 +136,26 @@ public class TacticChartBuilder {
 	 */
 	List<String> buildMonthlyCharts(ChartClients clients, ChartRequest req, Headers headers, String folderId) {
 		List<String> errors = new ArrayList<>();
-		if (!headers.valid()) {
+		boolean fromSheet = req.monthlyPivots() != null;
+		if (!fromSheet && !headers.valid()) {
 			errors.add("Monthly: BQ sheet — Date or Impressions column not found");
 			return errors;
 		}
-		Map<Integer, List<String>> tacticLineItems = lineItemGrouper.groupByTactic(req.lineItemMapping());
-		boolean multiYear = chartPivot.isMultiYear(req.bqRows(), headers, req.flightTs());
+		Map<Integer, List<String>> tacticLineItems =
+				fromSheet ? Map.of() : lineItemGrouper.groupByTactic(req.lineItemMapping());
+		boolean multiYear = !fromSheet && chartPivot.isMultiYear(req.bqRows(), headers, req.flightTs());
 		Map<String, ElementTransform> transforms =
 				slideChartSwapper.loadTransforms(clients.slides(), req.presentationId(), errors, "Monthly");
 
 		for (int n = 1; n <= req.tacticCount(); n++) {
 			List<String> liIds = tacticLineItems.getOrDefault(n, List.of());
 			try {
-				Pivot pivot = chartPivot.buildMonthlyPivot(req.bqRows(), liIds, headers, req.flightTs(), multiYear);
+				Pivot pivot = fromSheet
+						? req.monthlyPivots().getOrDefault(n, emptyPivot())
+						: chartPivot.buildMonthlyPivot(req.bqRows(), liIds, headers, req.flightTs(), multiYear);
 				if (pivot.isEmpty()) {
-					errors.add("Monthly Tactic " + n + ": no data (line item ids: " + String.join(",", liIds) + ")");
+					errors.add("Monthly Tactic " + n + ": no data"
+							+ (fromSheet ? " in sheet" : " (line item ids: " + String.join(",", liIds) + ")"));
 					continue;
 				}
 				renderComboChart(clients, req.presentationId(), folderId, transforms, errors,
@@ -274,6 +285,16 @@ public class TacticChartBuilder {
 		}
 		slideChartSwapper.replaceChartOnSlide(
 				clients.slides(), presentationId, job.oldObjectId(), copiedId, transforms.get(job.oldObjectId()));
+	}
+
+	/**
+	 * Builds an empty pivot, used as the fallback for a sheet-sourced tactic whose pacing block
+	 * was absent so it is skipped rather than charted.
+	 *
+	 * @return a pivot with no data and no clicks/completions series
+	 */
+	Pivot emptyPivot() {
+		return new Pivot(new LinkedHashMap<>(), false, false);
 	}
 
 }

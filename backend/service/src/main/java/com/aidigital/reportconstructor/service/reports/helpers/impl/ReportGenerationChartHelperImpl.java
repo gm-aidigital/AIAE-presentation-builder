@@ -2,8 +2,10 @@ package com.aidigital.reportconstructor.service.reports.helpers.impl;
 
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
+import com.aidigital.reportconstructor.service.reports.dto.SheetChartData;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportGenerationChartHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportNumberParser;
+import com.aidigital.reportconstructor.service.reports.helpers.SheetChartDataReader;
 import com.aidigital.reportconstructor.service.reports.helpers.TacticExtractionHelper;
 import com.aidigital.reportconstructor.service.reports.ports.ChartProvider;
 import com.aidigital.reportconstructor.service.reports.ports.ChartRequest;
@@ -32,6 +34,7 @@ public class ReportGenerationChartHelperImpl implements ReportGenerationChartHel
 	private final SlidesProvider slides;
 	private final TacticExtractionHelper tacticExtraction;
 	private final ReportNumberParser reportNumbers;
+	private final SheetChartDataReader sheetChartData;
 
 	@Override
 	public List<String> buildCharts(
@@ -52,21 +55,12 @@ public class ReportGenerationChartHelperImpl implements ReportGenerationChartHel
 		}
 
 		int tacticCount = Math.clamp(tacticExtraction.countTacticsInMediaPlan(payload.sheetRows()), 1, 7);
-		String campaignTitle = firstNonBlank(
-				flatReplacements.get("{{Campaign_name}}"),
-				flatReplacements.get("{{client_name}}"),
-				"Campaign"
-		);
+		String campaignTitle = campaignTitle(flatReplacements);
 
 		Map<Integer, String> distNames = new LinkedHashMap<>();
 		Map<Integer, Double> distImps = new LinkedHashMap<>();
 		Map<Integer, String> kpiTypes = new LinkedHashMap<>();
-		for (int n = 1; n <= tacticCount; n++) {
-			String name = firstNonBlank(flatReplacements.get("{{tactic " + n + "}}"), "Tactic " + n);
-			distNames.put(n, name);
-			distImps.put(n, reportNumbers.parseReportNumber(flatReplacements.get("{{tactic " + n + " imps}}")));
-			kpiTypes.put(n, tacticExtraction.getTacticKpiType(name));
-		}
+		populateTacticMaps(flatReplacements, tacticCount, distNames, distImps, kpiTypes);
 		double totalImps = reportNumbers.parseReportNumber(flatReplacements.get("{{total imps}}"));
 
 		try {
@@ -81,7 +75,9 @@ public class ReportGenerationChartHelperImpl implements ReportGenerationChartHel
 					distImps,
 					totalImps,
 					kpiTypes,
-					userGoogleToken
+					userGoogleToken,
+					null,
+					null
 			));
 		} catch (RuntimeException ex) {
 			log.error("[charts] chart step failed for presentation {}", presentationId, ex);
@@ -90,14 +86,100 @@ public class ReportGenerationChartHelperImpl implements ReportGenerationChartHel
 	}
 
 	@Override
+	public List<String> buildChartsFromSheet(
+			String slideUrl,
+			List<List<String>> grid,
+			Map<String, String> flatReplacements,
+			int tacticCount,
+			String userGoogleToken
+	) {
+		String presentationId = extractPresentationId(slideUrl);
+		if (presentationId == null) {
+			return List.of("Charts skipped — could not determine presentation id from " + slideUrl);
+		}
+		int count = Math.clamp(tacticCount, 1, 7);
+
+		Map<Integer, String> distNames = new LinkedHashMap<>();
+		Map<Integer, Double> distImps = new LinkedHashMap<>();
+		Map<Integer, String> kpiTypes = new LinkedHashMap<>();
+		populateTacticMaps(flatReplacements, count, distNames, distImps, kpiTypes);
+		double totalImps = reportNumbers.parseReportNumber(flatReplacements.get("{{total imps}}"));
+
+		// The pacing series are read straight from the (user-edited) sheet — no BigQuery — and the
+		// KPI types drive whether each block's single metric column is read as clicks or completions.
+		SheetChartData chartData = sheetChartData.read(grid, count, kpiTypes);
+
+		try {
+			return charts.buildCharts(new ChartRequest(
+					presentationId,
+					List.of(),
+					List.of(),
+					null,
+					count,
+					campaignTitle(flatReplacements),
+					distNames,
+					distImps,
+					totalImps,
+					kpiTypes,
+					userGoogleToken,
+					chartData.dailyPivots(),
+					chartData.monthlyPivots()
+			));
+		} catch (RuntimeException ex) {
+			log.error("[charts] sheet chart step failed for presentation {}", presentationId, ex);
+			return List.of("Charts failed: " + ex.getMessage());
+		}
+	}
+
+	/**
+	 * Fills the distribution/KPI maps for tactics 1..{@code tacticCount} from the resolved placeholder
+	 * values, shared by the BigQuery and sheet chart paths.
+	 *
+	 * @param flatReplacements resolved placeholder values keyed by token
+	 * @param tacticCount      number of active tactics
+	 * @param distNames        out: tactic number &rarr; display name
+	 * @param distImps         out: tactic number &rarr; impressions
+	 * @param kpiTypes         out: tactic number &rarr; KPI type derived from the tactic's channel name
+	 */
+	void populateTacticMaps(
+			Map<String, String> flatReplacements, int tacticCount,
+			Map<Integer, String> distNames, Map<Integer, Double> distImps, Map<Integer, String> kpiTypes) {
+		for (int n = 1; n <= tacticCount; n++) {
+			String name = firstNonBlank(flatReplacements.get("{{tactic " + n + "}}"), "Tactic " + n);
+			distNames.put(n, name);
+			distImps.put(n, reportNumbers.parseReportNumber(flatReplacements.get("{{tactic " + n + " imps}}")));
+			kpiTypes.put(n, tacticExtraction.getTacticKpiType(name));
+		}
+	}
+
+	/**
+	 * Resolves the deck title from the campaign or client name, defaulting to {@code "Campaign"}.
+	 *
+	 * @param flatReplacements resolved placeholder values keyed by token
+	 * @return the campaign title used for chart folder/file names
+	 */
+	String campaignTitle(Map<String, String> flatReplacements) {
+		return firstNonBlank(
+				flatReplacements.get("{{Campaign_name}}"),
+				flatReplacements.get("{{client_name}}"),
+				"Campaign");
+	}
+
+	@Override
 	public void trimUnusedTactics(String slideUrl, GeneratePayload payload, String userGoogleToken) {
+		int tacticCount = Math.clamp(tacticExtraction.countTacticsInMediaPlan(payload.sheetRows()), 1, 7);
+		trimUnusedTactics(slideUrl, tacticCount, userGoogleToken);
+	}
+
+	@Override
+	public void trimUnusedTactics(String slideUrl, int tacticCount, String userGoogleToken) {
 		String presentationId = extractPresentationId(slideUrl);
 		if (presentationId == null) {
 			return;
 		}
-		int tacticCount = Math.clamp(tacticExtraction.countTacticsInMediaPlan(payload.sheetRows()), 1, 7);
+		int clamped = Math.clamp(tacticCount, 1, 7);
 		try {
-			slides.trimTactics(presentationId, tacticCount, userGoogleToken);
+			slides.trimTactics(presentationId, clamped, userGoogleToken);
 		} catch (RuntimeException ex) {
 			log.warn("[slides] trimTactics failed for {} (non-fatal): {}", presentationId, ex.getMessage());
 		}
