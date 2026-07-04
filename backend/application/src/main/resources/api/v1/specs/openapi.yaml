@@ -414,6 +414,16 @@ components:
         the section/placeholder catalog is identical for both values.
       enum: [ EOC, EOM ]
 
+    GenerationTargetV1:
+      type: string
+      description: |
+        Which artifact the generation job produces from the resolved placeholders.
+        SLIDES clones the Google Slides deck template (default, "Generate Slides").
+        SHEET clones the Google Sheets template and fills it ("Generate Sheet").
+        The placeholder catalog and data pipeline are identical for both; only the
+        final render step and the unused-tactic trimming differ. Omitted → SLIDES.
+      enum: [ SLIDES, SHEET ]
+
     DateFilterModeV1:
       type: string
       description: |
@@ -661,6 +671,12 @@ components:
       properties:
         brief: { type: string }
         reportType: { $ref: "#/components/schemas/ReportTypeV1" }
+        target:
+          allOf:
+            - $ref: "#/components/schemas/GenerationTargetV1"
+          description: |
+            Artifact to build. Optional; defaults to SLIDES so existing callers
+            keep producing decks. Set SHEET for the "Generate Sheet" flow.
         marketVolume:
           type: string
           minLength: 1
@@ -699,7 +715,7 @@ components:
         step: { type: integer, format: int32 }
         total: { type: integer, format: int32, description: "Always 7." }
         label: { type: string, description: "Human progress label." }
-        slideUrl: { type: string, description: "Generated deck URL (set when status=done)." }
+        slideUrl: { type: string, description: "Generated artifact URL (Slides deck or Sheet, per target; set when status=done)." }
         warnings:
           type: array
           description: Non-fatal warnings (chart/share failures); the job still completes.

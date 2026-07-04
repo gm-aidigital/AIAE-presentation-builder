@@ -2,6 +2,7 @@ package com.aidigital.reportconstructor.reports.mappers;
 
 import com.aidigital.reportconstructor.api.v1.model.DateRangeResultV1;
 import com.aidigital.reportconstructor.api.v1.model.GenerateRequestV1;
+import com.aidigital.reportconstructor.api.v1.model.GenerationTargetV1;
 import com.aidigital.reportconstructor.api.v1.model.LabelPairV1;
 import com.aidigital.reportconstructor.api.v1.model.PlaceholderEntryV1;
 import com.aidigital.reportconstructor.api.v1.model.PreviewRequestV1;
@@ -11,6 +12,7 @@ import com.aidigital.reportconstructor.api.v1.model.SourceV1;
 import com.aidigital.reportconstructor.config.ApplicationMapperConfig;
 import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
+import com.aidigital.reportconstructor.service.reports.dto.GenerationTarget;
 import com.aidigital.reportconstructor.service.reports.dto.LineItemMapping;
 import com.aidigital.reportconstructor.service.reports.dto.Placeholder;
 import com.aidigital.reportconstructor.service.reports.dto.PreviewSection;
@@ -49,6 +51,17 @@ public interface PlaceholdersApiMapper {
 	@Mapping(target = "reportType", expression = "java(body.getReportType().getValue())")
 	@Mapping(target = "bqSheetId", ignore = true)
 	GeneratePayload toPayload(PreviewRequestV1 body);
+
+	/**
+	 * Resolves the requested generation target, defaulting to {@link GenerationTarget#SLIDES}
+	 * so callers that omit the field (or predate it) keep producing slide decks.
+	 *
+	 * @param target the V1 generation target, or {@code null} when unspecified
+	 * @return the service generation target ({@code SLIDES} when {@code target} is {@code null})
+	 */
+	default GenerationTarget toTarget(GenerationTargetV1 target) {
+		return target == null ? GenerationTarget.SLIDES : GenerationTarget.valueOf(target.name());
+	}
 
 	/**
 	 * Converts the detected raw-data flight window into its V1 date-range response. A {@code null}

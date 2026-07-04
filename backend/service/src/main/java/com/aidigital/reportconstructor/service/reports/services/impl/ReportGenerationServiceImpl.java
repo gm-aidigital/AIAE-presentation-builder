@@ -9,11 +9,13 @@ import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
+import com.aidigital.reportconstructor.service.reports.dto.GenerationTarget;
 import com.aidigital.reportconstructor.service.reports.dto.ProgressView;
 import com.aidigital.reportconstructor.service.reports.engine.ReportClaudeDefaults;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportGenerationChartHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportGenerationWarningsHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportJobProgressHelper;
+import com.aidigital.reportconstructor.service.reports.helpers.ReportSheetHelper;
 import com.aidigital.reportconstructor.service.reports.ports.ClaudeClient;
 import com.aidigital.reportconstructor.service.reports.ports.SlidesProvider;
 import com.aidigital.reportconstructor.service.reports.ports.UserGoogleTokenProvider;
@@ -42,6 +44,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	private final ReportJobProgressHelper jobProgress;
 	private final ReportGenerationWarningsHelper warnings;
 	private final ReportGenerationChartHelper chartHelper;
+	private final ReportSheetHelper sheetHelper;
 	private final PlaceholderResolverService placeholders;
 	private final ClaudeClient claude;
 	private final SlidesProvider slides;
@@ -54,12 +57,12 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	 * self-proxy so the {@code @Async} boundary on {@link #run} takes effect.
 	 */
 	@Override
-	public ReportJobEntity start(String userId, String clerkUserId, GeneratePayload payload) {
+	public ReportJobEntity start(String userId, String clerkUserId, GeneratePayload payload, GenerationTarget target) {
 		if (payload.brief() == null || payload.brief().isBlank()) {
 			throw new AppException(ErrorReason.C002, "Brief is required");
 		}
 		ReportJobEntity job = enqueue(userId, payload);
-		self.getObject().run(job.getId(), payload, clerkUserId);
+		self.getObject().run(job.getId(), payload, clerkUserId, target);
 		return job;
 	}
 
@@ -78,7 +81,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	 */
 	@Override
 	@Async
-	public void run(Long jobId, GeneratePayload payload, String clerkUserId) {
+	public void run(Long jobId, GeneratePayload payload, String clerkUserId, GenerationTarget target) {
 		try {
 			jobProgress.markJobRunningAtStep(jobId, 1, "Reading sheet data");
 			CampaignData data = placeholders.collectData(payload);
@@ -110,12 +113,22 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 			String primaryKpis = (live && placeholders.needPrimaryKpis(payload))
 					? claude.summarizePrimaryKpis(data) : null;
 
-			jobProgress.markJobRunningAtStep(jobId, 6, "Building slide deck");
 			Map<String, String> flatReplacements =
 					placeholders.buildFlatReplacements(payload, data, ccA, ccB, ccC, primaryKpis, geoSummary,
 							funnelSummary, frequencies);
 			UserGoogleTokenProvider clerk = userGoogleTokens.getIfAvailable();
 			String userGoogleToken = clerk == null ? null : clerk.googleAccessToken(clerkUserId);
+
+			if (target == GenerationTarget.SHEET) {
+				jobProgress.markJobRunningAtStep(jobId, 6, "Building sheet");
+				String sheetUrl = sheetHelper.buildSheet(String.valueOf(jobId), flatReplacements, userGoogleToken);
+				sheetHelper.trimUnusedTactics(sheetUrl, payload, userGoogleToken);
+				// The Sheet flow has no chart step; complete without chart warnings.
+				jobProgress.markJobDone(jobId, sheetUrl, warnings.serializeWarnings(List.of()));
+				return;
+			}
+
+			jobProgress.markJobRunningAtStep(jobId, 6, "Building slide deck");
 			String slideUrl = slides.createDeck(String.valueOf(jobId), flatReplacements, userGoogleToken);
 
 			chartHelper.trimUnusedTactics(slideUrl, payload, userGoogleToken);

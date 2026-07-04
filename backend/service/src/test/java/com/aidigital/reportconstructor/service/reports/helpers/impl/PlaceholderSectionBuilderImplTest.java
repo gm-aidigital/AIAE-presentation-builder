@@ -94,6 +94,7 @@ class PlaceholderSectionBuilderImplTest {
 		return new GeneratePayload(
 				"brief",
 				"standard",
+				"",
 				List.of(
 						List.of("Media", "Comments"),
 						List.of("Programmatic Display", "")

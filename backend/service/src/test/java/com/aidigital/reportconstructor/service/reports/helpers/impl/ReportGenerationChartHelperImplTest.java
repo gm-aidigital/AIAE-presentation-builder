@@ -51,7 +51,7 @@ class ReportGenerationChartHelperImplTest {
 	@Test
 	void shouldSkipChartsWhenRequiredInputsMissingTest() {
 		GeneratePayload payload = new GeneratePayload(
-				"brief", "standard", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null);
+				"brief", "standard", "", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null);
 
 		List<String> warnings = helper.buildCharts(
 				"https://docs.google.com/presentation/d/abc/edit",
@@ -95,6 +95,7 @@ class ReportGenerationChartHelperImplTest {
 		return new GeneratePayload(
 				"brief",
 				"standard",
+				"",
 				List.of(List.of("Media"), List.of("Display")),
 				List.of(List.of("Label", "Value")),
 				List.of(),

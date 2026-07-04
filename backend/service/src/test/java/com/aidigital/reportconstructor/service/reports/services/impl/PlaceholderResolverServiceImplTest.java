@@ -54,7 +54,7 @@ class PlaceholderResolverServiceImplTest {
 
 	private static GeneratePayload payload(List<List<String>> sheetRows, List<List<String>> adjRows) {
 		return new GeneratePayload(
-				"brief", "standard", sheetRows, adjRows,
+				"brief", "standard", "", sheetRows, adjRows,
 				List.of(), List.of(), List.of(), List.of(), "", null);
 	}
 

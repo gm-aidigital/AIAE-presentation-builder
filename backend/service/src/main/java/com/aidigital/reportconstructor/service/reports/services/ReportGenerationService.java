@@ -2,6 +2,7 @@ package com.aidigital.reportconstructor.service.reports.services;
 
 import com.aidigital.reportconstructor.domain.reports.entities.ReportJobEntity;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
+import com.aidigital.reportconstructor.service.reports.dto.GenerationTarget;
 import com.aidigital.reportconstructor.service.reports.dto.ProgressView;
 
 /**
@@ -18,9 +19,10 @@ public interface ReportGenerationService {
 	 * @param userId      internal id of the report owner, used for job ownership and later access checks
 	 * @param clerkUserId Clerk identity used to look up the user's Google OAuth token for Slides/Drive access
 	 * @param payload     full generation request (brief, report type, sheet rows, mappings, geo rows, etc.)
+	 * @param target      artifact to build (SLIDES deck or SHEET workbook) from the resolved placeholders
 	 * @return the persisted, queued {@link ReportJobEntity} whose build runs asynchronously
 	 */
-	ReportJobEntity start(String userId, String clerkUserId, GeneratePayload payload);
+	ReportJobEntity start(String userId, String clerkUserId, GeneratePayload payload, GenerationTarget target);
 
 	/**
 	 * Creates and persists a new report job in the {@code queued} state with a total of 7
@@ -41,8 +43,9 @@ public interface ReportGenerationService {
 	 * @param jobId       id of the previously enqueued {@link ReportJobEntity} to build and update
 	 * @param payload     generation request driving data collection, Claude prompts, and chart inputs
 	 * @param clerkUserId Clerk identity used to fetch the Google access token for deck/chart creation
+	 * @param target      artifact to build (SLIDES deck or SHEET workbook) from the resolved placeholders
 	 */
-	void run(Long jobId, GeneratePayload payload, String clerkUserId);
+	void run(Long jobId, GeneratePayload payload, String clerkUserId, GenerationTarget target);
 
 	/**
 	 * Returns the current progress snapshot for a job owned by the given user, throwing

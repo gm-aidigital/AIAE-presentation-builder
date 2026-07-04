@@ -70,6 +70,7 @@ function PageInner() {
     const [generating, setGenerating] = useState(false);
     const [progress, setProgress] = useState({ step: 0, total: 7, label: "" });
     const [resultUrl, setResultUrl] = useState<string | null>(null);
+    const [resultKind, setResultKind] = useState<"slides" | "sheet">("slides");
     const pollRef = useRef<number | null>(null);
 
     function stopPolling() {
@@ -284,7 +285,18 @@ function PageInner() {
     }
 
     // ── Generate ──────────────────────────────────────────────────────────
+    // Both the "Generate Slides" and "Generate Sheet" buttons share the same
+    // gating, payload, and progress polling; only the `target` differs and drives
+    // which artifact the backend renders and how the result card is labelled.
     function generate() {
+        runGeneration("SLIDES");
+    }
+
+    function generateSheet() {
+        runGeneration("SHEET");
+    }
+
+    function runGeneration(target: "SLIDES" | "SHEET") {
         const errs = {
             brief: !w.brief.trim(),
             sheet: !w.mediaPlan,
@@ -302,13 +314,16 @@ function PageInner() {
             document.getElementById("s5")?.scrollIntoView({ behavior: "smooth", block: "start" });
             return;
         }
+        const kind = target === "SHEET" ? "sheet" : "slides";
         setReq({ brief: false, sheet: false, adj: false, marketVolume: false });
         setResultUrl(null);
+        setResultKind(kind);
         setGenerating(true);
         setProgress({ step: 0, total: 7, label: "Starting…" });
         startReportJob({
             brief: w.brief,
             reportType: w.reportType,
+            target,
             marketVolume: w.marketVolume,
             sheetRows: w.mediaPlan.sheetRows,
             adjRows: w.elevate.adjRows,
@@ -341,7 +356,7 @@ function PageInner() {
                             setProgress({ step: 7, total: 7, label: "Done!" });
                             setResultUrl(p.slideUrl ?? "");
                             setGenerating(false);
-                            showToast("Presentation ready!");
+                            showToast(kind === "sheet" ? "Sheet ready!" : "Presentation ready!");
                         } else if (p.status === "error") {
                             stopPolling();
                             setGenerating(false);
@@ -371,6 +386,7 @@ function PageInner() {
         stopPolling();
         setGenerating(false);
         setResultUrl(null);
+        setResultKind("slides");
         setProgress({ step: 0, total: 7, label: "" });
         setReq({ brief: false, sheet: false, adj: false, marketVolume: false });
     }
@@ -653,10 +669,12 @@ function PageInner() {
 
                 <Sidebar
                     resultUrl={resultUrl}
+                    resultKind={resultKind}
                     previewLoading={previewMutation.isPending}
                     generating={generating}
                     onPreview={previewPlaceholders}
                     onGenerate={generate}
+                    onGenerateSheet={generateSheet}
                     onClear={clearAll}
                 />
             </div>

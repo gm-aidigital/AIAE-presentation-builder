@@ -18,6 +18,7 @@ class PlaceholderLabelCollectorImplTest {
 		GeneratePayload payload = new GeneratePayload(
 				"brief",
 				"standard",
+				"",
 				List.of(
 						List.of("Client name:", "Acme"),
 						List.of("  ", "ignored"),

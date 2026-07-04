@@ -41,6 +41,19 @@ public class GoogleProperties {
 	 */
 	private Map<Integer, String> tacticSlideObjectIds = Map.of();
 
+	/**
+	 * Source Sheets workbook copied for every generated report in the "Generate
+	 * Sheet" flow. Independent of {@link #slidesTemplateId}.
+	 */
+	private String sheetsTemplateId = "";
+
+	/**
+	 * Optional Drive folder the generated Sheet copy is placed in. Falls back to
+	 * the copy's default location (the user's My Drive or the service account)
+	 * when blank.
+	 */
+	private String sheetsTargetFolderId = "";
+
 	public String getServiceAccountJson() {
 		return serviceAccountJson;
 	}
@@ -79,5 +92,21 @@ public class GoogleProperties {
 
 	public void setTacticSlideObjectIds(Map<Integer, String> tacticSlideObjectIds) {
 		this.tacticSlideObjectIds = tacticSlideObjectIds == null ? Map.of() : tacticSlideObjectIds;
+	}
+
+	public String getSheetsTemplateId() {
+		return sheetsTemplateId;
+	}
+
+	public void setSheetsTemplateId(String sheetsTemplateId) {
+		this.sheetsTemplateId = sheetsTemplateId;
+	}
+
+	public String getSheetsTargetFolderId() {
+		return sheetsTargetFolderId;
+	}
+
+	public void setSheetsTargetFolderId(String sheetsTargetFolderId) {
+		this.sheetsTargetFolderId = sheetsTargetFolderId;
 	}
 }

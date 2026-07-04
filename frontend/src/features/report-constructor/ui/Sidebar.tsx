@@ -3,14 +3,25 @@ import { IconBolt, IconCheck, IconChecklist, IconClock, IconEye, IconMonitor, Ic
 
 interface Props {
     resultUrl: string | null;
+    resultKind: "slides" | "sheet";
     previewLoading: boolean;
     generating: boolean;
     onPreview(): void;
     onGenerate(): void;
+    onGenerateSheet(): void;
     onClear(): void;
 }
 
-export function Sidebar({ resultUrl, previewLoading, generating, onPreview, onGenerate, onClear }: Props) {
+export function Sidebar({
+    resultUrl,
+    resultKind,
+    previewLoading,
+    generating,
+    onPreview,
+    onGenerate,
+    onGenerateSheet,
+    onClear,
+}: Props) {
     const { brief, marketVolume, mediaPlan, elevate, matchConfirmed } = useWizard();
     const briefLen = brief.trim().length;
     const hasSheet = !!mediaPlan;
@@ -106,6 +117,14 @@ export function Sidebar({ resultUrl, previewLoading, generating, onPreview, onGe
                         <IconBolt />
                         {generating ? "Generating…" : "Generate Slides"}
                     </button>
+                    <button
+                        className="btn-generate btn-generate--sheet"
+                        disabled={!genReady || generating}
+                        onClick={onGenerateSheet}
+                    >
+                        <IconSheet size={14} />
+                        {generating ? "Generating…" : "Generate Sheet"}
+                    </button>
                     <div
                         className={`gen-lock-notice${
                             briefLen > 0 && hasSheet && hasAdj && !matchConfirmed ? " visible" : ""
@@ -124,15 +143,17 @@ export function Sidebar({ resultUrl, previewLoading, generating, onPreview, onGe
             <div className={`result-card${resultUrl ? " visible" : ""}`}>
                 <div className="result-head">
                     <IconCheck size={16} />
-                    <span className="result-head-title">Slides ready!</span>
+                    <span className="result-head-title">{resultKind === "sheet" ? "Sheet ready!" : "Slides ready!"}</span>
                 </div>
                 <div className="result-body">
                     <div style={{ fontSize: "12px", color: "var(--text-muted)", lineHeight: 1.6 }}>
-                        The presentation is ready and saved to Google Slides.
+                        {resultKind === "sheet"
+                            ? "The report is ready and saved to Google Sheets."
+                            : "The presentation is ready and saved to Google Slides."}
                     </div>
                     <a className="result-link" href={resultUrl || "#"} target="_blank" rel="noreferrer">
-                        <IconMonitor />
-                        Open in Google Slides →
+                        {resultKind === "sheet" ? <IconSheet size={13} /> : <IconMonitor />}
+                        {resultKind === "sheet" ? "Open in Google Sheets →" : "Open in Google Slides →"}
                     </a>
                 </div>
             </div>

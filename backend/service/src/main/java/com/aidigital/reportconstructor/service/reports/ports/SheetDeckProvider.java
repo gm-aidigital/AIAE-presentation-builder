@@ -1,0 +1,53 @@
+package com.aidigital.reportconstructor.service.reports.ports;
+
+import java.util.Map;
+
+/**
+ * Abstraction over Google Sheets + Drive workbook generation, mirroring
+ * {@link SlidesProvider} for the "Generate Sheet" flow. The real provider clones
+ * a Sheets template via Drive and runs {@code batchUpdate.findReplace}; the stub
+ * fabricates a static template URL for offline demos.
+ *
+ * <p>Bean selection is automatic: when {@code GOOGLE_SERVICE_ACCOUNT_JSON} is
+ * present at startup the real provider wins via {@code @Primary}; otherwise the
+ * stub is the only candidate.
+ */
+public interface SheetDeckProvider {
+
+	/**
+	 * @return true when the provider is talking to the real Google APIs.
+	 */
+	boolean isLive();
+
+	/**
+	 * Clones the Sheets template into a new workbook and replaces every
+	 * {@code {{token}}} with its resolved value across all tabs.
+	 *
+	 * @param jobId                 orchestration job id used as a correlation suffix
+	 * @param placeholderMap        resolved {@code {{token}}} → value pairs to write
+	 *                              into the cloned workbook
+	 * @param userGoogleAccessToken optional Google OAuth access token for the
+	 *                              signed-in user (obtained from Clerk). When
+	 *                              non-blank the workbook is created in that user's
+	 *                              personal Drive; when null/blank the provider
+	 *                              falls back to the service account.
+	 * @return public Sheets URL the UI shows in its "Sheet ready" card
+	 */
+	String createSheet(String jobId, Map<String, String> placeholderMap, String userGoogleAccessToken);
+
+	/**
+	 * Clears the template's unused per-tactic cell ranges (values <em>and</em>
+	 * formatting) when the campaign has fewer than the template's seven tactic
+	 * slots, without deleting whole spreadsheet rows or columns. The unused rows
+	 * of the per-tactic summary table and the unused "Main slide N" detail blocks
+	 * are located by scanning the sheet for their header/anchor labels rather than
+	 * fixed cell references, so the trim survives template layout edits. A no-op
+	 * when {@code tacticCount >= 7}; slots whose anchor cannot be found are skipped.
+	 *
+	 * @param spreadsheetId         the workbook to trim
+	 * @param tacticCount           number of real tactics (clamped 1..7)
+	 * @param userGoogleAccessToken optional signed-in user's Google OAuth token;
+	 *                              falls back to the service account when blank
+	 */
+	void trimTactics(String spreadsheetId, int tacticCount, String userGoogleAccessToken);
+}

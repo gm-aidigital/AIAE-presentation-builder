@@ -214,7 +214,7 @@ class PlaceholderClaudeGateImplTest {
 	}
 
 	private static GeneratePayload payloadWithRows(List<List<String>> sheet, List<List<String>> adj) {
-		return new GeneratePayload("brief", "standard", sheet, adj, List.of(), List.of(), List.of(), List.of(), "", null);
+		return new GeneratePayload("brief", "standard", "", sheet, adj, List.of(), List.of(), List.of(), List.of(), "", null);
 	}
 
 	private static CampaignData campaignWithTactic(int n) {

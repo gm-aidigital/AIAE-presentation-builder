@@ -132,7 +132,12 @@ external:
       5: "g3da93d3d6ab_1_239"
       6: "g3da93d3d6ab_1_311"
       7: "g3dbc30a6114_0_0"
-    charts:
+    # "Generate Sheet" flow: template workbook cloned + filled per placeholder.
+    # Unused tactic slots (summary-table rows + "Main slide N" detail blocks) are
+    # located by content (header labels / anchor cells) at trim time — see
+    # RealSheetDeckProvider — so no per-slot range config is needed here.
+    sheets-template-id: ${SHEETS_TEMPLATE_ID:1aRNqq-vxDZEgA75-rGQL04uGezGGIksB4fqEe21E8aU}
+    sheets-target-folder-id: ${SHEETS_TARGET_FOLDER_ID:}
       chart-id-in-sheet: ${GOOGLE_CHART_ID_IN_SHEET:1087145314}
       daily-template-sheet-ids:
         1: "17da8GFAFRYt5JT6MvPV-qSi6KEd2tmI8xZMGFU-pkK4"

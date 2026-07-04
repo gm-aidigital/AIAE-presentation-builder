@@ -4,11 +4,13 @@ import com.aidigital.reportconstructor.domain.reports.entities.ReportJobEntity;
 import com.aidigital.reportconstructor.service.common.error.AppException;
 import com.aidigital.reportconstructor.service.common.error.ErrorReason;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
+import com.aidigital.reportconstructor.service.reports.dto.GenerationTarget;
 import com.aidigital.reportconstructor.service.reports.dto.ProgressView;
 import com.aidigital.reportconstructor.service.reports.engine.ReportClaudeDefaults;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportGenerationChartHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportGenerationWarningsHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportJobProgressHelper;
+import com.aidigital.reportconstructor.service.reports.helpers.ReportSheetHelper;
 import com.aidigital.reportconstructor.service.reports.ports.ClaudeClient;
 import com.aidigital.reportconstructor.service.reports.ports.SlidesProvider;
 import com.aidigital.reportconstructor.service.reports.ports.UserGoogleTokenProvider;
@@ -31,6 +33,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -42,6 +45,8 @@ class ReportGenerationServiceImplTest {
 	ReportGenerationWarningsHelper warnings;
 	@Mock
 	ReportGenerationChartHelper chartHelper;
+	@Mock
+	ReportSheetHelper sheetHelper;
 	@Mock
 	PlaceholderResolverService placeholders;
 	@Mock
@@ -60,16 +65,16 @@ class ReportGenerationServiceImplTest {
 	@BeforeEach
 	void setUp() {
 		service = new ReportGenerationServiceImpl(
-				jobProgress, warnings, chartHelper, placeholders, claude, slides,
+				jobProgress, warnings, chartHelper, sheetHelper, placeholders, claude, slides,
 				userGoogleTokens, self, claudeDefaults);
 	}
 
 	@Test
 	void shouldThrowAppExceptionWhenBriefIsBlankTest() {
 		GeneratePayload payload = new GeneratePayload(
-				"  ", "standard", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null);
+				"  ", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null);
 
-		Throwable thrown = catchThrowable(() -> service.start("user-1", "clerk-1", payload));
+		Throwable thrown = catchThrowable(() -> service.start("user-1", "clerk-1", payload, GenerationTarget.SLIDES));
 
 		assertThat(thrown)
 				.isInstanceOf(AppException.class)
@@ -84,7 +89,7 @@ class ReportGenerationServiceImplTest {
 		queued.setTotal(7);
 		queued.setOwnerUserId("user-1");
 		GeneratePayload payload = new GeneratePayload(
-				"Campaign brief.", "standard", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null);
+				"Campaign brief.", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null);
 		when(jobProgress.createQueuedJob("user-1", "standard")).thenReturn(queued);
 
 		ReportJobEntity job = service.enqueue("user-1", payload);
@@ -98,23 +103,23 @@ class ReportGenerationServiceImplTest {
 	@Test
 	void shouldEnqueueAndKickOffAsyncRunOnStartTest() {
 		GeneratePayload payload = new GeneratePayload(
-				"Campaign brief.", "standard", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null);
+				"Campaign brief.", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null);
 		ReportJobEntity queued = new ReportJobEntity();
 		queued.setId(5L);
 		when(jobProgress.createQueuedJob("user-1", "standard")).thenReturn(queued);
 		ReportGenerationService selfBean = mock(ReportGenerationService.class);
 		when(self.getObject()).thenReturn(selfBean);
 
-		ReportJobEntity job = service.start("user-1", "clerk-1", payload);
+		ReportJobEntity job = service.start("user-1", "clerk-1", payload, GenerationTarget.SLIDES);
 
 		assertThat(job).isSameAs(queued);
-		verify(selfBean).run(5L, payload, "clerk-1");
+		verify(selfBean).run(5L, payload, "clerk-1", GenerationTarget.SLIDES);
 	}
 
 	@Test
 	void shouldRunPipelineAndMarkJobDoneWhenClaudeOfflineTest() {
 		GeneratePayload payload = new GeneratePayload(
-				"Campaign brief.", "standard", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null);
+				"Campaign brief.", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null);
 		when(claude.isLive()).thenReturn(false);
 		when(placeholders.buildFlatReplacements(any(), any(), any(), any(), any(), any(), any(), any(), any()))
 				.thenReturn(Map.of());
@@ -122,19 +127,40 @@ class ReportGenerationServiceImplTest {
 		when(chartHelper.buildCharts(eq("http://deck"), any(), any(), any(), isNull())).thenReturn(List.of());
 		when(warnings.serializeWarnings(List.of())).thenReturn("[]");
 
-		service.run(7L, payload, "clerk-1");
+		service.run(7L, payload, "clerk-1", GenerationTarget.SLIDES);
 
 		verify(chartHelper).trimUnusedTactics("http://deck", payload, null);
 		verify(jobProgress).markJobDone(7L, "http://deck", "[]");
 	}
 
 	@Test
+	void shouldBuildSheetAndSkipChartsWhenTargetIsSheetTest() {
+		// Given:
+		GeneratePayload payload = new GeneratePayload(
+				"Campaign brief.", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null);
+		when(claude.isLive()).thenReturn(false);
+		when(placeholders.buildFlatReplacements(any(), any(), any(), any(), any(), any(), any(), any(), any()))
+				.thenReturn(Map.of());
+		when(sheetHelper.buildSheet("9", Map.of(), null)).thenReturn("http://sheet");
+		when(warnings.serializeWarnings(List.of())).thenReturn("[]");
+
+		// When:
+		service.run(9L, payload, "clerk-1", GenerationTarget.SHEET);
+
+		// Then:
+		verify(sheetHelper).trimUnusedTactics("http://sheet", payload, null);
+		verify(jobProgress).markJobDone(9L, "http://sheet", "[]");
+		verifyNoInteractions(slides);
+		verifyNoInteractions(chartHelper);
+	}
+
+	@Test
 	void shouldMarkJobFailedWhenPipelineThrowsTest() {
 		GeneratePayload payload = new GeneratePayload(
-				"Campaign brief.", "standard", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null);
+				"Campaign brief.", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null);
 		when(placeholders.collectData(payload)).thenThrow(new RuntimeException("boom"));
 
-		service.run(8L, payload, "clerk-1");
+		service.run(8L, payload, "clerk-1", GenerationTarget.SLIDES);
 
 		verify(jobProgress).markJobFailed(8L, "boom");
 	}
