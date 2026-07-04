@@ -1,7 +1,9 @@
 package com.aidigital.reportconstructor.service.reports.helpers;
 
+import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -32,4 +34,21 @@ public interface ReportSheetHelper {
 	 * @param userGoogleToken OAuth token for Google Sheets API, or null when unavailable
 	 */
 	void trimUnusedTactics(String sheetUrl, GeneratePayload payload, String userGoogleToken);
+
+	/**
+	 * Writes the Daily pacing / Monthly pacing / Channel Distribution tables for every
+	 * active tactic into the generated workbook, sourced from the same BigQuery actuals
+	 * used by the Slides chart pipeline. A no-op returning no warnings when the payload
+	 * carries no BigQuery linkage.
+	 *
+	 * @param sheetUrl         URL of the generated Google Sheet
+	 * @param payload          generation request carrying the BigQuery rows and line-item mapping
+	 * @param data             collected campaign data, used for the resolved flight window
+	 * @param flatReplacements resolved placeholder values, used to derive tactic names/impressions
+	 * @param userGoogleToken  OAuth token for Google Sheets API, or null when unavailable
+	 * @return human-readable error strings for any per-tactic failures (empty on full success)
+	 */
+	List<String> writePacingTables(
+			String sheetUrl, GeneratePayload payload, CampaignData data,
+			Map<String, String> flatReplacements, String userGoogleToken);
 }

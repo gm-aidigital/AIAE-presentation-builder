@@ -123,8 +123,12 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 				jobProgress.markJobRunningAtStep(jobId, 6, "Building sheet");
 				String sheetUrl = sheetHelper.buildSheet(String.valueOf(jobId), flatReplacements, userGoogleToken);
 				sheetHelper.trimUnusedTactics(sheetUrl, payload, userGoogleToken);
-				// The Sheet flow has no chart step; complete without chart warnings.
-				jobProgress.markJobDone(jobId, sheetUrl, warnings.serializeWarnings(List.of()));
+
+				jobProgress.markJobRunningAtStep(jobId, 7, "Building pacing tables");
+				List<String> pacingWarnings = sheetHelper.writePacingTables(
+						sheetUrl, payload, data, flatReplacements, userGoogleToken);
+
+				jobProgress.markJobDone(jobId, sheetUrl, warnings.serializeWarnings(pacingWarnings));
 				return;
 			}
 

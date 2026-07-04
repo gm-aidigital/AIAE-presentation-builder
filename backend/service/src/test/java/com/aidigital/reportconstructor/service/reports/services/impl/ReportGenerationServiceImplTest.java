@@ -142,6 +142,8 @@ class ReportGenerationServiceImplTest {
 		when(placeholders.buildFlatReplacements(any(), any(), any(), any(), any(), any(), any(), any(), any()))
 				.thenReturn(Map.of());
 		when(sheetHelper.buildSheet("9", Map.of(), null)).thenReturn("http://sheet");
+		when(sheetHelper.writePacingTables(eq("http://sheet"), eq(payload), any(), eq(Map.of()), isNull()))
+				.thenReturn(List.of());
 		when(warnings.serializeWarnings(List.of())).thenReturn("[]");
 
 		// When:

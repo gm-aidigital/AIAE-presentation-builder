@@ -1,9 +1,11 @@
 package com.aidigital.reportconstructor.externalservices.google;
 
+import com.aidigital.reportconstructor.service.reports.ports.PacingTablesRequest;
 import com.aidigital.reportconstructor.service.reports.ports.SheetDeckProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -34,5 +36,11 @@ public class StubSheetDeckProvider implements SheetDeckProvider {
 	@Override
 	public void trimTactics(String spreadsheetId, int tacticCount, String userGoogleAccessToken) {
 		// No-op: the stub never clones a real workbook, so there are no ranges to clear.
+	}
+
+	@Override
+	public List<String> writePacingTables(String spreadsheetId, PacingTablesRequest request) {
+		// No-op: the stub never clones a real workbook, so there are no tables to write.
+		return List.of();
 	}
 }

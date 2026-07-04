@@ -2,6 +2,7 @@ package com.aidigital.reportconstructor.externalservices.google;
 
 import com.aidigital.reportconstructor.service.common.error.AppException;
 import com.aidigital.reportconstructor.service.common.error.ErrorReason;
+import com.aidigital.reportconstructor.service.reports.ports.PacingTablesRequest;
 import com.aidigital.reportconstructor.service.reports.ports.SheetDeckProvider;
 import com.google.api.client.http.HttpRequestInitializer;
 import com.google.api.services.drive.Drive;
@@ -84,9 +85,12 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 	private final Drive drive;
 	private final String templateId;
 	private final String targetFolderId;
+	private final SheetPacingTableWriter pacingTableWriter;
 
-	public RealSheetDeckProvider(GoogleCredentialsFactory creds, GoogleProperties props) {
+	public RealSheetDeckProvider(
+			GoogleCredentialsFactory creds, GoogleProperties props, SheetPacingTableWriter pacingTableWriter) {
 		this.creds = creds;
+		this.pacingTableWriter = pacingTableWriter;
 		this.sheets = new Sheets.Builder(creds.transport(), creds.jsonFactory(), creds.initializer())
 				.setApplicationName(APPLICATION_NAME)
 				.build();
@@ -175,6 +179,23 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 			log.error("[sheets] trimTactics failed for {}", spreadsheetId, ex);
 			throw new AppException(ErrorReason.C000,
 					"Google Sheets trimTactics failed: " + ex.getMessage());
+		}
+	}
+
+	@Override
+	public List<String> writePacingTables(String spreadsheetId, PacingTablesRequest request) {
+		boolean asUser = request.userGoogleAccessToken() != null && !request.userGoogleAccessToken().isBlank();
+		Sheets sheetsClient = asUser ? buildSheets(request.userGoogleAccessToken()) : sheets;
+		try {
+			Map<String, Integer> tabSheetIds = fetchSheetIds(sheetsClient, spreadsheetId);
+			if (tabSheetIds.isEmpty()) {
+				return List.of("Pacing tables skipped — workbook has no tabs");
+			}
+			String tabName = tabSheetIds.keySet().iterator().next();
+			return pacingTableWriter.writeAll(sheetsClient, spreadsheetId, tabName, request);
+		} catch (IOException ex) {
+			log.error("[sheets] writePacingTables failed for {}", spreadsheetId, ex);
+			return List.of("Pacing tables failed: " + ex.getMessage());
 		}
 	}
 

@@ -1,5 +1,6 @@
 package com.aidigital.reportconstructor.service.reports.ports;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -52,4 +53,18 @@ public interface SheetDeckProvider {
 	 *                              falls back to the service account when blank
 	 */
 	void trimTactics(String spreadsheetId, int tacticCount, String userGoogleAccessToken);
+
+	/**
+	 * Writes the Daily pacing / Monthly pacing / Channel Distribution tables for every
+	 * active tactic directly into the cloned workbook. Each block is located by scanning
+	 * for its {@code "Daily pacing N"} / {@code "Monthly pacing N"} / {@code "Channel
+	 * Distribution N"} anchor label rather than a fixed cell reference, mirroring the
+	 * Slides chart pipeline's tactic pivot/distribution data. Per-tactic failures are
+	 * collected and returned rather than aborting the rest of the workbook.
+	 *
+	 * @param spreadsheetId the cloned workbook to write into
+	 * @param request       the pacing-table inputs
+	 * @return human-readable error strings for any per-tactic failures (empty on full success)
+	 */
+	List<String> writePacingTables(String spreadsheetId, PacingTablesRequest request);
 }
