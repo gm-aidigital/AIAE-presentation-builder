@@ -29,7 +29,8 @@ public class StubSheetDeckProvider implements SheetDeckProvider {
 	}
 
 	@Override
-	public String createSheet(String jobId, Map<String, String> placeholderMap, String userGoogleAccessToken) {
+	public String createSheet(
+			String jobId, String fileName, Map<String, String> placeholderMap, String userGoogleAccessToken) {
 		return "https://docs.google.com/spreadsheets/d/" + props.getSheetsTemplateId() + "/edit?stub=" + jobId;
 	}
 

@@ -25,6 +25,7 @@ public interface SheetDeckProvider {
 	 * {@code {{token}}} with its resolved value across all tabs.
 	 *
 	 * @param jobId                 orchestration job id used as a correlation suffix
+	 * @param fileName              Drive file name to give the cloned workbook
 	 * @param placeholderMap        resolved {@code {{token}}} → value pairs to write
 	 *                              into the cloned workbook
 	 * @param userGoogleAccessToken optional Google OAuth access token for the
@@ -34,7 +35,7 @@ public interface SheetDeckProvider {
 	 *                              falls back to the service account.
 	 * @return public Sheets URL the UI shows in its "Sheet ready" card
 	 */
-	String createSheet(String jobId, Map<String, String> placeholderMap, String userGoogleAccessToken);
+	String createSheet(String jobId, String fileName, Map<String, String> placeholderMap, String userGoogleAccessToken);
 
 	/**
 	 * Clears the template's unused per-tactic cell ranges (values <em>and</em>

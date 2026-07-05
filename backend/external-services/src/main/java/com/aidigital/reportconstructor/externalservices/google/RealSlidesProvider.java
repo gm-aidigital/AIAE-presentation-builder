@@ -74,12 +74,13 @@ public class RealSlidesProvider implements SlidesProvider {
 	}
 
 	@Override
-	public String createDeck(String jobId, Map<String, String> placeholderMap, String userGoogleAccessToken) {
+	public String createDeck(
+			String jobId, String fileName, Map<String, String> placeholderMap, String userGoogleAccessToken) {
 		boolean asUser = userGoogleAccessToken != null && !userGoogleAccessToken.isBlank();
 		Drive driveClient = asUser ? buildDrive(userGoogleAccessToken) : drive;
 		Slides slidesClient = asUser ? buildSlides(userGoogleAccessToken) : slides;
 		try {
-			File copy = new File().setName("Report — " + jobId);
+			File copy = new File().setName(fileName);
 			if (!targetFolderId.isEmpty()) {
 				copy.setParents(List.of(targetFolderId));
 			} else if (asUser) {

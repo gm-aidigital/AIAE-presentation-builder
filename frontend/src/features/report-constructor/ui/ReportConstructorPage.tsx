@@ -17,7 +17,7 @@ import { ToastProvider, useToast } from "./ToastContext";
 import { TopBar } from "./TopBar";
 import "./report-constructor.css";
 
-const DEFAULT_BREAKDOWNS: BreakdownState = { tp: true, ca: true, geo: false, aud: true, dev: false };
+const DEFAULT_BREAKDOWNS: BreakdownState = { tp: false, ca: false, geo: false, aud: false, dev: false };
 const NO_ERRORS: InputErrors = { brief: false, marketVolume: false, sheet: false, adj: false, dates: false };
 const JOB_TOTAL = 7;
 

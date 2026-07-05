@@ -29,7 +29,7 @@ public class ReportJobsController implements ReportJobsApi {
 	@Override
 	public ResponseEntity<ReportJobCreatedV1> createReportJob(GenerateRequestV1 body) {
 		var user = appUserFactory.from(SecurityContextHolder.getContext().getAuthentication());
-		var job = reportGeneration.start(user.userId(), user.userId(),
+		var job = reportGeneration.start(user.userId(), user.userId(), user.email(),
 				payloadMapper.toPayload(body), payloadMapper.toTarget(body.getTarget()));
 		return new ResponseEntity<>(mapper.toCreated(job), HttpStatus.ACCEPTED);
 	}

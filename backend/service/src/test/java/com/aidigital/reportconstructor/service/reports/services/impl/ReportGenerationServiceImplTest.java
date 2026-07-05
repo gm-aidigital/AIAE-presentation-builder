@@ -8,6 +8,7 @@ import com.aidigital.reportconstructor.service.reports.dto.ClaudeSheetBatch;
 import com.aidigital.reportconstructor.service.reports.dto.GenerationTarget;
 import com.aidigital.reportconstructor.service.reports.dto.ProgressView;
 import com.aidigital.reportconstructor.service.reports.engine.ReportClaudeDefaults;
+import com.aidigital.reportconstructor.service.reports.helpers.ReportFileNamer;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportGenerationChartHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportGenerationWarningsHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportJobProgressHelper;
@@ -68,6 +69,8 @@ class ReportGenerationServiceImplTest {
 	ObjectProvider<ReportGenerationService> self;
 	@Mock
 	ReportClaudeDefaults claudeDefaults;
+	@Mock
+	ReportFileNamer fileNamer;
 
 	ReportGenerationServiceImpl service;
 
@@ -75,7 +78,7 @@ class ReportGenerationServiceImplTest {
 	void setUp() {
 		service = new ReportGenerationServiceImpl(
 				jobProgress, warnings, chartHelper, sheetHelper, placeholderReader, sheetCampaign, placeholders,
-				claude, slides, userGoogleTokens, self, claudeDefaults);
+				claude, slides, userGoogleTokens, self, claudeDefaults, fileNamer);
 	}
 
 	@Test
@@ -83,7 +86,8 @@ class ReportGenerationServiceImplTest {
 		GeneratePayload payload = new GeneratePayload(
 				"  ", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null, null);
 
-		Throwable thrown = catchThrowable(() -> service.start("user-1", "clerk-1", payload, GenerationTarget.SLIDES));
+		Throwable thrown = catchThrowable(
+				() -> service.start("user-1", "clerk-1", "user@x.com", payload, GenerationTarget.SLIDES));
 
 		assertThat(thrown)
 				.isInstanceOf(AppException.class)
@@ -119,10 +123,10 @@ class ReportGenerationServiceImplTest {
 		ReportGenerationService selfBean = mock(ReportGenerationService.class);
 		when(self.getObject()).thenReturn(selfBean);
 
-		ReportJobEntity job = service.start("user-1", "clerk-1", payload, GenerationTarget.SLIDES);
+		ReportJobEntity job = service.start("user-1", "clerk-1", "user@x.com", payload, GenerationTarget.SLIDES);
 
 		assertThat(job).isSameAs(queued);
-		verify(selfBean).run(5L, payload, "clerk-1", GenerationTarget.SLIDES);
+		verify(selfBean).run(5L, payload, "clerk-1", "user@x.com", GenerationTarget.SLIDES);
 	}
 
 	@Test
@@ -132,11 +136,12 @@ class ReportGenerationServiceImplTest {
 		when(claude.isLive()).thenReturn(false);
 		when(placeholders.buildFlatReplacements(any(), any(), any(), any(), any(), any(), any(), any(), any()))
 				.thenReturn(Map.of());
-		when(slides.createDeck(eq("7"), any(), isNull())).thenReturn("http://deck");
+		when(fileNamer.buildFileName(any(), any(), any())).thenReturn("deck-file");
+		when(slides.createDeck(eq("7"), eq("deck-file"), any(), isNull())).thenReturn("http://deck");
 		when(chartHelper.buildCharts(eq("http://deck"), any(), any(), any(), isNull())).thenReturn(List.of());
 		when(warnings.serializeWarnings(List.of())).thenReturn("[]");
 
-		service.run(7L, payload, "clerk-1", GenerationTarget.SLIDES);
+		service.run(7L, payload, "clerk-1", "user@x.com", GenerationTarget.SLIDES);
 
 		verify(chartHelper).trimUnusedTactics("http://deck", payload, null);
 		verify(jobProgress).markJobDone(7L, "http://deck", "[]");
@@ -151,13 +156,14 @@ class ReportGenerationServiceImplTest {
 		when(claudeDefaults.emptySheetBatch()).thenReturn(new ClaudeSheetBatch(null, null, Map.of()));
 		when(placeholders.buildFlatReplacements(any(), any(), any(), any(), any(), any(), any(), any(), any()))
 				.thenReturn(Map.of());
-		when(sheetHelper.buildSheet("9", Map.of(), null)).thenReturn("http://sheet");
+		when(fileNamer.buildFileName(any(), any(), any())).thenReturn("sheet-file");
+		when(sheetHelper.buildSheet("9", "sheet-file", Map.of(), null)).thenReturn("http://sheet");
 		when(sheetHelper.writePacingTables(eq("http://sheet"), eq(payload), any(), eq(Map.of()), isNull()))
 				.thenReturn(List.of());
 		when(warnings.serializeWarnings(List.of())).thenReturn("[]");
 
 		// When:
-		service.run(9L, payload, "clerk-1", GenerationTarget.SHEET);
+		service.run(9L, payload, "clerk-1", "user@x.com", GenerationTarget.SHEET);
 
 		// Then:
 		verify(sheetHelper).trimUnusedTactics("http://sheet", payload, null);
@@ -182,18 +188,19 @@ class ReportGenerationServiceImplTest {
 		when(claude.isLive()).thenReturn(false);
 		when(placeholders.buildFlatReplacements(
 				any(), any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(narrative);
-		when(slides.createDeck(eq("11"), any(), isNull())).thenReturn("http://deck");
+		when(fileNamer.buildFileName(any(), any(), any())).thenReturn("deck-file");
+		when(slides.createDeck(eq("11"), eq("deck-file"), any(), isNull())).thenReturn("http://deck");
 		when(chartHelper.buildChartsFromSheet(eq("http://deck"), eq(grid), any(), eq(2), isNull()))
 				.thenReturn(List.of());
 		when(warnings.serializeWarnings(List.of())).thenReturn("[]");
 
 		// When: the slides-from-sheet job runs
-		service.run(11L, payload, "clerk-1", GenerationTarget.SLIDES_FROM_SHEET);
+		service.run(11L, payload, "clerk-1", "user@x.com", GenerationTarget.SLIDES_FROM_SHEET);
 
 		// Then: it reconstructs campaign context from the sheet, then merges narrative UNDER the sheet values
 		verify(sheetCampaign).read(sheetValues, 2);
 		ArgumentCaptor<Map<String, String>> deckMap = ArgumentCaptor.forClass(Map.class);
-		verify(slides).createDeck(eq("11"), deckMap.capture(), isNull());
+		verify(slides).createDeck(eq("11"), eq("deck-file"), deckMap.capture(), isNull());
 		assertThat(deckMap.getValue())
 				.containsEntry("{{client_name}}", "Acme")
 				.containsEntry("{{recommendation 1}}", "Do X");
@@ -212,7 +219,7 @@ class ReportGenerationServiceImplTest {
 				"Campaign brief.", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null, null);
 		when(placeholders.collectData(payload)).thenThrow(new RuntimeException("boom"));
 
-		service.run(8L, payload, "clerk-1", GenerationTarget.SLIDES);
+		service.run(8L, payload, "clerk-1", "user@x.com", GenerationTarget.SLIDES);
 
 		verify(jobProgress).markJobFailed(8L, "boom");
 	}

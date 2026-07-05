@@ -20,6 +20,7 @@ public interface SlidesProvider {
 
 	/**
 	 * @param jobId                 orchestration job id used as a correlation suffix
+	 * @param fileName              Drive file name to give the cloned deck
 	 * @param placeholderMap        resolved {@code {token}} → value pairs to write
 	 *                              into the cloned deck
 	 * @param userGoogleAccessToken optional Google OAuth access token for the
@@ -29,7 +30,7 @@ public interface SlidesProvider {
 	 *                              falls back to the service account.
 	 * @return public Slides URL the UI shows in its "Slides ready" card
 	 */
-	String createDeck(String jobId, Map<String, String> placeholderMap, String userGoogleAccessToken);
+	String createDeck(String jobId, String fileName, Map<String, String> placeholderMap, String userGoogleAccessToken);
 
 	/**
 	 * Removes the template's unused per-tactic slides (and their summary-table

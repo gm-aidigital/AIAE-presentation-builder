@@ -32,8 +32,8 @@ public class ReportSheetHelperImpl implements ReportSheetHelper {
 	private final ReportNumberParser reportNumbers;
 
 	@Override
-	public String buildSheet(String jobId, Map<String, String> flatReplacements, String userGoogleToken) {
-		return sheets.createSheet(jobId, flatReplacements, userGoogleToken);
+	public String buildSheet(String jobId, String fileName, Map<String, String> flatReplacements, String userGoogleToken) {
+		return sheets.createSheet(jobId, fileName, flatReplacements, userGoogleToken);
 	}
 
 	@Override

@@ -13,6 +13,7 @@ import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
 import com.aidigital.reportconstructor.service.reports.dto.GenerationTarget;
 import com.aidigital.reportconstructor.service.reports.dto.ProgressView;
 import com.aidigital.reportconstructor.service.reports.engine.ReportClaudeDefaults;
+import com.aidigital.reportconstructor.service.reports.helpers.ReportFileNamer;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportGenerationChartHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportGenerationWarningsHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportJobProgressHelper;
@@ -45,6 +46,8 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class ReportGenerationServiceImpl implements ReportGenerationService {
 
+	private static final String CLIENT_NAME_TOKEN = "{{client_name}}";
+
 	private final ReportJobProgressHelper jobProgress;
 	private final ReportGenerationWarningsHelper warnings;
 	private final ReportGenerationChartHelper chartHelper;
@@ -57,13 +60,15 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	private final ObjectProvider<UserGoogleTokenProvider> userGoogleTokens;
 	private final ObjectProvider<ReportGenerationService> self;
 	private final ReportClaudeDefaults claudeDefaults;
+	private final ReportFileNamer fileNamer;
 
 	/**
 	 * Validates the brief, then enqueues the job and launches the build through the
 	 * self-proxy so the {@code @Async} boundary on {@link #run} takes effect.
 	 */
 	@Override
-	public ReportJobEntity start(String userId, String clerkUserId, GeneratePayload payload, GenerationTarget target) {
+	public ReportJobEntity start(
+			String userId, String clerkUserId, String userEmail, GeneratePayload payload, GenerationTarget target) {
 		if (payload.brief() == null || payload.brief().isBlank()) {
 			throw new AppException(ErrorReason.C002, "Brief is required");
 		}
@@ -72,7 +77,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 			throw new AppException(ErrorReason.C002, "Sheet URL is required for the slides-from-sheet flow");
 		}
 		ReportJobEntity job = enqueue(userId, payload);
-		self.getObject().run(job.getId(), payload, clerkUserId, target);
+		self.getObject().run(job.getId(), payload, clerkUserId, userEmail, target);
 		return job;
 	}
 
@@ -91,13 +96,13 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	 */
 	@Override
 	@Async
-	public void run(Long jobId, GeneratePayload payload, String clerkUserId, GenerationTarget target) {
+	public void run(Long jobId, GeneratePayload payload, String clerkUserId, String userEmail, GenerationTarget target) {
 		try {
 			if (target == GenerationTarget.SLIDES_FROM_SHEET) {
 				// Step 2 of the sheet-as-source flow: the user-reviewed sheet is the only input, so
 				// none of the raw-grid collection or the Batch A/B copy runs here — they are already
 				// baked into the sheet by step 1. This branch reads the sheet back and fills the deck.
-				runSlidesFromSheet(jobId, payload, clerkUserId);
+				runSlidesFromSheet(jobId, payload, clerkUserId, userEmail);
 				return;
 			}
 
@@ -153,10 +158,13 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 							funnelSummary, frequencies);
 			UserGoogleTokenProvider clerk = userGoogleTokens.getIfAvailable();
 			String userGoogleToken = clerk == null ? null : clerk.googleAccessToken(clerkUserId);
+			String fileName = fileNamer.buildFileName(
+					payload.reportType(), flatReplacements.get(CLIENT_NAME_TOKEN), userEmail);
 
 			if (target == GenerationTarget.SHEET) {
 				jobProgress.markJobRunningAtStep(jobId, 6, "Building sheet");
-				String sheetUrl = sheetHelper.buildSheet(String.valueOf(jobId), flatReplacements, userGoogleToken);
+				String sheetUrl = sheetHelper.buildSheet(
+						String.valueOf(jobId), fileName, flatReplacements, userGoogleToken);
 				sheetHelper.trimUnusedTactics(sheetUrl, payload, userGoogleToken);
 
 				jobProgress.markJobRunningAtStep(jobId, 7, "Building pacing tables");
@@ -168,7 +176,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 			}
 
 			jobProgress.markJobRunningAtStep(jobId, 6, "Building slide deck");
-			String slideUrl = slides.createDeck(String.valueOf(jobId), flatReplacements, userGoogleToken);
+			String slideUrl = slides.createDeck(String.valueOf(jobId), fileName, flatReplacements, userGoogleToken);
 
 			chartHelper.trimUnusedTactics(slideUrl, payload, userGoogleToken);
 
@@ -196,8 +204,9 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	 * @param jobId       id of the queued job to build and update
 	 * @param payload     generation request carrying the source {@code sheetUrl} and report type
 	 * @param clerkUserId Clerk identity used to fetch the Google access token for sheet/deck access
+	 * @param userEmail   email of the triggering user, used to name the generated deck
 	 */
-	void runSlidesFromSheet(Long jobId, GeneratePayload payload, String clerkUserId) {
+	void runSlidesFromSheet(Long jobId, GeneratePayload payload, String clerkUserId, String userEmail) {
 		jobProgress.markJobRunningAtStep(jobId, 1, "Reading sheet data");
 		UserGoogleTokenProvider clerk = userGoogleTokens.getIfAvailable();
 		String userGoogleToken = clerk == null ? null : clerk.googleAccessToken(clerkUserId);
@@ -224,7 +233,9 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		flatReplacements.putAll(sheetValues);
 
 		jobProgress.markJobRunningAtStep(jobId, 6, "Building slide deck");
-		String slideUrl = slides.createDeck(String.valueOf(jobId), flatReplacements, userGoogleToken);
+		String fileName = fileNamer.buildFileName(
+				payload.reportType(), flatReplacements.get(CLIENT_NAME_TOKEN), userEmail);
+		String slideUrl = slides.createDeck(String.valueOf(jobId), fileName, flatReplacements, userGoogleToken);
 		chartHelper.trimUnusedTactics(slideUrl, tacticCount, userGoogleToken);
 
 		jobProgress.markJobRunningAtStep(jobId, 7, "Building charts");
