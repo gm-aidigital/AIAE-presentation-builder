@@ -1,4 +1,5 @@
-import { IconArrowRight, IconSpinner } from "./icons";
+import { useState } from "react";
+import { IconArrowLeft, IconArrowRight, IconInfo, IconSpinner } from "./icons";
 
 export const BREAKDOWNS = [
     { id: "tp", label: "Top Publishers" },
@@ -22,12 +23,19 @@ export interface TacticView {
 interface Props {
     tactics: TacticView[];
     building: boolean;
+    /** True once a sheet has already been assembled — enables Continue and gates rebuilds. */
+    sheetBuilt: boolean;
     onToggle(tacticNum: number, id: BreakdownId): void;
     onBuild(): void;
+    onContinue(): void;
+    onBack(): void;
 }
 
 /** Screen 3 — per-tactic analysis toggles. Cosmetic for now (no backend effect). */
-export function StepBreakdowns({ tactics, building, onToggle, onBuild }: Props) {
+export function StepBreakdowns({ tactics, building, sheetBuilt, onToggle, onBuild, onContinue, onBack }: Props) {
+    // Rebuilding overwrites the assembled sheet, so gate it behind a data-loss confirm.
+    const [confirmRebuild, setConfirmRebuild] = useState(false);
+
     return (
         <div className="rc-content">
             <div className="rc-section-head">
@@ -90,18 +98,85 @@ export function StepBreakdowns({ tactics, building, onToggle, onBuild }: Props) 
                 </div>
             )}
 
-            <div className="rc-actions rc-actions--end">
-                <button
-                    type="button"
-                    className="rc-btn rc-btn--primary"
-                    disabled={building || tactics.length === 0}
-                    onClick={onBuild}
-                >
-                    {building ? <IconSpinner size={14} /> : null}
-                    {building ? "Building the sheet…" : "Build the sheet"}
-                    {!building && <IconArrowRight size={16} />}
+            <div className="rc-actions rc-actions--split">
+                <button type="button" className="rc-btn rc-btn--outline" disabled={building} onClick={onBack}>
+                    <IconArrowLeft size={16} />
+                    Back
                 </button>
+
+                {sheetBuilt ? (
+                    <div className="rc-actions__group">
+                        <button
+                            type="button"
+                            className="rc-btn rc-btn--outline"
+                            disabled={building || tactics.length === 0}
+                            onClick={() => setConfirmRebuild(true)}
+                        >
+                            {building ? <IconSpinner size={14} /> : null}
+                            {building ? "Rebuilding…" : "Rebuild sheet"}
+                        </button>
+                        <button
+                            type="button"
+                            className="rc-btn rc-btn--primary"
+                            disabled={building}
+                            onClick={onContinue}
+                        >
+                            Continue
+                            <IconArrowRight size={16} />
+                        </button>
+                    </div>
+                ) : (
+                    <button
+                        type="button"
+                        className="rc-btn rc-btn--primary"
+                        disabled={building || tactics.length === 0}
+                        onClick={onBuild}
+                    >
+                        {building ? <IconSpinner size={14} /> : null}
+                        {building ? "Building the sheet…" : "Build the sheet"}
+                        {!building && <IconArrowRight size={16} />}
+                    </button>
+                )}
             </div>
+
+            {confirmRebuild && (
+                <div
+                    className="rc-overlay"
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget) setConfirmRebuild(false);
+                    }}
+                >
+                    <div className="rc-overlay__card">
+                        <div className="rc-overlay__warn">
+                            <IconInfo size={20} />
+                        </div>
+                        <div className="rc-overlay__title">Rebuild the sheet?</div>
+                        <div className="rc-overlay__sub">
+                            This assembles a fresh Google Sheet from the current settings and{" "}
+                            <b>discards any edits you made in the existing sheet</b>. This can't be undone.
+                        </div>
+                        <div className="rc-overlay__actions">
+                            <button
+                                type="button"
+                                className="rc-btn rc-btn--outline rc-btn--sm"
+                                onClick={() => setConfirmRebuild(false)}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                className="rc-btn rc-btn--primary rc-btn--sm"
+                                onClick={() => {
+                                    setConfirmRebuild(false);
+                                    onBuild();
+                                }}
+                            >
+                                Rebuild anyway
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

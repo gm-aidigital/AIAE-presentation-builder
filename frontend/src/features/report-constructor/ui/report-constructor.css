@@ -77,7 +77,12 @@
   display: flex; align-items: center; justify-content: space-between;
   padding: 18px 32px; border-bottom: 1px solid var(--rc-line); background: var(--white);
 }
-.rc-topbar__brand { display: flex; align-items: center; gap: 11px; }
+.rc-topbar__brand {
+  display: flex; align-items: center; gap: 11px; padding: 4px 8px; margin: -4px -8px;
+  background: none; border: 0; border-radius: 8px; font-family: var(--rc-font); cursor: pointer;
+  transition: background 0.15s ease;
+}
+.rc-topbar__brand:hover { background: var(--rc-tint); }
 .rc-topbar__product { font-weight: 700; font-size: 16px; color: var(--rc-ink); letter-spacing: -0.02em; }
 .rc-topbar__right { display: flex; align-items: center; gap: 16px; }
 .rc-topbar__user { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; color: var(--rc-slate); font-weight: 500; }
@@ -163,8 +168,10 @@
 .rc-btn--gen:disabled { background: var(--rc-btn-disabled); }
 .rc-btn--gen-running { background: var(--rc-btn-disabled); }
 
-.rc-actions { display: flex; margin-top: 32px; }
+.rc-actions { display: flex; gap: 12px; margin-top: 32px; }
 .rc-actions--end { justify-content: flex-end; }
+.rc-actions--split { justify-content: space-between; }
+.rc-actions__group { display: flex; align-items: center; gap: 12px; }
 
 /* ─────────────────────────── Screen 1 — type cards ─────────────────────────── */
 .rc-typegrid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -324,6 +331,7 @@
   background: var(--white); border: 1px solid var(--rc-card-border); border-radius: 12px; padding: 18px 22px;
 }
 .rc-confirm-bar__left { display: flex; align-items: center; gap: 13px; }
+.rc-confirm-bar__actions { display: flex; align-items: center; gap: 12px; flex: none; }
 .rc-confirm-bar__check {
   width: 30px; height: 30px; border-radius: 999px; background: var(--rc-lime); color: var(--rc-ink);
   display: flex; align-items: center; justify-content: center; flex: none;
@@ -332,6 +340,7 @@
 .rc-confirm-bar__sub { color: var(--rc-mute); font-size: 14px; }
 
 /* ─────────────────────────── Screen 5 — generate ─────────────────────────── */
+.rc-gen-back { max-width: 680px; margin: 0 auto 20px; display: flex; justify-content: flex-start; }
 .rc-gen-head { max-width: 680px; margin: 0 auto; }
 .rc-gen-head__title {
   font-family: var(--rc-display); font-weight: 900; font-size: 40px; line-height: 1;
@@ -400,6 +409,12 @@
 }
 .rc-overlay__title { font-weight: 700; font-size: 18px; color: var(--rc-ink); letter-spacing: -0.02em; margin-bottom: 8px; }
 .rc-overlay__sub { color: var(--rc-mute); font-size: 14px; line-height: 1.55; }
+.rc-overlay__sub b { color: var(--rc-slate); }
+.rc-overlay__warn {
+  width: 44px; height: 44px; border-radius: 999px; background: var(--rc-tint);
+  color: var(--rc-blue); display: flex; align-items: center; justify-content: center; margin: 0 auto 16px;
+}
+.rc-overlay__actions { display: flex; justify-content: center; gap: 12px; margin-top: 22px; }
 
 /* ═══════════ Line-Item match modal (legacy, verbatim) ═══════════ */
 .match-overlay {

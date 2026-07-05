@@ -1,6 +1,6 @@
 import { Fragment } from "react";
 import type { ReportType } from "@/shared/api/types";
-import { IconCheck, IconExternalLink, IconSheet } from "./icons";
+import { IconArrowLeft, IconCheck, IconExternalLink, IconSheet } from "./icons";
 
 export interface ReviewRow {
     tactic: string;
@@ -17,6 +17,7 @@ interface Props {
     sheetUrl: string | null;
     rows: ReviewRow[];
     onConfirm(): void;
+    onBack(): void;
 }
 
 function Cell({ value, addLabel }: { value: string | null; addLabel: string }) {
@@ -29,7 +30,7 @@ function Cell({ value, addLabel }: { value: string | null; addLabel: string }) {
 }
 
 /** Screen 4 — review the assembled Google Sheet, fill gaps, confirm. */
-export function StepReviewSheet({ reportType, sheetUrl, rows, onConfirm }: Props) {
+export function StepReviewSheet({ reportType, sheetUrl, rows, onConfirm, onBack }: Props) {
     return (
         <div className="rc-content">
             <div className="rc-section-head">
@@ -94,9 +95,15 @@ export function StepReviewSheet({ reportType, sheetUrl, rows, onConfirm }: Props
                         <div className="rc-confirm-bar__sub">Confirm to lock the data and move to generation.</div>
                     </div>
                 </div>
-                <button type="button" className="rc-btn rc-btn--primary" onClick={onConfirm}>
-                    Confirm — it's correct
-                </button>
+                <div className="rc-confirm-bar__actions">
+                    <button type="button" className="rc-btn rc-btn--outline" onClick={onBack}>
+                        <IconArrowLeft size={16} />
+                        Back
+                    </button>
+                    <button type="button" className="rc-btn rc-btn--primary" onClick={onConfirm}>
+                        Confirm — it's correct
+                    </button>
+                </div>
             </div>
         </div>
     );

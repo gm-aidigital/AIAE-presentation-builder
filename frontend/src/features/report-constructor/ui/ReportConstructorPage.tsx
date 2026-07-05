@@ -435,6 +435,7 @@ function PageInner() {
                     }}
                     onOpenMatch={openMatch}
                     onConfirm={confirmInputs}
+                    onBack={() => setStep(0)}
                     clearError={clearError}
                 />
             )}
@@ -443,8 +444,11 @@ function PageInner() {
                 <StepBreakdowns
                     tactics={tactics}
                     building={building}
+                    sheetBuilt={sheetUrl !== null}
                     onToggle={toggleBreakdown}
                     onBuild={buildSheet}
+                    onContinue={() => setStep(3)}
+                    onBack={() => setStep(1)}
                 />
             )}
 
@@ -454,6 +458,7 @@ function PageInner() {
                     sheetUrl={sheetUrl}
                     rows={reviewRows}
                     onConfirm={() => setStep(4)}
+                    onBack={() => setStep(2)}
                 />
             )}
 
@@ -466,6 +471,7 @@ function PageInner() {
                     warnings={resultWarnings}
                     onGenerate={generateReport}
                     onRunAgain={runAgain}
+                    onBack={() => setStep(3)}
                 />
             )}
 

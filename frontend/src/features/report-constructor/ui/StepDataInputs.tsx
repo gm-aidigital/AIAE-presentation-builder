@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { isGoogleSheetUrl } from "@/shared/api/sheets";
 import { useWizard } from "@/shared/wizard/WizardContext";
-import { IconArrowRight, IconCheck, IconSpinner } from "./icons";
+import { IconArrowLeft, IconArrowRight, IconCheck, IconSpinner } from "./icons";
 
 export interface InputErrors {
     brief: boolean;
@@ -23,6 +23,7 @@ interface Props {
     onDisconnectElevate(): void;
     onOpenMatch(): void;
     onConfirm(): void;
+    onBack(): void;
     clearError(key: keyof InputErrors): void;
 }
 
@@ -114,6 +115,7 @@ export function StepDataInputs({
     onDisconnectElevate,
     onOpenMatch,
     onConfirm,
+    onBack,
     clearError,
 }: Props) {
     const w = useWizard();
@@ -237,7 +239,11 @@ export function StepDataInputs({
                         </div>
                     )}
 
-                    <div className="rc-actions">
+                    <div className="rc-actions rc-actions--split">
+                        <button type="button" className="rc-btn rc-btn--outline" onClick={onBack}>
+                            <IconArrowLeft size={16} />
+                            Back
+                        </button>
                         <button type="button" className="rc-btn rc-btn--primary" onClick={onConfirm}>
                             Confirm inputs
                             <IconArrowRight size={16} />

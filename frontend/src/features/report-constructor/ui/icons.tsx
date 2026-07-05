@@ -144,6 +144,14 @@ export function IconArrowRight({ size = 16 }: P) {
         </svg>
     );
 }
+export function IconArrowLeft({ size = 16 }: P) {
+    return (
+        <svg {...stroke(size)}>
+            <line x1="19" y1="12" x2="5" y2="12" />
+            <polyline points="12 19 5 12 12 5" />
+        </svg>
+    );
+}
 export function IconExternalLink({ size = 14 }: P) {
     return (
         <svg {...stroke(size)}>

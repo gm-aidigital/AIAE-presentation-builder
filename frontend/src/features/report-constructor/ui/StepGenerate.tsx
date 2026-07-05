@@ -1,5 +1,5 @@
 import type { ReportType } from "@/shared/api/types";
-import { IconCheck, IconExternalLink, IconInfo } from "./icons";
+import { IconArrowLeft, IconCheck, IconExternalLink, IconInfo } from "./icons";
 
 const STAGES = [
     "Reading Sheets data",
@@ -21,15 +21,23 @@ interface Props {
     warnings: string[];
     onGenerate(): void;
     onRunAgain(): void;
+    onBack(): void;
 }
 
 /** Screen 5 — trigger generation and watch per-stage status. */
-export function StepGenerate({ reportType, status, completed, resultUrl, warnings, onGenerate, onRunAgain }: Props) {
+export function StepGenerate({ reportType, status, completed, resultUrl, warnings, onGenerate, onRunAgain, onBack }: Props) {
     const isDone = status === "done";
     const btnLabel = status === "idle" ? "Generate report" : status === "running" ? "Generating…" : "Report ready";
 
     return (
         <div className="rc-content rc-content--center">
+            <div className="rc-gen-back">
+                <button type="button" className="rc-btn rc-btn--outline rc-btn--sm" disabled={status === "running"} onClick={onBack}>
+                    <IconArrowLeft size={16} />
+                    Back
+                </button>
+            </div>
+
             <div className="rc-gen-head">
                 <div className="rc-gen-head__title">Ready to generate</div>
                 <p className="rc-gen-head__sub">
