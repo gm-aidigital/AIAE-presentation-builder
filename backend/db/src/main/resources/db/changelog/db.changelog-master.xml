@@ -9,6 +9,7 @@
 	<include file="db/changelog/changes/0002-report-jobs.xml"/>
 	<include file="db/changelog/changes/0003-report-jobs-owner-email.xml"/>
 	<include file="db/changelog/changes/0004-admin-users.xml"/>
+	<include file="db/changelog/changes/0005-report-jobs-artifact.xml"/>
 	<!-- Add new changelogs above this line in numerically increasing order. -->
 
 </databaseChangeLog>

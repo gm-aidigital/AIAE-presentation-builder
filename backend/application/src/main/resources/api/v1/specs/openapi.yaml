@@ -943,6 +943,16 @@ components:
             URL of a previously generated (and user-edited) Google Sheet. Used only
             when target=SLIDES_FROM_SHEET, where the deck is filled from this sheet's
             values instead of the raw grids. Ignored for SLIDES and SHEET.
+        mediaPlanUrl:
+          type: string
+          description: |
+            URL of the Media Plan Google Sheet the user connected. Persisted for the
+            admin history so reviewers can open the source data; not used by the engine.
+        elevateUrl:
+          type: string
+          description: |
+            URL of the Elevate row-data Google Sheet the user connected. Persisted for
+            the admin history so reviewers can open the source data; not used by the engine.
 
     ReportJobCreatedV1:
       type: object
@@ -985,7 +995,11 @@ components:
         status: { $ref: "#/components/schemas/ReportJobStatusV1" }
         title: { type: string, description: "Human-friendly report name for the row." }
         createdAt: { type: string, format: date-time }
-        slideUrl: { type: string, description: "Generated artifact URL when the job is done." }
+        slideUrl: { type: string, description: "Generated deck/artifact URL when the job is done." }
+        sheetUrl: { type: string, description: "Source Google Sheet URL the report was built from, when available." }
+        fileName: { type: string, description: "Human file name of the generated artifact (e.g. the pptx/deck name)." }
+        mediaPlanUrl: { type: string, description: "Media Plan source sheet the user connected (admin all-reports view)." }
+        elevateUrl: { type: string, description: "Elevate row-data source sheet the user connected (admin all-reports view)." }
         ownerEmail: { type: string, description: "Report owner email — populated only for the admin all-reports view." }
         ownerName: { type: string, description: "Report owner display name — populated only for the admin all-reports view." }
 

@@ -72,7 +72,8 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	 */
 	@Override
 	public ReportJobEntity start(
-			String userId, String clerkUserId, String userEmail, GeneratePayload payload, GenerationTarget target) {
+			String userId, String clerkUserId, String userEmail, GeneratePayload payload, GenerationTarget target,
+			String mediaPlanUrl, String elevateUrl) {
 		if (payload.brief() == null || payload.brief().isBlank()) {
 			throw new AppException(ErrorReason.C002, "Brief is required");
 		}
@@ -81,7 +82,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 			throw new AppException(ErrorReason.C002, "Sheet URL is required for the slides-from-sheet flow");
 		}
 		ReportJobEntity job = enqueue(userId, payload);
-		jobProgress.recordOwnerEmail(job.getId(), userEmail);
+		jobProgress.recordJobContext(job.getId(), userEmail, target.name(), mediaPlanUrl, elevateUrl);
 		self.getObject().run(job.getId(), payload, clerkUserId, userEmail, target);
 		return job;
 	}
@@ -176,6 +177,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 				List<String> pacingWarnings = sheetHelper.writePacingTables(
 						sheetUrl, payload, data, flatReplacements, userGoogleToken);
 
+				jobProgress.recordArtifact(jobId, fileName, sheetUrl);
 				jobProgress.markJobDone(jobId, sheetUrl, warnings.serializeWarnings(pacingWarnings));
 				return;
 			}
@@ -189,6 +191,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 			List<String> chartWarnings = chartHelper.buildCharts(
 					slideUrl, payload, data, flatReplacements, userGoogleToken);
 
+			jobProgress.recordArtifact(jobId, fileName, payload.sheetUrl());
 			jobProgress.markJobDone(jobId, slideUrl, warnings.serializeWarnings(chartWarnings));
 		} catch (Exception ex) {
 			log.error("[report] job {} failed", jobId, ex);
@@ -257,6 +260,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		List<String> chartWarnings = chartHelper.buildChartsFromSheet(
 				slideUrl, grid, flatReplacements, tacticCount, userGoogleToken);
 
+		jobProgress.recordArtifact(jobId, fileName, payload.sheetUrl());
 		jobProgress.markJobDone(jobId, slideUrl, warnings.serializeWarnings(chartWarnings));
 	}
 

@@ -29,6 +29,11 @@ function compactUnits(n: number): string {
     return grouped.format(n);
 }
 
+/** Canonical Google Sheet URL from its id, so admins can reopen the source; undefined when no sheet. */
+function sheetUrlFromId(sheetId: string | undefined): string | undefined {
+    return sheetId ? `https://docs.google.com/spreadsheets/d/${sheetId}` : undefined;
+}
+
 /** One compact media-plan line, e.g. "$25,518 · 10M @ $2.5 CPM". */
 function budgetLine(b: TacticBudget | null): string {
     if (!b) return "";
@@ -332,6 +337,9 @@ function PageInner() {
             geoRows: w.mediaPlan?.geoRows ?? [],
             lineItemMapping: w.mapping ?? undefined,
             bqSheetId: w.elevate?.sheetId,
+            // Persisted for the admin history so reviewers can open the user's source sheets.
+            mediaPlanUrl: sheetUrlFromId(w.mediaPlan?.sheetId),
+            elevateUrl: sheetUrlFromId(w.elevate?.sheetId),
             dateFilter:
                 w.dateStart && w.dateEnd
                     ? { mode: "RANGE", start: w.dateStart, end: w.dateEnd }

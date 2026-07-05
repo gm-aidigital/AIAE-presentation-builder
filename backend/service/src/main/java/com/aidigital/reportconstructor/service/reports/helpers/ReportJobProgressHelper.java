@@ -19,13 +19,28 @@ public interface ReportJobProgressHelper {
 	ReportJobEntity createQueuedJob(String userId, String reportTypeCode);
 
 	/**
-	 * Stamps the owner's email onto an existing job so the admin dashboard can show a
-	 * per-user breakdown; a no-op when the job no longer exists.
+	 * Stamps the owner's email, the generation target, and the connected source-sheet URLs
+	 * onto an existing job (owner email feeds the admin per-user breakdown; target lets the
+	 * history hide intermediate SHEET-assembly jobs; the source URLs let admins review the
+	 * user's inputs). A no-op when the job no longer exists.
 	 *
-	 * @param jobId      id of the job to stamp
-	 * @param ownerEmail lowercased email of the report owner
+	 * @param jobId        id of the job to stamp
+	 * @param ownerEmail   lowercased email of the report owner
+	 * @param target       generation target name (e.g. {@code SLIDES_FROM_SHEET})
+	 * @param mediaPlanUrl Media Plan source sheet URL the user connected, or {@code null}
+	 * @param elevateUrl   Elevate source sheet URL the user connected, or {@code null}
 	 */
-	void recordOwnerEmail(Long jobId, String ownerEmail);
+	void recordJobContext(Long jobId, String ownerEmail, String target, String mediaPlanUrl, String elevateUrl);
+
+	/**
+	 * Stamps the generated artifact's file name and the source Google Sheet URL onto a job
+	 * as it completes, for the report-history rows. A no-op when the job no longer exists.
+	 *
+	 * @param jobId        id of the job to stamp
+	 * @param artifactName human file name of the generated deck/sheet
+	 * @param sheetUrl     source/associated Google Sheet URL, or {@code null} when none
+	 */
+	void recordArtifact(Long jobId, String artifactName, String sheetUrl);
 
 	/**
 	 * Lists a single owner's jobs, newest first, for the "My reports" history screen.

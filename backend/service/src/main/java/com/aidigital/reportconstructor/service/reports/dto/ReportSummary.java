@@ -11,9 +11,13 @@ import java.time.LocalDateTime;
  * @param status     lifecycle status wire code (queued/running/done/error)
  * @param title      human-friendly report name for the row
  * @param createdAt  when the job was created (local date-time, matching the API contract)
- * @param slideUrl   generated artifact URL when done, else {@code null}
- * @param ownerEmail report owner email, or {@code null} when unknown
- * @param ownerName  report owner display name derived from the email
+ * @param slideUrl     generated artifact (deck) URL when done, else {@code null}
+ * @param sheetUrl     source/associated Google Sheet URL, or {@code null} when none
+ * @param fileName     human file name of the generated artifact, or {@code null} when unknown
+ * @param mediaPlanUrl Media Plan source sheet the user connected, or {@code null}
+ * @param elevateUrl   Elevate source sheet the user connected, or {@code null}
+ * @param ownerEmail   report owner email, or {@code null} when unknown
+ * @param ownerName    report owner display name derived from the email
  */
 public record ReportSummary(
 		Long jobId,
@@ -22,6 +26,10 @@ public record ReportSummary(
 		String title,
 		LocalDateTime createdAt,
 		String slideUrl,
+		String sheetUrl,
+		String fileName,
+		String mediaPlanUrl,
+		String elevateUrl,
 		String ownerEmail,
 		String ownerName) {
 }

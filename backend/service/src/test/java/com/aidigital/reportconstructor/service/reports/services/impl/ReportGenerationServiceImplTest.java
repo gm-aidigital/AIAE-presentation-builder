@@ -91,7 +91,7 @@ class ReportGenerationServiceImplTest {
 				"  ", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null, null);
 
 		Throwable thrown = catchThrowable(
-				() -> service.start("user-1", "clerk-1", "user@x.com", payload, GenerationTarget.SLIDES));
+				() -> service.start("user-1", "clerk-1", "user@x.com", payload, GenerationTarget.SLIDES, null, null));
 
 		assertThat(thrown)
 				.isInstanceOf(AppException.class)
@@ -127,10 +127,12 @@ class ReportGenerationServiceImplTest {
 		ReportGenerationService selfBean = mock(ReportGenerationService.class);
 		when(self.getObject()).thenReturn(selfBean);
 
-		ReportJobEntity job = service.start("user-1", "clerk-1", "user@x.com", payload, GenerationTarget.SLIDES);
+		ReportJobEntity job = service.start(
+				"user-1", "clerk-1", "user@x.com", payload, GenerationTarget.SLIDES, "http://plan", "http://elevate");
 
 		assertThat(job).isSameAs(queued);
 		verify(selfBean).run(5L, payload, "clerk-1", "user@x.com", GenerationTarget.SLIDES);
+		verify(jobProgress).recordJobContext(5L, "user@x.com", "SLIDES", "http://plan", "http://elevate");
 	}
 
 	@Test

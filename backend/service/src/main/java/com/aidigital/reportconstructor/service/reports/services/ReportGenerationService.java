@@ -16,15 +16,18 @@ public interface ReportGenerationService {
 	 * Validates the brief, enqueues a new report job, and kicks off the async build,
 	 * returning the freshly persisted job so the caller can poll its progress.
 	 *
-	 * @param userId      internal id of the report owner, used for job ownership and later access checks
-	 * @param clerkUserId Clerk identity used to look up the user's Google OAuth token for Slides/Drive access
-	 * @param userEmail   email of the triggering user, used to name the generated Drive artifact
-	 * @param payload     full generation request (brief, report type, sheet rows, mappings, geo rows, etc.)
-	 * @param target      artifact to build (SLIDES deck or SHEET workbook) from the resolved placeholders
+	 * @param userId       internal id of the report owner, used for job ownership and later access checks
+	 * @param clerkUserId  Clerk identity used to look up the user's Google OAuth token for Slides/Drive access
+	 * @param userEmail    email of the triggering user, used to name the generated Drive artifact
+	 * @param payload      full generation request (brief, report type, sheet rows, mappings, geo rows, etc.)
+	 * @param target       artifact to build (SLIDES deck or SHEET workbook) from the resolved placeholders
+	 * @param mediaPlanUrl Media Plan source sheet URL the user connected, persisted for admin review; may be {@code null}
+	 * @param elevateUrl   Elevate source sheet URL the user connected, persisted for admin review; may be {@code null}
 	 * @return the persisted, queued {@link ReportJobEntity} whose build runs asynchronously
 	 */
 	ReportJobEntity start(
-			String userId, String clerkUserId, String userEmail, GeneratePayload payload, GenerationTarget target);
+			String userId, String clerkUserId, String userEmail, GeneratePayload payload, GenerationTarget target,
+			String mediaPlanUrl, String elevateUrl);
 
 	/**
 	 * Creates and persists a new report job in the {@code queued} state with a total of 7

@@ -53,6 +53,21 @@ public class ReportJobEntity extends IdAwareEntity {
 	@Column(name = "slide_url")
 	private String slideUrl;
 
+	@Column(name = "sheet_url")
+	private String sheetUrl;
+
+	@Column(name = "artifact_name")
+	private String artifactName;
+
+	@Column(name = "target")
+	private String target;
+
+	@Column(name = "media_plan_url")
+	private String mediaPlanUrl;
+
+	@Column(name = "elevate_url")
+	private String elevateUrl;
+
 	@Column(name = "error_message")
 	private String errorMessage;
 

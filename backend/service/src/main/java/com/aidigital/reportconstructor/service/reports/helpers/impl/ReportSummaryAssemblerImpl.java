@@ -28,17 +28,25 @@ public class ReportSummaryAssemblerImpl implements ReportSummaryAssembler {
 				title(job),
 				job.getCreatedAt() == null ? null : job.getCreatedAt().toLocalDateTime(),
 				job.getSlideUrl(),
+				job.getSheetUrl(),
+				job.getArtifactName(),
+				job.getMediaPlanUrl(),
+				job.getElevateUrl(),
 				ownerEmail,
 				ownerEmail == null || ownerEmail.isBlank() ? null : displayNameHelper.fromEmail(ownerEmail));
 	}
 
 	/**
-	 * Builds a human-friendly row title from the report type, e.g. {@code "EOM report"}.
+	 * Builds a display title for the row — the generated file name when known, else a
+	 * type-derived label like {@code "EOM report"}.
 	 *
 	 * @param job the persisted report job
 	 * @return a non-blank title for the row
 	 */
 	String title(ReportJobEntity job) {
+		if (job.getArtifactName() != null && !job.getArtifactName().isBlank()) {
+			return job.getArtifactName();
+		}
 		String type = job.getReportTypeCode();
 		if (type == null || type.isBlank()) {
 			return "Report";

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Extra artifact metadata for the report history rows: the source Google Sheet the
+  report was built from, the human file name of the generated artifact (deck/sheet),
+  and the generation target (so the history can hide intermediate SHEET-assembly jobs).
+  All nullable: pre-existing rows keep nulls and the UI falls back to a derived title.
+-->
+<databaseChangeLog
+		xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+		xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+		xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+	<changeSet id="report-jobs-artifact" author="agent">
+		<addColumn tableName="report_jobs">
+			<column name="sheet_url" type="TEXT"/>
+			<column name="artifact_name" type="TEXT"/>
+			<column name="target" type="TEXT"/>
+			<column name="media_plan_url" type="TEXT"/>
+			<column name="elevate_url" type="TEXT"/>
+		</addColumn>
+	</changeSet>
+
+</databaseChangeLog>

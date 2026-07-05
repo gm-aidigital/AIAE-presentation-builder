@@ -170,3 +170,23 @@
     background: var(--rc-btn-disabled);
     cursor: default;
 }
+
+.mr__sheet {
+    display: inline-flex;
+    align-items: center;
+    padding: 10px 18px;
+    border: 1px solid var(--rc-input-border);
+    border-radius: 56px;
+    background: var(--rc-white);
+    color: var(--rc-slate);
+    font-family: var(--rc-font);
+    font-weight: 600;
+    font-size: 14px;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: border-color 0.15s ease;
+}
+
+.mr__sheet:hover {
+    border-color: var(--rc-mute);
+}

@@ -39,9 +39,23 @@ public class ReportJobProgressHelperImpl implements ReportJobProgressHelper {
 
 	@Transactional
 	@Override
-	public void recordOwnerEmail(Long jobId, String ownerEmail) {
+	public void recordJobContext(Long jobId, String ownerEmail, String target, String mediaPlanUrl, String elevateUrl) {
 		jobs.findById(jobId).ifPresent(job -> {
 			job.setOwnerEmail(ownerEmail);
+			job.setTarget(target);
+			job.setMediaPlanUrl(mediaPlanUrl);
+			job.setElevateUrl(elevateUrl);
+			job.setUpdatedAt(OffsetDateTime.now());
+			jobs.save(job);
+		});
+	}
+
+	@Transactional
+	@Override
+	public void recordArtifact(Long jobId, String artifactName, String sheetUrl) {
+		jobs.findById(jobId).ifPresent(job -> {
+			job.setArtifactName(artifactName);
+			job.setSheetUrl(sheetUrl);
 			job.setUpdatedAt(OffsetDateTime.now());
 			jobs.save(job);
 		});

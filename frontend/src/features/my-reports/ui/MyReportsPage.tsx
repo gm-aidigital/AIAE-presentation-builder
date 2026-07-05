@@ -81,11 +81,21 @@ export function MyReportsPage() {
                                         {(r.type ?? "REP").toUpperCase()}
                                     </span>
                                     <div className="mr__meta">
-                                        <div className="mr__name">{r.title}</div>
+                                        <div className="mr__name">{r.fileName ?? r.title}</div>
                                         <div className="mr__sub">{reportMeta(r)}</div>
                                     </div>
                                 </div>
                                 <div className="mr__actions">
+                                    {r.sheetUrl && (
+                                        <a
+                                            className="mr__sheet"
+                                            href={r.sheetUrl}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                        >
+                                            View sheet ↗
+                                        </a>
+                                    )}
                                     <button
                                         type="button"
                                         className="mr__open"

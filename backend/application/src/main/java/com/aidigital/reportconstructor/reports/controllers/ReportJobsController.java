@@ -30,7 +30,8 @@ public class ReportJobsController implements ReportJobsApi {
 	public ResponseEntity<ReportJobCreatedV1> createReportJob(GenerateRequestV1 body) {
 		var user = appUserFactory.from(SecurityContextHolder.getContext().getAuthentication());
 		var job = reportGeneration.start(user.userId(), user.userId(), user.email(),
-				payloadMapper.toPayload(body), payloadMapper.toTarget(body.getTarget()));
+				payloadMapper.toPayload(body), payloadMapper.toTarget(body.getTarget()),
+				body.getMediaPlanUrl(), body.getElevateUrl());
 		return new ResponseEntity<>(mapper.toCreated(job), HttpStatus.ACCEPTED);
 	}
 

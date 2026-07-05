@@ -263,12 +263,32 @@ function AllReportsTab() {
                             {(r.type ?? "REP").toUpperCase()}
                         </span>
                         <div className="ad-reports__meta">
-                            <div className="ad-reports__name">{r.title}</div>
+                            <div className="ad-reports__name">{r.fileName ?? r.title}</div>
                             <div className="ad-reports__sub">
                                 {r.ownerEmail ?? "—"} · {r.createdAt ? dateFmt.format(new Date(r.createdAt)) : ""} ·{" "}
                                 {statusLabel(r.status)}
                             </div>
+                            {(r.mediaPlanUrl || r.elevateUrl) && (
+                                <div className="ad-reports__sources">
+                                    <span className="ad-reports__srclabel">Sources:</span>
+                                    {r.mediaPlanUrl && (
+                                        <a className="ad-reports__srclink" href={r.mediaPlanUrl} target="_blank" rel="noreferrer">
+                                            Media plan ↗
+                                        </a>
+                                    )}
+                                    {r.elevateUrl && (
+                                        <a className="ad-reports__srclink" href={r.elevateUrl} target="_blank" rel="noreferrer">
+                                            Elevate ↗
+                                        </a>
+                                    )}
+                                </div>
+                            )}
                         </div>
+                        {r.sheetUrl && (
+                            <a className="ad-reports__sheet" href={r.sheetUrl} target="_blank" rel="noreferrer">
+                                View sheet ↗
+                            </a>
+                        )}
                         <button
                             type="button"
                             className="ad-reports__open"
