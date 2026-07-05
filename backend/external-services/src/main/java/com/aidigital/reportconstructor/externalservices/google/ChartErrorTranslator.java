@@ -4,7 +4,6 @@ import com.google.api.client.googleapis.json.GoogleJsonError;
 import com.google.api.client.googleapis.json.GoogleJsonResponseException;
 import org.springframework.stereotype.Component;
 
-import java.io.IOException;
 import java.util.Locale;
 
 /**
@@ -15,10 +14,11 @@ public class ChartErrorTranslator {
 
 	/**
 	 * @param tag chart pass label (e.g. {@code Tactic 3})
-	 * @param ex  underlying Google API failure
+	 * @param ex  underlying chart failure (a Google API {@code IOException}, or a client-side
+	 *            {@code RuntimeException} such as a missing/blank required parameter)
 	 * @return user-facing warning string
 	 */
-	public String describeChartError(String tag, IOException ex) {
+	public String describeChartError(String tag, Exception ex) {
 		if (ex instanceof GoogleJsonResponseException gjre) {
 			int status = gjre.getStatusCode();
 			String reason = null;

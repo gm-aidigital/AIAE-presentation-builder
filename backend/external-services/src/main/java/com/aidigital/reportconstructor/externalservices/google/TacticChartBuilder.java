@@ -118,7 +118,7 @@ public class TacticChartBuilder {
 								pivot,
 								"Tactic " + n,
 								req.tacticKpiTypes() == null ? null : req.tacticKpiTypes().get(n)));
-			} catch (IOException ex) {
+			} catch (IOException | RuntimeException ex) {
 				errors.add(chartErrors.describeChartError("Tactic " + n, ex));
 			}
 		}
@@ -166,7 +166,7 @@ public class TacticChartBuilder {
 								pivot,
 								"Monthly Tactic " + n,
 								req.tacticKpiTypes() == null ? null : req.tacticKpiTypes().get(n)));
-			} catch (IOException ex) {
+			} catch (IOException | RuntimeException ex) {
 				errors.add(chartErrors.describeChartError("Monthly Tactic " + n, ex));
 			}
 		}
@@ -187,18 +187,28 @@ public class TacticChartBuilder {
 				slideChartSwapper.loadTransforms(clients.slides(), req.presentationId(), errors, "Distribution");
 
 		for (int n = 1; n <= req.tacticCount(); n++) {
+			String templateId = templates.getDistTemplateSheetIds().get(n);
+			String oldObjectId = templates.getDistSlideObjectIds().get(n);
+			if (templateId == null) {
+				errors.add("Distribution Tactic " + n + ": no chart-template spreadsheet id configured");
+				continue;
+			}
+			if (oldObjectId == null) {
+				errors.add("Distribution Tactic " + n + ": no slide chart object id configured");
+				continue;
+			}
 			try {
 				double tacticImps = req.distTacticImps().getOrDefault(n, 0.0);
 				renderDistributionChart(clients, req.presentationId(), folderId, transforms,
 						new DistributionChartJob(
 								n,
-								templates.getDistTemplateSheetIds().get(n),
-								templates.getDistSlideObjectIds().get(n),
+								templateId,
+								oldObjectId,
 								"Distribution Chart Tactic " + n + " — " + req.campaignTitle(),
 								req.distTacticNames().getOrDefault(n, "Tactic " + n),
 								tacticImps,
 								req.distTotalImps() - tacticImps));
-			} catch (IOException ex) {
+			} catch (IOException | RuntimeException ex) {
 				errors.add(chartErrors.describeChartError("Distribution Tactic " + n, ex));
 			}
 		}
