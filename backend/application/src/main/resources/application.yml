@@ -138,6 +138,7 @@ external:
     # RealSheetDeckProvider — so no per-slot range config is needed here.
     sheets-template-id: ${SHEETS_TEMPLATE_ID:1aRNqq-vxDZEgA75-rGQL04uGezGGIksB4fqEe21E8aU}
     sheets-target-folder-id: ${SHEETS_TARGET_FOLDER_ID:}
+    charts:
       chart-id-in-sheet: ${GOOGLE_CHART_ID_IN_SHEET:1087145314}
       daily-template-sheet-ids:
         1: "17da8GFAFRYt5JT6MvPV-qSi6KEd2tmI8xZMGFU-pkK4"
