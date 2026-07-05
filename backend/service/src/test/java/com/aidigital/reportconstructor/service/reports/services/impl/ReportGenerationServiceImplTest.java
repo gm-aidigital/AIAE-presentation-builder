@@ -7,8 +7,10 @@ import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeSheetBatch;
 import com.aidigital.reportconstructor.service.reports.dto.GenerationTarget;
 import com.aidigital.reportconstructor.service.reports.dto.ProgressView;
+import com.aidigital.reportconstructor.service.reports.engine.Fmt;
 import com.aidigital.reportconstructor.service.reports.engine.ReportClaudeDefaults;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportFileNamer;
+import com.aidigital.reportconstructor.service.reports.helpers.impl.ReportNumberParserImpl;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportGenerationChartHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportGenerationWarningsHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportJobProgressHelper;
@@ -29,6 +31,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.ObjectProvider;
 
 import java.util.List;
+import java.util.HashMap;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -78,7 +81,8 @@ class ReportGenerationServiceImplTest {
 	void setUp() {
 		service = new ReportGenerationServiceImpl(
 				jobProgress, warnings, chartHelper, sheetHelper, placeholderReader, sheetCampaign, placeholders,
-				claude, slides, userGoogleTokens, self, claudeDefaults, fileNamer);
+				claude, slides, userGoogleTokens, self, claudeDefaults, fileNamer,
+				new ReportNumberParserImpl(), new Fmt());
 	}
 
 	@Test
@@ -222,6 +226,25 @@ class ReportGenerationServiceImplTest {
 		service.run(8L, payload, "clerk-1", "user@x.com", GenerationTarget.SLIDES);
 
 		verify(jobProgress).markJobFailed(8L, "boom");
+	}
+
+	@Test
+	void shouldAliasReachFactFromReachColumnAndCompactShortTokensTest() {
+		// Given: the sheet reader loaded reach_f with the Frequency total (its internal channel for the
+		// frequency narrative) and the full campaign reach sits in {{reach}}
+		Map<String, String> flat = new HashMap<>();
+		flat.put("{{reach}}", "70,001");
+		flat.put("{{reach_f}}", "5.383523093");
+
+		// When: the sheet tokens are aliased for the deck
+		service.aliasSheetTokens(flat, 0);
+
+		// Then: "Market Captured" ({{reach_f}}) is reclaimed from the Reach column, not the Frequency total,
+		// and the presentation-short reach tokens render it abbreviated
+		assertThat(flat)
+				.containsEntry("{{reach_f}}", "70,001")
+				.containsEntry("{{reach_p}}", "70k")
+				.containsEntry("{{reach_f_pres}}", "70k");
 	}
 
 	@Test

@@ -12,8 +12,10 @@ import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
 import com.aidigital.reportconstructor.service.reports.dto.GenerationTarget;
 import com.aidigital.reportconstructor.service.reports.dto.ProgressView;
+import com.aidigital.reportconstructor.service.reports.engine.Fmt;
 import com.aidigital.reportconstructor.service.reports.engine.ReportClaudeDefaults;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportFileNamer;
+import com.aidigital.reportconstructor.service.reports.helpers.ReportNumberParser;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportGenerationChartHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportGenerationWarningsHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportJobProgressHelper;
@@ -61,6 +63,8 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	private final ObjectProvider<ReportGenerationService> self;
 	private final ReportClaudeDefaults claudeDefaults;
 	private final ReportFileNamer fileNamer;
+	private final ReportNumberParser reportNumbers;
+	private final Fmt fmt;
 
 	/**
 	 * Validates the brief, then enqueues the job and launches the build through the
@@ -294,20 +298,44 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	/**
 	 * Copies sheet-read values onto the deck's alternately-spelled placeholder tokens so a token the sheet
 	 * reader never emits under that exact spelling still renders the reviewed value instead of a blank:
-	 * {@code {{total spend}}} mirrors {@code {{total_investment}}}, the presentation-short reach tokens
-	 * mirror their full counterparts, and the correctly-spelled {@code {{tactic n completions}}} mirrors
-	 * the sheet's {@code {{tactic n complitions}}}.
+	 * {@code {{total spend}}} mirrors {@code {{total_investment}}} and the correctly-spelled
+	 * {@code {{tactic n completions}}} mirrors the sheet's {@code {{tactic n complitions}}}.
+	 *
+	 * <p>The sheet reader loads {@code {{reach_f}}} with the summary Frequency total purely so
+	 * {@link SheetCampaignReader#readFrequencies} can read the reviewed frequency; here — after the
+	 * frequency has been read — that token is reclaimed for its deck meaning ("reach fact", the
+	 * "Market Captured" figure). The sheet carries a single Reach column, so the actual reach is that
+	 * same reach, and the presentation-short reach tokens ({@code {{reach_p}}}, {@code {{reach_f_pres}}})
+	 * render it abbreviated (e.g. {@code "70k"}) — matching the compaction the BigQuery flow applies —
+	 * rather than as the raw grouped figure.
 	 *
 	 * @param flat        the assembled placeholder map (sheet values already overlaid)
 	 * @param tacticCount the active tactic count driving the per-tactic aliases
 	 */
 	void aliasSheetTokens(Map<String, String> flat, int tacticCount) {
 		copyToken(flat, "{{total_investment}}", "{{total spend}}");
-		copyToken(flat, "{{reach}}", "{{reach_p}}");
-		copyToken(flat, "{{reach_f}}", "{{reach_f_pres}}");
+		copyToken(flat, "{{reach}}", "{{reach_f}}");
+		compactToken(flat, "{{reach}}", "{{reach_p}}");
+		compactToken(flat, "{{reach}}", "{{reach_f_pres}}");
 		for (int n = 1; n <= tacticCount; n++) {
 			copyToken(flat, "{{tactic " + n + " complitions}}", "{{tactic " + n + " completions}}");
 		}
+	}
+
+	/**
+	 * Writes the compact abbreviation (e.g. {@code "70k"}, {@code "1.2M"}) of a source token's numeric
+	 * value onto a destination token, leaving the destination untouched when the source is absent or blank.
+	 *
+	 * @param flat the placeholder map to update
+	 * @param from the source token key whose value is parsed and abbreviated
+	 * @param to   the destination token key receiving the compact string
+	 */
+	void compactToken(Map<String, String> flat, String from, String to) {
+		String value = flat.get(from);
+		if (value == null || value.isBlank()) {
+			return;
+		}
+		flat.put(to, fmt.compact(reportNumbers.parseReportNumber(value)));
 	}
 
 	/**
