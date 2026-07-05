@@ -209,7 +209,7 @@ class ReportGenerationServiceImplTest {
 		verify(jobProgress).markJobDone(11L, "http://deck", "[]");
 		// And: the raw-grid collection and the offline Claude batches never run — no duplicate work
 		verify(placeholders, never()).collectData(any());
-		verify(claude, never()).batchStrategic(any(), any());
+		verify(claude, never()).batchStrategicNarrative(any(), any());
 		verify(claude, never()).batchResults(any(), any(), any());
 	}
 

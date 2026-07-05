@@ -40,6 +40,11 @@ public class StubClaudeClient implements ClaudeClient {
 	}
 
 	@Override
+	public ClaudeStrategic batchStrategicNarrative(CampaignData data, String brief) {
+		return claudeDefaults.emptyStrategic();
+	}
+
+	@Override
 	public ClaudeTactical batchTactical(CampaignData data, String brief) {
 		return claudeDefaults.emptyTactical();
 	}

@@ -1,6 +1,7 @@
 package com.aidigital.reportconstructor.service.reports.helpers.impl;
 
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
+import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
 import com.aidigital.reportconstructor.service.reports.dto.Tactic;
 import com.aidigital.reportconstructor.service.reports.dto.Totals;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportNumberParser;
@@ -9,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -50,6 +52,30 @@ public class SheetCampaignReaderImpl implements SheetCampaignReader {
 				totals,
 				tactics,
 				null);
+	}
+
+	@Override
+	public CampaignFrequencies readFrequencies(Map<String, String> flat) {
+		double imps = num(flat, "{{total imps}}");
+		double reach = num(flat, "{{reach}}");
+		if (imps <= 0 || reach <= 0) {
+			return new CampaignFrequencies(null, null, null, null);
+		}
+		String plan = String.valueOf((long) Math.ceil(imps / reach));
+
+		// The sheet already carries the actual frequency the user reviewed ({{reach_f}} — the summary
+		// "Frequency" total). Reading it back keeps the Claude narrative and the deck in sync with the
+		// sheet instead of re-deriving it from a fresh random reach uplift. When it is missing we still
+		// return the deterministic plan so the narrative can at least reference the planned figure.
+		Double factFreq = nullableNum(flat, "{{reach_f}}");
+		if (factFreq == null || factFreq <= 0) {
+			return new CampaignFrequencies(plan, null, null, null);
+		}
+		String fact = String.format(Locale.US, "%.2f", factFreq);
+		double reachFact = imps / factFreq;
+		Double marketVolume = nullableNum(flat, "{{market volume}}");
+		Double remainingAudience = marketVolume == null ? null : Math.max(marketVolume - reachFact, 0);
+		return new CampaignFrequencies(plan, fact, reachFact, remainingAudience);
 	}
 
 	/**

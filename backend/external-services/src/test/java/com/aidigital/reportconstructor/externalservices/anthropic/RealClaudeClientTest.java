@@ -3,7 +3,9 @@ package com.aidigital.reportconstructor.externalservices.anthropic;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
+import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.Recommendation;
+import com.aidigital.reportconstructor.service.reports.dto.StrategicInsight;
 import com.aidigital.reportconstructor.service.reports.dto.Totals;
 import com.aidigital.reportconstructor.service.reports.engine.Fmt;
 import com.aidigital.reportconstructor.service.reports.engine.ReportClaudeDefaults;
@@ -104,5 +106,66 @@ class RealClaudeClientTest {
 					assertThat(rec.title().length()).isLessThanOrEqualTo(30);
 					assertThat(rec.text().length()).isLessThanOrEqualTo(130);
 				});
+	}
+
+	@Test
+	void batchStrategicNarrativeParsesProposalAndInsightsWithoutAudienceTest() throws Exception {
+		// Given: a real prompt builder/normalizer over a campaign with context, an identity compression pass,
+		// and a strategic-narrative response carrying a proposal and four insights but no audience fields
+		ClaudeResponseNormalizer normalizer = new ClaudeResponseNormalizer();
+		ClaudeBatchPromptBuilder promptBuilder = new ClaudeBatchPromptBuilder(normalizer, new Fmt());
+		ReportClaudeDefaults defaults = new ReportClaudeDefaults();
+		RealClaudeClient client = new RealClaudeClient(
+				messagesClient, promptBuilder, normalizer, compressionService, defaults);
+
+		CampaignData data = new CampaignData(
+				"Acme", "Spring Launch", "US", "Awareness", "Jan 1 - Mar 31",
+				null, "$500,000", "Reach", "Display, CTV", "25-44", "Auto intenders",
+				new Totals(0, 0, 0, 0, null, null), Map.of(), null);
+		String brief = "Drive awareness for the Spring Launch.";
+		String expectedPrompt = promptBuilder.buildBatchStrategicNarrativePrompt(data, brief).orElseThrow();
+
+		JsonNode response = json.readTree("""
+				{
+				  "proposal_overview": "The campaign drove awareness for auto intenders. It ran across Display and CTV nationally.",
+				  "strategic_insights": [
+				    {"point": "Precision", "overview": "Targeted auto intenders."},
+				    {"point": "Reach", "overview": "Scaled via CTV."},
+				    {"point": "Timing", "overview": "Evening dayparts."},
+				    {"point": "Efficiency", "overview": "Strong CPM outcome."}
+				  ]
+				}
+				""");
+		List<ClaudeCompressionField> expectedFields = List.of(
+				new ClaudeCompressionField("point_0", "Precision", 22),
+				new ClaudeCompressionField("overview_0", "Targeted auto intenders.", 240),
+				new ClaudeCompressionField("point_1", "Reach", 22),
+				new ClaudeCompressionField("overview_1", "Scaled via CTV.", 240),
+				new ClaudeCompressionField("point_2", "Timing", 22),
+				new ClaudeCompressionField("overview_2", "Evening dayparts.", 240),
+				new ClaudeCompressionField("point_3", "Efficiency", 22),
+				new ClaudeCompressionField("overview_3", "Strong CPM outcome.", 240));
+		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(2000), eq(60), eq("BatchAStrategic"), eq(false)))
+				.thenReturn(response);
+		when(compressionService.compress(eq(expectedFields), eq("BatchD-Strategic")))
+				.thenAnswer(invocation -> {
+					List<ClaudeCompressionField> fields = invocation.getArgument(0);
+					Map<String, String> out = new LinkedHashMap<>();
+					for (ClaudeCompressionField field : fields) {
+						out.put(field.key(), field.text());
+					}
+					return out;
+				});
+
+		// When:
+		ClaudeStrategic strategic = client.batchStrategicNarrative(data, brief);
+
+		// Then: audience fields stay null (they come from the sheet), while proposal and 4 insights parse
+		assertThat(strategic.audienceAge()).isNull();
+		assertThat(strategic.audienceSegments()).isNull();
+		assertThat(strategic.proposalOverview()).isNotBlank();
+		assertThat(strategic.strategicInsights())
+				.extracting(StrategicInsight::point)
+				.containsExactly("Precision", "Reach", "Timing", "Efficiency");
 	}
 }

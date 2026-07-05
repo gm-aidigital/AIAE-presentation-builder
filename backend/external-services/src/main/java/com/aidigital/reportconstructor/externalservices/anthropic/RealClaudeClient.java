@@ -117,6 +117,41 @@ public class RealClaudeClient implements ClaudeClient {
 	}
 
 	@Override
+	public ClaudeStrategic batchStrategicNarrative(CampaignData data, String brief) {
+		var prompt = promptBuilder.buildBatchStrategicNarrativePrompt(data, brief);
+		if (prompt.isEmpty()) {
+			return claudeDefaults.emptyStrategic();
+		}
+		JsonNode parsed = messagesClient.callJsonObject(prompt.get(), 2000, 60, "BatchAStrategic", false);
+		if (parsed == null) {
+			return claudeDefaults.emptyStrategic();
+		}
+
+		String overview = normalizer.normalizeProposal(normalizer.textOrNull(parsed.get("proposal_overview")), 400);
+
+		JsonNode arr = parsed.get("strategic_insights");
+		List<ClaudeCompressionField> compressionFields = new ArrayList<>();
+		for (int i = 0; i < 4; i++) {
+			JsonNode item = (arr != null && arr.isArray() && i < arr.size()) ? arr.get(i) : null;
+			String rawPoint = item == null ? "" : item.path("point").asText("").trim();
+			String rawOverview = item == null ? "" : item.path("overview").asText("").trim();
+			compressionFields.add(new ClaudeCompressionField("point_" + i, rawPoint, STRATEGIC_POINT_LIMIT));
+			compressionFields.add(new ClaudeCompressionField("overview_" + i, rawOverview, STRATEGIC_OVERVIEW_LIMIT));
+		}
+		Map<String, String> compressed = compressionService.compress(compressionFields, "BatchD-Strategic");
+
+		List<StrategicInsight> insights = new ArrayList<>();
+		for (int i = 0; i < 4; i++) {
+			String point = normalizer.limitStrategicPoint(compressed.get("point_" + i));
+			String ov = normalizer.limitStrategicOverview(compressed.get("overview_" + i));
+			insights.add(new StrategicInsight(point, ov));
+		}
+
+		// Audience fields are intentionally null: the sheet flow already carries them from step 1.
+		return new ClaudeStrategic(null, null, overview, insights);
+	}
+
+	@Override
 	public ClaudeTactical batchTactical(CampaignData data, String brief) {
 		var prompt = promptBuilder.buildBatchBPrompt(data, brief);
 		if (prompt.isEmpty()) {

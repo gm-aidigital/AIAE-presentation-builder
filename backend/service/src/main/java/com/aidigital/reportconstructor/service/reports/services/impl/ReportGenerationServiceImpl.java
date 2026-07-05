@@ -218,19 +218,29 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		jobProgress.markJobRunningAtStep(jobId, 3, "Claude — narrative");
 		String brief = payload.brief();
 		CampaignData data = sheetCampaign.read(sheetValues, tacticCount);
-		CampaignFrequencies frequencies = placeholders.computeFrequencies(payload, data);
+		// Frequencies are reconstructed from the reviewed sheet — never the raw media plan — and without a
+		// fresh random reach uplift, so the Claude frequency narrative and the deck's frequency figures both
+		// match exactly what the user sees in the sheet.
+		CampaignFrequencies frequencies = sheetCampaign.readFrequencies(sheetValues);
+		if (log.isInfoEnabled()) {
+			log.info("[report] job {} slides-from-sheet context tacticCount={} tactics={}",
+					jobId, tacticCount, describeTactics(data));
+		}
 		boolean live = claude.isLive();
-		ClaudeStrategic ccA = live ? claude.batchStrategic(data, brief) : claudeDefaults.emptyStrategic();
+		// Strategic narrative only (proposal + insights). Audience already lives in the sheet from step 1, so
+		// this flow never regenerates it — no duplicate Claude work across the two steps.
+		ClaudeStrategic ccA = live ? claude.batchStrategicNarrative(data, brief) : claudeDefaults.emptyStrategic();
 		ClaudeResults ccC = live ? claude.batchResults(data, brief, frequencies) : claudeDefaults.emptyResults();
 
-		// Build the narrative placeholder map from the reconstructed context, then overlay the sheet's
-		// own values so every field the user reviewed wins; only the sheet-less narrative keys (proposal
-		// overview, strategic points, results overview, recommendations, frequency and tactic copy)
-		// survive from the Claude output.
+		// Build the narrative map from a payload stripped of every raw grid: the Claude-authored copy still
+		// flows through, but each numeric placeholder is forced to come solely from the sheet overlay below.
+		// A missing sheet anchor then renders as a blank (visible) rather than a stale raw value (silent).
+		GeneratePayload narrativePayload = narrativeOnly(payload);
 		Map<String, String> narrative = placeholders.buildFlatReplacements(
-				payload, data, ccA, claudeDefaults.emptyTactical(), ccC, null, null, null, frequencies);
+				narrativePayload, data, ccA, claudeDefaults.emptyTactical(), ccC, null, null, null, frequencies);
 		Map<String, String> flatReplacements = new LinkedHashMap<>(narrative);
 		flatReplacements.putAll(sheetValues);
+		aliasSheetTokens(flatReplacements, tacticCount);
 
 		jobProgress.markJobRunningAtStep(jobId, 6, "Building slide deck");
 		String fileName = fileNamer.buildFileName(
@@ -263,6 +273,81 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 			count = n;
 		}
 		return Math.clamp(count, 1, 7);
+	}
+
+	/**
+	 * Returns a copy of the payload with every raw source grid stripped (brief, report type, date filter
+	 * and sheet URL are kept). The slides-from-sheet flow feeds this to the placeholder builder so the
+	 * Claude-authored narrative still resolves while no per-tactic or total number can be recomputed from
+	 * the raw media plan — the sheet overlay is the sole source of numeric placeholders.
+	 *
+	 * @param payload the inbound generation payload
+	 * @return a narrative-only payload carrying no raw media-plan/adjustment/estimate grids
+	 */
+	GeneratePayload narrativeOnly(GeneratePayload payload) {
+		return new GeneratePayload(
+				payload.brief(), payload.reportType(), null,
+				List.of(), List.of(), List.of(), List.of(), List.of(),
+				null, null, payload.dateFilter(), payload.sheetUrl());
+	}
+
+	/**
+	 * Copies sheet-read values onto the deck's alternately-spelled placeholder tokens so a token the sheet
+	 * reader never emits under that exact spelling still renders the reviewed value instead of a blank:
+	 * {@code {{total spend}}} mirrors {@code {{total_investment}}}, the presentation-short reach tokens
+	 * mirror their full counterparts, and the correctly-spelled {@code {{tactic n completions}}} mirrors
+	 * the sheet's {@code {{tactic n complitions}}}.
+	 *
+	 * @param flat        the assembled placeholder map (sheet values already overlaid)
+	 * @param tacticCount the active tactic count driving the per-tactic aliases
+	 */
+	void aliasSheetTokens(Map<String, String> flat, int tacticCount) {
+		copyToken(flat, "{{total_investment}}", "{{total spend}}");
+		copyToken(flat, "{{reach}}", "{{reach_p}}");
+		copyToken(flat, "{{reach_f}}", "{{reach_f_pres}}");
+		for (int n = 1; n <= tacticCount; n++) {
+			copyToken(flat, "{{tactic " + n + " complitions}}", "{{tactic " + n + " completions}}");
+		}
+	}
+
+	/**
+	 * Copies a non-blank source token value onto a destination token, leaving the destination untouched
+	 * when the source is absent or blank.
+	 *
+	 * @param flat the placeholder map to update
+	 * @param from the source token key
+	 * @param to   the destination token key
+	 */
+	void copyToken(Map<String, String> flat, String from, String to) {
+		String value = flat.get(from);
+		if (value != null && !value.isBlank()) {
+			flat.put(to, value);
+		}
+	}
+
+	/**
+	 * Renders the sheet-reconstructed per-tactic name/spend/impressions as a compact one-line string for the
+	 * diagnostic log, so a run can be checked against the edited sheet to confirm the reviewed numbers were
+	 * read back (and reach Claude) rather than silently lost.
+	 *
+	 * @param data the campaign data reconstructed from the sheet
+	 * @return a {@code "n=name spend=… imps=…"} summary, joined by {@code "; "}
+	 */
+	String describeTactics(CampaignData data) {
+		if (data == null || data.tactics() == null) {
+			return "";
+		}
+		StringBuilder sb = new StringBuilder();
+		for (var e : data.tactics().entrySet()) {
+			var t = e.getValue();
+			if (sb.length() > 0) {
+				sb.append("; ");
+			}
+			sb.append(e.getKey()).append('=').append(t.name())
+					.append(" spend=").append(t.spend())
+					.append(" imps=").append(t.imps());
+		}
+		return sb.toString();
 	}
 
 	/**

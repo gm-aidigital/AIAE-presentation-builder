@@ -159,6 +159,132 @@ public class ClaudeBatchPromptBuilder {
 	}
 
 	/**
+	 * Builds the narrative-only strategic prompt for the slides-from-sheet flow: it requests ONLY the
+	 * {@code proposal_overview} and {@code strategic_insights} copy and deliberately omits the audience
+	 * fields, because the reviewed sheet already carries {@code audience_age}/{@code audience_segments}
+	 * from step 1. This lets step 2 avoid regenerating (and paying for) audience copy it would immediately
+	 * discard under the sheet overlay. The context block and both requested fields mirror {@link
+	 * #buildBatchAPrompt} exactly — keep them in sync when either prompt changes.
+	 *
+	 * @param data  parsed campaign plan and per-tactic performance used to assemble the context block
+	 * @param brief free-text campaign brief prepended as the {@code === CAMPAIGN BRIEF ===} section (treated as
+	 *                empty when null)
+	 * @return the strategic-narrative prompt requesting proposal/insights JSON, or empty when no context block
+	 * could be built
+	 */
+	public Optional<String> buildBatchStrategicNarrativePrompt(CampaignData data, String brief) {
+		String brf = brief == null ? "" : brief;
+		List<String> planLines = new ArrayList<>();
+		if (normalizer.notBlank(data.client())) {
+			planLines.add("Client:       " + data.client());
+		}
+		if (normalizer.notBlank(data.campaign())) {
+			planLines.add("Campaign:     " + data.campaign());
+		}
+		if (normalizer.notBlank(data.geo())) {
+			planLines.add("Geo:          " + data.geo());
+		}
+		if (normalizer.notBlank(data.goal())) {
+			planLines.add("Goal:         " + data.goal());
+		}
+		if (normalizer.notBlank(data.flightDates())) {
+			planLines.add("Flight:       " + data.flightDates());
+		}
+		if (normalizer.notBlank(data.budget())) {
+			planLines.add("Budget:       " + data.budget());
+		}
+		if (normalizer.notBlank(data.primaryKpis())) {
+			planLines.add("KPIs:         " + data.primaryKpis());
+		}
+		if (normalizer.notBlank(data.tacticsList())) {
+			planLines.add("Tactics:      " + data.tacticsList());
+		}
+		if (normalizer.notBlank(data.audienceAge())) {
+			planLines.add("Audience age: " + data.audienceAge());
+		}
+
+		List<String> tacticLines = new ArrayList<>();
+		for (Map.Entry<Integer, Tactic> e : data.tactics().entrySet()) {
+			Tactic t = e.getValue();
+			StringBuilder line = new StringBuilder("  Tactic " + e.getKey() + " — " + t.name() + ":");
+			if (t.spend() > 0) {
+				line.append(" Spend $").append(fmt.intGroup(Math.round(t.spend())));
+			}
+			if (t.imps() > 0) {
+				line.append(" | Imps ").append(fmt.intGroup(t.imps()));
+			}
+			if (t.ctr() != null) {
+				line.append(" | CTR ").append(fmt.dec2(t.ctr())).append('%');
+			}
+			if (t.vcr() != null) {
+				line.append(" | VCR ").append(fmt.dec2(t.vcr())).append('%');
+			}
+			tacticLines.add(line.toString());
+		}
+
+		List<String> ctx = new ArrayList<>();
+		if (!brf.isEmpty()) {
+			ctx.add("=== CAMPAIGN BRIEF ===\n" + brf);
+		}
+		if (!planLines.isEmpty()) {
+			ctx.add("=== CAMPAIGN PLAN ===\n" + String.join("\n", planLines));
+		}
+		if (!tacticLines.isEmpty()) {
+			ctx.add("=== TACTIC PERFORMANCE ===\n" + String.join("\n", tacticLines));
+		}
+		if (normalizer.notBlank(data.audienceTab())) {
+			ctx.add("=== AUDIENCE & INVENTORY TAB ===\n" + data.audienceTab());
+		}
+		if (ctx.isEmpty()) {
+			return Optional.empty();
+		}
+		String context = String.join("\n\n", ctx);
+
+		String prompt =
+				"You are a senior digital media strategist at an advertising agency writing a client-facing campaign " +
+						"report.\n\n"
+						+ "ANALYTICAL PRINCIPLES — apply to every text field you generate:\n"
+						+ "1. INTERPRET, NEVER ENUMERATE. Every metric must answer \"What does this mean for the " +
+						"campaign?\" "
+						+ "Raw data repeated as prose is not analysis. Transform each data point into a business " +
+						"implication.\n"
+						+ "2. NO GENERIC LANGUAGE. Every sentence must be specific to this campaign's data. "
+						+ "Forbidden phrases: \"performance is tracking well\", \"results are in line with " +
+						"expectations\", "
+						+ "\"we recommend monitoring\", \"this tactic requires further optimization\". "
+						+ "If a sentence could appear in any other campaign report unchanged — rewrite it.\n"
+						+ "3. EXPLAIN THE WHY. Don't write \"X had a high CTR.\" Write WHY: creative format, placement" +
+						" type, "
+						+ "audience intent level, message-to-moment alignment, competitive bid landscape, etc.\n"
+						+ "4. SPECIFICITY IS MANDATORY. Name the specific tactic, channel, audience segment, or geo. "
+						+ "Name the specific cause. Name the specific action or outcome.\n\n"
+						+ "Read the campaign data below and return a JSON object with EXACTLY these keys:\n\n"
+						+ "{\n"
+						+ "  \"proposal_overview\": string,   // Exactly 2 complete sentences. Past tense, no line " +
+						"breaks, no bullets. "
+						+ "Sentence 1: why the campaign ran — client objective + target audience. "
+						+ "Sentence 2: how it ran — tactic mix + geo + flight period. "
+						+ "Name the actual tactics, actual audience, actual geo. No character limit — write both " +
+						"sentences completely.\n"
+						+ "  \"strategic_insights\": array    // Exactly 4 objects: {\"point\": string, \"overview\": " +
+						"string}.\n"
+						+ "                                // CRITICAL for 'point': MAX 20 CHARACTERS ABSOLUTE HARD " +
+						"LIMIT.\n"
+						+ "                                // For 'overview': MAX 230 CHARACTERS.\n"
+						+ "                                // Each overview = strategic intention/approach + WHY this " +
+						"choice made sense "
+						+ "for THIS client/campaign. Unique angles, past tense, Business English. No filler.\n"
+						+ "}\n\n"
+						+ "Rules:\n"
+						+ "- Return ONLY the JSON object — no markdown, no backticks, no explanation.\n"
+						+ "- null for any field where there is genuinely no data.\n"
+						+ "- Do NOT invent facts. Base everything strictly on the provided data.\n"
+						+ "- Output in English regardless of input language.\n\n"
+						+ "Campaign data:\n" + context;
+		return Optional.of(prompt);
+	}
+
+	/**
 	 * Builds the Batch B (tactical) prompt, or empty when there are no tactics.
 	 *
 	 * @param data  parsed campaign data; its tactic map drives the per-tactic gender/peak-time estimation and the

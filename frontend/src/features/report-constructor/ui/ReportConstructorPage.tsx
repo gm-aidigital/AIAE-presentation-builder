@@ -402,7 +402,20 @@ function PageInner() {
         setResultWarnings([]);
         setGenStatus("running");
         setGenStep(0);
-        startReportJob({ ...basePayload(), target: "SLIDES_FROM_SHEET", sheetUrl: sheetUrl ?? undefined })
+        // Step 2 builds strictly from the reviewed sheet, so the raw media-plan grids are not sent — the
+        // backend reads every number back from the sheet. Only the brief, report type and sheet URL matter.
+        startReportJob({
+            ...basePayload(),
+            sheetRows: [],
+            adjRows: [],
+            audienceRows: [],
+            estimatesRows: [],
+            geoRows: [],
+            lineItemMapping: undefined,
+            bqSheetId: undefined,
+            target: "SLIDES_FROM_SHEET",
+            sheetUrl: sheetUrl ?? undefined,
+        })
             .then((jobId) => {
                 pollRef.current = window.setInterval(async () => {
                     try {

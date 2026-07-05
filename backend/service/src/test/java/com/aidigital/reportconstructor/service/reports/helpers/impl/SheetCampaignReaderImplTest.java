@@ -1,6 +1,7 @@
 package com.aidigital.reportconstructor.service.reports.helpers.impl;
 
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
+import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
 import com.aidigital.reportconstructor.service.reports.dto.Tactic;
 import org.junit.jupiter.api.Test;
 
@@ -57,5 +58,40 @@ class SheetCampaignReaderImplTest {
 		assertThat(data.totals().spend()).isZero();
 		assertThat(data.tactics().get(1).spend()).isZero();
 		assertThat(data.tactics().get(1).name()).isEmpty();
+	}
+
+	@Test
+	void shouldReconstructFrequenciesFromSheetWithoutRandomUpliftTest() {
+		// Given: a sheet-read map carrying total impressions, campaign reach, the reviewed actual frequency
+		// and the addressable market volume (stored compactly)
+		Map<String, String> flat = Map.ofEntries(
+				Map.entry("{{total imps}}", "1,000,000"),
+				Map.entry("{{reach}}", "250,000"),
+				Map.entry("{{reach_f}}", "3.50"),
+				Map.entry("{{market volume}}", "1M"));
+
+		// When: the frequency figures are reconstructed from the sheet
+		CampaignFrequencies freq = reader.readFrequencies(flat);
+
+		// Then: plan is ceil(imps/reach), fact is the sheet's own value, and reachFact/remaining derive from
+		// them deterministically — no random uplift
+		assertThat(freq.plan()).isEqualTo("4");
+		assertThat(freq.fact()).isEqualTo("3.50");
+		assertThat(freq.reachFact()).isEqualTo(1_000_000.0 / 3.5);
+		assertThat(freq.remainingAudience()).isEqualTo(Math.max(1_000_000.0 - 1_000_000.0 / 3.5, 0));
+	}
+
+	@Test
+	void shouldReturnEmptyFrequenciesWhenImpressionsOrReachMissingTest() {
+		// Given: a map without the impressions/reach inputs frequency derivation needs
+
+		// When: frequencies are reconstructed
+		CampaignFrequencies freq = reader.readFrequencies(Map.of("{{reach_f}}", "3.50"));
+
+		// Then: every field is null rather than a bogus figure
+		assertThat(freq.plan()).isNull();
+		assertThat(freq.fact()).isNull();
+		assertThat(freq.reachFact()).isNull();
+		assertThat(freq.remainingAudience()).isNull();
 	}
 }
