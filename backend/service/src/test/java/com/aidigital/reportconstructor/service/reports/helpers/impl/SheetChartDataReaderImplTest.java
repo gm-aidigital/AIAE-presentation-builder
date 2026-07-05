@@ -16,13 +16,17 @@ class SheetChartDataReaderImplTest {
 
 	@Test
 	void shouldReadDailyAndMonthlyPivotsForCtrTacticTest() {
-		// Given: a daily block offset four columns right, then a monthly block, for a CTR tactic
+		// Given: a daily block offset four columns right, then a monthly block, for a CTR tactic.
+		// The pacing writer overwrites the marker cells with the data, so the block is anchored
+		// by its "Daily pacing 1" / "Monthly pacing 1" label and its Date/Impressions/Amount headers.
 		List<List<String>> grid = List.of(
-				List.of("", "", "", "", "{{tactic 1 date}}", "{{tactic 1 impressions}}", "{{tactic 1 amount}}"),
+				List.of("", "", "", "", "Daily pacing 1"),
+				List.of("", "", "", "", "Date", "Impressions", "Amount"),
 				List.of("", "", "", "", "Jun 1", "1,000", "10"),
 				List.of("", "", "", "", "Jun 2", "2,000", "20"),
 				List.of(),
-				List.of("{{tactic 1 date mon}}", "{{tactic 1 impressions mon}}", "{{tactic 1 amount mon}}"),
+				List.of("Monthly pacing 1"),
+				List.of("Date", "Impressions", "Amount"),
 				List.of("Jun 2026", "3,000", "30"));
 
 		// When: the pivots are read with a CTR KPI type
@@ -34,7 +38,7 @@ class SheetChartDataReaderImplTest {
 		assertThat(daily.data().get("Jun 2")).containsExactly(2000.0, 20.0, 0.0);
 		assertThat(daily.hasClicks()).isTrue();
 		assertThat(daily.hasCompletions()).isFalse();
-		// And: the monthly series is read from its own marker block
+		// And: the monthly series is read from its own anchored block
 		Pivot monthly = out.monthlyPivots().get(1);
 		assertThat(monthly.data().get("Jun 2026")).containsExactly(3000.0, 30.0, 0.0);
 		assertThat(monthly.hasClicks()).isTrue();
@@ -44,7 +48,8 @@ class SheetChartDataReaderImplTest {
 	void shouldMapMetricToCompletionsForVcrTacticTest() {
 		// Given: a daily block for a VCR (video) tactic
 		List<List<String>> grid = List.of(
-				List.of("{{tactic 1 date}}", "{{tactic 1 impressions}}", "{{tactic 1 amount}}"),
+				List.of("Daily pacing 1"),
+				List.of("Date", "Impressions", "Amount"),
 				List.of("Jun 1", "5,000", "4,000"));
 
 		// When: the pivots are read with a VCR KPI type
@@ -58,10 +63,28 @@ class SheetChartDataReaderImplTest {
 	}
 
 	@Test
+	void shouldReadOnlyTheAnchoredTacticsColumnsWhenTwoBlocksShareRowsTest() {
+		// Given: tactic 1's daily block sits left of tactic 2's, both sharing the same rows, so
+		// tactic 1's search window overlaps tactic 2's columns
+		List<List<String>> grid = List.of(
+				List.of("Daily pacing 1", "", "", "Daily pacing 2"),
+				List.of("Date", "Impressions", "Amount", "Date", "Impressions", "Amount"),
+				List.of("Jun 1", "1,000", "10", "Jun 1", "9,000", "8,000"));
+
+		// When: both tactics are read (tactic 1 CTR, tactic 2 VCR)
+		SheetChartData out = reader.read(grid, 2, Map.of(1, "ctr", 2, "vcr"));
+
+		// Then: each tactic resolves to its own leftmost columns, unaffected by the neighbour's
+		assertThat(out.dailyPivots().get(1).data().get("Jun 1")).containsExactly(1000.0, 10.0, 0.0);
+		assertThat(out.dailyPivots().get(2).data().get("Jun 1")).containsExactly(9000.0, 0.0, 8000.0);
+	}
+
+	@Test
 	void shouldReturnEmptyPivotWhenTacticBlockAbsentTest() {
 		// Given: a grid holding only tactic 1's daily block, but two tactics requested
 		List<List<String>> grid = List.of(
-				List.of("{{tactic 1 date}}", "{{tactic 1 impressions}}", "{{tactic 1 amount}}"),
+				List.of("Daily pacing 1"),
+				List.of("Date", "Impressions", "Amount"),
 				List.of("Jun 1", "1,000", "10"));
 
 		// When: two tactics are read

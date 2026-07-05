@@ -10,10 +10,10 @@ import java.util.Map;
  * user-edited) EOC workbook grid, so the "Slides from Sheet" flow can build the pacing charts
  * from the sheet the user reviewed rather than re-querying BigQuery.
  *
- * <p>Columns are located by the {@code {{tactic n date}}} / {@code {{tactic n impressions}}} /
- * {@code {{tactic n amount}}} marker cells the sheet-fill step leaves in each block's header row
- * (monthly blocks carry the {@code mon} suffix). The pacing writer places its data <em>below</em>
- * those markers, so the same markers anchor the read-back — no fixed cell references, so it
+ * <p>The pacing writer overwrites each block's {@code {{tactic n ...}}} marker cells with the data
+ * itself, so the markers do not survive into the filled workbook. Columns are therefore located by
+ * the block's {@code "Daily pacing N"} / {@code "Monthly pacing N"} anchor label and its surviving
+ * {@code Date} / {@code Impressions} / {@code Amount} header cells — no fixed cell references, so it
  * survives rows or columns the user inserts.
  */
 public interface SheetChartDataReader {
