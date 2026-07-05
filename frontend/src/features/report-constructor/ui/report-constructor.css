@@ -103,7 +103,13 @@
 .rc-stepper__group:first-child { flex: none; }
 .rc-stepper__group:not(:first-child) { flex: 1; }
 .rc-stepper__line { flex: 1; height: 1px; background: var(--rc-connector); min-width: 14px; }
-.rc-stepper__step { display: flex; align-items: center; gap: 9px; }
+.rc-stepper__step {
+  display: flex; align-items: center; gap: 9px;
+  background: none; border: 0; padding: 4px 8px; margin: -4px -8px; border-radius: 999px;
+  font-family: var(--rc-font); cursor: default; transition: background 0.15s ease;
+}
+.rc-stepper__step--nav { cursor: pointer; }
+.rc-stepper__step--nav:hover { background: var(--rc-tint); }
 .rc-stepper__circle {
   width: 26px; height: 26px; border-radius: 999px; display: flex; align-items: center;
   justify-content: center; font-size: 13px; font-weight: 700; flex: none;
@@ -340,7 +346,6 @@
 .rc-confirm-bar__sub { color: var(--rc-mute); font-size: 14px; }
 
 /* ─────────────────────────── Screen 5 — generate ─────────────────────────── */
-.rc-gen-back { max-width: 680px; margin: 0 auto 20px; display: flex; justify-content: flex-start; }
 .rc-gen-head { max-width: 680px; margin: 0 auto; }
 .rc-gen-head__title {
   font-family: var(--rc-display); font-weight: 900; font-size: 40px; line-height: 1;
@@ -348,6 +353,7 @@
 }
 .rc-gen-head__sub { color: var(--rc-mute); font-size: 15px; margin-bottom: 28px; line-height: 1.5; }
 .rc-gen-head__sub b { color: var(--rc-slate); }
+.rc-gen-actions { display: flex; align-items: center; justify-content: center; gap: 12px; }
 
 .rc-stages { max-width: 680px; margin: 36px auto 0; border: 1px solid var(--rc-card-border); border-radius: 14px; padding: 6px 24px; text-align: left; }
 .rc-stage { display: flex; align-items: center; gap: 14px; padding: 17px 0; }

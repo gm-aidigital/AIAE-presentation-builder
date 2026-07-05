@@ -75,6 +75,9 @@ function PageInner() {
     const detectDateRangeMutation = useDetectDateRange();
 
     const [step, setStep] = useState(0);
+    // Highest step reached — the stepper lets the user jump back to any visited step.
+    const [maxStep, setMaxStep] = useState(0);
+    useEffect(() => setMaxStep((m) => Math.max(m, step)), [step]);
     const [errors, setErrors] = useState<InputErrors>(NO_ERRORS);
     const [mediaPulling, setMediaPulling] = useState(false);
     const [elevatePulling, setElevatePulling] = useState(false);
@@ -412,7 +415,12 @@ function PageInner() {
     return (
         <div className="rc-app">
             <TopBar />
-            <Stepper active={step} />
+            <Stepper
+                active={step}
+                maxReached={maxStep}
+                locked={building || genStatus === "running"}
+                onNavigate={setStep}
+            />
 
             {step === 0 && <StepReportType onContinue={() => setStep(1)} />}
 

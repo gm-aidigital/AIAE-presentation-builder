@@ -31,27 +31,31 @@ export function StepGenerate({ reportType, status, completed, resultUrl, warning
 
     return (
         <div className="rc-content rc-content--center">
-            <div className="rc-gen-back">
-                <button type="button" className="rc-btn rc-btn--outline rc-btn--sm" disabled={status === "running"} onClick={onBack}>
-                    <IconArrowLeft size={16} />
-                    Back
-                </button>
-            </div>
-
             <div className="rc-gen-head">
                 <div className="rc-gen-head__title">Ready to generate</div>
                 <p className="rc-gen-head__sub">
                     All inputs confirmed and breakdowns selected. This builds your{" "}
                     <b>{reportType}</b> report from the collected sheet.
                 </p>
-                <button
-                    type="button"
-                    className={`rc-btn rc-btn--gen${status === "running" ? " rc-btn--gen-running" : ""}`}
-                    disabled={status !== "idle"}
-                    onClick={onGenerate}
-                >
-                    {btnLabel}
-                </button>
+                <div className="rc-gen-actions">
+                    <button
+                        type="button"
+                        className="rc-btn rc-btn--outline"
+                        disabled={status === "running"}
+                        onClick={onBack}
+                    >
+                        <IconArrowLeft size={16} />
+                        Back
+                    </button>
+                    <button
+                        type="button"
+                        className={`rc-btn rc-btn--gen${status === "running" ? " rc-btn--gen-running" : ""}`}
+                        disabled={status !== "idle"}
+                        onClick={onGenerate}
+                    >
+                        {btnLabel}
+                    </button>
+                </div>
             </div>
 
             <div className="rc-stages">
