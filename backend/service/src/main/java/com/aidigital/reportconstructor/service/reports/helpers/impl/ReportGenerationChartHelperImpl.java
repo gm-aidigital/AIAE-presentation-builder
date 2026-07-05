@@ -3,6 +3,7 @@ package com.aidigital.reportconstructor.service.reports.helpers.impl;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
 import com.aidigital.reportconstructor.service.reports.dto.SheetChartData;
+import com.aidigital.reportconstructor.service.reports.engine.Pivot;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportGenerationChartHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportNumberParser;
 import com.aidigital.reportconstructor.service.reports.helpers.SheetChartDataReader;
@@ -109,8 +110,12 @@ public class ReportGenerationChartHelperImpl implements ReportGenerationChartHel
 		// KPI types drive whether each block's single metric column is read as clicks or completions.
 		SheetChartData chartData = sheetChartData.read(grid, count, kpiTypes);
 
+		log.info("[charts] sheet flow: presentation={}, tactics={}, gridRows={}, dailyPivotSizes={}, monthlyPivotSizes={}",
+				presentationId, count, grid == null ? 0 : grid.size(),
+				pivotSizes(chartData.dailyPivots()), pivotSizes(chartData.monthlyPivots()));
+
 		try {
-			return charts.buildCharts(new ChartRequest(
+			List<String> chartWarnings = charts.buildCharts(new ChartRequest(
 					presentationId,
 					List.of(),
 					List.of(),
@@ -125,10 +130,26 @@ public class ReportGenerationChartHelperImpl implements ReportGenerationChartHel
 					chartData.dailyPivots(),
 					chartData.monthlyPivots()
 			));
+			log.info("[charts] sheet flow finished for presentation {} with {} warning(s): {}",
+					presentationId, chartWarnings.size(), chartWarnings);
+			return chartWarnings;
 		} catch (RuntimeException ex) {
 			log.error("[charts] sheet chart step failed for presentation {}", presentationId, ex);
 			return List.of("Charts failed: " + ex.getMessage());
 		}
+	}
+
+	/**
+	 * Renders the per-tactic pivot row counts as a compact {@code {tactic=rows}} map for diagnostic
+	 * logging, so an empty read-back (which silently skips a chart) is visible in the logs.
+	 *
+	 * @param pivots tactic number &rarr; its reconstructed pacing pivot
+	 * @return tactic number &rarr; the pivot's data-row count
+	 */
+	Map<Integer, Integer> pivotSizes(Map<Integer, Pivot> pivots) {
+		Map<Integer, Integer> sizes = new LinkedHashMap<>();
+		pivots.forEach((n, pivot) -> sizes.put(n, pivot.data().size()));
+		return sizes;
 	}
 
 	/**
