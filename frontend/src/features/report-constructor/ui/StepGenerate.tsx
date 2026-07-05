@@ -1,5 +1,5 @@
 import type { ReportType } from "@/shared/api/types";
-import { IconCheck, IconExternalLink } from "./icons";
+import { IconCheck, IconExternalLink, IconInfo } from "./icons";
 
 const STAGES = [
     "Reading Sheets data",
@@ -17,12 +17,14 @@ interface Props {
     /** Number of stages completed (0..5). */
     completed: number;
     resultUrl: string | null;
+    /** Non-fatal warnings (e.g. per-chart build failures); the report still completes. */
+    warnings: string[];
     onGenerate(): void;
     onRunAgain(): void;
 }
 
 /** Screen 5 — trigger generation and watch per-stage status. */
-export function StepGenerate({ reportType, status, completed, resultUrl, onGenerate, onRunAgain }: Props) {
+export function StepGenerate({ reportType, status, completed, resultUrl, warnings, onGenerate, onRunAgain }: Props) {
     const isDone = status === "done";
     const btnLabel = status === "idle" ? "Generate report" : status === "running" ? "Generating…" : "Report ready";
 
@@ -82,6 +84,22 @@ export function StepGenerate({ reportType, status, completed, resultUrl, onGener
                     <button type="button" className="rc-btn rc-btn--outline rc-btn--sm" onClick={onRunAgain}>
                         Run again
                     </button>
+                </div>
+            )}
+
+            {isDone && warnings.length > 0 && (
+                <div className="rc-gen-warnings">
+                    <div className="rc-gen-warnings__head">
+                        <IconInfo size={14} />
+                        <span>{warnings.length} warning{warnings.length > 1 ? "s" : ""} while building — the report was still created</span>
+                    </div>
+                    <ul className="rc-gen-warnings__list">
+                        {warnings.map((w, i) => (
+                            <li className="rc-gen-warnings__item" key={i}>
+                                {w}
+                            </li>
+                        ))}
+                    </ul>
                 </div>
             )}
         </div>

@@ -93,6 +93,7 @@ function PageInner() {
     const [genStatus, setGenStatus] = useState<GenStatus>("idle");
     const [genStep, setGenStep] = useState(0);
     const [resultUrl, setResultUrl] = useState<string | null>(null);
+    const [resultWarnings, setResultWarnings] = useState<string[]>([]);
 
     const pollRef = useRef<number | null>(null);
     function stopPolling() {
@@ -364,6 +365,7 @@ function PageInner() {
     function generateReport() {
         if (genStatus !== "idle") return;
         setResultUrl(null);
+        setResultWarnings([]);
         setGenStatus("running");
         setGenStep(0);
         startReportJob({ ...basePayload(), target: "SLIDES_FROM_SHEET", sheetUrl: sheetUrl ?? undefined })
@@ -378,6 +380,7 @@ function PageInner() {
                             setGenStep(JOB_TOTAL);
                             setGenStatus("done");
                             setResultUrl(p.slideUrl ?? null);
+                            setResultWarnings(p.warnings ?? []);
                             showToast("Report ready!");
                         } else if (p.status === "error") {
                             stopPolling();
@@ -460,6 +463,7 @@ function PageInner() {
                     status={genStatus}
                     completed={stagesCompleted}
                     resultUrl={resultUrl}
+                    warnings={resultWarnings}
                     onGenerate={generateReport}
                     onRunAgain={runAgain}
                 />
