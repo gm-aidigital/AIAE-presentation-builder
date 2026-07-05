@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 
 /**
  * Spring bean implementation of {@link ReportJobProgressHelper}.
@@ -34,6 +35,28 @@ public class ReportJobProgressHelperImpl implements ReportJobProgressHelper {
 		job.setCreatedAt(now);
 		job.setUpdatedAt(now);
 		return jobs.save(job);
+	}
+
+	@Transactional
+	@Override
+	public void recordOwnerEmail(Long jobId, String ownerEmail) {
+		jobs.findById(jobId).ifPresent(job -> {
+			job.setOwnerEmail(ownerEmail);
+			job.setUpdatedAt(OffsetDateTime.now());
+			jobs.save(job);
+		});
+	}
+
+	@Transactional(readOnly = true)
+	@Override
+	public List<ReportJobEntity> listJobsByOwner(String userId) {
+		return jobs.findByOwnerUserIdOrderByCreatedAtDesc(userId);
+	}
+
+	@Transactional(readOnly = true)
+	@Override
+	public List<ReportJobEntity> listAllJobs() {
+		return jobs.findAllByOrderByCreatedAtDesc();
 	}
 
 	@Transactional

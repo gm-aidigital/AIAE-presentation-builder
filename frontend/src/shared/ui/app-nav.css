@@ -1,0 +1,178 @@
+/* Shared app header with the user dropdown navigation (AI Digital handoff). */
+
+.app-nav {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 32px;
+    border-bottom: 1px solid var(--rc-line);
+    background: var(--rc-white);
+    font-family: var(--rc-font);
+}
+
+.app-nav__brand {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 4px 8px;
+    margin: -4px -8px;
+    background: none;
+    border: 0;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.app-nav__brand:hover {
+    background: var(--rc-tint);
+}
+
+.app-nav__product {
+    font-weight: 700;
+    font-size: 16px;
+    color: var(--rc-ink);
+    letter-spacing: -0.02em;
+}
+
+.app-nav__right {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.app-nav__build {
+    font-family: var(--rc-mono);
+    font-size: 11px;
+    color: var(--rc-mute);
+    white-space: nowrap;
+}
+
+.app-nav__trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    background: var(--rc-white);
+    border: 1px solid var(--rc-input-border);
+    border-radius: 999px;
+    padding: 8px 14px;
+    font-family: var(--rc-font);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--rc-slate);
+    cursor: pointer;
+    transition: border-color 0.15s ease;
+}
+
+.app-nav__trigger--open {
+    border-color: var(--rc-blue);
+}
+
+.app-nav__dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--rc-lime);
+    flex: none;
+}
+
+.app-nav__name {
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.app-nav__caret {
+    font-size: 11px;
+    color: var(--rc-mute);
+    transition: transform 0.15s ease;
+}
+
+.app-nav__caret--open {
+    transform: rotate(180deg);
+}
+
+.app-nav__menu {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    width: 248px;
+    background: var(--rc-white);
+    border: 1px solid var(--rc-card-border);
+    border-radius: 14px;
+    box-shadow: var(--rc-shadow-menu);
+    overflow: hidden;
+    z-index: 50;
+}
+
+.app-nav__identity {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--rc-line-2);
+}
+
+.app-nav__identity-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--rc-ink);
+}
+
+.app-nav__identity-email {
+    margin-top: 1px;
+    font-size: 13px;
+    color: var(--rc-mute);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.app-nav__list {
+    padding: 6px;
+}
+
+.app-nav__link {
+    display: block;
+    padding: 10px 12px;
+    border-radius: 9px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--rc-slate);
+    text-decoration: none;
+    transition: background 0.15s ease;
+}
+
+.app-nav__link:hover {
+    background: var(--rc-tint);
+}
+
+.app-nav__link--active {
+    font-weight: 600;
+    color: var(--rc-blue);
+    background: var(--rc-tint);
+}
+
+.app-nav__footer {
+    padding: 6px;
+    border-top: 1px solid var(--rc-line-2);
+}
+
+.app-nav__signout {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 10px 12px;
+    border: 0;
+    border-radius: 9px;
+    background: none;
+    font-family: var(--rc-font);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--rc-type-eoc);
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.app-nav__signout:hover {
+    background: var(--rc-orange-bg);
+}

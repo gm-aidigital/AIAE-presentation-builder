@@ -24,6 +24,9 @@ public class ReportJobEntity extends IdAwareEntity {
 	@Column(name = "owner_user_id", nullable = false)
 	private String ownerUserId;
 
+	@Column(name = "owner_email")
+	private String ownerEmail;
+
 	@Column(name = "status", nullable = false)
 	private String status;
 

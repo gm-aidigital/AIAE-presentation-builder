@@ -37,6 +37,10 @@ tags:
     description: Persisted async Google Slides report generation jobs
   - name: System
     description: Build/version metadata for the running backend
+  - name: Reports
+    description: The signed-in user's own report history
+  - name: Admin
+    description: Admin-only team statistics and technical dashboard (email allow-list gated)
 
 paths:
   /api/v1/auth/me:
@@ -354,6 +358,163 @@ paths:
         "401":
           $ref: "#/components/responses/UnauthorizedV1"
 
+  /api/v1/reports:
+    get:
+      tags: [ Reports ]
+      operationId: listMyReports
+      summary: List the signed-in user's own report jobs (newest first)
+      description: |
+        Returns every report job owned by the caller's Clerk `user_id`, newest first,
+        for the "My reports" history screen. Never returns another user's reports.
+      security:
+        - bearerAuth: [ ]
+      responses:
+        "200":
+          description: The caller's report history.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportListV1"
+        "401":
+          $ref: "#/components/responses/UnauthorizedV1"
+        "403":
+          $ref: "#/components/responses/ForbiddenV1"
+        "500":
+          $ref: "#/components/responses/InternalServerErrorV1"
+
+  /api/v1/admin/stats:
+    get:
+      tags: [ Admin ]
+      operationId: getAdminStats
+      summary: Team-wide report statistics and technical health (admin only)
+      description: |
+        Aggregates the `report_jobs` table across all users into totals, a per-user
+        breakdown, counts by report type, and a 7-day volume series, plus technical
+        health counters. Authorized ONLY when the caller's email is on the server
+        `app.admin.emails` allow-list; everyone else gets 403.
+      security:
+        - bearerAuth: [ ]
+      responses:
+        "200":
+          description: Aggregated admin dashboard payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStatsV1"
+        "401":
+          $ref: "#/components/responses/UnauthorizedV1"
+        "403":
+          $ref: "#/components/responses/ForbiddenV1"
+        "500":
+          $ref: "#/components/responses/InternalServerErrorV1"
+
+  /api/v1/admin/reports:
+    get:
+      tags: [ Admin ]
+      operationId: listAllReports
+      summary: List every user's report jobs, newest first (admin only)
+      description: |
+        Team-wide report history — the same rows as "My reports" but across all
+        users, with the owner email/name on each row. Admin allow-list gated.
+      security:
+        - bearerAuth: [ ]
+      responses:
+        "200":
+          description: All report jobs, newest first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportListV1"
+        "401":
+          $ref: "#/components/responses/UnauthorizedV1"
+        "403":
+          $ref: "#/components/responses/ForbiddenV1"
+        "500":
+          $ref: "#/components/responses/InternalServerErrorV1"
+
+  /api/v1/admin/admins:
+    get:
+      tags: [ Admin ]
+      operationId: listAdmins
+      summary: List all admins — config (root) and UI-managed (admin only)
+      security:
+        - bearerAuth: [ ]
+      responses:
+        "200":
+          description: The current admins.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminListV1"
+        "401":
+          $ref: "#/components/responses/UnauthorizedV1"
+        "403":
+          $ref: "#/components/responses/ForbiddenV1"
+        "500":
+          $ref: "#/components/responses/InternalServerErrorV1"
+    post:
+      tags: [ Admin ]
+      operationId: addAdmin
+      summary: Grant admin access to an email (admin only)
+      security:
+        - bearerAuth: [ ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddAdminRequestV1"
+      responses:
+        "200":
+          description: The updated admin list after the grant.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminListV1"
+        "400":
+          $ref: "#/components/responses/BadRequestV1"
+        "401":
+          $ref: "#/components/responses/UnauthorizedV1"
+        "403":
+          $ref: "#/components/responses/ForbiddenV1"
+        "500":
+          $ref: "#/components/responses/InternalServerErrorV1"
+
+  /api/v1/admin/admins/{email}:
+    delete:
+      tags: [ Admin ]
+      operationId: removeAdmin
+      summary: Revoke a UI-managed admin grant (admin only)
+      description: |
+        Revokes a managed admin. Config (root) admins from `app.admin.emails`
+        cannot be removed here and return 400.
+      security:
+        - bearerAuth: [ ]
+      parameters:
+        - in: path
+          name: email
+          required: true
+          schema:
+            type: string
+          description: Email of the managed admin to revoke (URL-encoded).
+      responses:
+        "200":
+          description: The updated admin list after the revoke.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminListV1"
+        "400":
+          $ref: "#/components/responses/BadRequestV1"
+        "401":
+          $ref: "#/components/responses/UnauthorizedV1"
+        "403":
+          $ref: "#/components/responses/ForbiddenV1"
+        "404":
+          $ref: "#/components/responses/NotFoundV1"
+        "500":
+          $ref: "#/components/responses/InternalServerErrorV1"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -401,12 +562,16 @@ components:
     UserV1:
       type: object
       required: [ user_id, email ]
-      # Baseline payload carries identity only. Add a roles array here ONLY when
-      # the product introduces server-side role authorization.
+      # Baseline payload carries identity plus a single server-computed admin flag.
+      # `is_admin` is derived from the `app.admin.emails` allow-list and is the only
+      # authorization signal the client may trust for showing the admin surface.
       properties:
         user_id: { type: string, description: "Clerk user id (sub/user_id claim)" }
         email: { type: string, format: email }
         full_name: { type: string }
+        is_admin:
+          type: boolean
+          description: "True when the caller's email is on the server admin allow-list. Gates the Dashboard nav item and the /admin API."
 
     ApiErrorV1:
       type: object
@@ -800,6 +965,116 @@ components:
           description: Non-fatal warnings (chart/share failures); the job still completes.
           items: { type: string }
         error: { type: string, description: "Error message when status=error." }
+
+    # ── My reports (report history) ─────────────────────────────────────────────
+    ReportListV1:
+      type: object
+      required: [ total, reports ]
+      properties:
+        total: { type: integer, format: int32, description: "Number of reports the caller owns." }
+        reports:
+          type: array
+          items: { $ref: "#/components/schemas/ReportSummaryV1" }
+
+    ReportSummaryV1:
+      type: object
+      required: [ jobId, status, title, createdAt ]
+      properties:
+        jobId: { type: integer, format: int64 }
+        type: { type: string, description: "Report type code (e.g. EOM/EOC), when known." }
+        status: { $ref: "#/components/schemas/ReportJobStatusV1" }
+        title: { type: string, description: "Human-friendly report name for the row." }
+        createdAt: { type: string, format: date-time }
+        slideUrl: { type: string, description: "Generated artifact URL when the job is done." }
+        ownerEmail: { type: string, description: "Report owner email — populated only for the admin all-reports view." }
+        ownerName: { type: string, description: "Report owner display name — populated only for the admin all-reports view." }
+
+    # ── Admin management (admins by email) ──────────────────────────────────────
+    AdminSourceV1:
+      type: string
+      description: |
+        Where an admin grant comes from. `config` = the server `app.admin.emails`
+        allow-list (root admins, not removable via UI). `managed` = added through
+        the admin UI (stored in the DB, removable).
+      enum: [ config, managed ]
+
+    AdminListV1:
+      type: object
+      required: [ admins ]
+      properties:
+        admins:
+          type: array
+          items: { $ref: "#/components/schemas/AdminEntryV1" }
+
+    AdminEntryV1:
+      type: object
+      required: [ email, source, removable ]
+      properties:
+        email: { type: string }
+        source: { $ref: "#/components/schemas/AdminSourceV1" }
+        addedByEmail: { type: string, description: "Who granted this admin (managed entries only)." }
+        createdAt: { type: string, format: date-time, description: "When the grant was created (managed entries only)." }
+        removable: { type: boolean, description: "True when this grant can be revoked via the UI (managed only)." }
+
+    AddAdminRequestV1:
+      type: object
+      required: [ email ]
+      properties:
+        email: { type: string, description: "Email to grant admin access to." }
+
+    # ── Admin dashboard (team statistics + technical health) ────────────────────
+    AdminStatsV1:
+      type: object
+      required: [ updatedAt, totals, byUser, byType, weekly ]
+      properties:
+        updatedAt: { type: string, format: date-time, description: "When the aggregation was computed." }
+        totals: { $ref: "#/components/schemas/AdminTotalsV1" }
+        byUser:
+          type: array
+          items: { $ref: "#/components/schemas/AdminUserStatV1" }
+        byType:
+          type: array
+          items: { $ref: "#/components/schemas/AdminTypeStatV1" }
+        weekly:
+          type: array
+          description: "Report volume for each of the last 7 days, oldest first."
+          items: { $ref: "#/components/schemas/AdminDayVolumeV1" }
+
+    AdminTotalsV1:
+      type: object
+      required: [ reportsTotal, thisMonth, activeUsers, running, failed ]
+      properties:
+        reportsTotal: { type: integer, format: int32, description: "All report jobs ever created." }
+        thisMonth: { type: integer, format: int32, description: "Jobs created in the current calendar month." }
+        activeUsers: { type: integer, format: int32, description: "Distinct users who created a report." }
+        running: { type: integer, format: int32, description: "Jobs currently queued or running (technical)." }
+        failed: { type: integer, format: int32, description: "Jobs that ended in error (technical)." }
+
+    AdminUserStatV1:
+      type: object
+      required: [ email, name, total, thisMonth ]
+      properties:
+        userId: { type: string }
+        email: { type: string }
+        name: { type: string, description: "Display name (falls back to the email local part)." }
+        total: { type: integer, format: int32 }
+        thisMonth: { type: integer, format: int32 }
+        lastActivity: { type: string, format: date-time, description: "Timestamp of the user's most recent report." }
+
+    AdminTypeStatV1:
+      type: object
+      required: [ type, count ]
+      properties:
+        type: { type: string, description: "Report type code (uppercased); 'OTHER' when unknown." }
+        count: { type: integer, format: int32 }
+
+    AdminDayVolumeV1:
+      type: object
+      required: [ date, label, count ]
+      properties:
+        date: { type: string, format: date }
+        label: { type: string, description: "Short weekday label, e.g. 'Mon'." }
+        count: { type: integer, format: int32 }
 
     VersionV1:
       type: object

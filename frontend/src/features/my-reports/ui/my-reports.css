@@ -1,0 +1,172 @@
+/* Screen 6 — My reports (report history). AI Digital handoff, 920px card. */
+
+.mr {
+    padding: 48px 40px 96px;
+}
+
+.mr__card {
+    width: 920px;
+    max-width: 100%;
+    margin: 0 auto;
+    background: var(--rc-white);
+    border: 1px solid var(--rc-card-border);
+    border-radius: 18px;
+    box-shadow: var(--rc-shadow-frame);
+    padding: 36px 40px 40px;
+}
+
+.mr__head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 28px;
+}
+
+.mr__title {
+    margin: 0 0 5px;
+    font-family: var(--rc-font);
+    font-weight: 700;
+    font-size: 26px;
+    letter-spacing: -0.02em;
+    color: var(--rc-ink);
+}
+
+.mr__subtitle {
+    margin: 0;
+    font-size: 15px;
+    color: var(--rc-mute);
+}
+
+.mr__subtitle b {
+    color: var(--rc-slate);
+    font-weight: 600;
+}
+
+.mr__new {
+    flex: none;
+    padding: 13px 24px;
+    border: 0;
+    border-radius: 56px;
+    background: var(--rc-blue);
+    color: var(--rc-white);
+    font-family: var(--rc-font);
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: -0.02em;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s ease;
+}
+
+.mr__new:hover {
+    background: var(--rc-blue-hover);
+}
+
+.mr__list {
+    border: 1px solid var(--rc-connector);
+    border-radius: 14px;
+    overflow: hidden;
+}
+
+.mr__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 18px 22px;
+    background: var(--rc-white);
+}
+
+.mr__row + .mr__row {
+    border-top: 1px solid var(--rc-line-2);
+}
+
+.mr__left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-width: 0;
+    flex: 1;
+}
+
+.mr-badge {
+    flex: none;
+    min-width: 64px;
+    text-align: center;
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-family: var(--rc-display);
+    font-weight: 900;
+    font-size: 13px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--rc-white);
+}
+
+.mr-badge--eom {
+    background: var(--rc-type-eom);
+}
+
+.mr-badge--eoc {
+    background: var(--rc-type-eoc);
+}
+
+.mr-badge--excel {
+    background: var(--rc-type-excel);
+}
+
+.mr-badge--agenda {
+    background: var(--rc-type-agenda);
+}
+
+.mr__meta {
+    min-width: 0;
+}
+
+.mr__name {
+    font-weight: 600;
+    font-size: 15px;
+    color: var(--rc-ink);
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mr__sub {
+    margin-top: 2px;
+    font-size: 13px;
+    color: var(--rc-mute);
+}
+
+.mr__actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: none;
+}
+
+.mr__open {
+    padding: 10px 20px;
+    border: 0;
+    border-radius: 56px;
+    background: var(--rc-blue);
+    color: var(--rc-white);
+    font-family: var(--rc-font);
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: -0.02em;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s ease;
+}
+
+.mr__open:hover:not(:disabled) {
+    background: var(--rc-blue-hover);
+}
+
+.mr__open:disabled {
+    background: var(--rc-btn-disabled);
+    cursor: default;
+}

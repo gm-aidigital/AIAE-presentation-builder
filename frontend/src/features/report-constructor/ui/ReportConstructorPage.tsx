@@ -14,7 +14,6 @@ import { StepGenerate, type GenStatus } from "./StepGenerate";
 import { StepReportType } from "./StepReportType";
 import { StepReviewSheet, type ReviewRow } from "./StepReviewSheet";
 import { ToastProvider, useToast } from "./ToastContext";
-import { TopBar } from "./TopBar";
 import "./report-constructor.css";
 
 const DEFAULT_BREAKDOWNS: BreakdownState = { tp: false, ca: false, geo: false, aud: false, dev: false };
@@ -458,7 +457,6 @@ function PageInner() {
 
     return (
         <div className="rc-app">
-            <TopBar />
             <Stepper
                 active={step}
                 maxReached={maxStep}

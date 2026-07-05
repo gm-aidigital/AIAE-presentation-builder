@@ -79,6 +79,11 @@ app:
   clerk:
     secret-key: ${CLERK_SECRET_KEY:}
     google-provider: ${CLERK_GOOGLE_PROVIDER:oauth_google}
+  # Admin dashboard allow-list. Comma-separated emails granted the Dashboard
+  # section and the /api/v1/admin/* API. Grant/revoke by editing APP_ADMIN_EMAILS
+  # (or this default) and redeploying — there is no in-app role store.
+  admin:
+    emails: ${APP_ADMIN_EMAILS:alex.turner@aidigital.com}
   security:
     cors:
       allowed-origins: "${APP_SECURITY_CORS_ALLOWED_ORIGINS:https://*.replit.dev,https://*.repl.co,http://localhost:5173,http://localhost:5000}"

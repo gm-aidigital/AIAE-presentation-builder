@@ -1,0 +1,56 @@
+/*
+ * AI Digital design-system tokens (blue-forward B2B handoff).
+ * Shared across the app shell, My reports, and Admin dashboard so every area
+ * speaks the same palette/typography. The Report Constructor feature keeps its
+ * own identical copy for isolation; keep the two in sync if you change a value.
+ */
+:root {
+    --rc-white: #fff;
+    --rc-gray-wash: #F2F1F3;
+    --rc-blue: #0009DC;
+    --rc-blue-hover: #0007B4;
+    --rc-tint: #F5F5FE;
+    --rc-tint-2: #E5E6FB;
+    --rc-lime: #AEF33E;
+    --rc-ink: #0B0B0B;
+    --rc-slate: #33344A;
+    --rc-mute: #80808E;
+    --rc-disabled: #B5B7E0;
+    --rc-canvas: #EAEAEF;
+    --rc-sheet-head: #F7F7FA;
+    --rc-row-foot: #FAFAFC;
+    --rc-card-border: #E7E7EC;
+    --rc-input-border: #E1E1E8;
+    --rc-line: #F0F0F3;
+    --rc-line-2: #F2F2F5;
+    --rc-line-3: #F6F6F8;
+    --rc-connector: #EDEDF1;
+    --rc-todo: #E4E4EA;
+    --rc-orange: #FF642D;
+    --rc-orange-bg: #FFF1EB;
+    --rc-success-bg: #F3FBE8;
+    --rc-success-border: #DDEFC0;
+    --rc-btn-disabled: #B9BEE8;
+
+    /* Report-type accent colors (badges, dots, bars). */
+    --rc-type-eom: #0009DC;
+    --rc-type-eoc: #F0348E;
+    --rc-type-excel: #1B8F5A;
+    --rc-type-agenda: #B07FFF;
+
+    /* By-user avatar rotation palette. */
+    --rc-avatar-1: #0009DC;
+    --rc-avatar-2: #F0348E;
+    --rc-avatar-3: #1B8F5A;
+    --rc-avatar-4: #00B5FF;
+    --rc-avatar-5: #B07FFF;
+    --rc-avatar-6: #FF642D;
+
+    --rc-font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --rc-display: "Barlow Semi Condensed", "Inter", sans-serif;
+    --rc-mono: ui-monospace, Menlo, Monaco, "DM Mono", monospace;
+
+    --rc-shadow-frame: 0 18px 50px rgba(0, 9, 220, 0.06);
+    --rc-shadow-card: 0 8px 24px rgba(0, 9, 220, 0.10);
+    --rc-shadow-menu: 0 18px 50px rgba(0, 9, 220, 0.14);
+}

@@ -2,6 +2,8 @@ package com.aidigital.reportconstructor.service.reports.helpers;
 
 import com.aidigital.reportconstructor.domain.reports.entities.ReportJobEntity;
 
+import java.util.List;
+
 /**
  * Persists report-job lifecycle transitions and enforces ownership when loading jobs for progress polling.
  */
@@ -15,6 +17,30 @@ public interface ReportJobProgressHelper {
 	 * @return the persisted job ready for async processing
 	 */
 	ReportJobEntity createQueuedJob(String userId, String reportTypeCode);
+
+	/**
+	 * Stamps the owner's email onto an existing job so the admin dashboard can show a
+	 * per-user breakdown; a no-op when the job no longer exists.
+	 *
+	 * @param jobId      id of the job to stamp
+	 * @param ownerEmail lowercased email of the report owner
+	 */
+	void recordOwnerEmail(Long jobId, String ownerEmail);
+
+	/**
+	 * Lists a single owner's jobs, newest first, for the "My reports" history screen.
+	 *
+	 * @param userId internal owner id whose jobs are listed
+	 * @return the owner's jobs ordered newest first
+	 */
+	List<ReportJobEntity> listJobsByOwner(String userId);
+
+	/**
+	 * Lists every job, newest first, for team-wide admin aggregation.
+	 *
+	 * @return all jobs ordered newest first
+	 */
+	List<ReportJobEntity> listAllJobs();
 
 	/**
 	 * Moves a job to {@code running} at the given pipeline step and updates its progress label.

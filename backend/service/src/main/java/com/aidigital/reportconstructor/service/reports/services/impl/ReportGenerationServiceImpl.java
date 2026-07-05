@@ -81,6 +81,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 			throw new AppException(ErrorReason.C002, "Sheet URL is required for the slides-from-sheet flow");
 		}
 		ReportJobEntity job = enqueue(userId, payload);
+		jobProgress.recordOwnerEmail(job.getId(), userEmail);
 		self.getObject().run(job.getId(), payload, clerkUserId, userEmail, target);
 		return job;
 	}

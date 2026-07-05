@@ -4,6 +4,7 @@ import com.aidigital.reportconstructor.api.v1.model.UserV1;
 import com.aidigital.reportconstructor.config.ApplicationMapperConfig;
 import com.aidigital.reportconstructor.service.common.security.AppUser;
 import org.mapstruct.Mapper;
+import org.mapstruct.Mapping;
 
 /**
  * Maps the service-layer {@link AppUser} to the API {@link UserV1} payload so
@@ -16,7 +17,9 @@ public interface UserMapper {
 	 * Converts the caller context into the API user payload.
 	 *
 	 * @param appUser authenticated caller context
-	 * @return API user payload (identity only; no baseline roles)
+	 * @param isAdmin whether the caller's email is on the admin allow-list
+	 * @return API user payload (identity plus the server-computed admin flag)
 	 */
-	UserV1 toUserV1(AppUser appUser);
+	@Mapping(target = "isAdmin", source = "isAdmin")
+	UserV1 toUserV1(AppUser appUser, boolean isAdmin);
 }

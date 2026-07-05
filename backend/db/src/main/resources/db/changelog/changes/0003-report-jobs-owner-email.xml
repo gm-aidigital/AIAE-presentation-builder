@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Adds the report owner's email to report_jobs so the admin dashboard can show a
+  per-user breakdown without joining another table. Nullable: pre-existing rows
+  keep a null email and the aggregation falls back to the owner_user_id.
+-->
+<databaseChangeLog
+		xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+		xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+		xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+	<changeSet id="report-jobs-owner-email" author="agent">
+		<addColumn tableName="report_jobs">
+			<column name="owner_email" type="TEXT"/>
+		</addColumn>
+	</changeSet>
+
+</databaseChangeLog>
