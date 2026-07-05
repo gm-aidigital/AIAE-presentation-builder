@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { MEDIA_PLAN_FALLBACK_TAB, MEDIA_PLAN_PRIMARY_TAB, readSheetTab } from "@/shared/api/sheets";
-import type { GenerateRequest, LineItemMatchResult, Rows2D } from "@/shared/api/types";
+import { MEDIA_PLAN_FALLBACK_TAB, MEDIA_PLAN_PRIMARY_TAB, readSheetSummary, readSheetTab } from "@/shared/api/sheets";
+import type { GenerateRequest, LineItemMatchResult, Rows2D, SheetSummaryRow } from "@/shared/api/types";
 import { WizardProvider, useWizard } from "@/shared/wizard/WizardContext";
 import { extractTacticBudgets, type TacticBudget } from "../lib/mediaPlanBudget";
 import { useDetectDateRange } from "../api/useDetectDateRange";
@@ -91,6 +91,9 @@ function PageInner() {
     // Sheet-assembly (target=SHEET) job → produces the review sheet.
     const [building, setBuilding] = useState(false);
     const [sheetUrl, setSheetUrl] = useState<string | null>(null);
+    // Per-tactic plan/fact figures read back from the assembled sheet's summary table.
+    const [summaryRows, setSummaryRows] = useState<SheetSummaryRow[] | null>(null);
+    const [summaryLoading, setSummaryLoading] = useState(false);
 
     // Final report (target=SLIDES_FROM_SHEET) job → produces the deck from the sheet.
     const [genStatus, setGenStatus] = useState<GenStatus>("idle");
@@ -292,17 +295,22 @@ function PageInner() {
     const reviewRows: ReviewRow[] = useMemo(
         () =>
             (w.mapping ?? []).map((m, i) => {
+                const s = summaryRows?.[i] ?? null;
                 const b = budgets[i] ?? null;
+                const planSpend = b && b.amount > 0 ? usd.format(Math.round(b.amount)) : null;
+                const planImps = b && b.units > 0 ? grouped.format(Math.round(b.units)) : null;
                 return {
                     tactic: m.tacticName,
                     lineId: m.lineItemId ?? null,
-                    spend: b && b.amount > 0 ? usd.format(Math.round(b.amount)) : null,
-                    impressions: b && b.units > 0 ? grouped.format(Math.round(b.units)) : null,
-                    clicks: null,
-                    ctr: null,
+                    // Prefer the numbers the generated sheet actually carries; fall back to the
+                    // plan parsed from the media plan while the summary is still loading.
+                    spendPlan: s?.spendPlan ?? planSpend,
+                    spendFact: s?.spendFact ?? null,
+                    impressionsPlan: s?.impressionsPlan ?? planImps,
+                    impressionsFact: s?.impressionsFact ?? null,
                 };
             }),
-        [w.mapping, budgets]
+        [w.mapping, budgets, summaryRows]
     );
 
     function toggleBreakdown(tacticNum: number, id: BreakdownId) {
@@ -332,10 +340,32 @@ function PageInner() {
         };
     }
 
+    // Reads the assembled sheet's summary table so the review step shows the plan/fact
+    // figures the sheet actually carries — re-run to pick up manual edits made in Google
+    // Sheets. Non-fatal on the initial (silent) load: the table falls back to the plan
+    // figures parsed from the media plan. `announce` surfaces a toast for manual refreshes.
+    async function loadSummary(url: string, announce = false) {
+        setSummaryLoading(true);
+        try {
+            setSummaryRows(await readSheetSummary(url));
+            if (announce) showToast("Values refreshed from the sheet");
+        } catch (e) {
+            console.warn("sheet summary:", e);
+            if (announce) showToast(e instanceof Error ? e.message : "Refresh failed", true);
+        } finally {
+            setSummaryLoading(false);
+        }
+    }
+
+    function refreshSummary() {
+        if (sheetUrl && !summaryLoading) void loadSummary(sheetUrl, true);
+    }
+
     // Build the collected Google Sheet (step 3 → 4).
     function buildSheet() {
         if (building) return;
         setBuilding(true);
+        setSummaryRows(null);
         startReportJob({ ...basePayload(), target: "SHEET" })
             .then((jobId) => {
                 pollRef.current = window.setInterval(async () => {
@@ -348,6 +378,7 @@ function PageInner() {
                             setSheetUrl(p.slideUrl ?? null);
                             setStep(3);
                             showToast("Sheet assembled — review it");
+                            if (p.slideUrl) void loadSummary(p.slideUrl);
                         } else if (p.status === "error") {
                             stopPolling();
                             setBuilding(false);
@@ -465,6 +496,8 @@ function PageInner() {
                     reportType={w.reportType}
                     sheetUrl={sheetUrl}
                     rows={reviewRows}
+                    refreshing={summaryLoading}
+                    onRefresh={refreshSummary}
                     onConfirm={() => setStep(4)}
                     onBack={() => setStep(2)}
                 />

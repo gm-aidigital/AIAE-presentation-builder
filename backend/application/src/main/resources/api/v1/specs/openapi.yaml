@@ -99,6 +99,41 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerErrorV1"
 
+  /api/v1/sheets/summary:
+    post:
+      tags: [ DataSource ]
+      operationId: readSheetSummary
+      summary: Read back the per-tactic summary table from a generated report workbook
+      description: |
+        Reads the per-tactic summary table (anchored by its `Tactic name` header) off
+        the generated workbook's first tab and returns each tactic's plan/fact figures
+        (impressions and spend) as already-formatted strings. Used by the review step
+        to show the numbers the sheet actually carries instead of re-deriving them on
+        the client. The signed-in user must have read access to the workbook.
+      security:
+        - bearerAuth: [ ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SheetSummaryRequestV1"
+      responses:
+        "200":
+          description: Per-tactic summary rows read from the workbook.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SheetSummaryResultV1"
+        "400":
+          $ref: "#/components/responses/BadRequestV1"
+        "401":
+          $ref: "#/components/responses/UnauthorizedV1"
+        "403":
+          $ref: "#/components/responses/ForbiddenV1"
+        "500":
+          $ref: "#/components/responses/InternalServerErrorV1"
+
   /api/v1/google/status:
     get:
       tags: [ DataSource ]
@@ -530,6 +565,42 @@ components:
           items:
             type: array
             items: { type: string }
+
+    SheetSummaryRequestV1:
+      type: object
+      description: |
+        Request to read back the per-tactic summary table from a generated report
+        workbook (the sheet produced by the `target=SHEET` job). Only the workbook
+        URL is needed — the server reads the summary table off the workbook's first
+        tab as the signed-in user.
+      required: [ sheetUrl ]
+      properties:
+        sheetUrl:
+          type: string
+          description: "Full Google Sheets URL of the generated report workbook."
+
+    SheetSummaryRowV1:
+      type: object
+      description: |
+        One tactic's plan/fact figures as they appear in the generated workbook's
+        summary table. Values are already-formatted display strings taken verbatim
+        from the sheet; a field is null when that cell was never filled.
+      properties:
+        tactic: { type: string, nullable: true, description: "Tactic name." }
+        impressionsPlan: { type: string, nullable: true, description: "Planned impressions." }
+        impressionsFact: { type: string, nullable: true, description: "Delivered (fact) impressions." }
+        spendPlan: { type: string, nullable: true, description: "Planned spend." }
+        spendFact: { type: string, nullable: true, description: "Delivered (fact) spend." }
+
+    SheetSummaryResultV1:
+      type: object
+      description: Per-tactic summary rows read back from the generated report workbook.
+      required: [ rows ]
+      properties:
+        rows:
+          type: array
+          description: One entry per tactic, in the workbook's summary-table order.
+          items: { $ref: "#/components/schemas/SheetSummaryRowV1" }
 
     # ── LineItemMatching ─────────────────────────────────────────────────────────
     LineItemMatchRequestV1:

@@ -4,11 +4,14 @@ import com.aidigital.reportconstructor.api.v1.DataSourceApi;
 import com.aidigital.reportconstructor.api.v1.model.GoogleConnectionStatusV1;
 import com.aidigital.reportconstructor.api.v1.model.SheetReadRequestV1;
 import com.aidigital.reportconstructor.api.v1.model.SheetReadResultV1;
+import com.aidigital.reportconstructor.api.v1.model.SheetSummaryRequestV1;
+import com.aidigital.reportconstructor.api.v1.model.SheetSummaryResultV1;
 import com.aidigital.reportconstructor.reports.mappers.DataSourceApiMapper;
 import com.aidigital.reportconstructor.security.AppUserFactory;
 import com.aidigital.reportconstructor.service.common.error.AppException;
 import com.aidigital.reportconstructor.service.common.error.ErrorReason;
 import com.aidigital.reportconstructor.service.reports.ports.SheetQueryService;
+import com.aidigital.reportconstructor.service.reports.services.SheetSummaryQueryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -22,6 +25,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class DataSourceController implements DataSourceApi {
 
 	private final SheetQueryService sheetQuery;
+	private final SheetSummaryQueryService sheetSummaryQuery;
 	private final DataSourceApiMapper mapper;
 	private final AppUserFactory appUserFactory;
 
@@ -45,5 +49,12 @@ public class DataSourceController implements DataSourceApi {
 			}
 			throw ex;
 		}
+	}
+
+	@Override
+	public ResponseEntity<SheetSummaryResultV1> readSheetSummary(SheetSummaryRequestV1 body) {
+		var caller = appUserFactory.from(SecurityContextHolder.getContext().getAuthentication());
+		return ResponseEntity.ok(mapper.toSummary(
+				sheetSummaryQuery.readSummary(body.getSheetUrl(), caller.userId())));
 	}
 }

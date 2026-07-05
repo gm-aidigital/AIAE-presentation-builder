@@ -1,7 +1,7 @@
 // Sheet-read helpers shared by the two wizard connect steps. Tab-name literals
 // are load-bearing constants (exact spelling/case matters — see fidelity rules).
 import { apiClient } from "./client";
-import type { SheetReadResult } from "./types";
+import type { SheetReadResult, SheetSummaryRow } from "./types";
 
 export const MEDIA_PLAN_PRIMARY_TAB = "Proposal";
 // Workbooks without a "Proposal" tab (e.g. RFP exports) keep the media plan on the
@@ -37,4 +37,23 @@ export async function readSheetTab(url: string, tab: string): Promise<SheetReadR
         );
     }
     return data;
+}
+
+/**
+ * Reads the per-tactic summary table (plan/fact impressions and spend) back from a
+ * generated report workbook via POST /sheets/summary. The server locates the table on
+ * the workbook's first tab, so the caller only supplies the workbook URL. Throws on
+ * transport/HTTP failure; returns one row per tactic in summary-table order.
+ */
+export async function readSheetSummary(sheetUrl: string): Promise<SheetSummaryRow[]> {
+    const { data, error } = await apiClient.POST("/api/v1/sheets/summary", {
+        body: { sheetUrl: sheetUrl.trim() },
+    });
+    if (error || !data) {
+        const backendMsg =
+            (error as { message?: string } | undefined)?.message?.trim() ||
+            (data as { message?: string } | undefined)?.message?.trim();
+        throw new Error(backendMsg || "Couldn't read the generated sheet's summary table.");
+    }
+    return data.rows ?? [];
 }

@@ -317,9 +317,17 @@
 .rc-banner__sub { color: var(--rc-mute); font-size: 14px; margin-top: 1px; }
 .rc-banner__link { display: inline-flex; align-items: center; gap: 5px; font-size: 14px; font-weight: 600; color: var(--rc-blue); white-space: nowrap; }
 .rc-banner__link:hover { text-decoration: underline; }
+.rc-banner__actions { display: flex; align-items: center; gap: 14px; flex: none; }
+.rc-banner__btn {
+  display: inline-flex; align-items: center; gap: 5px; font-size: 14px; font-weight: 600; white-space: nowrap;
+  color: var(--rc-blue); background: var(--white); border: 1px solid var(--rc-tint-2); border-radius: 8px;
+  padding: 6px 12px; cursor: pointer;
+}
+.rc-banner__btn:hover:not(:disabled) { background: var(--rc-tint); }
+.rc-banner__btn:disabled { opacity: 0.6; cursor: default; }
 
 .rc-sheet { border: 1px solid var(--rc-input-border); border-radius: 12px; overflow: hidden; }
-.rc-sheet__grid { display: grid; grid-template-columns: 1.7fr 1fr 1fr 1.2fr 1fr 0.9fr; }
+.rc-sheet__grid { display: grid; grid-template-columns: 1.6fr 0.9fr 1fr 1fr 1.1fr 1.1fr; }
 .rc-sheet__head {
   padding: 12px 16px; font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
   color: var(--rc-mute); background: var(--rc-sheet-head);

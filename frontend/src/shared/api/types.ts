@@ -6,6 +6,8 @@ type S = components["schemas"];
 
 export type SheetReadRequest = S["SheetReadRequestV1"];
 export type SheetReadResult = S["SheetReadResultV1"];
+export type SheetSummaryResult = S["SheetSummaryResultV1"];
+export type SheetSummaryRow = S["SheetSummaryRowV1"];
 export type LineItemMatchRequest = S["LineItemMatchRequestV1"];
 export type LineItemMatchResult = S["LineItemMatchResultV1"];
 export type MappingEntry = S["MappingEntryV1"];

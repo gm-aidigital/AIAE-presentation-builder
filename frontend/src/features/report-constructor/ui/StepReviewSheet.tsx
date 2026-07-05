@@ -1,21 +1,24 @@
 import { Fragment } from "react";
 import type { ReportType } from "@/shared/api/types";
-import { IconArrowLeft, IconCheck, IconExternalLink, IconSheet } from "./icons";
+import { IconArrowLeft, IconCheck, IconExternalLink, IconRefresh, IconSheet, IconSpinner } from "./icons";
 
 export interface ReviewRow {
     tactic: string;
     /** null → render a "needs input" pill. */
     lineId: string | null;
-    spend: string | null;
-    impressions: string | null;
-    clicks: string | null;
-    ctr: string | null;
+    spendPlan: string | null;
+    spendFact: string | null;
+    impressionsPlan: string | null;
+    impressionsFact: string | null;
 }
 
 interface Props {
     reportType: ReportType;
     sheetUrl: string | null;
     rows: ReviewRow[];
+    /** True while the summary figures are being re-read from the sheet. */
+    refreshing: boolean;
+    onRefresh(): void;
     onConfirm(): void;
     onBack(): void;
 }
@@ -30,7 +33,7 @@ function Cell({ value, addLabel }: { value: string | null; addLabel: string }) {
 }
 
 /** Screen 4 — review the assembled Google Sheet, fill gaps, confirm. */
-export function StepReviewSheet({ reportType, sheetUrl, rows, onConfirm, onBack }: Props) {
+export function StepReviewSheet({ reportType, sheetUrl, rows, refreshing, onRefresh, onConfirm, onBack }: Props) {
     return (
         <div className="rc-content">
             <div className="rc-section-head">
@@ -50,14 +53,26 @@ export function StepReviewSheet({ reportType, sheetUrl, rows, onConfirm, onBack 
                 <div className="rc-banner__text">
                     <div className="rc-banner__title">{reportType}_Report · data collected</div>
                     <div className="rc-banner__sub">
-                        {rows.length} tactic{rows.length === 1 ? "" : "s"} · orange cells still need your input
+                        {rows.length} tactic{rows.length === 1 ? "" : "s"} · edited values in Sheets? Refresh to pull
+                        them in
                     </div>
                 </div>
                 {sheetUrl && (
-                    <a className="rc-banner__link" href={sheetUrl} target="_blank" rel="noreferrer">
-                        Open in Sheets
-                        <IconExternalLink size={14} />
-                    </a>
+                    <div className="rc-banner__actions">
+                        <button
+                            type="button"
+                            className="rc-banner__btn"
+                            onClick={onRefresh}
+                            disabled={refreshing}
+                        >
+                            {refreshing ? <IconSpinner size={14} /> : <IconRefresh size={14} />}
+                            {refreshing ? "Refreshing…" : "Refresh"}
+                        </button>
+                        <a className="rc-banner__link" href={sheetUrl} target="_blank" rel="noreferrer">
+                            Open in Sheets
+                            <IconExternalLink size={14} />
+                        </a>
+                    </div>
                 )}
             </div>
 
@@ -65,10 +80,10 @@ export function StepReviewSheet({ reportType, sheetUrl, rows, onConfirm, onBack 
                 <div className="rc-sheet__grid">
                     <div className="rc-sheet__head">Tactic</div>
                     <div className="rc-sheet__head">Line ID</div>
-                    <div className="rc-sheet__head">Spend</div>
-                    <div className="rc-sheet__head">Impressions</div>
-                    <div className="rc-sheet__head">Clicks</div>
-                    <div className="rc-sheet__head">CTR</div>
+                    <div className="rc-sheet__head">Spend (Plan)</div>
+                    <div className="rc-sheet__head">Spend (Fact)</div>
+                    <div className="rc-sheet__head">Impressions (Plan)</div>
+                    <div className="rc-sheet__head">Impressions (Fact)</div>
 
                     {rows.map((r, i) => (
                         // Cells are direct grid children so columns line up; tactic labels repeat
@@ -76,10 +91,10 @@ export function StepReviewSheet({ reportType, sheetUrl, rows, onConfirm, onBack 
                         <Fragment key={i}>
                             <div className="rc-sheet__cell rc-sheet__cell--name">{r.tactic}</div>
                             <Cell value={r.lineId} addLabel="add ID" />
-                            <Cell value={r.spend} addLabel="add" />
-                            <Cell value={r.impressions} addLabel="add" />
-                            <Cell value={r.clicks} addLabel="add" />
-                            <Cell value={r.ctr} addLabel="add" />
+                            <Cell value={r.spendPlan} addLabel="add" />
+                            <Cell value={r.spendFact} addLabel="add" />
+                            <Cell value={r.impressionsPlan} addLabel="add" />
+                            <Cell value={r.impressionsFact} addLabel="add" />
                         </Fragment>
                     ))}
                 </div>
