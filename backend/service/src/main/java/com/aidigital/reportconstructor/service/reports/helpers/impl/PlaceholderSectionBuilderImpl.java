@@ -94,12 +94,10 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		totals.put("{{total spend}}", campaignResolvers.resolveTotalInvestment(sheet, adj, data));
 		sections.add(buildPreviewSection("Summary Metrics", totals));
 
-		for (int n = 1; n <= 6; n++) {
+		for (int n = 1; n <= 7; n++) {
 			sections.add(buildPreviewSection("Tactic " + n,
 					buildFullTacticSection(n, sheet, adj, data, ccB, ccC, mediaTactics, payload.marketVolume())));
 		}
-		sections.add(buildPreviewSection("Tactic 7",
-				buildShortTacticSection(7, sheet, adj, data, ccB, ccC, mediaTactics)));
 
 		sections.add(buildPreviewSection("Optimization Recommendations",
 				campaignResolvers.resolveRecommendations(sheet, adj, ccC.recommendations())));
@@ -154,42 +152,6 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 				data));
 		m.put("{{tactic " + n + " top creative clicks}}", tacticResolvers.resolveTacticTopCreativeClicks(n, sheet, adj
 				, data));
-		return m;
-	}
-
-	Map<String, Resolved> buildShortTacticSection(
-			int n, List<List<String>> sheet, List<List<String>> adj, CampaignData data,
-			ClaudeTactical ccB, ClaudeResults ccC, List<String> mediaTactics
-	) {
-		Resolved info = resolveTacticName(n, sheet, adj, mediaTactics);
-		String tacticName = info.value() == null ? "" : info.value();
-
-		Map<String, Resolved> m = new LinkedHashMap<>();
-		m.put("{{tactic " + n + "}}", info);
-		m.put("{{tactic " + n + " goal}}", tacticResolvers.resolveTacticGoal(n, sheet, adj));
-		m.put("{{tactic " + n + " overview}}", tacticResolvers.resolveTacticOverview(n, sheet, adj, ccC));
-		m.put("{{tactic " + n + " spend}}", tacticResolvers.resolveTacticSpend(n, tacticName, sheet, adj, data));
-		m.put("{{tactic " + n + " spend plan}}",
-				tacticResolvers.resolveTacticSpendPlan(n, tacticName, sheet, adj, data));
-		m.put("{{tactic " + n + " imps}}", tacticResolvers.resolveTacticImps(n, tacticName, sheet, adj, data));
-		m.put("{{tactic " + n + " imps plan}}",
-				tacticResolvers.resolveTacticImpsPlan(n, tacticName, sheet, adj, data));
-		m.put("{{tactic " + n + " reach}}", tacticResolvers.resolveTacticReach(n, sheet, adj, data));
-		m.put("{{tactic " + n + " ctr}}", tacticResolvers.resolveTacticCtr(n, tacticName, sheet, adj, data));
-		m.put("{{tactic " + n + " ctr plan}}", tacticResolvers.resolveTacticCtrPlan(n, tacticName, sheet, adj, data));
-		m.put("{{tactic " + n + " vcr}}", tacticResolvers.resolveTacticVcr(n, tacticName, sheet, adj, data));
-		m.put("{{tactic " + n + " vcr plan}}", tacticResolvers.resolveTacticVcrPlan(n, tacticName, sheet, adj, data));
-		m.put("{{tactic " + n + " clicks}}", tacticResolvers.resolveTacticClicks(n, sheet, adj, data));
-		m.put("{{tactic " + n + " completions}}", tacticResolvers.resolveTacticCompletions(n, sheet, adj, data));
-		m.put("{{tactic " + n + " KPI type}}", tacticResolvers.resolveTacticKpiType(n, tacticName, sheet, adj));
-		m.put("{{tactic " + n + " KPI}}", tacticResolvers.resolveTacticKpi(n, tacticName, sheet, adj, data));
-		m.put("{{tactic " + n + " \u2013 bench}}", tacticResolvers.resolveTacticBench(n, tacticName, sheet, adj,
-				data));
-		m.put("{{tactic " + n + " male}}", tacticResolvers.resolveTacticGender(n, "male", sheet, adj, ccB));
-		m.put("{{tactic " + n + " female}}", tacticResolvers.resolveTacticGender(n, "female", sheet, adj, ccB));
-		m.put("{{tactic " + n + " f}}", tacticResolvers.resolveTacticFreq(n, sheet, adj, data));
-		m.put("{{tactic " + n + " weekdays}}", tacticResolvers.resolveTacticDaypart(n, "weekdays", sheet, adj, ccB));
-		m.put("{{tactic " + n + " weekends}}", tacticResolvers.resolveTacticDaypart(n, "weekends", sheet, adj, ccB));
 		return m;
 	}
 
