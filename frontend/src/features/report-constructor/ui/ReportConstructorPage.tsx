@@ -19,6 +19,10 @@ import "./report-constructor.css";
 const DEFAULT_BREAKDOWNS: BreakdownState = { tp: false, ca: false, geo: false, aud: false, dev: false };
 const NO_ERRORS: InputErrors = { brief: false, marketVolume: false, sheet: false, adj: false, dates: false };
 const JOB_TOTAL = 7;
+// Step numbers the SLIDES_FROM_SHEET job reports, in order (ReportGenerationServiceImpl
+// #runSlidesFromSheet emits 1, 3, 6, 7 — not a dense 1..7 run). Each checkpoint maps to one
+// displayed stage in StepGenerate, so the visual stages stay in sync with the real work.
+const GEN_STEP_CHECKPOINTS = [1, 3, 6, 7];
 
 const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 const grouped = new Intl.NumberFormat("en-US");
@@ -460,8 +464,12 @@ function PageInner() {
         setResultUrl(null);
     }
 
-    // Map the 7-step job progress onto the 5 displayed generation stages.
-    const stagesCompleted = genStatus === "done" ? 5 : Math.min(5, Math.round((genStep / JOB_TOTAL) * 5));
+    // Count how many step checkpoints the job has passed — that's the number of finished
+    // display stages. The stage whose checkpoint equals the current step is the running one.
+    const stagesCompleted =
+        genStatus === "done"
+            ? GEN_STEP_CHECKPOINTS.length
+            : GEN_STEP_CHECKPOINTS.filter((s) => s < genStep).length;
 
     return (
         <div className="rc-app">
