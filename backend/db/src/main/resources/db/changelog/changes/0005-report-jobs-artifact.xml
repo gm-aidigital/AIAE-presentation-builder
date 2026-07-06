@@ -1,22 +1,72 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Extra artifact metadata for the report history rows: the source Google Sheet the
-  report was built from, the human file name of the generated artifact (deck/sheet),
-  and the generation target (so the history can hide intermediate SHEET-assembly jobs).
-  All nullable: pre-existing rows keep nulls and the UI falls back to a derived title.
+	Extra artifact metadata for the report history rows: the source Google Sheet the
+	report was built from, the human file name of the generated artifact (deck/sheet),
+	and the generation target (so the history can hide intermediate SHEET-assembly jobs).
+	All nullable: pre-existing rows keep nulls and the UI falls back to a derived title.
 -->
 <databaseChangeLog
 		xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
 		xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 		xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
-                            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+														https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
 
-	<changeSet id="report-jobs-artifact" author="agent">
+	<changeSet id="report-jobs-artifact-sheet-url" author="agent">
+		<preConditions onFail="MARK_RAN">
+			<not>
+				<columnExists tableName="report_jobs" columnName="sheet_url"/>
+			</not>
+		</preConditions>
+
 		<addColumn tableName="report_jobs">
 			<column name="sheet_url" type="TEXT"/>
+		</addColumn>
+	</changeSet>
+
+	<changeSet id="report-jobs-artifact-artifact-name" author="agent">
+		<preConditions onFail="MARK_RAN">
+			<not>
+				<columnExists tableName="report_jobs" columnName="artifact_name"/>
+			</not>
+		</preConditions>
+
+		<addColumn tableName="report_jobs">
 			<column name="artifact_name" type="TEXT"/>
+		</addColumn>
+	</changeSet>
+
+	<changeSet id="report-jobs-artifact-target" author="agent">
+		<preConditions onFail="MARK_RAN">
+			<not>
+				<columnExists tableName="report_jobs" columnName="target"/>
+			</not>
+		</preConditions>
+
+		<addColumn tableName="report_jobs">
 			<column name="target" type="TEXT"/>
+		</addColumn>
+	</changeSet>
+
+	<changeSet id="report-jobs-artifact-media-plan-url" author="agent">
+		<preConditions onFail="MARK_RAN">
+			<not>
+				<columnExists tableName="report_jobs" columnName="media_plan_url"/>
+			</not>
+		</preConditions>
+
+		<addColumn tableName="report_jobs">
 			<column name="media_plan_url" type="TEXT"/>
+		</addColumn>
+	</changeSet>
+
+	<changeSet id="report-jobs-artifact-elevate-url" author="agent">
+		<preConditions onFail="MARK_RAN">
+			<not>
+				<columnExists tableName="report_jobs" columnName="elevate_url"/>
+			</not>
+		</preConditions>
+
+		<addColumn tableName="report_jobs">
 			<column name="elevate_url" type="TEXT"/>
 		</addColumn>
 	</changeSet>

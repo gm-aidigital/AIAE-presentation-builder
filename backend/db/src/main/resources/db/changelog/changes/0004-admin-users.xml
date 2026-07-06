@@ -1,16 +1,22 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  UI-managed admin grants. The server `app.admin.emails` allow-list stays the
-  root/bootstrap admins (not stored here, never removable); this table holds the
-  additional admins granted through the admin UI.
+	UI-managed admin grants. The server `app.admin.emails` allow-list stays the
+	root/bootstrap admins (not stored here, never removable); this table holds the
+	additional admins granted through the admin UI.
 -->
 <databaseChangeLog
 		xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
 		xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 		xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
-                            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+														https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
 
 	<changeSet id="admin-users-initial" author="agent">
+		<preConditions onFail="MARK_RAN">
+			<not>
+				<tableExists tableName="admin_users"/>
+			</not>
+		</preConditions>
+
 		<createTable tableName="admin_users">
 			<column name="id" type="BIGINT" autoIncrement="true">
 				<constraints primaryKey="true" nullable="false"/>
