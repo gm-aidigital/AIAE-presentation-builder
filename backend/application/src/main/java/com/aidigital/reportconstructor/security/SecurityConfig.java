@@ -94,7 +94,8 @@ public class SecurityConfig {
 								.maxAgeInSeconds(31_536_000L)))
 				.authorizeHttpRequests(auth -> auth
 						.requestMatchers(AuthConstants.PUBLIC_PATHS).permitAll()
-						.anyRequest().access(companyEmailDomainAuthorizationManager))
+						.requestMatchers(AuthConstants.PROTECTED_PATHS).access(companyEmailDomainAuthorizationManager)
+						.anyRequest().permitAll())
 				.oauth2ResourceServer(oauth -> oauth.jwt(jwt -> jwt
 						.jwtAuthenticationConverter(userIdAsPrincipalConverter())))
 				.build();
