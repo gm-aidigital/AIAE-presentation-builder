@@ -44,6 +44,8 @@ public class RealSlidesProvider implements SlidesProvider {
 	private static final String APPLICATION_NAME = "Report Constructor — AI Digital";
 
 	private final GoogleCredentialsFactory creds;
+	private final DriveSharer driveSharer;
+	private final List<String> shareWithEmails;
 	private final Slides slides;
 	private final Drive drive;
 	private final String templateId;
@@ -51,12 +53,14 @@ public class RealSlidesProvider implements SlidesProvider {
 	private final String summaryTableObjectId;
 	private final Map<Integer, String> tacticSlideObjectIds;
 
-	public RealSlidesProvider(GoogleCredentialsFactory creds, GoogleProperties props) {
+	public RealSlidesProvider(GoogleCredentialsFactory creds, GoogleProperties props, DriveSharer driveSharer) {
 		String templateId = props.getSlidesTemplateId();
 		String targetFolderId = props.getSlidesTargetFolderId();
 		this.summaryTableObjectId = props.getSummaryTableObjectId() == null ? "" :
 				props.getSummaryTableObjectId().trim();
 		this.tacticSlideObjectIds = props.getTacticSlideObjectIds();
+		this.driveSharer = driveSharer;
+		this.shareWithEmails = props.getShareWithEmails();
 		this.creds = creds;
 		this.slides = new Slides.Builder(creds.transport(), creds.jsonFactory(), creds.initializer())
 				.setApplicationName(APPLICATION_NAME)
@@ -96,6 +100,10 @@ public class RealSlidesProvider implements SlidesProvider {
 					.setSupportsAllDrives(true)
 					.execute();
 			String newId = copied.getId();
+
+			// Grant standing access to the configured recipients (e.g. an admin
+			// owner) so decks created in a user's own My Drive remain reachable.
+			driveSharer.shareWith(driveClient, newId, shareWithEmails);
 
 			List<Request> requests = new ArrayList<>(placeholderMap.size());
 			for (Map.Entry<String, String> e : placeholderMap.entrySet()) {

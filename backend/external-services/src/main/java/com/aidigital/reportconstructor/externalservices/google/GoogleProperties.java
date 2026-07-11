@@ -3,6 +3,7 @@ package com.aidigital.reportconstructor.externalservices.google;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -53,6 +54,14 @@ public class GoogleProperties {
 	 * when blank.
 	 */
 	private String sheetsTargetFolderId = "";
+
+	/**
+	 * Optional list of email addresses every generated deck is auto-shared with
+	 * (as writers), so an admin/owner keeps access even when a report is created
+	 * in another user's My Drive. Bound from the comma-separated
+	 * {@code SLIDES_SHARE_WITH_EMAILS} env var; empty means no auto-share.
+	 */
+	private List<String> shareWithEmails = List.of();
 
 	public String getServiceAccountJson() {
 		return serviceAccountJson;
@@ -108,5 +117,13 @@ public class GoogleProperties {
 
 	public void setSheetsTargetFolderId(String sheetsTargetFolderId) {
 		this.sheetsTargetFolderId = sheetsTargetFolderId;
+	}
+
+	public List<String> getShareWithEmails() {
+		return shareWithEmails;
+	}
+
+	public void setShareWithEmails(List<String> shareWithEmails) {
+		this.shareWithEmails = shareWithEmails == null ? List.of() : shareWithEmails;
 	}
 }

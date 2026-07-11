@@ -128,6 +128,10 @@ external:
     # per-environment via env vars; the defaults keep generation working.
     slides-template-id: ${SLIDES_TEMPLATE_ID:11qzOC7mdbajjlrrVrC8Zv7W5P_SOHpgMV_eWSW56WI0}
     slides-target-folder-id: ${SLIDES_TARGET_FOLDER_ID:}
+    # Every generated deck is auto-shared as a writer with these emails, so an
+    # owner/admin keeps access even when a report is created in another user's
+    # own My Drive. Comma-separated; override via SLIDES_SHARE_WITH_EMAILS.
+    share-with-emails: ${SLIDES_SHARE_WITH_EMAILS:alex.turner@aidigital.com}
     summary-table-object-id: ${GOOGLE_SUMMARY_TABLE_OBJECT_ID:p6_i4579}
     tactic-slide-object-ids:
       1: "p7"
