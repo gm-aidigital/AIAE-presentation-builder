@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MEDIA_PLAN_FALLBACK_TAB, MEDIA_PLAN_PRIMARY_TAB, readSheetSummary, readSheetTab } from "@/shared/api/sheets";
-import type { GenerateRequest, LineItemMatchResult, Rows2D, SheetSummaryRow } from "@/shared/api/types";
+import type { GenerateRequest, LineItemMatchResult, Rows2D, SheetReadResult, SheetSummaryRow } from "@/shared/api/types";
 import { WizardProvider, useWizard } from "@/shared/wizard/WizardContext";
-import { extractTacticBudgets, type TacticBudget } from "../lib/mediaPlanBudget";
+import { extractTacticBudgets, looksLikeMediaPlan, type TacticBudget } from "../lib/mediaPlanBudget";
 import { useDetectDateRange } from "../api/useDetectDateRange";
 import { useMatchLineItems } from "../api/useMatchLineItems";
 import { fetchReportJob, startReportJob } from "../api/useReportJob";
@@ -89,6 +89,9 @@ function PageInner() {
     const [errors, setErrors] = useState<InputErrors>(NO_ERRORS);
     const [mediaPulling, setMediaPulling] = useState(false);
     const [elevatePulling, setElevatePulling] = useState(false);
+    // When neither "Proposal" nor "Estimates" is found, we don't fail — we offer the
+    // workbook's visible tabs so the user can point us at the tab that holds the plan.
+    const [mediaTabPicker, setMediaTabPicker] = useState<{ url: string; tabs: string[] } | null>(null);
 
     const [matchOpen, setMatchOpen] = useState(false);
     const [matchData, setMatchData] = useState<LineItemMatchResult | null>(null);
@@ -124,35 +127,24 @@ function PageInner() {
     async function pullMediaPlan(url: string) {
         setMediaPulling(true);
         setMatchData(null);
+        setMediaTabPicker(null);
         try {
             let p = await readSheetTab(url, MEDIA_PLAN_PRIMARY_TAB);
             if (!p.ok && p.error === "tab_not_found") p = await readSheetTab(url, MEDIA_PLAN_FALLBACK_TAB);
             if (!p.ok) {
-                showToast(
-                    p.error === "tab_not_found"
-                        ? `No "${MEDIA_PLAN_PRIMARY_TAB}" or "${MEDIA_PLAN_FALLBACK_TAB}" tab found`
-                        : p.error || "Could not read sheet",
-                    true
-                );
+                if (p.error === "tab_not_found" && p.tabs.length > 0) {
+                    // No standard media-plan tab — let the user pick the right one instead of failing.
+                    setMediaTabPicker({ url, tabs: p.tabs });
+                    showToast(
+                        `No "${MEDIA_PLAN_PRIMARY_TAB}" or "${MEDIA_PLAN_FALLBACK_TAB}" tab — pick the tab with the media plan`,
+                        true
+                    );
+                    return;
+                }
+                showToast(p.error || "Could not read sheet", true);
                 return;
             }
-            w.connectMediaPlan({
-                title: p.title ?? "",
-                tab: p.tab,
-                sheetId: p.sheetId ?? "",
-                rows: p.rows,
-                cols: p.cols,
-                tabsCount: p.tabs.length,
-                headers: p.headers,
-                preview: p.preview,
-                sheetRows: p.rawRows,
-                audienceRows: [],
-                estimatesRows: [],
-                geoRows: [],
-            });
-            setErrors((e) => ({ ...e, sheet: false }));
-            showToast(`${p.title} — ${p.rows} rows loaded`);
-            void loadOptionalTabs(url, p.tabs);
+            connectMediaPlanFromRead(url, p);
         } catch (e) {
             showToast(e instanceof Error ? e.message : "Could not read sheet", true);
         } finally {
@@ -160,7 +152,55 @@ function PageInner() {
         }
     }
 
-    async function loadOptionalTabs(url: string, tabs: string[]) {
+    // Loads a user-chosen tab as the media plan when auto-detection failed. Validates
+    // that the tab actually looks like a media plan (Media + a budget/volume column);
+    // on failure the picker stays open so the user can try another tab.
+    async function pullMediaPlanFromTab(url: string, tab: string) {
+        setMediaPulling(true);
+        try {
+            const p = await readSheetTab(url, tab);
+            if (!p.ok) {
+                showToast(p.error === "tab_not_found" ? `Tab "${tab}" not found` : p.error || "Could not read sheet", true);
+                return;
+            }
+            if (!looksLikeMediaPlan(p.rawRows)) {
+                showToast(`"${tab}" doesn't look like a media plan — pick the tab with the "Media" and budget columns`, true);
+                setMediaTabPicker({ url, tabs: p.tabs });
+                return;
+            }
+            connectMediaPlanFromRead(url, p);
+            setMediaTabPicker(null);
+        } catch (e) {
+            showToast(e instanceof Error ? e.message : "Could not read sheet", true);
+        } finally {
+            setMediaPulling(false);
+        }
+    }
+
+    // Shared connect path for a successful media-plan read (auto-detected or user-picked).
+    // A user-picked tab often has no separate "Estimates"/"Proposal" tab, so its own rows
+    // seed the estimates source as a fallback for the backend's estimates-table pass.
+    function connectMediaPlanFromRead(url: string, p: SheetReadResult) {
+        w.connectMediaPlan({
+            title: p.title ?? "",
+            tab: p.tab,
+            sheetId: p.sheetId ?? "",
+            rows: p.rows,
+            cols: p.cols,
+            tabsCount: p.tabs.length,
+            headers: p.headers,
+            preview: p.preview,
+            sheetRows: p.rawRows,
+            audienceRows: [],
+            estimatesRows: [],
+            geoRows: [],
+        });
+        setErrors((e) => ({ ...e, sheet: false }));
+        showToast(`${p.title} — ${p.rows} rows loaded`);
+        void loadOptionalTabs(url, p.tabs, p.rawRows);
+    }
+
+    async function loadOptionalTabs(url: string, tabs: string[], estimatesFallback: Rows2D = []) {
         const loaded = (
             await Promise.all(
                 tabs.map((tab) =>
@@ -179,7 +219,7 @@ function PageInner() {
 
         w.updateMediaPlanTabs({
             audienceRows: byName("Audience&Inventory") ?? [],
-            estimatesRows: byName("Estimates") ?? byName("Proposal") ?? [],
+            estimatesRows: byName("Estimates") ?? byName("Proposal") ?? estimatesFallback,
             geoRows: buildWorkbookRows(loaded),
         });
     }
@@ -492,9 +532,13 @@ function PageInner() {
                     matchRunning={matchMutation.isPending}
                     onConnectMediaPlan={pullMediaPlan}
                     onConnectElevate={pullElevate}
+                    mediaTabPicker={mediaTabPicker}
+                    onPickMediaTab={pullMediaPlanFromTab}
+                    onDismissMediaTabPicker={() => setMediaTabPicker(null)}
                     onDisconnectMediaPlan={() => {
                         w.disconnectMediaPlan();
                         setMatchData(null);
+                        setMediaTabPicker(null);
                     }}
                     onDisconnectElevate={() => {
                         w.disconnectElevate();

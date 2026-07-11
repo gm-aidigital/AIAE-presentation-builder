@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deriveAmount, extractTacticBudgets, namingTail, parseNumber } from "./mediaPlanBudget";
+import { deriveAmount, extractTacticBudgets, looksLikeMediaPlan, namingTail, parseNumber } from "./mediaPlanBudget";
 
 // A trimmed Proposal grid: header row with "Media", then two Programmatic
 // Display rows that differ only by units/price, then a section label and a
@@ -68,6 +68,42 @@ describe("extractTacticBudgets", () => {
 
     it("should return an empty-aligned array for empty rows test", () => {
         expect(extractTacticBudgets(null, ["X", "Y"])).toEqual([null, null]);
+    });
+});
+
+describe("looksLikeMediaPlan", () => {
+    it("should accept a grid with a Media header and a budget column test", () => {
+        // Given: a header row carrying both "Media" and "Units (Imps/ Clicks)"
+        // When / Then
+        expect(looksLikeMediaPlan(planRows)).toBe(true);
+    });
+
+    it("should accept a Media header paired with an Impressions column test", () => {
+        // Given: an estimates-style grid — Media plus Impressions, no units/price
+        const rows = [
+            ["Media", "Total Cost", "Impressions"],
+            ["CTV", "$45,000", "1,800,000"],
+        ];
+
+        // When / Then
+        expect(looksLikeMediaPlan(rows)).toBe(true);
+    });
+
+    it("should reject a Media header with no budget/volume column test", () => {
+        // Given: "Media" present but only descriptive columns beside it
+        const rows = [
+            ["Media", "Comments", "Notes"],
+            ["CTV", "Roku + Hulu", "flighted"],
+        ];
+
+        // When / Then
+        expect(looksLikeMediaPlan(rows)).toBe(false);
+    });
+
+    it("should reject a grid with no Media column and null input test", () => {
+        // Given / When / Then
+        expect(looksLikeMediaPlan([["Segment", "Reach"], ["A18-34", "1,200,000"]])).toBe(false);
+        expect(looksLikeMediaPlan(null)).toBe(false);
     });
 });
 

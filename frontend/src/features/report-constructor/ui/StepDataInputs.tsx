@@ -19,6 +19,11 @@ interface Props {
     matchRunning: boolean;
     onConnectMediaPlan(url: string): void;
     onConnectElevate(url: string): void;
+    // Present when auto-detection found no "Proposal"/"Estimates" tab: the workbook's
+    // visible tabs, so the user can point us at the tab that holds the media plan.
+    mediaTabPicker: { url: string; tabs: string[] } | null;
+    onPickMediaTab(url: string, tab: string): void;
+    onDismissMediaTabPicker(): void;
     onDisconnectMediaPlan(): void;
     onDisconnectElevate(): void;
     onOpenMatch(): void;
@@ -82,6 +87,51 @@ function ConnectRow({ label, placeholder, connected, pulling, onConnect, onDisco
     );
 }
 
+interface MediaTabPickerProps {
+    picker: { url: string; tabs: string[] };
+    pulling: boolean;
+    onPick(url: string, tab: string): void;
+    onDismiss(): void;
+}
+
+/** Fallback tab chooser shown when no "Proposal"/"Estimates" tab was auto-detected. */
+function MediaTabPicker({ picker, pulling, onPick, onDismiss }: MediaTabPickerProps) {
+    const [tab, setTab] = useState(picker.tabs[0] ?? "");
+    return (
+        <div className="rc-tabpick">
+            <div className="rc-tabpick__text">
+                We couldn't find a standard media-plan tab. Pick the tab that holds the media plan — we'll check it has
+                the <strong>Media</strong> and budget columns before loading it.
+            </div>
+            <div className="rc-tabpick__row">
+                <select
+                    className="rc-input rc-tabpick__select"
+                    value={tab}
+                    onChange={(e) => setTab(e.target.value)}
+                >
+                    {picker.tabs.map((t) => (
+                        <option key={t} value={t}>
+                            {t}
+                        </option>
+                    ))}
+                </select>
+                <button
+                    type="button"
+                    className="rc-btn rc-btn--ghost rc-btn--sm"
+                    disabled={pulling || !tab}
+                    onClick={() => onPick(picker.url, tab)}
+                >
+                    {pulling ? <IconSpinner size={14} /> : null}
+                    {pulling ? "Checking…" : "Use this tab"}
+                </button>
+                <button type="button" className="rc-tabpick__dismiss" onClick={onDismiss}>
+                    Cancel
+                </button>
+            </div>
+        </div>
+    );
+}
+
 interface StatusRowProps {
     label: string;
     done: boolean;
@@ -111,6 +161,9 @@ export function StepDataInputs({
     matchRunning,
     onConnectMediaPlan,
     onConnectElevate,
+    mediaTabPicker,
+    onPickMediaTab,
+    onDismissMediaTabPicker,
     onDisconnectMediaPlan,
     onDisconnectElevate,
     onOpenMatch,
@@ -191,6 +244,15 @@ export function StepDataInputs({
                         onDisconnect={onDisconnectMediaPlan}
                     />
                     {errors.sheet && <div className="rc-field__error rc-field__error--nudge">Media plan is required.</div>}
+
+                    {mediaTabPicker && (
+                        <MediaTabPicker
+                            picker={mediaTabPicker}
+                            pulling={mediaPulling}
+                            onPick={onPickMediaTab}
+                            onDismiss={onDismissMediaTabPicker}
+                        />
+                    )}
 
                     <ConnectRow
                         label="Elevate row data — Google Sheet link"

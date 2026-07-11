@@ -38,13 +38,16 @@ public interface DataSourceApiMapper {
 	SheetReadResultV1 toSuccess(SheetData data);
 
 	/**
-	 * Builds the V1 result returned when a requested sheet tab is missing.
+	 * Builds the V1 result returned when a requested sheet tab is missing. The
+	 * workbook's visible tabs are echoed back so the client can offer them as a
+	 * manual media-plan tab picker instead of failing outright.
 	 *
-	 * @param tab the requested tab name
-	 * @return a V1 result with {@code ok=false} and error {@code "tab_not_found"}
+	 * @param tab  the requested tab name
+	 * @param tabs the workbook's visible tab titles (empty when unknown)
+	 * @return a V1 result with {@code ok=false}, error {@code "tab_not_found"} and the visible tabs
 	 */
-	default SheetReadResultV1 tabNotFound(String tab) {
-		SheetReadResultV1 r = new SheetReadResultV1(false, tab, List.of(), 0, 0, List.of(), List.of(), List.of());
+	default SheetReadResultV1 tabNotFound(String tab, List<String> tabs) {
+		SheetReadResultV1 r = new SheetReadResultV1(false, tab, tabs, 0, 0, List.of(), List.of(), List.of());
 		r.setError("tab_not_found");
 		return r;
 	}

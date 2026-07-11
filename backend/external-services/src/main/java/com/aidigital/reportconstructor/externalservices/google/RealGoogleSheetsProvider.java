@@ -2,7 +2,9 @@ package com.aidigital.reportconstructor.externalservices.google;
 
 import com.aidigital.reportconstructor.service.common.error.AppException;
 import com.aidigital.reportconstructor.service.common.error.ErrorReason;
+import com.aidigital.reportconstructor.service.common.error.ValidationParameter;
 import com.aidigital.reportconstructor.service.reports.dto.SheetData;
+import com.aidigital.reportconstructor.service.reports.ports.SheetQueryService;
 import com.google.api.client.http.HttpRequestInitializer;
 import com.google.api.services.sheets.v4.Sheets;
 import com.google.api.services.sheets.v4.model.Sheet;
@@ -95,8 +97,13 @@ public class RealGoogleSheetsProvider implements GoogleSheetsProvider {
 			// exact-name duplicate that no longer exists in the list.
 			String resolvedTab = resolveVisibleTab(tab, tabs);
 			if (resolvedTab == null) {
+				// Carry the visible tabs as a structured parameter so the web layer can offer
+				// them as a manual media-plan tab picker instead of failing outright.
 				throw new AppException(ErrorReason.C001,
-						"Tab \"" + tab + "\" not found among visible tabs: " + String.join(", ", tabs));
+						new ValidationParameter("param0",
+								"Tab \"" + tab + "\" not found among visible tabs: " + String.join(", ", tabs)),
+						new ValidationParameter(SheetQueryService.TAB_NOT_FOUND_TABS_PARAM,
+								String.join(SheetQueryService.TAB_NOT_FOUND_TABS_DELIMITER, tabs)));
 			}
 
 			String range = "'" + resolvedTab.replace("'", "''") + "'!A1:ZZ";

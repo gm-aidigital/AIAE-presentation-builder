@@ -17,6 +17,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 /**
  * REST controller for Google data-source endpoints: connection status and sheet reads.
  */
@@ -45,10 +47,29 @@ public class DataSourceController implements DataSourceApi {
 			if (ErrorReason.C001.getCode().equals(ex.getCode())
 					&& ex.getMessage() != null
 					&& ex.getMessage().toLowerCase().contains("not found")) {
-				return ResponseEntity.ok(mapper.tabNotFound(body.getTab()));
+				return ResponseEntity.ok(mapper.tabNotFound(body.getTab(), visibleTabsFrom(ex)));
 			}
 			throw ex;
 		}
+	}
+
+	/**
+	 * Extracts the workbook's visible tab titles that a tab-not-found
+	 * {@link AppException} carries in its {@link SheetQueryService#TAB_NOT_FOUND_TABS_PARAM}
+	 * structured parameter, so the not-found response can echo them for the client's
+	 * manual media-plan tab picker.
+	 *
+	 * @param ex the caught tab-not-found exception
+	 * @return the visible tab titles, or an empty list when none were carried
+	 */
+	List<String> visibleTabsFrom(AppException ex) {
+		return ex.getValidationMessage().getParameters().stream()
+				.filter(p -> SheetQueryService.TAB_NOT_FOUND_TABS_PARAM.equals(p.getCode()))
+				.findFirst()
+				.map(p -> p.getValue().isEmpty()
+						? List.<String>of()
+						: List.of(p.getValue().split(SheetQueryService.TAB_NOT_FOUND_TABS_DELIMITER)))
+				.orElseGet(List::of);
 	}
 
 	@Override

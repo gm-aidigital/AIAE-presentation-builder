@@ -12,6 +12,21 @@ import com.aidigital.reportconstructor.service.reports.dto.SheetData;
 public interface SheetQueryService {
 
 	/**
+	 * {@link com.aidigital.reportconstructor.service.common.error.ValidationParameter}
+	 * code under which a tab-not-found {@link com.aidigital.reportconstructor.service.common.error.AppException}
+	 * carries the workbook's visible tab titles, so the web layer can offer them
+	 * as a manual media-plan tab picker instead of failing outright.
+	 */
+	String TAB_NOT_FOUND_TABS_PARAM = "visibleTabs";
+
+	/**
+	 * Delimiter joining the visible tab titles inside the
+	 * {@link #TAB_NOT_FOUND_TABS_PARAM} value. A newline is safe because Google
+	 * Sheets tab titles cannot contain line breaks.
+	 */
+	String TAB_NOT_FOUND_TABS_DELIMITER = "\n";
+
+	/**
 	 * Reports the caller's Google connectivity.
 	 *
 	 * @param callerEmail the authenticated caller's email

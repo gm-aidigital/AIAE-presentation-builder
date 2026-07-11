@@ -28,6 +28,39 @@ export function parseNumber(cell: string | undefined): number {
     return Number.isFinite(n) ? n : 0;
 }
 
+// Header synonyms that mark the budget/volume column sitting next to the "Media"
+// tactic column — one must be present for a tab to parse as a media plan. Mirrors
+// the backend's media-plan detection (CampaignDataCollector: a header row with a
+// "media" cell plus a cost/budget or impressions column).
+const BUDGET_HEADER_MARKERS = [
+    "total cost",
+    "cost",
+    "budget",
+    "impressions",
+    "imps",
+    "units",
+    "unit price",
+    "rate type",
+];
+
+/**
+ * Lightweight sanity check that a manually-picked tab actually holds the media
+ * plan: it must contain a header row with a "Media" cell (the tactic column) and,
+ * in that same row, at least one budget/volume column. Kept deliberately loose —
+ * it only guarantees the downstream tactic extraction has the columns it needs.
+ */
+export function looksLikeMediaPlan(rows: Rows2D | null): boolean {
+    if (!rows) return false;
+    for (const row of rows) {
+        const cells = (row ?? []).map((c) => normName(c ?? ""));
+        if (!cells.includes("media")) continue;
+        if (cells.some((c) => BUDGET_HEADER_MARKERS.some((m) => c === m || c.startsWith(m)))) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /** CPM bills per thousand units; CPC/CPV/flat bill per unit. */
 export function deriveAmount(units: number, unitPrice: number, rateType: string): number {
     if (rateType.trim().toUpperCase() === "CPM") return (units / 1000) * unitPrice;

@@ -255,6 +255,20 @@
 .rc-match__label { font-size: 14px; font-weight: 600; color: var(--rc-ink); }
 .rc-match__sub { font-size: 13px; color: var(--rc-mute); margin-top: 1px; }
 
+/* Fallback media-plan tab picker (shown when no Proposal/Estimates tab is found) */
+.rc-tabpick {
+  margin-top: -4px; padding: 14px 16px; border-radius: 12px;
+  border: 1px solid var(--rc-orange); background: var(--rc-orange-bg);
+}
+.rc-tabpick__text { font-size: 13px; color: var(--rc-slate); line-height: 1.45; }
+.rc-tabpick__row { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.rc-tabpick__select { flex: 1; min-width: 180px; }
+.rc-tabpick__dismiss {
+  background: none; border: 0; padding: 0 4px; font-family: var(--rc-font);
+  font-size: 13px; font-weight: 600; color: var(--rc-mute); cursor: pointer;
+}
+.rc-tabpick__dismiss:hover { color: var(--rc-slate); }
+
 /* Input-status card */
 .rc-status { border: 1px solid var(--rc-card-border); border-radius: 14px; overflow: hidden; }
 .rc-status__head {
