@@ -22,6 +22,24 @@ public class ClaudeBatchPromptBuilder {
 
 	private static final double COMPRESSION_PROMPT_BUFFER_RATIO = 0.8;
 
+	/**
+	 * Volume-vs-rate deviation math rule (campaign-analyst principle 9), appended to the Batch C
+	 * principle list. Volume metrics deviate in %, rate metrics in percentage points.
+	 */
+	private static final String METRIC_DEVIATION_RULE =
+			"6. METRIC DEVIATION MATH. Express VOLUME-metric gaps (impressions, spend, clicks, completions) as % "
+					+ "deviation vs plan; express RATE-metric gaps (CTR, VCR, viewability) as percentage-POINT (pp) "
+					+ "deviation (Actual − Plan). Never state a rate gap as a percentage — a CTR moving 0.30% → 0.45% "
+					+ "is +0.15pp, not +50%.\n";
+
+	/**
+	 * DSP learning-phase caveat for very short flights (campaign-analyst principle 10), appended to the
+	 * Batch C principle list. Under a week of live delivery is too little to draw firm conclusions.
+	 */
+	private static final String LEARNING_PHASE_RULE =
+			"7. DATA SUFFICIENCY. If the flight window is under 7 days live, flag DSP learning-phase volatility and "
+					+ "avoid firm conclusions or scaling recommendations drawn from that short window.\n";
+
 	private final ClaudeResponseNormalizer normalizer;
 	private final Fmt fmt;
 
@@ -153,6 +171,8 @@ public class ClaudeBatchPromptBuilder {
 						+ "- Return ONLY the JSON object — no markdown, no backticks, no explanation.\n"
 						+ "- null for any field where there is genuinely no data.\n"
 						+ "- Do NOT invent facts. Base everything strictly on the provided data.\n"
+						+ "- Leave a field null rather than pad it with generic filler — an empty field beats an "
+						+ "unsupported claim.\n"
 						+ "- Output in English regardless of input language.\n\n"
 						+ "Campaign data:\n" + context;
 		return Optional.of(prompt);
@@ -279,6 +299,8 @@ public class ClaudeBatchPromptBuilder {
 						+ "- Return ONLY the JSON object — no markdown, no backticks, no explanation.\n"
 						+ "- null for any field where there is genuinely no data.\n"
 						+ "- Do NOT invent facts. Base everything strictly on the provided data.\n"
+						+ "- Leave a field null rather than pad it with generic filler — an empty field beats an "
+						+ "unsupported claim.\n"
 						+ "- Output in English regardless of input language.\n\n"
 						+ "Campaign data:\n" + context;
 		return Optional.of(prompt);
@@ -506,6 +528,8 @@ public class ClaudeBatchPromptBuilder {
 						+ "- null for any audience field where there is genuinely no data.\n"
 						+ "- tactics: include a key for every tactic number listed above.\n"
 						+ "- Do NOT invent facts. Base everything strictly on the provided data.\n"
+						+ "- Leave a field null rather than pad it with generic filler — an empty field beats an "
+						+ "unsupported claim.\n"
 						+ "- Output in English regardless of input language.\n\n"
 						+ "Campaign data:\n" + context;
 		return Optional.of(prompt);
@@ -631,7 +655,8 @@ public class ClaudeBatchPromptBuilder {
 						"creative fatigue, "
 						+ "inventory constraints, bid competitiveness, audience saturation, pacing decision, seasonal " +
 						"effect, etc.), "
-						+ "then state what this means or what should follow. All three parts are mandatory.\n"
+						+ "then state what this means or what should follow. All three parts are mandatory, delivered "
+						+ "as one cohesive, flowing statement — never as labeled sections or separate bullets.\n"
 						+ "2. INTERPRET, NEVER ENUMERATE. The reader can see the numbers. Your job is to explain what " +
 						"they mean. "
 						+ "WRONG: \"CTV delivered 12M impressions, the highest of any channel.\" "
@@ -651,7 +676,10 @@ public class ClaudeBatchPromptBuilder {
 						+ "Every sentence must be specific to THIS campaign's numbers, channels, and audience.\n"
 						+ "5. NAME THE CAUSE. Don't say performance was strong — say why: audience targeting " +
 						"precision, "
-						+ "creative format fit, placement quality, flight timing, competitive dynamics, etc.\n\n"
+						+ "creative format fit, placement quality, flight timing, competitive dynamics, etc.\n"
+						+ METRIC_DEVIATION_RULE
+						+ LEARNING_PHASE_RULE
+						+ "\n"
 						+ "Read the campaign data and return a JSON object with EXACTLY these keys:\n\n"
 						+ "{\n"
 						+ "  \"results_overview\": string,        // EXACTLY 2 SENTENCES. Past tense, no bullets, no " +
@@ -790,6 +818,8 @@ public class ClaudeBatchPromptBuilder {
 						+ "- optimization_recommendations: ALWAYS return exactly 4 objects, each with non-empty title " +
 						"and text.\n"
 						+ "- Do NOT invent metrics. Use only the numbers provided.\n"
+						+ "- Leave a field blank/omit the claim rather than pad it with generic filler — an unsupported "
+						+ "sentence is worse than a shorter, fully-grounded one.\n"
 						+ "- CRITICAL: each tactic_overview value MUST end on a complete word/sentence and be ≤190 " +
 						"characters.\n"
 						+ "- thoughts_on_performance uses \" | \" (space-pipe-space) as paragraph separator — NOT " +
