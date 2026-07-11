@@ -50,7 +50,7 @@ class ReportSheetHelperImplTest {
 	@Test
 	void shouldSkipPacingTablesWhenRequiredInputsMissingTest() {
 		GeneratePayload payload = new GeneratePayload(
-				"brief", "standard", "", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null, null);
+				"brief", "standard", "", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null, null, null);
 
 		List<String> warnings = helper.writePacingTables(
 				"https://docs.google.com/spreadsheets/d/abc/edit", payload, emptyCampaignData(), Map.of(), "token");
@@ -134,6 +134,7 @@ class ReportSheetHelperImplTest {
 				List.of(),
 				List.of(new LineItemMapping("Display", "99", 1)),
 				"sheet-id",
+				null,
 				null,
 				null
 		);

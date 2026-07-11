@@ -121,6 +121,7 @@ export function StepDataInputs({
     const w = useWizard();
 
     const briefDone = w.brief.trim().length > 0;
+    const changeLogDone = w.changeLog.trim().length > 0;
     const marketDone = w.marketVolume.trim().length > 0;
     const datesDone = !!w.dateStart && !!w.dateEnd;
     const bothConnected = !!w.mediaPlan && !!w.elevate;
@@ -153,6 +154,16 @@ export function StepDataInputs({
                             }}
                         />
                         {errors.brief && <div className="rc-field__error">Campaign brief is required.</div>}
+                    </div>
+
+                    <div className="rc-field">
+                        <label className="rc-field__label">Change Log — mid-flight changes (optional)</label>
+                        <textarea
+                            className="rc-textarea"
+                            placeholder="Log any changes made during the flight — budget shifts, audience weight changes, delayed launches, creative swaps. Helps the bot explain why results moved."
+                            value={w.changeLog}
+                            onChange={(e) => w.setChangeLog(e.target.value)}
+                        />
                     </div>
 
                     <div className="rc-field">
@@ -255,6 +266,11 @@ export function StepDataInputs({
                     <div className="rc-status__head">Input status</div>
                     <div className="rc-status__body">
                         <StatusRow label="RFP / Brief" done={briefDone} value={briefDone ? "Filled" : "Waiting"} />
+                        <StatusRow
+                            label="Change Log"
+                            done={changeLogDone}
+                            value={changeLogDone ? "Filled" : "Optional"}
+                        />
                         <StatusRow
                             label="Market Volume"
                             done={marketDone}

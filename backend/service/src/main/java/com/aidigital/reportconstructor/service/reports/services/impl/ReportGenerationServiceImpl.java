@@ -49,6 +49,7 @@ import java.util.Map;
 public class ReportGenerationServiceImpl implements ReportGenerationService {
 
 	private static final String CLIENT_NAME_TOKEN = "{{client_name}}";
+	private static final String CHANGE_LOG_TOKEN = "{{change log}}";
 
 	private final ReportJobProgressHelper jobProgress;
 	private final ReportGenerationWarningsHelper warnings;
@@ -114,7 +115,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 
 			jobProgress.markJobRunningAtStep(jobId, 1, "Reading sheet data");
 			CampaignData data = placeholders.collectData(payload);
-			String brief = payload.brief();
+			String brief = combineBriefWithChangeLog(payload.brief(), payload.changeLog());
 
 			jobProgress.markJobRunningAtStep(jobId, 2, "Resolving placeholders");
 
@@ -224,7 +225,9 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		int tacticCount = deriveTacticCount(sheetValues);
 
 		jobProgress.markJobRunningAtStep(jobId, 3, "Claude — narrative");
-		String brief = payload.brief();
+		// The change log is read back from the reviewed sheet (never the payload) so any edit the user made
+		// in the sheet wins, consistent with the sheet-as-source contract of this flow.
+		String brief = combineBriefWithChangeLog(payload.brief(), sheetValues.get(CHANGE_LOG_TOKEN));
 		CampaignData data = sheetCampaign.read(sheetValues, tacticCount);
 		// Frequencies are reconstructed from the reviewed sheet — never the raw media plan — and without a
 		// fresh random reach uplift, so the Claude frequency narrative and the deck's frequency figures both
@@ -297,7 +300,26 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		return new GeneratePayload(
 				payload.brief(), payload.reportType(), null,
 				List.of(), List.of(), List.of(), List.of(), List.of(),
-				null, null, payload.dateFilter(), payload.sheetUrl());
+				null, null, payload.dateFilter(), payload.sheetUrl(), payload.changeLog());
+	}
+
+	/**
+	 * Merges the required campaign brief with the optional change log into a single context string for the
+	 * Claude batches, appending the change log under its own {@code === MID-FLIGHT CHANGES / CHANGE LOG ===}
+	 * header so Claude reads it as a distinct, clearly-labelled section. Returns the brief unchanged when the
+	 * change log is null or blank.
+	 *
+	 * @param brief     the required free-text campaign brief
+	 * @param changeLog the optional change-log text (from the payload for the direct flow, or read back from the
+	 *                  reviewed sheet for the slides-from-sheet flow); {@code null}/blank leaves the brief untouched
+	 * @return the brief, optionally followed by a labelled change-log section
+	 */
+	String combineBriefWithChangeLog(String brief, String changeLog) {
+		String safeBrief = brief == null ? "" : brief;
+		if (changeLog == null || changeLog.isBlank()) {
+			return safeBrief;
+		}
+		return safeBrief + "\n\n=== MID-FLIGHT CHANGES / CHANGE LOG ===\n" + changeLog.trim();
 	}
 
 	/**

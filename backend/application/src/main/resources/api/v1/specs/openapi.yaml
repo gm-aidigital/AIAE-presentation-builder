@@ -908,6 +908,13 @@ components:
       required: [ brief, reportType, marketVolume ]
       properties:
         brief: { type: string }
+        changeLog:
+          type: string
+          description: |
+            Optional free-text log of mid-flight changes/optimizations applied to
+            the campaign (budget shifts, audience weight changes, delayed launches).
+            Written into the sheet's {{change log}} placeholder and fed to Claude as
+            extra context so the narrative can attribute results to the actions taken.
         reportType: { $ref: "#/components/schemas/ReportTypeV1" }
         target:
           allOf:

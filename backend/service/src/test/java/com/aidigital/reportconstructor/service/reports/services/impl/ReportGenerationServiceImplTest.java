@@ -88,7 +88,7 @@ class ReportGenerationServiceImplTest {
 	@Test
 	void shouldThrowAppExceptionWhenBriefIsBlankTest() {
 		GeneratePayload payload = new GeneratePayload(
-				"  ", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null, null);
+				"  ", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null, null, null);
 
 		Throwable thrown = catchThrowable(
 				() -> service.start("user-1", "clerk-1", "user@x.com", payload, GenerationTarget.SLIDES, null, null));
@@ -106,7 +106,7 @@ class ReportGenerationServiceImplTest {
 		queued.setTotal(7);
 		queued.setOwnerUserId("user-1");
 		GeneratePayload payload = new GeneratePayload(
-				"Campaign brief.", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null, null);
+				"Campaign brief.", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null, null, null);
 		when(jobProgress.createQueuedJob("user-1", "standard")).thenReturn(queued);
 
 		ReportJobEntity job = service.enqueue("user-1", payload);
@@ -120,7 +120,7 @@ class ReportGenerationServiceImplTest {
 	@Test
 	void shouldEnqueueAndKickOffAsyncRunOnStartTest() {
 		GeneratePayload payload = new GeneratePayload(
-				"Campaign brief.", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null, null);
+				"Campaign brief.", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null, null, null);
 		ReportJobEntity queued = new ReportJobEntity();
 		queued.setId(5L);
 		when(jobProgress.createQueuedJob("user-1", "standard")).thenReturn(queued);
@@ -138,7 +138,7 @@ class ReportGenerationServiceImplTest {
 	@Test
 	void shouldRunPipelineAndMarkJobDoneWhenClaudeOfflineTest() {
 		GeneratePayload payload = new GeneratePayload(
-				"Campaign brief.", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null, null);
+				"Campaign brief.", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null, null, null);
 		when(claude.isLive()).thenReturn(false);
 		when(placeholders.buildFlatReplacements(any(), any(), any(), any(), any(), any(), any(), any(), any()))
 				.thenReturn(Map.of());
@@ -157,7 +157,7 @@ class ReportGenerationServiceImplTest {
 	void shouldBuildSheetAndSkipChartsWhenTargetIsSheetTest() {
 		// Given:
 		GeneratePayload payload = new GeneratePayload(
-				"Campaign brief.", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null, null);
+				"Campaign brief.", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null, null, null);
 		when(claude.isLive()).thenReturn(false);
 		when(claudeDefaults.emptySheetBatch()).thenReturn(new ClaudeSheetBatch(null, null, Map.of()));
 		when(placeholders.buildFlatReplacements(any(), any(), any(), any(), any(), any(), any(), any(), any()))
@@ -183,7 +183,7 @@ class ReportGenerationServiceImplTest {
 		// Given: a step-2 request naming the user-edited sheet, whose grid yields two filled tactics
 		GeneratePayload payload = new GeneratePayload(
 				"Campaign brief.", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(),
-				List.of(), "", null, "http://sheet");
+				List.of(), "", null, "http://sheet", null);
 		List<List<String>> grid = List.of(List.of("Tactic name"), List.of("CTV"), List.of("Display"));
 		Map<String, String> sheetValues = Map.of(
 				"{{client_name}}", "Acme", "{{tactic 1}}", "CTV", "{{tactic 2}}", "Display");
@@ -222,7 +222,7 @@ class ReportGenerationServiceImplTest {
 	@Test
 	void shouldMarkJobFailedWhenPipelineThrowsTest() {
 		GeneratePayload payload = new GeneratePayload(
-				"Campaign brief.", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null, null);
+				"Campaign brief.", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null, null, null);
 		when(placeholders.collectData(payload)).thenThrow(new RuntimeException("boom"));
 
 		service.run(8L, payload, "clerk-1", "user@x.com", GenerationTarget.SLIDES);

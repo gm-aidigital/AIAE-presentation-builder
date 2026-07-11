@@ -28,6 +28,10 @@ import java.util.List;
  * @param sheetUrl        URL of a previously generated (and user-edited) Google Sheet; the sole input when the target is
  *                        {@code SLIDES_FROM_SHEET}, where the deck is filled from this sheet's values instead of the raw
  *                        grids. {@code null}/blank for the SLIDES and SHEET flows.
+ * @param changeLog       optional free-text log of mid-flight changes/optimizations applied to the campaign (budget
+ *                        shifts, audience weight changes, delayed launches). Written into the sheet's {@code {{change
+ *                        log}}} placeholder in step 1 and fed to Claude as extra context so the narrative can attribute
+ *                        results to the actual actions taken. {@code null}/blank when the user leaves it empty.
  */
 public record GeneratePayload(
 		String brief,
@@ -41,7 +45,8 @@ public record GeneratePayload(
 		List<LineItemMapping> lineItemMapping,
 		String bqSheetId,
 		DateFilter dateFilter,
-		String sheetUrl
+		String sheetUrl,
+		String changeLog
 ) {
 
 }

@@ -70,6 +70,7 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		start.put("{{funnel_stages}}", campaignResolvers.resolveFunnelStages(sheet, adj, funnelSummary));
 		start.put("{{tactics_list}}", campaignResolvers.resolveTacticsList(sheet, adj));
 		start.put("{{RFP info}}", campaignResolvers.resolveRfpInfo(sheet, adj, payload.brief()));
+		start.put("{{change log}}", campaignResolvers.resolveChangeLog(sheet, adj, payload.changeLog()));
 		sections.add(buildPreviewSection("Start", start));
 
 		Map<String, Resolved> overview = new LinkedHashMap<>();

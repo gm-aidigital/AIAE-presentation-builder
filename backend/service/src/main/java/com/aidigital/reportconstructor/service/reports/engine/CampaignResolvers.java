@@ -98,6 +98,32 @@ public class CampaignResolvers {
 	}
 
 	/**
+	 * Resolves the campaign change-log text, preferring a manual Adjustments override, then the Media
+	 * Plan sheet, then the optional free-text change log entered through the UI. Mirrors
+	 * {@link #resolveRfpInfo} so a change log supplied directly in a source sheet still wins over the
+	 * UI field.
+	 *
+	 * @param sheetRows Media Plan tab rows
+	 * @param adjRows   manual Adjustments tab rows (take priority over the sheet)
+	 * @param changeLog optional free-text change-log content submitted through the request payload
+	 * @return a {@link Resolved} change-log string, or a null-valued {@code not_found} entry when no value exists
+	 */
+	public Resolved resolveChangeLog(List<List<String>> sheetRows, List<List<String>> adjRows, String changeLog) {
+		String fromAdj = sheetUtils.findLabelValue(adjRows, "Change log:");
+		if (fromAdj != null) {
+			return new Resolved("Change log:", fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, "Change log:");
+		if (fromSheet != null) {
+			return new Resolved("Change log:", fromSheet, "sheet");
+		}
+		if (notBlank(changeLog)) {
+			return new Resolved("Change log (auto: UI)", changeLog, "adj");
+		}
+		return new Resolved("Change log:", null, "not_found");
+	}
+
+	/**
 	 * Resolves the primary KPIs, preferring a manual value, then Claude's per-tactic KPI line, and finally
 	 * auto-deriving them from the distinct Channel values (Display vs Video) under the "Channel" header.
 	 *

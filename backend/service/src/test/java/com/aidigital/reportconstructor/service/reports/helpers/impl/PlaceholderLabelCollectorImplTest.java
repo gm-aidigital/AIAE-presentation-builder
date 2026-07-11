@@ -31,6 +31,7 @@ class PlaceholderLabelCollectorImplTest {
 				List.of(),
 				"",
 				null,
+				null,
 				null
 		);
 

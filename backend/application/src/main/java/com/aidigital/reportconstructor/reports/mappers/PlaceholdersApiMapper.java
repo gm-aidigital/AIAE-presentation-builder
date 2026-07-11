@@ -51,6 +51,7 @@ public interface PlaceholdersApiMapper {
 	@Mapping(target = "reportType", expression = "java(body.getReportType().getValue())")
 	@Mapping(target = "bqSheetId", ignore = true)
 	@Mapping(target = "sheetUrl", ignore = true)
+	@Mapping(target = "changeLog", ignore = true)
 	GeneratePayload toPayload(PreviewRequestV1 body);
 
 	/**

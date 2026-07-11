@@ -332,6 +332,7 @@ function PageInner() {
     function basePayload(): GenerateRequest {
         return {
             brief: w.brief,
+            changeLog: w.changeLog,
             reportType: w.reportType,
             marketVolume: w.marketVolume,
             sheetRows: w.mediaPlan?.sheetRows ?? [],

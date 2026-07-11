@@ -38,6 +38,7 @@ type OptionalTabs = Pick<MediaPlanState, "audienceRows" | "estimatesRows" | "geo
 
 interface WizardContextValue {
     brief: string;
+    changeLog: string;
     reportType: ReportType;
     marketVolume: string;
     mediaPlan: MediaPlanState | null;
@@ -51,6 +52,7 @@ interface WizardContextValue {
     dateConfirmed: boolean;
 
     setBrief(value: string): void;
+    setChangeLog(value: string): void;
     setReportType(value: ReportType): void;
     setMarketVolume(value: string): void;
     connectMediaPlan(value: MediaPlanState): void;
@@ -70,6 +72,7 @@ const WizardContext = createContext<WizardContextValue | null>(null);
 
 export function WizardProvider({ children }: { children: ReactNode }) {
     const [brief, setBriefState] = useState("");
+    const [changeLog, setChangeLogState] = useState("");
     const [reportType, setReportTypeState] = useState<ReportType>("EOC");
     const [marketVolume, setMarketVolumeState] = useState("");
     const [mediaPlan, setMediaPlan] = useState<MediaPlanState | null>(null);
@@ -96,6 +99,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     const value = useMemo<WizardContextValue>(
         () => ({
             brief,
+            changeLog,
             reportType,
             marketVolume,
             mediaPlan,
@@ -106,6 +110,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
             dateEnd,
             dateConfirmed,
             setBrief: setBriefState,
+            setChangeLog: setChangeLogState,
             setReportType: setReportTypeState,
             setMarketVolume: setMarketVolumeState,
             connectMediaPlan: (v) => {
@@ -144,6 +149,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
         }),
         [
             brief,
+            changeLog,
             reportType,
             marketVolume,
             mediaPlan,
