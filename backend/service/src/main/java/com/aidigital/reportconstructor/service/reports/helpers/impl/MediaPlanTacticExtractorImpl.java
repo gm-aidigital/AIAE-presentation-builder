@@ -24,7 +24,7 @@ public class MediaPlanTacticExtractorImpl implements MediaPlanTacticExtractor {
 	/**
 	 * Cap on the number of tactics pulled from the Media column — one per report tactic slot.
 	 */
-	private static final int MAX_TACTICS = 7;
+	private static final int MAX_TACTICS = 28;
 
 	private final TacticCatalog catalog;
 	private final SheetRowHelper sheetRows;

@@ -22,6 +22,9 @@ public class ClaudeBatchPromptBuilder {
 
 	private static final double COMPRESSION_PROMPT_BUFFER_RATIO = 0.8;
 
+	/** Tactics per results-overview group; the deck carries one summary + overview slide per group. */
+	private static final int TACTICS_PER_GROUP = 7;
+
 	/**
 	 * Volume-vs-rate deviation math rule (campaign-analyst principle 9), appended to the Batch C
 	 * principle list. Volume metrics deviate in %, rate metrics in percentage points.
@@ -647,6 +650,22 @@ public class ClaudeBatchPromptBuilder {
 		}
 		String tacticNums = String.join(", ", nums);
 
+		// Tactic groups (7 tactics each) present in this campaign — one results overview per group:
+		// group 1 → tactics 1–7, group 2 → 8–14, group 3 → 15–21, group 4 → 22–28.
+		Map<Integer, List<String>> tacticsByGroup = new java.util.TreeMap<>();
+		for (Integer k : data.tactics().keySet()) {
+			tacticsByGroup.computeIfAbsent((k - 1) / TACTICS_PER_GROUP + 1, g -> new ArrayList<>())
+					.add(String.valueOf(k));
+		}
+		List<String> groupNumList = new ArrayList<>();
+		List<String> groupRangeList = new ArrayList<>();
+		for (Map.Entry<Integer, List<String>> g : tacticsByGroup.entrySet()) {
+			groupNumList.add(String.valueOf(g.getKey()));
+			groupRangeList.add("group " + g.getKey() + " → tactics " + String.join(",", g.getValue()));
+		}
+		String groupNums = String.join(", ", groupNumList);
+		String groupRanges = String.join("; ", groupRangeList);
+
 		String prompt =
 				"You are a senior digital media analyst writing a post-campaign report for a client presentation.\n\n"
 						+ "ANALYTICAL PRINCIPLES — non-negotiable, apply to every text field:\n"
@@ -682,7 +701,11 @@ public class ClaudeBatchPromptBuilder {
 						+ "\n"
 						+ "Read the campaign data and return a JSON object with EXACTLY these keys:\n\n"
 						+ "{\n"
-						+ "  \"results_overview\": string,        // EXACTLY 2 SENTENCES. Past tense, no bullets, no " +
+						+ "  \"results_overviews\": {              // Keyed by tactic-group number as strings (" + groupNums + ").\n"
+						+ "  //  One entry PER GROUP listed above (" + groupRanges + "). Each value covers ONLY that " +
+						"group's tactics.\n"
+						+ "  //  Include a key for every group number listed — no more, no fewer.\n"
+						+ "    \"G\": string,                       // EXACTLY 2 SENTENCES. Past tense, no bullets, no " +
 						"line breaks. Hard limit: ≤380 chars total.\n"
 						+ "  //  SENTENCE 1 — Overall result + key metric vs plan + reason WHY performance was as it " +
 						"was.\n"
@@ -713,6 +736,7 @@ public class ClaudeBatchPromptBuilder {
 						"factors\n"
 						+ "  //    (inventory availability, budget pacing, market conditions) — never to poor " +
 						"execution.\n"
+						+ "  },\n"
 						+ "  \"thoughts_on_performance\": string,  // EXACTLY 4 SHORT ANALYTICAL PARAGRAPHS separated " +
 						"by the literal string \" | \".\n"
 						+ "  //  Each paragraph: 1–2 sentences, past tense, client-friendly. NOT bullet headers — " +
@@ -813,7 +837,9 @@ public class ClaudeBatchPromptBuilder {
 						+ "}\n\n"
 						+ "Rules:\n"
 						+ "- Return ONLY the JSON object — no markdown, no backticks, no explanation.\n"
-						+ "- null for results_overview / thoughts_on_performance if genuinely insufficient data.\n"
+						+ "- null for thoughts_on_performance if genuinely insufficient data.\n"
+						+ "- For results_overviews: include a key for every tactic-group number listed above (" + groupNums +
+						"); each value covers only that group's tactics.\n"
 						+ "- For tactic_overviews: include a key for every tactic number listed above.\n"
 						+ "- optimization_recommendations: ALWAYS return exactly 4 objects, each with non-empty title " +
 						"and text.\n"

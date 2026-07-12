@@ -24,7 +24,7 @@ import java.util.regex.Pattern;
 public class SheetPlaceholderReaderImpl implements SheetPlaceholderReader {
 
 	/** Max tactics the EOC template carries (summary rows and "Main slide" blocks). */
-	private static final int MAX_TACTICS = 7;
+	private static final int MAX_TACTICS = 28;
 
 	/** Column-0 tactic-name cell that marks the summary table's totals row. */
 	private static final String TOTALS_LABEL = "Total";
@@ -234,7 +234,7 @@ public class SheetPlaceholderReaderImpl implements SheetPlaceholderReader {
 	/**
 	 * Reads the per-tactic "Main slide" detail blocks. Every {@link #MAIN_SLIDE_ANCHOR} cell in the
 	 * grid anchors one block; its captured number is the block's 1-based tactic number, so blocks are
-	 * keyed by their explicit label ({@code "Main slide 1"} … {@code "Main slide 7"}) rather than their
+	 * keyed by their explicit label ({@code "Main slide 1"} … {@code "Main slide 28"}) rather than their
 	 * position. Within each block, every {@link #MAIN_SLIDE_SUFFIXES} label is located in the block's
 	 * anchor column and its value read from the next column.
 	 *

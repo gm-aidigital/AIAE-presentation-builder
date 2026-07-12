@@ -33,13 +33,14 @@ public interface SlidesProvider {
 	String createDeck(String jobId, String fileName, Map<String, String> placeholderMap, String userGoogleAccessToken);
 
 	/**
-	 * Removes the template's unused per-tactic slides (and their summary-table
-	 * rows) when the campaign has fewer than the template's seven tactic slots.
-	 * Without this, the surplus slides survive showing raw {@code {{tactic N …}}}
-	 * tokens and empty chart frames. A no-op when {@code tacticCount >= 7}.
+	 * Removes the template's unused per-tactic slides, surplus summary + "Our
+	 * results" group slides, and the last summary table's unused rows when the
+	 * campaign has fewer than the template's 28 tactic slots. Without this, the
+	 * surplus slides survive showing raw {@code {{tactic N …}}} tokens and empty
+	 * chart frames. A no-op when {@code tacticCount >= 28}.
 	 *
 	 * @param presentationId        the deck to trim
-	 * @param tacticCount           number of real tactics (clamped 1..7)
+	 * @param tacticCount           number of real tactics (clamped 1..28)
 	 * @param userGoogleAccessToken optional signed-in user's Google OAuth token;
 	 *                              falls back to the service account when blank
 	 */

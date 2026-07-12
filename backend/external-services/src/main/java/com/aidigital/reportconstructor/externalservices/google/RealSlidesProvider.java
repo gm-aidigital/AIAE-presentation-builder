@@ -43,6 +43,15 @@ public class RealSlidesProvider implements SlidesProvider {
 
 	private static final String APPLICATION_NAME = "Report Constructor — AI Digital";
 
+	/** Max tactics the deck template carries (per-tactic detail slides 1..28). */
+	private static final int MAX_TACTICS = 28;
+
+	/** Tactics per group; the deck carries one summary slide + one "Our results" slide per group. */
+	private static final int TACTICS_PER_GROUP = 7;
+
+	/** Number of tactic groups (28 tactics / 7 per group). */
+	private static final int GROUP_COUNT = 4;
+
 	private final GoogleCredentialsFactory creds;
 	private final DriveSharer driveSharer;
 	private final List<String> shareWithEmails;
@@ -50,14 +59,17 @@ public class RealSlidesProvider implements SlidesProvider {
 	private final Drive drive;
 	private final String templateId;
 	private final String targetFolderId;
-	private final String summaryTableObjectId;
+	private final Map<Integer, String> summaryTableObjectIds;
+	private final Map<Integer, String> summarySlideObjectIds;
+	private final Map<Integer, String> resultsSlideObjectIds;
 	private final Map<Integer, String> tacticSlideObjectIds;
 
 	public RealSlidesProvider(GoogleCredentialsFactory creds, GoogleProperties props, DriveSharer driveSharer) {
 		String templateId = props.getSlidesTemplateId();
 		String targetFolderId = props.getSlidesTargetFolderId();
-		this.summaryTableObjectId = props.getSummaryTableObjectId() == null ? "" :
-				props.getSummaryTableObjectId().trim();
+		this.summaryTableObjectIds = props.getSummaryTableObjectIds();
+		this.summarySlideObjectIds = props.getSummarySlideObjectIds();
+		this.resultsSlideObjectIds = props.getResultsSlideObjectIds();
 		this.tacticSlideObjectIds = props.getTacticSlideObjectIds();
 		this.driveSharer = driveSharer;
 		this.shareWithEmails = props.getShareWithEmails();
@@ -128,29 +140,15 @@ public class RealSlidesProvider implements SlidesProvider {
 
 	@Override
 	public void trimTactics(String presentationId, int tacticCount, String userGoogleAccessToken) {
-		if (tacticCount >= 7) {
+		if (tacticCount >= MAX_TACTICS) {
+			return;
+		}
+		List<Request> requests = trimRequests(tacticCount);
+		if (requests.isEmpty()) {
 			return;
 		}
 		boolean asUser = userGoogleAccessToken != null && !userGoogleAccessToken.isBlank();
 		Slides slidesClient = asUser ? buildSlides(userGoogleAccessToken) : slides;
-
-		List<Request> requests = new ArrayList<>();
-		// Delete summary-table rows bottom-up so earlier indices don't shift.
-		for (int t = 7; t >= tacticCount + 1; t--) {
-			requests.add(new Request().setDeleteTableRow(new DeleteTableRowRequest()
-					.setTableObjectId(summaryTableObjectId)
-					.setCellLocation(new TableCellLocation().setRowIndex(t).setColumnIndex(0))));
-		}
-		// Delete the surplus tactic slides.
-		for (int t = 7; t >= tacticCount + 1; t--) {
-			String slideId = tacticSlideObjectIds.get(t);
-			if (slideId != null) {
-				requests.add(new Request().setDeleteObject(new DeleteObjectRequest().setObjectId(slideId)));
-			}
-		}
-		if (requests.isEmpty()) {
-			return;
-		}
 		try {
 			slidesClient.presentations()
 					.batchUpdate(presentationId, new BatchUpdatePresentationRequest().setRequests(requests))
@@ -159,6 +157,57 @@ public class RealSlidesProvider implements SlidesProvider {
 			log.error("[slides] trimTactics failed for {}", presentationId, ex);
 			throw new AppException(ErrorReason.C000,
 					"Google Slides trimTactics failed: " + ex.getMessage());
+		}
+	}
+
+	/**
+	 * Builds the delete requests for a deck trimmed to {@code tacticCount} tactics: the surplus
+	 * per-tactic detail slides, the surplus "Our results" and summary group slides, and the last
+	 * partial summary table's unused rows. Tactics are grouped 7‑per‑group (group 1 → tactics 1–7,
+	 * group 2 → 8–14, …); {@code groups = ceil(tacticCount / 7)} and {@code usedInLastGroup} is how
+	 * many of the last group's 7 rows are real. Requests are emitted only for configured (non-blank)
+	 * object ids, so an unconfigured deck degrades to a safe no-op.
+	 *
+	 * @param tacticCount number of real tactics (already clamped to {@code [1, 28]} by the caller)
+	 * @return the ordered list of delete requests (empty when nothing is configured to trim)
+	 */
+	List<Request> trimRequests(int tacticCount) {
+		int groups = (tacticCount + TACTICS_PER_GROUP - 1) / TACTICS_PER_GROUP;
+		int usedInLastGroup = tacticCount - (groups - 1) * TACTICS_PER_GROUP;
+
+		List<Request> requests = new ArrayList<>();
+		// Surplus per-tactic detail slides.
+		for (int t = tacticCount + 1; t <= MAX_TACTICS; t++) {
+			addDeleteObject(requests, tacticSlideObjectIds.get(t));
+		}
+		// Surplus "Our results" and summary slides for empty groups.
+		for (int g = groups + 1; g <= GROUP_COUNT; g++) {
+			addDeleteObject(requests, resultsSlideObjectIds.get(g));
+			addDeleteObject(requests, summarySlideObjectIds.get(g));
+		}
+		// Unused rows of the last (partial) summary table, bottom-up so earlier indices don't shift.
+		// Row 0 is the header; tactic rows occupy indices 1..7.
+		String lastTableId = summaryTableObjectIds.get(groups);
+		if (lastTableId != null && !lastTableId.isBlank()) {
+			for (int row = TACTICS_PER_GROUP; row >= usedInLastGroup + 1; row--) {
+				requests.add(new Request().setDeleteTableRow(new DeleteTableRowRequest()
+						.setTableObjectId(lastTableId)
+						.setCellLocation(new TableCellLocation().setRowIndex(row).setColumnIndex(0))));
+			}
+		}
+		return requests;
+	}
+
+	/**
+	 * Appends a {@code DeleteObject} request for the given page-element object id, but only when it
+	 * is configured (non-blank) — so missing object ids are skipped rather than failing the trim.
+	 *
+	 * @param requests the accumulating request list
+	 * @param objectId the slide/page-element object id to delete (may be {@code null}/blank)
+	 */
+	void addDeleteObject(List<Request> requests, String objectId) {
+		if (objectId != null && !objectId.isBlank()) {
+			requests.add(new Request().setDeleteObject(new DeleteObjectRequest().setObjectId(objectId)));
 		}
 	}
 

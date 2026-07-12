@@ -51,6 +51,9 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	private static final String CLIENT_NAME_TOKEN = "{{client_name}}";
 	private static final String CHANGE_LOG_TOKEN = "{{change log}}";
 
+	/** Max tactics the report template carries; the derived tactic count is clamped to this. */
+	private static final int MAX_TACTICS = 28;
+
 	private final ReportJobProgressHelper jobProgress;
 	private final ReportGenerationWarningsHelper warnings;
 	private final ReportGenerationChartHelper chartHelper;
@@ -269,22 +272,22 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 
 	/**
 	 * Derives the active tactic count from a sheet-read placeholder map: the number of leading
-	 * {@code {{tactic n}}} name tokens that carry a non-blank value, clamped to 1..7. Counting stops
+	 * {@code {{tactic n}}} name tokens that carry a non-blank value, clamped to 1..28. Counting stops
 	 * at the first missing or blank slot so trailing gaps never inflate the count.
 	 *
 	 * @param flatReplacements the placeholder map read back from the sheet
-	 * @return the active tactic count (1..7)
+	 * @return the active tactic count (1..28)
 	 */
 	int deriveTacticCount(Map<String, String> flatReplacements) {
 		int count = 0;
-		for (int n = 1; n <= 7; n++) {
+		for (int n = 1; n <= MAX_TACTICS; n++) {
 			String name = flatReplacements.get("{{tactic " + n + "}}");
 			if (name == null || name.isBlank()) {
 				break;
 			}
 			count = n;
 		}
-		return Math.clamp(count, 1, 7);
+		return Math.clamp(count, 1, MAX_TACTICS);
 	}
 
 	/**

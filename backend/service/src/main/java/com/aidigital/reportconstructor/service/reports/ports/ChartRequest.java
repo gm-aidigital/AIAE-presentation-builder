@@ -15,7 +15,7 @@ import java.util.Map;
  *                              pivots are supplied pre-computed via {@code dailyPivots}/{@code monthlyPivots}
  * @param lineItemMapping       tactic-number &rarr; line-item-id mapping; empty when pivots are pre-computed
  * @param flightTs              resolved flight window, or {@code null}
- * @param tacticCount           number of active tactics (1..7)
+ * @param tacticCount           number of active tactics (1..28)
  * @param campaignTitle         deck title, used for folder / file names
  * @param distTacticNames       tactic-number &rarr; display name (from {@code {{tactic n}}})
  * @param distTacticImps        tactic-number &rarr; impressions (from {@code {{tactic n imps}}})

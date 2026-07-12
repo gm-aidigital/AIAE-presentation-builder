@@ -79,18 +79,18 @@ class MediaPlanTacticExtractorTest {
 	}
 
 	@Test
-	void extract_capsAtSevenTactics() {
-		// Given: a plan with nine recognised tactic rows
+	void extract_capsAtTwentyEightTactics() {
+		// Given: a plan with thirty recognised tactic rows
 		List<List<String>> plan = new java.util.ArrayList<>();
 		plan.add(List.of("Media"));
-		for (int i = 0; i < 9; i++) {
+		for (int i = 0; i < 30; i++) {
 			plan.add(List.of("Meta (CPM)"));
 		}
 
 		// When
 		List<PlanTactic> rows = extractor.extract(plan);
 
-		// Then: extraction stops at the report's seven tactic slots
-		assertThat(rows).hasSize(7);
+		// Then: extraction stops at the report's 28 tactic slots
+		assertThat(rows).hasSize(28);
 	}
 }

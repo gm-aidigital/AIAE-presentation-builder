@@ -42,6 +42,9 @@ public class SheetChartDataReaderImpl implements SheetChartDataReader {
 	/** How many columns right of a block's anchor cell to search for its header cells. */
 	private static final int SEARCH_COLS_RIGHT = 8;
 
+	/** Max tactics the report template carries; the requested tactic count is clamped to this. */
+	private static final int MAX_TACTICS = 28;
+
 	private final SheetRowHelper rows;
 	private final ReportNumberParser numbers;
 
@@ -54,7 +57,7 @@ public class SheetChartDataReaderImpl implements SheetChartDataReader {
 		}
 		Map<Integer, int[]> dailyAnchors = findNumberedAnchors(grid, DAILY_ANCHOR);
 		Map<Integer, int[]> monthlyAnchors = findNumberedAnchors(grid, MONTHLY_ANCHOR);
-		int count = Math.clamp(tacticCount, 0, 7);
+		int count = Math.clamp(tacticCount, 0, MAX_TACTICS);
 		for (int n = 1; n <= count; n++) {
 			String kpiType = tacticKpiTypes == null ? null : tacticKpiTypes.get(n);
 			daily.put(n, readPivot(grid, dailyAnchors.get(n), kpiType));

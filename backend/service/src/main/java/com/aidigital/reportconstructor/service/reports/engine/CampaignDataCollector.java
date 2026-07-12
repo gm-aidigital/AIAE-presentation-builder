@@ -44,6 +44,9 @@ public class CampaignDataCollector {
 
 	private static final String[] STOP_WORDS = {"added value", "totals", "please note", "total:"};
 
+	/** Max tactics the report template carries — the per-tactic scan is bounded to this. */
+	private static final int MAX_TACTICS = 28;
+
 	/**
 	 * Mutable per-key accumulator (channel or line-item).
 	 */
@@ -118,7 +121,7 @@ public class CampaignDataCollector {
 		// ── 6. Tactics & channel mapping ──────────────────────────────────────
 		List<String> mediaTactics = tacticExtraction.extractTacticsFromMedia(sheetRows);
 		Map<Integer, String[]> tacticMap = new LinkedHashMap<>(); // N -> [name, channel|null]
-		for (int n = 1; n <= 7; n++) {
+		for (int n = 1; n <= MAX_TACTICS; n++) {
 			String name = coalesce(sheetUtils.findLabelValue(adjRows, "Tactic " + n + ":"),
 					coalesce(sheetUtils.findLabelValue(sheetRows, "Tactic " + n + ":"),
 							n - 1 < mediaTactics.size() ? mediaTactics.get(n - 1) : null));

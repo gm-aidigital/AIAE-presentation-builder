@@ -34,6 +34,15 @@ public class CampaignResolvers {
 	/** Number of leading cells scanned for a "total" label when classifying a media-plan row. */
 	private static final int TOTAL_LABEL_SCAN_COLUMNS = 5;
 
+	/** Rows below the "Media" header scanned when auto-deriving the tactics list (covers up to 28 tactics). */
+	private static final int TACTICS_LIST_SCAN_ROWS = 60;
+
+	/** How many tactic names are listed verbatim before the {@code "+N more"} overflow suffix. */
+	private static final int TACTICS_LIST_MAX_NAMED = 7;
+
+	/** Number of {@code {{Our results overview N}}} slots — one per tactic group of up to 7 tactics. */
+	private static final int RESULTS_OVERVIEW_GROUPS = 4;
+
 	private final SheetRowHelper sheetUtils;
 	private final Fmt fmt;
 	private final TacticExtractionHelper tacticExtraction;
@@ -368,7 +377,7 @@ public class CampaignResolvers {
 
 		Map<String, Boolean> seen = new LinkedHashMap<>();
 		List<String> result = new ArrayList<>();
-		int limit = Math.min(mediaRowIdx + 20, sheetRows.size() - 1);
+		int limit = Math.min(mediaRowIdx + TACTICS_LIST_SCAN_ROWS, sheetRows.size() - 1);
 		for (int i = mediaRowIdx + 1; i <= limit; i++) {
 			String c = cellAt(sheetRows.get(i), mediaColIdx);
 			if (c.isEmpty()) {
@@ -386,9 +395,25 @@ public class CampaignResolvers {
 			}
 		}
 		if (result.isEmpty()) {
-			return new Resolved("Tactics list (auto: 20 rows below \"Media\")", null, "not_found");
+			return new Resolved("Tactics list (auto: rows below \"Media\")", null, "not_found");
 		}
-		return new Resolved("Tactics list (auto: 20 rows below \"Media\")", String.join(", ", result), "sheet");
+		return new Resolved("Tactics list (auto: rows below \"Media\")", joinTacticsList(result), "sheet");
+	}
+
+	/**
+	 * Joins tactic display names for {@code {{tactics_list}}}: all names when there are at most
+	 * {@link #TACTICS_LIST_MAX_NAMED}, otherwise the first {@code TACTICS_LIST_MAX_NAMED} names
+	 * followed by a {@code " +N more"} overflow suffix (N = remaining count).
+	 *
+	 * @param names the de-duplicated tactic display names, in media-plan order
+	 * @return the comma-joined list, with a {@code " +N more"} suffix when it overflows
+	 */
+	String joinTacticsList(List<String> names) {
+		if (names.size() <= TACTICS_LIST_MAX_NAMED) {
+			return String.join(", ", names);
+		}
+		String named = String.join(", ", names.subList(0, TACTICS_LIST_MAX_NAMED));
+		return named + " +" + (names.size() - TACTICS_LIST_MAX_NAMED) + " more";
 	}
 
 	/**
@@ -507,28 +532,41 @@ public class CampaignResolvers {
 	}
 
 	/**
-	 * Resolves the "Our results overview" copy, falling back to Claude-generated text.
+	 * Resolves the four {@code {{Our results overview N}}} placeholders (N = 1..4), one per tactic
+	 * group of up to 7 tactics (group 1 → tactics 1–7, group 2 → 8–14, …). Each prefers a manual
+	 * {@code "Our results overview N:"} value (group 1 also accepts the legacy unsuffixed
+	 * {@code "Our results overview:"}), then falls back to Claude's per-group narrative. Groups with
+	 * no Claude text and no manual value resolve to {@code "not_found"} (their slide is trimmed away).
 	 *
-	 * @param sheetRows      Media Plan tab rows
-	 * @param adjRows        manual Adjustments tab rows (checked first)
-	 * @param claudeOverview Claude-authored results overview, used as last resort (may be null)
-	 * @return a {@link Resolved} results-overview string, or a null-valued {@code "not_found"}
+	 * @param sheetRows        Media Plan tab rows
+	 * @param adjRows          manual Adjustments tab rows (checked first)
+	 * @param claudeOverviews  Claude per-group results overviews keyed by 1-based group number (may be null)
+	 * @return a map keyed by placeholder ({@code {{Our results overview N}}}) to its {@link Resolved}
 	 */
-	public Resolved resolveResultsOverview(List<List<String>> sheetRows, List<List<String>> adjRows,
-	                                       String claudeOverview) {
+	public Map<String, Resolved> resolveResultsOverviews(List<List<String>> sheetRows, List<List<String>> adjRows,
+	                                                     Map<Integer, String> claudeOverviews) {
 
-		String fromAdj = sheetUtils.findLabelValue(adjRows, "Our results overview:");
-		if (fromAdj != null) {
-			return new Resolved("Our results overview:", fromAdj, "adj");
+		Map<String, Resolved> result = new LinkedHashMap<>();
+		for (int g = 1; g <= RESULTS_OVERVIEW_GROUPS; g++) {
+			String label = "Our results overview " + g + ":";
+			String manual = coalesce(sheetUtils.findLabelValue(adjRows, label),
+					sheetUtils.findLabelValue(sheetRows, label));
+			if (manual == null && g == 1) {
+				manual = coalesce(sheetUtils.findLabelValue(adjRows, "Our results overview:"),
+						sheetUtils.findLabelValue(sheetRows, "Our results overview:"));
+			}
+			String claude = claudeOverviews == null ? null : claudeOverviews.get(g);
+
+			String key = "{{Our results overview " + g + "}}";
+			if (manual != null) {
+				result.put(key, new Resolved(label, manual, "adj"));
+			} else if (notBlank(claude)) {
+				result.put(key, new Resolved("Our results overview " + g + " (auto: Claude)", claude, "adj"));
+			} else {
+				result.put(key, new Resolved(label, null, "not_found"));
+			}
 		}
-		String fromSheet = sheetUtils.findLabelValue(sheetRows, "Our results overview:");
-		if (fromSheet != null) {
-			return new Resolved("Our results overview:", fromSheet, "sheet");
-		}
-		if (claudeOverview != null) {
-			return new Resolved("Our results overview (auto: Claude)", claudeOverview, "adj");
-		}
-		return new Resolved("Our results overview:", null, "not_found");
+		return result;
 	}
 
 	/**

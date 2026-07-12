@@ -55,7 +55,7 @@ class RealClaudeClientTest {
 
 		JsonNode response = json.readTree("""
 				{
-				  "results_overview": "Overall the campaign delivered strong results.",
+				  "results_overviews": {"1": "Overall the campaign delivered strong results."},
 				  "thoughts_on_performance": "T1. | T2. | T3. | T4.",
 				  "tactic_overviews": {},
 				  "optimization_recommendations": [
@@ -67,7 +67,7 @@ class RealClaudeClientTest {
 				}
 				""");
 		List<ClaudeCompressionField> expectedFields = List.of(
-				new ClaudeCompressionField("results_overview", "Overall the campaign delivered strong results.", 380),
+				new ClaudeCompressionField("results_overview_1", "Overall the campaign delivered strong results.", 380),
 				new ClaudeCompressionField("thought_0", "T1.", 220),
 				new ClaudeCompressionField("thought_1", "T2.", 220),
 				new ClaudeCompressionField("thought_2", "T3.", 220),
@@ -96,6 +96,8 @@ class RealClaudeClientTest {
 		ClaudeResults results = client.batchResults(data, brief, frequencies);
 
 		// Then:
+		assertThat(results.resultsOverviews())
+				.containsEntry(1, "Overall the campaign delivered strong results.");
 		assertThat(results.recommendations()).hasSize(4);
 		assertThat(results.recommendations())
 				.extracting(Recommendation::title)

@@ -63,7 +63,7 @@ public class PlaceholderClaudeGateImpl implements PlaceholderClaudeGate {
 	public boolean needResults(GeneratePayload payload, CampaignData data) {
 		List<List<String>> adj = payload.adjRows();
 		List<List<String>> sheet = payload.sheetRows();
-		if (bothNull(adj, sheet, "Our results overview:")) {
+		if (bothNull(adj, sheet, "Our results overview 1:") && bothNull(adj, sheet, "Our results overview:")) {
 			return true;
 		}
 		if (bothNull(adj, sheet, "Thoughts on the performance:")) {

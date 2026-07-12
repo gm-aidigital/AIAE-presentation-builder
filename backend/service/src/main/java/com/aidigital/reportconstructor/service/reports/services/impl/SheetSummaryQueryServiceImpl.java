@@ -23,7 +23,7 @@ import java.util.Map;
 public class SheetSummaryQueryServiceImpl implements SheetSummaryQueryService {
 
 	/** Max tactics the report template carries (summary rows and "Main slide" blocks). */
-	private static final int MAX_TACTICS = 7;
+	private static final int MAX_TACTICS = 28;
 
 	/** Per-tactic placeholder tokens, assembled as {@code "{{tactic " + n + suffix + "}}"}. */
 	private static final String TOKEN_PREFIX = "{{tactic ";

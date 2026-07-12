@@ -255,7 +255,24 @@ public class RealClaudeClient implements ClaudeClient {
 			return claudeDefaults.emptyResults();
 		}
 
-		String rawResultsOverview = normalizer.textOrNull(parsed.get("results_overview"));
+		Map<Integer, String> rawResultsOverviews = new LinkedHashMap<>();
+		JsonNode rawOverviews = parsed.get("results_overviews");
+		if (rawOverviews != null && rawOverviews.isObject()) {
+			var oit = rawOverviews.fields();
+			while (oit.hasNext()) {
+				var ent = oit.next();
+				int g;
+				try {
+					g = Integer.parseInt(ent.getKey().trim());
+				} catch (NumberFormatException ex) {
+					continue;
+				}
+				if (g <= 0) {
+					continue;
+				}
+				rawResultsOverviews.put(g, ent.getValue().asText(""));
+			}
+		}
 		List<String> rawThoughts =
 				normalizer.normalizeThoughts(normalizer.textOrNull(parsed.get("thoughts_on_performance")));
 
@@ -292,9 +309,9 @@ public class RealClaudeClient implements ClaudeClient {
 		String rawFStorytelling = normalizer.textOrNull(parsed.get("f_storytelling"));
 
 		List<ClaudeCompressionField> compressionFields = new ArrayList<>();
-		if (rawResultsOverview != null) {
-			compressionFields.add(
-					new ClaudeCompressionField("results_overview", rawResultsOverview, RESULTS_OVERVIEW_LIMIT));
+		for (Map.Entry<Integer, String> e : rawResultsOverviews.entrySet()) {
+			compressionFields.add(new ClaudeCompressionField(
+					"results_overview_" + e.getKey(), e.getValue(), RESULTS_OVERVIEW_LIMIT));
 		}
 		if (rawFOpportunity != null) {
 			compressionFields.add(new ClaudeCompressionField("f_opportunity", rawFOpportunity, F_OPPORTUNITY_LIMIT));
@@ -323,9 +340,11 @@ public class RealClaudeClient implements ClaudeClient {
 		}
 		Map<String, String> compressed = compressionService.compress(compressionFields, "BatchD-Results");
 
-		String resultsOverview = rawResultsOverview == null
-				? null
-				: normalizer.limitResultsOverview(compressed.get("results_overview"));
+		Map<Integer, String> resultsOverviews = new LinkedHashMap<>();
+		for (Integer group : rawResultsOverviews.keySet()) {
+			resultsOverviews.put(group,
+					normalizer.limitResultsOverview(compressed.get("results_overview_" + group)));
+		}
 
 		List<String> thoughts = new ArrayList<>();
 		for (int i = 0; i < rawThoughts.size(); i++) {
@@ -354,7 +373,7 @@ public class RealClaudeClient implements ClaudeClient {
 				? null
 				: normalizer.limitFStorytelling(compressed.get("f_storytelling"));
 
-		return new ClaudeResults(resultsOverview, thoughts, tacticOverviews, recommendations,
+		return new ClaudeResults(resultsOverviews, thoughts, tacticOverviews, recommendations,
 				fOpportunity, fFact, fStorytelling);
 	}
 

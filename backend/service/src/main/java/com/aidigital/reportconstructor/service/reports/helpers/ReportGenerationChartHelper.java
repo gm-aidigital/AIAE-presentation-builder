@@ -37,7 +37,7 @@ public interface ReportGenerationChartHelper {
 	 * @param slideUrl         URL of the generated Google Slides deck
 	 * @param grid             the filled sheet's first tab, as trimmed cell strings, carrying the pacing blocks
 	 * @param flatReplacements resolved placeholder values read back from the sheet
-	 * @param tacticCount      number of active tactics (clamped 1..7)
+	 * @param tacticCount      number of active tactics (clamped 1..28)
 	 * @param userGoogleToken  OAuth token for Google APIs, or null when unavailable
 	 * @return chart warnings collected during rendering, or skip/failure messages as strings
 	 */
@@ -64,7 +64,7 @@ public interface ReportGenerationChartHelper {
 	 * count comes from the sheet's filled tactic rows instead.
 	 *
 	 * @param slideUrl        URL of the generated Google Slides deck
-	 * @param tacticCount     number of active tactics (clamped 1..7)
+	 * @param tacticCount     number of active tactics (clamped 1..28)
 	 * @param userGoogleToken OAuth token for Google Slides API, or null when unavailable
 	 */
 	void trimUnusedTactics(String slideUrl, int tacticCount, String userGoogleToken);

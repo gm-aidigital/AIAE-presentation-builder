@@ -39,17 +39,17 @@ public interface SheetDeckProvider {
 
 	/**
 	 * Clears the template's unused per-tactic cell ranges (values <em>and</em>
-	 * formatting) when the campaign has fewer than the template's seven tactic
+	 * formatting) when the campaign has fewer than the template's 28 tactic
 	 * slots, without deleting whole spreadsheet rows or columns. The unused rows
 	 * of the per-tactic summary table and the unused "Main slide N" detail blocks
 	 * are located by scanning the sheet for their header/anchor labels rather than
 	 * fixed cell references, so the trim survives template layout edits. The
 	 * summary table's totals row is relocated (copy, not delete) to sit directly
 	 * under the last real tactic instead of below a block of cleared rows. A
-	 * no-op when {@code tacticCount >= 7}; slots whose anchor cannot be found are skipped.
+	 * no-op when {@code tacticCount >= 28}; slots whose anchor cannot be found are skipped.
 	 *
 	 * @param spreadsheetId         the workbook to trim
-	 * @param tacticCount           number of real tactics (clamped 1..7)
+	 * @param tacticCount           number of real tactics (clamped 1..28)
 	 * @param userGoogleAccessToken optional signed-in user's Google OAuth token;
 	 *                              falls back to the service account when blank
 	 */

@@ -12,6 +12,9 @@ export const BREAKDOWNS = [
 export type BreakdownId = (typeof BREAKDOWNS)[number]["id"];
 export type BreakdownState = Record<BreakdownId, boolean>;
 
+/** Max tactics the report deck template supports; extras are trimmed to this at generation time. */
+const MAX_TACTICS = 28;
+
 export interface TacticView {
     tacticNum: number;
     name: string;
@@ -47,6 +50,23 @@ export function StepBreakdowns({ tactics, building, sheetBuilt, onToggle, onBuil
                     </p>
                 </div>
             </div>
+
+            {tactics.length > MAX_TACTICS && (
+                <div className="rc-banner rc-banner--warn">
+                    <div className="rc-banner__icon">
+                        <IconInfo size={18} />
+                    </div>
+                    <div className="rc-banner__text">
+                        <div className="rc-banner__title">
+                            This media plan has {tactics.length} tactics — only {MAX_TACTICS} are supported.
+                        </div>
+                        <div className="rc-banner__sub">
+                            The report will include the first {MAX_TACTICS} tactics; the remaining{" "}
+                            {tactics.length - MAX_TACTICS} will be left out.
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {tactics.length === 0 ? (
                 <div className="rc-empty">No tactics found in the confirmed mapping.</div>

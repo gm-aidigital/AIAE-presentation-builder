@@ -15,7 +15,7 @@ import java.util.Map;
  * @param bqRows                raw BigQuery export rows (the Adjustments / actuals grid)
  * @param lineItemMapping       tactic-number &rarr; line-item-id mapping
  * @param flightTs              resolved flight window, or {@code null}
- * @param tacticCount           number of active tactics (1..7)
+ * @param tacticCount           number of active tactics (1..28)
  * @param distTacticNames       tactic-number &rarr; display name (from {@code {{tactic n}}})
  * @param distTacticImps        tactic-number &rarr; impressions (from {@code {{tactic n imps}}})
  * @param distTotalImps         total impressions (from {@code {{total imps}}})

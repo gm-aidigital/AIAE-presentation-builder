@@ -31,6 +31,9 @@ public class ReportGenerationChartHelperImpl implements ReportGenerationChartHel
 
 	private static final Pattern PRESENTATION_ID = Pattern.compile("/d/([a-zA-Z0-9_-]+)");
 
+	/** Max tactics the report template carries; media-plan tactic counts are clamped to this. */
+	private static final int MAX_TACTICS = 28;
+
 	private final ChartProvider charts;
 	private final SlidesProvider slides;
 	private final TacticExtractionHelper tacticExtraction;
@@ -55,7 +58,7 @@ public class ReportGenerationChartHelperImpl implements ReportGenerationChartHel
 			return List.of("Charts skipped — could not determine presentation id from " + slideUrl);
 		}
 
-		int tacticCount = Math.clamp(tacticExtraction.countTacticsInMediaPlan(payload.sheetRows()), 1, 7);
+		int tacticCount = Math.clamp(tacticExtraction.countTacticsInMediaPlan(payload.sheetRows()), 1, MAX_TACTICS);
 		String campaignTitle = campaignTitle(flatReplacements);
 
 		Map<Integer, String> distNames = new LinkedHashMap<>();
@@ -98,7 +101,7 @@ public class ReportGenerationChartHelperImpl implements ReportGenerationChartHel
 		if (presentationId == null) {
 			return List.of("Charts skipped — could not determine presentation id from " + slideUrl);
 		}
-		int count = Math.clamp(tacticCount, 1, 7);
+		int count = Math.clamp(tacticCount, 1, MAX_TACTICS);
 
 		Map<Integer, String> distNames = new LinkedHashMap<>();
 		Map<Integer, Double> distImps = new LinkedHashMap<>();
@@ -188,7 +191,7 @@ public class ReportGenerationChartHelperImpl implements ReportGenerationChartHel
 
 	@Override
 	public void trimUnusedTactics(String slideUrl, GeneratePayload payload, String userGoogleToken) {
-		int tacticCount = Math.clamp(tacticExtraction.countTacticsInMediaPlan(payload.sheetRows()), 1, 7);
+		int tacticCount = Math.clamp(tacticExtraction.countTacticsInMediaPlan(payload.sheetRows()), 1, MAX_TACTICS);
 		trimUnusedTactics(slideUrl, tacticCount, userGoogleToken);
 	}
 
@@ -198,7 +201,7 @@ public class ReportGenerationChartHelperImpl implements ReportGenerationChartHel
 		if (presentationId == null) {
 			return;
 		}
-		int clamped = Math.clamp(tacticCount, 1, 7);
+		int clamped = Math.clamp(tacticCount, 1, MAX_TACTICS);
 		try {
 			slides.trimTactics(presentationId, clamped, userGoogleToken);
 		} catch (RuntimeException ex) {

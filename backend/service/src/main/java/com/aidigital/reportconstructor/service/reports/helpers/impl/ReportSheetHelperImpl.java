@@ -27,6 +27,9 @@ public class ReportSheetHelperImpl implements ReportSheetHelper {
 
 	private static final Pattern SPREADSHEET_ID = Pattern.compile("/d/([a-zA-Z0-9_-]+)");
 
+	/** Max tactics the report template carries; media-plan tactic counts are clamped to this. */
+	private static final int MAX_TACTICS = 28;
+
 	private final SheetDeckProvider sheets;
 	private final TacticExtractionHelper tacticExtraction;
 	private final ReportNumberParser reportNumbers;
@@ -42,7 +45,7 @@ public class ReportSheetHelperImpl implements ReportSheetHelper {
 		if (spreadsheetId == null) {
 			return;
 		}
-		int tacticCount = Math.clamp(tacticExtraction.countTacticsInMediaPlan(payload.sheetRows()), 1, 7);
+		int tacticCount = Math.clamp(tacticExtraction.countTacticsInMediaPlan(payload.sheetRows()), 1, MAX_TACTICS);
 		try {
 			sheets.trimTactics(spreadsheetId, tacticCount, userGoogleToken);
 		} catch (RuntimeException ex) {
@@ -64,7 +67,7 @@ public class ReportSheetHelperImpl implements ReportSheetHelper {
 			return List.of("Pacing tables skipped — could not determine spreadsheet id from " + sheetUrl);
 		}
 
-		int tacticCount = Math.clamp(tacticExtraction.countTacticsInMediaPlan(payload.sheetRows()), 1, 7);
+		int tacticCount = Math.clamp(tacticExtraction.countTacticsInMediaPlan(payload.sheetRows()), 1, MAX_TACTICS);
 
 		Map<Integer, String> distNames = new LinkedHashMap<>();
 		Map<Integer, Double> distImps = new LinkedHashMap<>();

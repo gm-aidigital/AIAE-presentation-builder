@@ -59,7 +59,7 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 	private static final List<String> SUMMARY_HEADER = List.of("Tactic name", "Benchmark", "KPI type", "KPI");
 
 	/**
-	 * Labels the anchor cell of each per-tactic detail block ({@code "Main slide 1"} … {@code "Main slide 7"}).
+	 * Labels the anchor cell of each per-tactic detail block ({@code "Main slide 1"} … {@code "Main slide 28"}).
 	 */
 	private static final Pattern MAIN_SLIDE_LABEL = Pattern.compile("(?i)^main slide\\s+(\\d+)$");
 
@@ -70,12 +70,17 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 	private static final int MAIN_SLIDE_COLS_RIGHT = 1;
 
 	/**
+	 * Max tactics the EOC template carries — summary rows and "Main slide" blocks are numbered 1..28.
+	 */
+	private static final int MAX_TACTICS = 28;
+
+	/**
 	 * Column-0 label of the summary table's totals row.
 	 */
 	private static final String TOTALS_LABEL = "Total";
 
 	/**
-	 * How many rows below the fixed 7 tactic slots to search for {@link #TOTALS_LABEL},
+	 * How many rows below the fixed 28 tactic slots to search for {@link #TOTALS_LABEL},
 	 * bounding the scan rather than assuming a single fixed offset.
 	 */
 	private static final int TOTALS_SEARCH_WINDOW = 20;
@@ -152,7 +157,7 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 
 	@Override
 	public void trimTactics(String spreadsheetId, int tacticCount, String userGoogleAccessToken) {
-		if (tacticCount >= 7) {
+		if (tacticCount >= MAX_TACTICS) {
 			return;
 		}
 		boolean asUser = userGoogleAccessToken != null && !userGoogleAccessToken.isBlank();
@@ -223,7 +228,7 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 	/**
 	 * Builds the clear/relocate requests for the unused rows of the per-tactic summary
 	 * table (anchored by its {@link #SUMMARY_HEADER} row, one data row per tactic slot
-	 * 1..7 directly below it). A no-op when the header cannot be located.
+	 * 1..28 directly below it). A no-op when the header cannot be located.
 	 *
 	 * <p>When some tactic slots are unused, the totals row is moved up to sit directly
 	 * under the last real tactic — the first freed slot — instead of leaving it below
@@ -256,7 +261,7 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 			// remaining unused slots still need clearing.
 			clearFrom = tacticCount + 2;
 		}
-		for (int t = clearFrom; t <= 7; t++) {
+		for (int t = clearFrom; t <= MAX_TACTICS; t++) {
 			int rowIndex = headerRow + t;
 			requests.add(clearRequest(sheetId, rowIndex, rowIndex + 1, 0, tableWidth));
 		}
@@ -277,7 +282,7 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 	List<Request> mainSlideClearRequests(List<List<String>> grid, int sheetId, int tacticCount) {
 		Map<Integer, int[]> anchors = findMainSlideAnchors(grid);
 		List<Request> requests = new ArrayList<>();
-		for (int t = tacticCount + 1; t <= 7; t++) {
+		for (int t = tacticCount + 1; t <= MAX_TACTICS; t++) {
 			int[] anchor = anchors.get(t);
 			if (anchor == null) {
 				log.warn("[sheets] trimTactics: \"Main slide {}\" anchor not found — skipping its detail block", t);
@@ -292,7 +297,7 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 
 	/**
 	 * Finds the summary table's totals row: the first row at or below the fixed
-	 * 7 tactic slots whose column-0 cell is exactly {@link #TOTALS_LABEL}, searched
+	 * 28 tactic slots whose column-0 cell is exactly {@link #TOTALS_LABEL}, searched
 	 * within a bounded window so an unrelated "Total" elsewhere in the tab isn't matched.
 	 *
 	 * @param grid      the workbook tab, read as trimmed cell strings
@@ -300,7 +305,7 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 	 * @return the totals row's zero-based index, or {@code -1} when none is found
 	 */
 	int findTotalsRow(List<List<String>> grid, int headerRow) {
-		int searchStart = headerRow + 8;
+		int searchStart = headerRow + MAX_TACTICS + 1;
 		int searchEnd = Math.min(grid.size(), searchStart + TOTALS_SEARCH_WINDOW);
 		for (int r = searchStart; r < searchEnd; r++) {
 			List<String> row = grid.get(r);

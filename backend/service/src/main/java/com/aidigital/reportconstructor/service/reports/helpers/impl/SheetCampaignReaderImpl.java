@@ -21,11 +21,14 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class SheetCampaignReaderImpl implements SheetCampaignReader {
 
+	/** Max tactics the report template carries; the requested tactic count is clamped to this. */
+	private static final int MAX_TACTICS = 28;
+
 	private final ReportNumberParser numbers;
 
 	@Override
 	public CampaignData read(Map<String, String> flat, int tacticCount) {
-		int count = Math.clamp(tacticCount, 0, 7);
+		int count = Math.clamp(tacticCount, 0, MAX_TACTICS);
 		Map<Integer, Tactic> tactics = new LinkedHashMap<>();
 		for (int n = 1; n <= count; n++) {
 			tactics.put(n, readTactic(flat, n));

@@ -33,12 +33,25 @@ public class GoogleProperties {
 	private String slidesTargetFolderId = "";
 
 	/**
-	 * Summary table object id for per-tactic row pruning (trimTactics).
+	 * Summary-table object ids per tactic group (1-based keys: group 1 → tactics 1–7,
+	 * group 2 → 8–14, …), used to prune the last partial group's unused rows in trimTactics.
 	 */
-	private String summaryTableObjectId = "";
+	private Map<Integer, String> summaryTableObjectIds = Map.of();
 
 	/**
-	 * Template slide object ids per tactic slot (1-based keys).
+	 * Summary-slide object ids per tactic group (1-based keys). Groups with no tactics are
+	 * deleted whole in trimTactics.
+	 */
+	private Map<Integer, String> summarySlideObjectIds = Map.of();
+
+	/**
+	 * "Our results" slide object ids per tactic group (1-based keys). Groups with no tactics are
+	 * deleted whole in trimTactics.
+	 */
+	private Map<Integer, String> resultsSlideObjectIds = Map.of();
+
+	/**
+	 * Template slide object ids per tactic slot (1-based keys, 1..28).
 	 */
 	private Map<Integer, String> tacticSlideObjectIds = Map.of();
 
@@ -87,12 +100,59 @@ public class GoogleProperties {
 		this.slidesTargetFolderId = slidesTargetFolderId;
 	}
 
-	public String getSummaryTableObjectId() {
-		return summaryTableObjectId;
+	/**
+	 * Returns the summary-table object ids keyed by tactic group, used to prune the last partial
+	 * group's unused rows in {@code trimTactics}.
+	 *
+	 * @return map of 1-based tactic-group number to its summary-table object id
+	 */
+	public Map<Integer, String> getSummaryTableObjectIds() {
+		return summaryTableObjectIds;
 	}
 
-	public void setSummaryTableObjectId(String summaryTableObjectId) {
-		this.summaryTableObjectId = summaryTableObjectId;
+	/**
+	 * Sets the per-group summary-table object ids, defaulting to an empty map when null.
+	 *
+	 * @param summaryTableObjectIds map of 1-based tactic-group number to summary-table object id (may be null)
+	 */
+	public void setSummaryTableObjectIds(Map<Integer, String> summaryTableObjectIds) {
+		this.summaryTableObjectIds = summaryTableObjectIds == null ? Map.of() : summaryTableObjectIds;
+	}
+
+	/**
+	 * Returns the summary-slide object ids keyed by tactic group; slides for empty groups are deleted whole.
+	 *
+	 * @return map of 1-based tactic-group number to its summary-slide object id
+	 */
+	public Map<Integer, String> getSummarySlideObjectIds() {
+		return summarySlideObjectIds;
+	}
+
+	/**
+	 * Sets the per-group summary-slide object ids, defaulting to an empty map when null.
+	 *
+	 * @param summarySlideObjectIds map of 1-based tactic-group number to summary-slide object id (may be null)
+	 */
+	public void setSummarySlideObjectIds(Map<Integer, String> summarySlideObjectIds) {
+		this.summarySlideObjectIds = summarySlideObjectIds == null ? Map.of() : summarySlideObjectIds;
+	}
+
+	/**
+	 * Returns the "Our results" slide object ids keyed by tactic group; slides for empty groups are deleted whole.
+	 *
+	 * @return map of 1-based tactic-group number to its "Our results" slide object id
+	 */
+	public Map<Integer, String> getResultsSlideObjectIds() {
+		return resultsSlideObjectIds;
+	}
+
+	/**
+	 * Sets the per-group "Our results" slide object ids, defaulting to an empty map when null.
+	 *
+	 * @param resultsSlideObjectIds map of 1-based tactic-group number to "Our results" slide object id (may be null)
+	 */
+	public void setResultsSlideObjectIds(Map<Integer, String> resultsSlideObjectIds) {
+		this.resultsSlideObjectIds = resultsSlideObjectIds == null ? Map.of() : resultsSlideObjectIds;
 	}
 
 	public Map<Integer, String> getTacticSlideObjectIds() {

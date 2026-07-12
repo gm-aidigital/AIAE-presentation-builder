@@ -22,7 +22,7 @@ public interface SheetChartDataReader {
 	 * Reads the daily and monthly pacing pivots for every active tactic.
 	 *
 	 * @param grid            the filled workbook's first tab, as trimmed cell strings (may be {@code null})
-	 * @param tacticCount     number of active tactics to read (1..7)
+	 * @param tacticCount     number of active tactics to read (1..28)
 	 * @param tacticKpiTypes  tactic number &rarr; KPI type ({@code "ctr"}/{@code "vcr"}, else {@code null}),
 	 *                        deciding whether the single metric column is read as clicks or completions
 	 * @return the reconstructed daily and monthly pivots; a tactic whose block is absent yields an empty pivot

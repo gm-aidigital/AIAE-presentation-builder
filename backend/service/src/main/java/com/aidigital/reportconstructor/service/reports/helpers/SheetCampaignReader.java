@@ -20,7 +20,7 @@ public interface SheetCampaignReader {
 	 * Builds the campaign context from a sheet-read placeholder map.
 	 *
 	 * @param flatReplacements the {@code {{token}} → value} map read back from the sheet
-	 * @param tacticCount      number of active tactics to reconstruct (1..7)
+	 * @param tacticCount      number of active tactics to reconstruct (1..28)
 	 * @return the reconstructed campaign data for the Claude prompts
 	 */
 	CampaignData read(Map<String, String> flatReplacements, int tacticCount);

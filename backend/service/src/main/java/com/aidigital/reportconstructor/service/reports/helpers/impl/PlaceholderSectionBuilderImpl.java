@@ -28,6 +28,9 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder {
 
+	/** Max tactics the deck template carries — one preview section per tactic slot. */
+	private static final int MAX_TACTICS = 28;
+
 	private final CampaignResolvers campaignResolvers;
 	private final TacticResolvers tacticResolvers;
 	private final TacticExtractionHelper tacticExtraction;
@@ -76,8 +79,7 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		Map<String, Resolved> overview = new LinkedHashMap<>();
 		overview.put("{{proposal overview}}", campaignResolvers.resolveProposalOverview(sheet, adj,
 				ccA.proposalOverview()));
-		overview.put("{{Our results overview}}", campaignResolvers.resolveResultsOverview(sheet, adj,
-				ccC.resultsOverview()));
+		overview.putAll(campaignResolvers.resolveResultsOverviews(sheet, adj, ccC.resultsOverviews()));
 		overview.putAll(campaignResolvers.resolveThoughtsOnPerformance(sheet, adj, ccC.thoughtsOnPerformance()));
 		sections.add(buildPreviewSection("Overview Slides", overview));
 
@@ -95,7 +97,7 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		totals.put("{{total spend}}", campaignResolvers.resolveTotalInvestment(sheet, adj, data));
 		sections.add(buildPreviewSection("Summary Metrics", totals));
 
-		for (int n = 1; n <= 7; n++) {
+		for (int n = 1; n <= MAX_TACTICS; n++) {
 			sections.add(buildPreviewSection("Tactic " + n,
 					buildFullTacticSection(n, sheet, adj, data, ccB, ccC, mediaTactics, payload.marketVolume())));
 		}

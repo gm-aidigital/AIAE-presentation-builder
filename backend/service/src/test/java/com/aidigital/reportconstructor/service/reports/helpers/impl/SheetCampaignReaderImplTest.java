@@ -51,10 +51,10 @@ class SheetCampaignReaderImplTest {
 		// Given: a nearly empty map and an over-range tactic count
 
 		// When: reconstructed with a count above the template maximum
-		CampaignData data = reader.read(Map.of("{{client_name}}", "Acme"), 9);
+		CampaignData data = reader.read(Map.of("{{client_name}}", "Acme"), 30);
 
-		// Then: the count is clamped to seven and missing numbers default to zero without failing
-		assertThat(data.tactics()).hasSize(7);
+		// Then: the count is clamped to 28 and missing numbers default to zero without failing
+		assertThat(data.tactics()).hasSize(28);
 		assertThat(data.totals().spend()).isZero();
 		assertThat(data.tactics().get(1).spend()).isZero();
 		assertThat(data.tactics().get(1).name()).isEmpty();

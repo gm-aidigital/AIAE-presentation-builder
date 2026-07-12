@@ -30,6 +30,9 @@
   --rc-blue-hover: #0007B4;
   --rc-tint: #F5F5FE;
   --rc-tint-2: #E5E6FB;
+  --rc-amber: #B45309;
+  --rc-amber-tint: #FEF6E7;
+  --rc-amber-border: #F6DDA8;
   --rc-lime: #AEF33E;
   --rc-ink: #0B0B0B;
   --rc-slate: #33344A;
@@ -339,6 +342,10 @@
 }
 .rc-banner__btn:hover:not(:disabled) { background: var(--rc-tint); }
 .rc-banner__btn:disabled { opacity: 0.6; cursor: default; }
+
+/* Cautionary variant — e.g. media plan exceeds the 28-tactic cap. */
+.rc-banner--warn { background: var(--rc-amber-tint); border-color: var(--rc-amber-border); }
+.rc-banner--warn .rc-banner__icon { background: var(--rc-amber); }
 
 .rc-sheet { border: 1px solid var(--rc-input-border); border-radius: 12px; overflow: hidden; }
 .rc-sheet__grid { display: grid; grid-template-columns: 1.6fr 0.9fr 1fr 1fr 1.1fr 1.1fr; }
