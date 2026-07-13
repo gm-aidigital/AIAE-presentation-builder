@@ -30,7 +30,7 @@ class PlaceholderSectionBuilderImplTest {
 				payload, data,
 				claudeDefaults.emptyStrategic(), claudeDefaults.emptyTactical(), claudeDefaults.emptyResults(),
 				null, null, null,
-				new CampaignFrequencies(null, null, null, null)
+				new CampaignFrequencies(null, null, null, null), 28
 		);
 
 		// 4 lead sections + 28 per-tactic sections + Optimization Recommendations + Frequency Story = 34
@@ -64,7 +64,7 @@ class PlaceholderSectionBuilderImplTest {
 				payload, data,
 				claudeDefaults.emptyStrategic(), claudeDefaults.emptyTactical(), claudeDefaults.emptyResults(),
 				null, null, null,
-				new CampaignFrequencies(null, null, null, null)
+				new CampaignFrequencies(null, null, null, null), 28
 		);
 
 		assertThat(sections.get(4).placeholders()).hasSize(26);
@@ -82,7 +82,7 @@ class PlaceholderSectionBuilderImplTest {
 				payload, data,
 				claudeDefaults.emptyStrategic(), claudeDefaults.emptyTactical(), claudeDefaults.emptyResults(),
 				null, null, null,
-				new CampaignFrequencies(null, null, null, null)
+				new CampaignFrequencies(null, null, null, null), 28
 		);
 
 		assertThat(sections.get(10).placeholders()).hasSize(26);
@@ -90,6 +90,26 @@ class PlaceholderSectionBuilderImplTest {
 				.extracting(Placeholder::key)
 				.contains("{{tactic 7 volume}}", "{{tactic 7 top creative name}}",
 						"{{tactic 7 top creative imps}}", "{{tactic 7 top creative clicks}}");
+	}
+
+	@Test
+	void shouldBuildOnlyRequestedNumberOfTacticSectionsTest() {
+		GeneratePayload payload = minimalPayload();
+		CampaignData data = emptyCampaignData();
+
+		List<PreviewSection> sections = builder.buildSections(
+				payload, data,
+				claudeDefaults.emptyStrategic(), claudeDefaults.emptyTactical(), claudeDefaults.emptyResults(),
+				null, null, null,
+				new CampaignFrequencies(null, null, null, null), 2
+		);
+
+		// 4 lead sections + 2 per-tactic sections + Optimization Recommendations + Frequency Story = 8
+		assertThat(sections).hasSize(8);
+		assertThat(sections.get(4).title()).isEqualTo("Tactic 1");
+		assertThat(sections.get(5).title()).isEqualTo("Tactic 2");
+		assertThat(sections.get(6).title()).isEqualTo("Optimization Recommendations");
+		assertThat(sections).noneMatch(s -> s.title().equals("Tactic 3"));
 	}
 
 	private static GeneratePayload minimalPayload() {

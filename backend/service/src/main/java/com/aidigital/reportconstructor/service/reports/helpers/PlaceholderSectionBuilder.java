@@ -29,6 +29,9 @@ public interface PlaceholderSectionBuilder {
 	 * @param frequencies   the {@code plan}/{@code fact}/{@code reachFact} figures computed once for this report,
 	 *                      so {@code {{reach_f}} / {{reach_f_pres}}} resolve to the exact same actual-reach
 	 *                      number that seeded the Claude {@code {{f_fact}}} narrative
+	 * @param tacticCount   number of real tactics to build per-tactic sections for (1..28); slots above this are
+	 *                      not resolved at all, so the map never carries {@code {{tactic N …}}} tokens for tactics
+	 *                      the campaign does not have — keeping the deck/sheet find-replace bounded to real tactics
 	 * @return ordered preview sections with their Russian UI titles
 	 */
 	List<PreviewSection> buildSections(
@@ -40,6 +43,7 @@ public interface PlaceholderSectionBuilder {
 			String primaryKpis,
 			String geoSummary,
 			String funnelSummary,
-			CampaignFrequencies frequencies
+			CampaignFrequencies frequencies,
+			int tacticCount
 	);
 }

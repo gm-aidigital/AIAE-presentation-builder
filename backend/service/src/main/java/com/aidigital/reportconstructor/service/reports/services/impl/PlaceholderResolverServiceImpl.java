@@ -41,6 +41,9 @@ public class PlaceholderResolverServiceImpl implements PlaceholderResolverServic
 	private final PlaceholderValueFlattener valueFlattener;
 	private final ReportClaudeDefaults claudeDefaults;
 
+	/** Max tactics the report template carries; derived tactic counts are clamped to this. */
+	private static final int MAX_TACTICS = 28;
+
 	@Override
 	public PreviewResult resolve(GeneratePayload payload) {
 		CampaignData data = collectData(payload);
@@ -49,7 +52,7 @@ public class PlaceholderResolverServiceImpl implements PlaceholderResolverServic
 				payload, data,
 				claudeDefaults.emptyStrategic(), claudeDefaults.emptyTactical(), claudeDefaults.emptyResults(),
 				null, null, null,
-				frequencies
+				frequencies, tacticCount(data)
 		);
 
 		int total = 0;
@@ -83,11 +86,33 @@ public class PlaceholderResolverServiceImpl implements PlaceholderResolverServic
 			String primaryKpis,
 			String geoSummary,
 			String funnelSummary,
-			CampaignFrequencies frequencies
+			CampaignFrequencies frequencies,
+			int tacticCount
 	) {
 		List<PreviewSection> sections = sectionBuilder.buildSections(payload, data, ccA, ccB, ccC, primaryKpis,
-				geoSummary, funnelSummary, frequencies);
+				geoSummary, funnelSummary, frequencies, tacticCount);
 		return valueFlattener.buildFlatReplacements(sections);
+	}
+
+	/**
+	 * Derives the real tactic count for the preview from the collected campaign data: the highest tactic
+	 * number the collector recognised (its {@code data.tactics()} keys already exclude unnamed slots),
+	 * clamped to 1..{@link #MAX_TACTICS}. Used so the preview only renders sections for tactics the
+	 * campaign actually has rather than all 28 template slots.
+	 *
+	 * @param data the aggregated campaign snapshot whose tactic keys bound the count
+	 * @return the real tactic count (1..28)
+	 */
+	int tacticCount(CampaignData data) {
+		int max = 0;
+		if (data != null && data.tactics() != null) {
+			for (Integer n : data.tactics().keySet()) {
+				if (n != null && n > max) {
+					max = n;
+				}
+			}
+		}
+		return Math.clamp(max, 1, MAX_TACTICS);
 	}
 
 	@Override

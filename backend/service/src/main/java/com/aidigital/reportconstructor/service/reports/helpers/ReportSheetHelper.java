@@ -16,20 +16,14 @@ public interface ReportSheetHelper {
 
 	/**
 	 * Clones the Sheets template and replaces every {@code {{token}}} with its value.
-	 * Per-tactic tokens for slots beyond the Media Plan's real tactic count are dropped
-	 * before the replace, so a small campaign no longer carries all 28 tactic slots'
-	 * worth of {@code {{tactic N …}}} find/replace requests (the unused slots are cleared
-	 * wholesale by {@link #trimUnusedTactics} afterwards).
 	 *
 	 * @param jobId            orchestration job id used as a correlation suffix
 	 * @param fileName         Drive file name to give the generated workbook
 	 * @param flatReplacements resolved placeholder values keyed by {@code {{token}}}
-	 * @param payload          generation request whose Media Plan drives the tactic count
 	 * @param userGoogleToken  OAuth token for Google APIs, or null when unavailable
 	 * @return the public Sheets URL of the generated workbook
 	 */
-	String buildSheet(String jobId, String fileName, Map<String, String> flatReplacements,
-			GeneratePayload payload, String userGoogleToken);
+	String buildSheet(String jobId, String fileName, Map<String, String> flatReplacements, String userGoogleToken);
 
 	/**
 	 * Clears the unused per-tactic ranges of the generated workbook when the spreadsheet

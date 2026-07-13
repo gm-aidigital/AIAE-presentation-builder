@@ -163,9 +163,16 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 			String primaryKpis = (live && placeholders.needPrimaryKpis(payload))
 					? claude.summarizePrimaryKpis(data) : null;
 
+			// The Slides deck fills only the tactics the campaign actually has, so the placeholder map — and
+			// therefore the createDeck find-replace batch — is bounded to the real tactic count; a two-tactic
+			// campaign no longer fans out ~800 replace requests across a 28-slide template (the cause of the
+			// Slides "Read timed out"). The Sheet keeps all 28 slots so its fixed 28-row tables render cleanly
+			// (unused rows dashed, then cleared by trimUnusedTactics); its find-replace is already scoped to the
+			// single placeholder tab, so the extra slots are cheap.
+			int flatTacticCount = target == GenerationTarget.SHEET ? MAX_TACTICS : maxTacticNumber(data);
 			Map<String, String> flatReplacements =
 					placeholders.buildFlatReplacements(payload, data, ccA, ccB, ccC, primaryKpis, geoSummary,
-							funnelSummary, frequencies);
+							funnelSummary, frequencies, flatTacticCount);
 			UserGoogleTokenProvider clerk = userGoogleTokens.getIfAvailable();
 			String userGoogleToken = clerk == null ? null : clerk.googleAccessToken(clerkUserId);
 			String fileName = fileNamer.buildFileName(
@@ -174,7 +181,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 			if (target == GenerationTarget.SHEET) {
 				jobProgress.markJobRunningAtStep(jobId, 6, "Building sheet");
 				String sheetUrl = sheetHelper.buildSheet(
-						String.valueOf(jobId), fileName, flatReplacements, payload, userGoogleToken);
+						String.valueOf(jobId), fileName, flatReplacements, userGoogleToken);
 				sheetHelper.trimUnusedTactics(sheetUrl, payload, userGoogleToken);
 
 				jobProgress.markJobRunningAtStep(jobId, 7, "Building pacing tables");
@@ -251,7 +258,8 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		// A missing sheet anchor then renders as a blank (visible) rather than a stale raw value (silent).
 		GeneratePayload narrativePayload = narrativeOnly(payload);
 		Map<String, String> narrative = placeholders.buildFlatReplacements(
-				narrativePayload, data, ccA, claudeDefaults.emptyTactical(), ccC, null, null, null, frequencies);
+				narrativePayload, data, ccA, claudeDefaults.emptyTactical(), ccC, null, null, null, frequencies,
+				tacticCount);
 		Map<String, String> flatReplacements = new LinkedHashMap<>(narrative);
 		flatReplacements.putAll(sheetValues);
 		aliasSheetTokens(flatReplacements, tacticCount);
@@ -268,6 +276,26 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 
 		jobProgress.recordArtifact(jobId, fileName, payload.sheetUrl());
 		jobProgress.markJobDone(jobId, slideUrl, warnings.serializeWarnings(chartWarnings));
+	}
+
+	/**
+	 * Returns the highest tactic number the collector recognised in the campaign data, clamped to
+	 * 1..{@link #MAX_TACTICS}. The collector's {@code data.tactics()} keys already exclude unnamed slots, so
+	 * this is the real tactic count used to bound the Slides placeholder map to tactics the campaign has.
+	 *
+	 * @param data the aggregated campaign snapshot whose tactic keys bound the count
+	 * @return the real tactic count (1..28)
+	 */
+	int maxTacticNumber(CampaignData data) {
+		int max = 0;
+		if (data != null && data.tactics() != null) {
+			for (Integer n : data.tactics().keySet()) {
+				if (n != null && n > max) {
+					max = n;
+				}
+			}
+		}
+		return Math.clamp(max, 1, MAX_TACTICS);
 	}
 
 	/**

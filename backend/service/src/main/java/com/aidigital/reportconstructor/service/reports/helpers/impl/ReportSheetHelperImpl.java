@@ -27,9 +27,6 @@ public class ReportSheetHelperImpl implements ReportSheetHelper {
 
 	private static final Pattern SPREADSHEET_ID = Pattern.compile("/d/([a-zA-Z0-9_-]+)");
 
-	/** Matches a per-tactic token, capturing its 1-based slot number: {@code {{tactic 3 ctr}}} → 3. */
-	private static final Pattern TACTIC_TOKEN = Pattern.compile("\\{\\{tactic (\\d+)");
-
 	/** Max tactics the report template carries; media-plan tactic counts are clamped to this. */
 	private static final int MAX_TACTICS = 28;
 
@@ -38,38 +35,8 @@ public class ReportSheetHelperImpl implements ReportSheetHelper {
 	private final ReportNumberParser reportNumbers;
 
 	@Override
-	public String buildSheet(String jobId, String fileName, Map<String, String> flatReplacements,
-			GeneratePayload payload, String userGoogleToken) {
-		return sheets.createSheet(jobId, fileName, stripUnusedTacticTokens(flatReplacements, payload), userGoogleToken);
-	}
-
-	/**
-	 * Drops per-tactic tokens ({@code {{tactic N …}}}) for slots above the Media Plan's real
-	 * tactic count. The template's unused tactic slots are cleared wholesale by
-	 * {@link #trimUnusedTactics} right after creation, so leaving their markers unreplaced is
-	 * harmless — and pruning them keeps the create-sheet find/replace batch from carrying all
-	 * 28 slots' worth of tokens for a small campaign (the batch scanned every one and pushed
-	 * large reports past the Sheets read timeout).
-	 *
-	 * @param flatReplacements the full resolved placeholder map
-	 * @param payload          generation request whose Media Plan drives the tactic count
-	 * @return the map without tokens for tactic slots above the real count; the original map
-	 *         when the campaign already uses the full {@link #MAX_TACTICS} slots
-	 */
-	Map<String, String> stripUnusedTacticTokens(Map<String, String> flatReplacements, GeneratePayload payload) {
-		int tacticCount = Math.clamp(tacticExtraction.countTacticsInMediaPlan(payload.sheetRows()), 1, MAX_TACTICS);
-		if (tacticCount >= MAX_TACTICS) {
-			return flatReplacements;
-		}
-		Map<String, String> kept = new LinkedHashMap<>(flatReplacements.size());
-		for (Map.Entry<String, String> e : flatReplacements.entrySet()) {
-			Matcher m = TACTIC_TOKEN.matcher(e.getKey());
-			if (m.find() && Integer.parseInt(m.group(1)) > tacticCount) {
-				continue;
-			}
-			kept.put(e.getKey(), e.getValue());
-		}
-		return kept;
+	public String buildSheet(String jobId, String fileName, Map<String, String> flatReplacements, String userGoogleToken) {
+		return sheets.createSheet(jobId, fileName, flatReplacements, userGoogleToken);
 	}
 
 	@Override

@@ -47,6 +47,8 @@ public interface PlaceholderResolverService {
 	 * @param funnelSummary AI-generated funnel-stage summary, or {@code null} when a manual/column value is used instead
 	 * @param frequencies   the {@link #computeFrequencies} result for this report, reused so
 	 *                      {@code {{reach_f}} / {{reach_f_pres}}} match the actual reach behind {@code {{f_fact}}}
+	 * @param tacticCount   number of real tactics to resolve (1..28); tactic slots above this are not built, so the
+	 *                      map only ever carries {@code {{tactic N …}}} tokens for tactics the campaign actually has
 	 * @return the ordered map of double-brace placeholder tokens to their final replacement strings
 	 */
 	Map<String, String> buildFlatReplacements(
@@ -58,7 +60,8 @@ public interface PlaceholderResolverService {
 			String primaryKpis,
 			String geoSummary,
 			String funnelSummary,
-			CampaignFrequencies frequencies
+			CampaignFrequencies frequencies,
+			int tacticCount
 	);
 
 	/**

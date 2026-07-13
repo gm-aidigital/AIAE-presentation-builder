@@ -45,7 +45,8 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 			String primaryKpis,
 			String geoSummary,
 			String funnelSummary,
-			CampaignFrequencies frequencies
+			CampaignFrequencies frequencies,
+			int tacticCount
 	) {
 		List<List<String>> sheet = payload.sheetRows();
 		List<List<String>> adj = payload.adjRows();
@@ -97,7 +98,8 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		totals.put("{{total spend}}", campaignResolvers.resolveTotalInvestment(sheet, adj, data));
 		sections.add(buildPreviewSection("Summary Metrics", totals));
 
-		for (int n = 1; n <= MAX_TACTICS; n++) {
+		int tacticLimit = Math.clamp(tacticCount, 1, MAX_TACTICS);
+		for (int n = 1; n <= tacticLimit; n++) {
 			sections.add(buildPreviewSection("Tactic " + n,
 					buildFullTacticSection(n, sheet, adj, data, ccB, ccC, mediaTactics, payload.marketVolume())));
 		}

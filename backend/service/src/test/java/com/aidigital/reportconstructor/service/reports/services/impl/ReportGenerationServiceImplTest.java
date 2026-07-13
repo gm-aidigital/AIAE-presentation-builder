@@ -37,6 +37,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
@@ -140,7 +141,7 @@ class ReportGenerationServiceImplTest {
 		GeneratePayload payload = new GeneratePayload(
 				"Campaign brief.", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null, null, null);
 		when(claude.isLive()).thenReturn(false);
-		when(placeholders.buildFlatReplacements(any(), any(), any(), any(), any(), any(), any(), any(), any()))
+		when(placeholders.buildFlatReplacements(any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt()))
 				.thenReturn(Map.of());
 		when(fileNamer.buildFileName(any(), any(), any())).thenReturn("deck-file");
 		when(slides.createDeck(eq("7"), eq("deck-file"), any(), isNull())).thenReturn("http://deck");
@@ -151,6 +152,10 @@ class ReportGenerationServiceImplTest {
 
 		verify(chartHelper).trimUnusedTactics("http://deck", payload, null);
 		verify(jobProgress).markJobDone(7L, "http://deck", "[]");
+		// The deck placeholder map is bounded to the real tactic count (here the collector yields none, so 1),
+		// never the full 28 template slots — this is what keeps createDeck's find-replace from timing out.
+		verify(placeholders).buildFlatReplacements(
+				any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(1));
 	}
 
 	@Test
@@ -160,10 +165,10 @@ class ReportGenerationServiceImplTest {
 				"Campaign brief.", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null, null, null);
 		when(claude.isLive()).thenReturn(false);
 		when(claudeDefaults.emptySheetBatch()).thenReturn(new ClaudeSheetBatch(null, null, Map.of()));
-		when(placeholders.buildFlatReplacements(any(), any(), any(), any(), any(), any(), any(), any(), any()))
+		when(placeholders.buildFlatReplacements(any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt()))
 				.thenReturn(Map.of());
 		when(fileNamer.buildFileName(any(), any(), any())).thenReturn("sheet-file");
-		when(sheetHelper.buildSheet("9", "sheet-file", Map.of(), payload, null)).thenReturn("http://sheet");
+		when(sheetHelper.buildSheet("9", "sheet-file", Map.of(), null)).thenReturn("http://sheet");
 		when(sheetHelper.writePacingTables(eq("http://sheet"), eq(payload), any(), eq(Map.of()), isNull()))
 				.thenReturn(List.of());
 		when(warnings.serializeWarnings(List.of())).thenReturn("[]");
@@ -174,6 +179,10 @@ class ReportGenerationServiceImplTest {
 		// Then:
 		verify(sheetHelper).trimUnusedTactics("http://sheet", payload, null);
 		verify(jobProgress).markJobDone(9L, "http://sheet", "[]");
+		// The Sheet keeps all 28 template slots (its fixed 28-row tables render cleanly, then trim clears the
+		// unused rows) — unlike the deck, which is bounded to the real tactic count.
+		verify(placeholders).buildFlatReplacements(
+				any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(28));
 		verifyNoInteractions(slides);
 		verifyNoInteractions(chartHelper);
 	}
@@ -193,7 +202,7 @@ class ReportGenerationServiceImplTest {
 		when(placeholderReader.readPlaceholders(grid)).thenReturn(sheetValues);
 		when(claude.isLive()).thenReturn(false);
 		when(placeholders.buildFlatReplacements(
-				any(), any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(narrative);
+				any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt())).thenReturn(narrative);
 		when(fileNamer.buildFileName(any(), any(), any())).thenReturn("deck-file");
 		when(slides.createDeck(eq("11"), eq("deck-file"), any(), isNull())).thenReturn("http://deck");
 		when(chartHelper.buildChartsFromSheet(eq("http://deck"), eq(grid), any(), eq(2), isNull()))

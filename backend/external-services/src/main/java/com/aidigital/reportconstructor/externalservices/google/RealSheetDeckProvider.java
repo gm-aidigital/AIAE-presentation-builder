@@ -53,10 +53,12 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 	private static final String APPLICATION_NAME = "Report Constructor — AI Digital";
 
 	/**
-	 * First four columns of the per-tactic summary table's header row, used to
-	 * locate that table by content rather than a fixed cell reference.
+	 * Stable leading columns of the per-tactic summary table's header row, used to locate that table by
+	 * content rather than a fixed cell reference. Only the first three columns are matched: the fourth
+	 * header has drifted across template revisions ({@code "KPI"} → {@code "KPI (fact)"}), and matching it
+	 * exactly silently broke table detection so no unused rows were ever cleared.
 	 */
-	private static final List<String> SUMMARY_HEADER = List.of("Tactic name", "Benchmark", "KPI type", "KPI");
+	private static final List<String> SUMMARY_HEADER = List.of("Tactic name", "Benchmark", "KPI type");
 
 	/**
 	 * Labels the anchor cell of each per-tactic detail block ({@code "Main slide 1"} … {@code "Main slide 28"}).
