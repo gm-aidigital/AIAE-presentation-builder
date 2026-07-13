@@ -72,6 +72,12 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 	private static final int MAIN_SLIDE_COLS_RIGHT = 1;
 
 	/**
+	 * Rows above a {@code "Main slide N"} anchor that hold the block's {@code {{tactic N}}} heading, cleared
+	 * along with the block so an unused slot's title is not left as a raw token.
+	 */
+	private static final int MAIN_SLIDE_TITLE_ROWS_UP = 1;
+
+	/**
 	 * Max tactics the EOC template carries — summary rows and "Main slide" blocks are numbered 1..28.
 	 */
 	private static final int MAX_TACTICS = 28;
@@ -284,8 +290,12 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 	/**
 	 * Builds the clear requests for the unused per-tactic detail blocks, each anchored
 	 * by a {@code "Main slide N"} cell and spanning {@link #MAIN_SLIDE_ROWS_DOWN} rows
-	 * down and {@link #MAIN_SLIDE_COLS_RIGHT} columns right of that cell. Slots whose
-	 * anchor cell is not found are skipped rather than failing the whole trim.
+	 * down and {@link #MAIN_SLIDE_COLS_RIGHT} columns right of that cell. The clear also
+	 * covers the {@link #MAIN_SLIDE_TITLE_ROWS_UP} title row directly above the anchor,
+	 * which holds the block's {@code {{tactic N}}} heading — otherwise that heading is left
+	 * as a raw token now that the placeholder map is bounded to the real tactic count and no
+	 * longer replaces unused-slot tokens. Slots whose anchor cell is not found are skipped
+	 * rather than failing the whole trim.
 	 *
 	 * @param grid        the workbook's first tab, read as trimmed cell strings
 	 * @param sheetId     numeric id of that tab, used to build the {@link GridRange}s
@@ -301,8 +311,9 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 				log.warn("[sheets] trimTactics: \"Main slide {}\" anchor not found — skipping its detail block", t);
 				continue;
 			}
+			int startRow = Math.max(0, anchor[0] - MAIN_SLIDE_TITLE_ROWS_UP);
 			requests.add(clearRequest(sheetId,
-					anchor[0], anchor[0] + MAIN_SLIDE_ROWS_DOWN + 1,
+					startRow, anchor[0] + MAIN_SLIDE_ROWS_DOWN + 1,
 					anchor[1], anchor[1] + MAIN_SLIDE_COLS_RIGHT + 1));
 		}
 		return requests;

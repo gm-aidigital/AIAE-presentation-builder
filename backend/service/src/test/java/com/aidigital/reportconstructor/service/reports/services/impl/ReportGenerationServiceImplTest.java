@@ -179,10 +179,11 @@ class ReportGenerationServiceImplTest {
 		// Then:
 		verify(sheetHelper).trimUnusedTactics("http://sheet", payload, null);
 		verify(jobProgress).markJobDone(9L, "http://sheet", "[]");
-		// The Sheet keeps all 28 template slots (its fixed 28-row tables render cleanly, then trim clears the
-		// unused rows) — unlike the deck, which is bounded to the real tactic count.
+		// The Sheet placeholder map is bounded to the real tactic count too (here the collector yields none,
+		// so 1), not all 28 slots — the ~800-request find-replace was the createSheet "Read timed out" cause.
+		// Unused slots' leftover tokens are blanked by a single regex pass in createSheet.
 		verify(placeholders).buildFlatReplacements(
-				any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(28));
+				any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(1));
 		verifyNoInteractions(slides);
 		verifyNoInteractions(chartHelper);
 	}

@@ -163,13 +163,14 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 			String primaryKpis = (live && placeholders.needPrimaryKpis(payload))
 					? claude.summarizePrimaryKpis(data) : null;
 
-			// The Slides deck fills only the tactics the campaign actually has, so the placeholder map — and
-			// therefore the createDeck find-replace batch — is bounded to the real tactic count; a two-tactic
-			// campaign no longer fans out ~800 replace requests across a 28-slide template (the cause of the
-			// Slides "Read timed out"). The Sheet keeps all 28 slots so its fixed 28-row tables render cleanly
-			// (unused rows dashed, then cleared by trimUnusedTactics); its find-replace is already scoped to the
-			// single placeholder tab, so the extra slots are cheap.
-			int flatTacticCount = target == GenerationTarget.SHEET ? MAX_TACTICS : maxTacticNumber(data);
+			// Both the Sheet and the Slides deck fill only the tactics the campaign actually has, so the
+			// placeholder map — and therefore the find-replace batch — is bounded to the real tactic count.
+			// A two-tactic campaign no longer fans out ~800 replace requests (28 slots × ~27 tokens); that
+			// volume was the cause of the "Read timed out" on both createSheet and createDeck. Unused template
+			// slots are cleaned up afterwards: the deck deletes its surplus slides, and the sheet blanks any
+			// leftover {{token}} in a single regex pass (see RealSheetDeckProvider#createSheet) plus trims the
+			// now-empty rows.
+			int flatTacticCount = maxTacticNumber(data);
 			Map<String, String> flatReplacements =
 					placeholders.buildFlatReplacements(payload, data, ccA, ccB, ccC, primaryKpis, geoSummary,
 							funnelSummary, frequencies, flatTacticCount);
