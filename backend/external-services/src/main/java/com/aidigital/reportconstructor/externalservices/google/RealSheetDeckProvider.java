@@ -94,6 +94,7 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 	private static final int TOTALS_SEARCH_WINDOW = 20;
 
 	private final GoogleCredentialsFactory creds;
+	private final GoogleRequestRetrier retrier;
 	private final Sheets sheets;
 	private final Drive drive;
 	private final String templateId;
@@ -101,8 +102,10 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 	private final SheetPacingTableWriter pacingTableWriter;
 
 	public RealSheetDeckProvider(
-			GoogleCredentialsFactory creds, GoogleProperties props, SheetPacingTableWriter pacingTableWriter) {
+			GoogleCredentialsFactory creds, GoogleProperties props, SheetPacingTableWriter pacingTableWriter,
+			GoogleRequestRetrier retrier) {
 		this.creds = creds;
+		this.retrier = retrier;
 		this.pacingTableWriter = pacingTableWriter;
 		this.sheets = new Sheets.Builder(creds.transport(), creds.jsonFactory(), creds.initializer())
 				.setApplicationName(APPLICATION_NAME)
@@ -135,10 +138,11 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 				// template's shared parent (mirrors RealSlidesProvider#createDeck).
 				copy.setParents(List.of("root"));
 			}
-			File copied = driveClient.files().copy(templateId, copy)
-					.setFields("id,webViewLink")
-					.setSupportsAllDrives(true)
-					.execute();
+			File copied = retrier.execute(
+					driveClient.files().copy(templateId, copy)
+							.setFields("id,webViewLink")
+							.setSupportsAllDrives(true),
+					"createSheet copy of " + templateId);
 			String newId = copied.getId();
 
 			// All EOC placeholders live on the workbook's first tab, so scope the find/replace
@@ -162,9 +166,10 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 				requests.add(new Request().setFindReplace(findReplace));
 			}
 			if (!requests.isEmpty()) {
-				sheetsClient.spreadsheets()
-						.batchUpdate(newId, new BatchUpdateSpreadsheetRequest().setRequests(requests))
-						.execute();
+				retrier.execute(
+						sheetsClient.spreadsheets()
+								.batchUpdate(newId, new BatchUpdateSpreadsheetRequest().setRequests(requests)),
+						"createSheet batchUpdate for " + newId);
 			}
 			return "https://docs.google.com/spreadsheets/d/" + newId + "/edit";
 		} catch (IOException ex) {
@@ -197,9 +202,10 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 			if (requests.isEmpty()) {
 				return;
 			}
-			sheetsClient.spreadsheets()
-					.batchUpdate(spreadsheetId, new BatchUpdateSpreadsheetRequest().setRequests(requests))
-					.execute();
+			retrier.execute(
+					sheetsClient.spreadsheets()
+							.batchUpdate(spreadsheetId, new BatchUpdateSpreadsheetRequest().setRequests(requests)),
+					"trimTactics batchUpdate for " + spreadsheetId);
 		} catch (IOException ex) {
 			log.error("[sheets] trimTactics failed for {}", spreadsheetId, ex);
 			throw new AppException(ErrorReason.C000,
