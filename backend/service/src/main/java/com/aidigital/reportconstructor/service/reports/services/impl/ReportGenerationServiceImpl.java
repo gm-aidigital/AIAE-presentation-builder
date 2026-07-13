@@ -174,7 +174,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 			if (target == GenerationTarget.SHEET) {
 				jobProgress.markJobRunningAtStep(jobId, 6, "Building sheet");
 				String sheetUrl = sheetHelper.buildSheet(
-						String.valueOf(jobId), fileName, flatReplacements, userGoogleToken);
+						String.valueOf(jobId), fileName, flatReplacements, payload, userGoogleToken);
 				sheetHelper.trimUnusedTactics(sheetUrl, payload, userGoogleToken);
 
 				jobProgress.markJobRunningAtStep(jobId, 7, "Building pacing tables");

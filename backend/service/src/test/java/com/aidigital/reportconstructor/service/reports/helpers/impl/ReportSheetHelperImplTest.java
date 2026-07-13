@@ -23,6 +23,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -45,6 +46,53 @@ class ReportSheetHelperImplTest {
 		assertThat(helper.extractSpreadsheetId("https://docs.google.com/spreadsheets/d/abc-123_9/edit"))
 				.isEqualTo("abc-123_9");
 		assertThat(helper.extractSpreadsheetId(null)).isNull();
+	}
+
+	@Test
+	void shouldDropTacticTokensBeyondRealTacticCountBeforeBuildingSheetTest() {
+		// Given: a two-tactic media plan but a placeholder map carrying a third tactic slot
+		GeneratePayload payload = new GeneratePayload(
+				"brief", "standard", "", List.of(List.of("Media"), List.of("CTV"), List.of("Display")),
+				List.of(), List.of(), List.of(), List.of(), List.of(), "", null, null, null);
+		when(tacticExtraction.countTacticsInMediaPlan(payload.sheetRows())).thenReturn(2);
+		Map<String, String> map = new LinkedHashMap<>();
+		map.put("{{client_name}}", "Acme");
+		map.put("{{tactics_list}}", "CTV, Display");
+		map.put("{{tactic 1}}", "CTV");
+		map.put("{{tactic 2 ctr}}", "1%");
+		map.put("{{tactic 3}}", "—");
+		map.put("{{tactic 3 ctr}}", "—");
+		when(sheets.createSheet(eq("7"), eq("file"), any(), eq("token"))).thenReturn("http://sheet");
+
+		// When: the sheet is built
+		String url = helper.buildSheet("7", "file", map, payload, "token");
+
+		// Then: only slots 1..2 survive; the non-tactic and tactics_list tokens are kept
+		assertThat(url).isEqualTo("http://sheet");
+		ArgumentCaptor<Map<String, String>> captor = ArgumentCaptor.forClass(Map.class);
+		verify(sheets).createSheet(eq("7"), eq("file"), captor.capture(), eq("token"));
+		assertThat(captor.getValue().keySet())
+				.containsExactly("{{client_name}}", "{{tactics_list}}", "{{tactic 1}}", "{{tactic 2 ctr}}");
+	}
+
+	@Test
+	void shouldKeepEveryTokenWhenCampaignUsesAllTacticSlotsTest() {
+		// Given: a media plan whose tactic count is clamped to the 28-slot maximum
+		GeneratePayload payload = new GeneratePayload(
+				"brief", "standard", "", List.of(List.of("Media")), List.of(), List.of(), List.of(), List.of(),
+				List.of(), "", null, null, null);
+		when(tacticExtraction.countTacticsInMediaPlan(payload.sheetRows())).thenReturn(30);
+		Map<String, String> map = new LinkedHashMap<>();
+		map.put("{{tactic 1}}", "CTV");
+		map.put("{{tactic 28}}", "Display");
+		when(sheets.createSheet(eq("7"), eq("file"), same(map), eq("token"))).thenReturn("http://sheet");
+
+		// When: the sheet is built
+		String url = helper.buildSheet("7", "file", map, payload, "token");
+
+		// Then: the original map is passed through untouched
+		assertThat(url).isEqualTo("http://sheet");
+		verify(sheets).createSheet(eq("7"), eq("file"), same(map), eq("token"));
 	}
 
 	@Test

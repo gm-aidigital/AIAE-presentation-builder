@@ -133,14 +133,25 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 					.execute();
 			String newId = copied.getId();
 
+			// All EOC placeholders live on the workbook's first tab, so scope the find/replace
+			// to that one sheet. The former setAllSheets(true) re-scanned every tab for every
+			// token — with 28 tactic slots (~800 tokens) times the template's many tabs that
+			// blew past the Sheets read timeout even for tiny campaigns. Fall back to all-sheets
+			// only when the tab id can't be resolved.
+			Integer placeholderSheetId = firstSheetId(sheetsClient, newId);
 			List<Request> requests = new ArrayList<>(placeholderMap.size());
 			for (Map.Entry<String, String> e : placeholderMap.entrySet()) {
 				// Template tokens are double-brace {{...}} — the key is the full token.
-				requests.add(new Request().setFindReplace(new FindReplaceRequest()
+				FindReplaceRequest findReplace = new FindReplaceRequest()
 						.setFind(e.getKey())
 						.setReplacement(e.getValue() == null ? "" : e.getValue())
-						.setMatchCase(true)
-						.setAllSheets(true)));
+						.setMatchCase(true);
+				if (placeholderSheetId != null) {
+					findReplace.setSheetId(placeholderSheetId);
+				} else {
+					findReplace.setAllSheets(true);
+				}
+				requests.add(new Request().setFindReplace(findReplace));
 			}
 			if (!requests.isEmpty()) {
 				sheetsClient.spreadsheets()
@@ -445,6 +456,20 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 			rows.add(row);
 		}
 		return rows;
+	}
+
+	/**
+	 * Resolves the numeric id of the workbook's first tab — the tab that carries every
+	 * EOC placeholder — so a find/replace can be scoped to it instead of scanning all tabs.
+	 *
+	 * @param sheetsClient   the authenticated Sheets client
+	 * @param spreadsheetId  the workbook to inspect
+	 * @return the first tab's numeric sheet id, or {@code null} when the workbook has no tabs
+	 * @throws IOException when the metadata request fails
+	 */
+	Integer firstSheetId(Sheets sheetsClient, String spreadsheetId) throws IOException {
+		Map<String, Integer> ids = fetchSheetIds(sheetsClient, spreadsheetId);
+		return ids.isEmpty() ? null : ids.values().iterator().next();
 	}
 
 	/**

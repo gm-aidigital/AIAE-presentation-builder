@@ -163,7 +163,7 @@ class ReportGenerationServiceImplTest {
 		when(placeholders.buildFlatReplacements(any(), any(), any(), any(), any(), any(), any(), any(), any()))
 				.thenReturn(Map.of());
 		when(fileNamer.buildFileName(any(), any(), any())).thenReturn("sheet-file");
-		when(sheetHelper.buildSheet("9", "sheet-file", Map.of(), null)).thenReturn("http://sheet");
+		when(sheetHelper.buildSheet("9", "sheet-file", Map.of(), payload, null)).thenReturn("http://sheet");
 		when(sheetHelper.writePacingTables(eq("http://sheet"), eq(payload), any(), eq(Map.of()), isNull()))
 				.thenReturn(List.of());
 		when(warnings.serializeWarnings(List.of())).thenReturn("[]");
