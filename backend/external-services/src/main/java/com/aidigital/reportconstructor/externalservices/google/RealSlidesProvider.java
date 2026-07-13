@@ -3,6 +3,8 @@ package com.aidigital.reportconstructor.externalservices.google;
 import com.aidigital.reportconstructor.service.common.error.AppException;
 import com.aidigital.reportconstructor.service.common.error.ErrorReason;
 import com.aidigital.reportconstructor.service.reports.ports.SlidesProvider;
+import com.google.api.client.googleapis.json.GoogleJsonResponseException;
+import com.google.api.client.googleapis.services.AbstractGoogleClientRequest;
 import com.google.api.client.http.HttpRequestInitializer;
 import com.google.api.services.drive.Drive;
 import com.google.api.services.drive.model.File;
@@ -51,6 +53,15 @@ public class RealSlidesProvider implements SlidesProvider {
 
 	/** Number of tactic groups (28 tactics / 7 per group). */
 	private static final int GROUP_COUNT = 4;
+
+	/** Attempts for a Slides {@code batchUpdate} before giving up on a transient conflict/rate-limit. */
+	private static final int MAX_BATCH_ATTEMPTS = 5;
+
+	/** Initial backoff before the first retry; doubled each attempt up to {@link #MAX_BACKOFF_MILLIS}. */
+	private static final long INITIAL_BACKOFF_MILLIS = 500L;
+
+	/** Ceiling for the exponential backoff between {@code batchUpdate} retries. */
+	private static final long MAX_BACKOFF_MILLIS = 8_000L;
 
 	private final GoogleCredentialsFactory creds;
 	private final DriveSharer driveSharer;
@@ -113,10 +124,6 @@ public class RealSlidesProvider implements SlidesProvider {
 					.execute();
 			String newId = copied.getId();
 
-			// Grant standing access to the configured recipients (e.g. an admin
-			// owner) so decks created in a user's own My Drive remain reachable.
-			driveSharer.shareWith(driveClient, newId, shareWithEmails);
-
 			List<Request> requests = new ArrayList<>(placeholderMap.size());
 			for (Map.Entry<String, String> e : placeholderMap.entrySet()) {
 				// Template tokens are double-brace {{...}} — the key is already the full token.
@@ -126,15 +133,79 @@ public class RealSlidesProvider implements SlidesProvider {
 						.setReplaceText(e.getValue() == null ? "" : e.getValue())));
 			}
 			if (!requests.isEmpty()) {
-				slidesClient.presentations()
-						.batchUpdate(newId, new BatchUpdatePresentationRequest().setRequests(requests))
-						.execute();
+				// Fill the freshly-copied deck before granting access. Sharing is a Drive ACL write on the
+				// same file, and issuing it concurrently with a large content batchUpdate lets Google abort
+				// the write with 409 ABORTED (seen on long decks, whose batchUpdate runs longer). Retry the
+				// batchUpdate on transient conflicts/rate limits — Slides batchUpdate is atomic, so a retry
+				// never double-applies.
+				executeWithRetry(
+						slidesClient.presentations()
+								.batchUpdate(newId, new BatchUpdatePresentationRequest().setRequests(requests)),
+						"createDeck batchUpdate for " + newId);
 			}
+
+			// Grant standing access to the configured recipients (e.g. an admin owner) so decks created in a
+			// user's own My Drive remain reachable — after the fill, to keep the ACL write off the content write.
+			driveSharer.shareWith(driveClient, newId, shareWithEmails);
 			return "https://docs.google.com/presentation/d/" + newId + "/edit";
 		} catch (IOException ex) {
 			log.error("[slides] createDeck failed for job {}", jobId, ex);
 			throw new AppException(ErrorReason.C000,
 					"Google Slides deck creation failed: " + ex.getMessage());
+		}
+	}
+
+	/**
+	 * Executes a Google API request, retrying on transient failures (HTTP 409 ABORTED, 429 rate limit,
+	 * 500/503) with capped exponential backoff. Google marks these retryable, and Slides {@code batchUpdate}
+	 * is atomic so a retry never double-applies. Non-retryable errors and the final attempt propagate.
+	 *
+	 * @param request     the built Google client request to execute
+	 * @param description short context used in retry log lines
+	 * @param <T>         the request's response type
+	 * @return the successful response
+	 * @throws IOException when the request fails with a non-retryable error or exhausts all attempts
+	 */
+	<T> T executeWithRetry(AbstractGoogleClientRequest<T> request, String description) throws IOException {
+		long backoff = INITIAL_BACKOFF_MILLIS;
+		for (int attempt = 1; ; attempt++) {
+			try {
+				return request.execute();
+			} catch (GoogleJsonResponseException ex) {
+				if (!isRetryable(ex.getStatusCode()) || attempt >= MAX_BATCH_ATTEMPTS) {
+					throw ex;
+				}
+				log.warn("[slides] {} attempt {}/{} failed with HTTP {} ({}) — retrying in {} ms",
+						description, attempt, MAX_BATCH_ATTEMPTS, ex.getStatusCode(), ex.getStatusMessage(), backoff);
+				sleepBeforeRetry(backoff);
+				backoff = Math.min(backoff * 2, MAX_BACKOFF_MILLIS);
+			}
+		}
+	}
+
+	/**
+	 * Reports whether a Google API HTTP status is worth retrying: 409 (ABORTED — concurrent-write conflict),
+	 * 429 (rate limit), and 500/503 (transient server errors).
+	 *
+	 * @param statusCode the HTTP status returned by Google
+	 * @return {@code true} when the request should be retried
+	 */
+	boolean isRetryable(int statusCode) {
+		return statusCode == 409 || statusCode == 429 || statusCode == 500 || statusCode == 503;
+	}
+
+	/**
+	 * Sleeps for the given backoff between retries, restoring the interrupt flag and failing fast if the
+	 * worker thread is interrupted while waiting.
+	 *
+	 * @param millis backoff duration in milliseconds
+	 */
+	void sleepBeforeRetry(long millis) {
+		try {
+			Thread.sleep(millis);
+		} catch (InterruptedException ie) {
+			Thread.currentThread().interrupt();
+			throw new AppException(ErrorReason.C000, "Interrupted while retrying a Google Slides request");
 		}
 	}
 
@@ -150,9 +221,10 @@ public class RealSlidesProvider implements SlidesProvider {
 		boolean asUser = userGoogleAccessToken != null && !userGoogleAccessToken.isBlank();
 		Slides slidesClient = asUser ? buildSlides(userGoogleAccessToken) : slides;
 		try {
-			slidesClient.presentations()
-					.batchUpdate(presentationId, new BatchUpdatePresentationRequest().setRequests(requests))
-					.execute();
+			executeWithRetry(
+					slidesClient.presentations()
+							.batchUpdate(presentationId, new BatchUpdatePresentationRequest().setRequests(requests)),
+					"trimTactics batchUpdate for " + presentationId);
 		} catch (IOException ex) {
 			log.error("[slides] trimTactics failed for {}", presentationId, ex);
 			throw new AppException(ErrorReason.C000,
