@@ -33,12 +33,15 @@ public class GoogleCredentialsFactory {
 	);
 
 	/**
-	 * Connect/read timeout applied to every outgoing Google API request. Large media plans
-	 * (thousands of rows across many sheet tabs) and decks with many {@code {{token}}}
-	 * replacements can take well past the client library's 20s default to process on
-	 * Google's side.
+	 * Connect/read timeout applied to every outgoing Google API request. Cloning the heavy 28-tactic
+	 * template workbook/deck (many tabs, embedded charts) via Drive {@code files.copy} can run past two
+	 * minutes on Google's side, and large media plans / decks are also slow — well past the client
+	 * library's 20s default. The report build runs on an async job that the UI polls, so a longer wait
+	 * here does not block a synchronous request; transient 5xx/409s are handled separately by
+	 * {@link GoogleRequestRetrier}. Kept generous so a slow copy completes rather than failing with
+	 * "Read timed out".
 	 */
-	public static final int HTTP_TIMEOUT_MILLIS = 120_000;
+	public static final int HTTP_TIMEOUT_MILLIS = 300_000;
 
 	private final GoogleCredentials credentials;
 	private final HttpTransport transport;
