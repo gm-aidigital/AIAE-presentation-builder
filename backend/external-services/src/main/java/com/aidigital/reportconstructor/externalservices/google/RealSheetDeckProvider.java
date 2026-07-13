@@ -274,7 +274,13 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 		List<Request> requests = new ArrayList<>();
 		int clearFrom = tacticCount + 1;
 		if (totalsRow > firstFreedRow) {
-			requests.add(moveRowRequest(sheetId, totalsRow, firstFreedRow, tableWidth));
+			// Relocate the totals row by pasting its VALUES then its FORMAT — never PASTE_NORMAL. A normal
+			// copy carries the totals cells' {@code =SUM(...)} formulas and rebases their relative ranges by
+			// the move distance, pushing a range like {@code =SUM(N16:N43)} off the top of the sheet → #REF!.
+			// Pasting the already-correct computed values (SUM ignores the unused rows' text tokens) as static
+			// numbers, then re-applying the source formatting, moves the row without any formula to rebase.
+			requests.add(moveRowRequest(sheetId, totalsRow, firstFreedRow, tableWidth, "PASTE_VALUES"));
+			requests.add(moveRowRequest(sheetId, totalsRow, firstFreedRow, tableWidth, "PASTE_FORMAT"));
 			requests.add(clearRequest(sheetId, totalsRow, totalsRow + 1, 0, tableWidth));
 			// The first freed slot now holds the relocated totals row; only the
 			// remaining unused slots still need clearing.
@@ -341,17 +347,20 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 	}
 
 	/**
-	 * Builds a request that copies a row's values and formatting to another row of
-	 * the same tab, used to relocate the totals row onto the first freed tactic slot.
-	 * The source row is left untouched by this request — callers clear it separately.
+	 * Builds a request that copies a row to another row of the same tab under the given paste type,
+	 * used to relocate the totals row onto the first freed tactic slot. Callers paste {@code PASTE_VALUES}
+	 * then {@code PASTE_FORMAT} (never {@code PASTE_NORMAL}) so the totals cells' {@code =SUM(...)} formulas
+	 * are not carried and rebased into {@code #REF!}. The source row is left untouched — callers clear it
+	 * separately.
 	 *
 	 * @param sheetId    numeric id of the tab to copy within
 	 * @param sourceRow  zero-based row index to copy from
 	 * @param destRow    zero-based row index to copy to
 	 * @param tableWidth number of columns (from column 0) to copy
+	 * @param pasteType  the Sheets {@code PasteType} controlling what is copied (e.g. {@code PASTE_VALUES})
 	 * @return the {@code CopyPaste} request
 	 */
-	Request moveRowRequest(int sheetId, int sourceRow, int destRow, int tableWidth) {
+	Request moveRowRequest(int sheetId, int sourceRow, int destRow, int tableWidth, String pasteType) {
 		GridRange source = new GridRange()
 				.setSheetId(sheetId)
 				.setStartRowIndex(sourceRow)
@@ -367,7 +376,7 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 		return new Request().setCopyPaste(new CopyPasteRequest()
 				.setSource(source)
 				.setDestination(destination)
-				.setPasteType("PASTE_NORMAL"));
+				.setPasteType(pasteType));
 	}
 
 	/**
