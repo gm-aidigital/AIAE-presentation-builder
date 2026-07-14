@@ -549,10 +549,13 @@ public class CampaignResolvers {
 		Map<String, Resolved> result = new LinkedHashMap<>();
 		for (int g = 1; g <= RESULTS_OVERVIEW_GROUPS; g++) {
 			String label = "Our results overview " + g + ":";
-			String manual = coalesce(sheetUtils.findLabelValue(adjRows, label),
+			// The sheet-as-source template lists these labels with empty value cells, so findLabelValue
+			// returns "" (label present, no value) rather than null. Treat a blank cell as "no manual
+			// override" so the Claude per-group narrative below is used instead of an empty "—".
+			String manual = firstNonBlank(sheetUtils.findLabelValue(adjRows, label),
 					sheetUtils.findLabelValue(sheetRows, label));
 			if (manual == null && g == 1) {
-				manual = coalesce(sheetUtils.findLabelValue(adjRows, "Our results overview:"),
+				manual = firstNonBlank(sheetUtils.findLabelValue(adjRows, "Our results overview:"),
 						sheetUtils.findLabelValue(sheetRows, "Our results overview:"));
 			}
 			String claude = claudeOverviews == null ? null : claudeOverviews.get(g);
@@ -1267,6 +1270,23 @@ public class CampaignResolvers {
 	String coalesce(String a, String b) {
 
 		return a != null ? a : b;
+	}
+
+	/**
+	 * Returns the first argument that is non-null and non-blank, or {@code null} when neither qualifies.
+	 * Unlike {@link #coalesce(String, String)} this treats a present-but-empty sheet cell (findLabelValue
+	 * returns {@code ""} for a label whose value cell is empty) as absent, so a Claude fallback can apply.
+	 *
+	 * @param a the preferred candidate value (may be null or blank)
+	 * @param b the fallback candidate value (may be null or blank)
+	 * @return the first non-blank value, or {@code null} when both are null or blank
+	 */
+	String firstNonBlank(String a, String b) {
+
+		if (notBlank(a)) {
+			return a;
+		}
+		return notBlank(b) ? b : null;
 	}
 
 	boolean notBlank(String s) {

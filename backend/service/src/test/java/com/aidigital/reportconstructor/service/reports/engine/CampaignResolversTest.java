@@ -476,6 +476,35 @@ class CampaignResolversTest {
 		assertThat(r.source()).isEqualTo("claude");
 	}
 
+	@Test
+	void resolveResultsOverviews_blankSheetCellFallsBackToClaude() {
+		// Sheet-as-source template lists the label with an EMPTY value cell (findLabelValue -> "").
+		List<List<String>> sheet = labelRow("Our results overview 1:", "");
+		Map<String, Resolved> r =
+				resolvers.resolveResultsOverviews(sheet, List.of(), Map.of(1, "Claude group-1 narrative."));
+		Resolved g1 = r.get("{{Our results overview 1}}");
+		assertThat(g1.value()).isEqualTo("Claude group-1 narrative.");
+		assertThat(g1.source()).isEqualTo("adj");
+	}
+
+	@Test
+	void resolveResultsOverviews_manualValueWinsOverClaude() {
+		List<List<String>> adj = labelRow("Our results overview 1:", "Hand-written overview.");
+		Map<String, Resolved> r =
+				resolvers.resolveResultsOverviews(List.of(), adj, Map.of(1, "Claude group-1 narrative."));
+		Resolved g1 = r.get("{{Our results overview 1}}");
+		assertThat(g1.value()).isEqualTo("Hand-written overview.");
+	}
+
+	@Test
+	void resolveResultsOverviews_notFoundWhenNoManualAndNoClaude() {
+		List<List<String>> sheet = labelRow("Our results overview 1:", "");
+		Map<String, Resolved> r = resolvers.resolveResultsOverviews(sheet, List.of(), Map.of());
+		Resolved g1 = r.get("{{Our results overview 1}}");
+		assertThat(g1.value()).isNull();
+		assertThat(g1.source()).isEqualTo("not_found");
+	}
+
 	private static List<List<String>> labelRow(String label, String value) {
 		return List.of(List.of(label, value, "", ""));
 	}

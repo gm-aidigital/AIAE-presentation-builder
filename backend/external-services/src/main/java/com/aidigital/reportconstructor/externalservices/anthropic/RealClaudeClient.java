@@ -21,6 +21,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Real Anthropic Messages API implementation — a faithful port of PHP
@@ -48,6 +50,9 @@ public class RealClaudeClient implements ClaudeClient {
 	private static final int F_OPPORTUNITY_LIMIT = 180;
 	private static final int F_FACT_LIMIT = 140;
 	private static final int F_STORYTELLING_LIMIT = 320;
+
+	/** First run of digits in a Batch C map key, used to recover the slot number from a drifted key. */
+	private static final Pattern KEY_NUMBER = Pattern.compile("\\d+");
 
 	// Batch C emits one results-overview per tactic group plus one tactic-overview PER TACTIC (up to 28), on
 	// top of thoughts, four recommendations and the frequency copy — all in a single JSON reply. A fixed cap
@@ -270,45 +275,11 @@ public class RealClaudeClient implements ClaudeClient {
 			return claudeDefaults.emptyResults();
 		}
 
-		Map<Integer, String> rawResultsOverviews = new LinkedHashMap<>();
-		JsonNode rawOverviews = parsed.get("results_overviews");
-		if (rawOverviews != null && rawOverviews.isObject()) {
-			var oit = rawOverviews.fields();
-			while (oit.hasNext()) {
-				var ent = oit.next();
-				int g;
-				try {
-					g = Integer.parseInt(ent.getKey().trim());
-				} catch (NumberFormatException ex) {
-					continue;
-				}
-				if (g <= 0) {
-					continue;
-				}
-				rawResultsOverviews.put(g, ent.getValue().asText(""));
-			}
-		}
+		Map<Integer, String> rawResultsOverviews = parseNumberedTextMap(parsed.get("results_overviews"));
 		List<String> rawThoughts =
 				normalizer.normalizeThoughts(normalizer.textOrNull(parsed.get("thoughts_on_performance")));
 
-		Map<Integer, String> rawTacticOverviews = new LinkedHashMap<>();
-		JsonNode raw = parsed.get("tactic_overviews");
-		if (raw != null && raw.isObject()) {
-			var it = raw.fields();
-			while (it.hasNext()) {
-				var ent = it.next();
-				int n;
-				try {
-					n = Integer.parseInt(ent.getKey().trim());
-				} catch (NumberFormatException ex) {
-					continue;
-				}
-				if (n <= 0) {
-					continue;
-				}
-				rawTacticOverviews.put(n, ent.getValue().asText(""));
-			}
-		}
+		Map<Integer, String> rawTacticOverviews = parseNumberedTextMap(parsed.get("tactic_overviews"));
 
 		JsonNode recArr = parsed.get("optimization_recommendations");
 		String[] rawRecTitles = new String[4];
@@ -390,6 +361,37 @@ public class RealClaudeClient implements ClaudeClient {
 
 		return new ClaudeResults(resultsOverviews, thoughts, tacticOverviews, recommendations,
 				fOpportunity, fFact, fStorytelling);
+	}
+
+	/**
+	 * Parses a Batch C {@code {"1": text, "2": text, …}} object into a number-keyed map, tolerating the
+	 * key-format drift the model occasionally produces. A key is mapped to the first integer it contains
+	 * ({@code "1"}, {@code "group 1"}, {@code "G1"} all → {@code 1}); a key with no digits (e.g. the schema's
+	 * literal {@code "G"}/{@code "N"} template placeholder echoed verbatim) falls back to its 1-based
+	 * encounter position, so a single mis-keyed entry still lands on slot 1 rather than being silently
+	 * dropped — which is what left every {@code {{Our results overview N}}} blank. First writer wins per slot.
+	 *
+	 * @param node the raw JSON value for the {@code results_overviews}/{@code tactic_overviews} field (may be null)
+	 * @return a map from 1-based slot number to its text, in encounter order (empty when {@code node} is absent
+	 * or not an object)
+	 */
+	Map<Integer, String> parseNumberedTextMap(JsonNode node) {
+		Map<Integer, String> out = new LinkedHashMap<>();
+		if (node == null || !node.isObject()) {
+			return out;
+		}
+		var it = node.fields();
+		int position = 0;
+		while (it.hasNext()) {
+			var ent = it.next();
+			position++;
+			Matcher m = KEY_NUMBER.matcher(ent.getKey());
+			int slot = m.find() ? Integer.parseInt(m.group()) : position;
+			if (slot > 0) {
+				out.putIfAbsent(slot, ent.getValue().asText(""));
+			}
+		}
+		return out;
 	}
 
 	@Override

@@ -125,8 +125,29 @@ public class PlaceholderClaudeGateImpl implements PlaceholderClaudeGate {
 		return bothNull(payload.adjRows(), payload.sheetRows(), "Primary KPIs:");
 	}
 
+	/**
+	 * Reports whether a label carries no usable manual value in either the Adjustments or Media Plan rows.
+	 * A blank value cell counts as absent: the sheet-as-source template lists placeholder labels with empty
+	 * value cells, so findLabelValue returns {@code ""} (label present, no value) rather than null. Treating
+	 * that blank as missing lets the Claude batch fill the placeholder instead of leaving it empty.
+	 *
+	 * @param adj   manual Adjustments tab rows (checked first)
+	 * @param sheet Media Plan tab rows
+	 * @param label the label whose adjacent value cell is inspected
+	 * @return {@code true} when neither source supplies a non-blank value for the label
+	 */
 	boolean bothNull(List<List<String>> adj, List<List<String>> sheet, String label) {
-		return sheetUtils.findLabelValue(adj, label) == null
-				&& sheetUtils.findLabelValue(sheet, label) == null;
+		return isBlank(sheetUtils.findLabelValue(adj, label))
+				&& isBlank(sheetUtils.findLabelValue(sheet, label));
+	}
+
+	/**
+	 * Reports whether a sheet value is null, empty, or whitespace-only.
+	 *
+	 * @param value the value to inspect (may be null)
+	 * @return {@code true} when the value is null or blank
+	 */
+	boolean isBlank(String value) {
+		return value == null || value.isBlank();
 	}
 }

@@ -112,6 +112,44 @@ class RealClaudeClientTest {
 	}
 
 	@Test
+	void parseNumberedTextMapRecoversNonNumericAndDriftedKeysTest() throws Exception {
+		// Given: a client and a results_overviews object whose keys drifted the way the model produces them —
+		// the schema's literal "G" placeholder echoed verbatim, plus "group 2" / "Group 3" prose keys
+		ClaudeResponseNormalizer normalizer = new ClaudeResponseNormalizer();
+		ClaudeBatchPromptBuilder promptBuilder = new ClaudeBatchPromptBuilder(normalizer, new Fmt());
+		ReportClaudeDefaults defaults = new ReportClaudeDefaults();
+		RealClaudeClient client = new RealClaudeClient(
+				messagesClient, promptBuilder, normalizer, compressionService, defaults);
+
+		JsonNode node = json.readTree("""
+				{"G": "First group narrative.", "group 2": "Second.", "Group 3": "Third."}
+				""");
+
+		// When:
+		Map<Integer, String> parsed = client.parseNumberedTextMap(node);
+
+		// Then: the letter-only "G" recovers to its 1-based position (1); the prose keys recover their digit
+		assertThat(parsed)
+				.containsEntry(1, "First group narrative.")
+				.containsEntry(2, "Second.")
+				.containsEntry(3, "Third.");
+	}
+
+	@Test
+	void parseNumberedTextMapReturnsEmptyForAbsentOrNonObjectTest() throws Exception {
+		// Given: a client
+		ClaudeResponseNormalizer normalizer = new ClaudeResponseNormalizer();
+		ClaudeBatchPromptBuilder promptBuilder = new ClaudeBatchPromptBuilder(normalizer, new Fmt());
+		ReportClaudeDefaults defaults = new ReportClaudeDefaults();
+		RealClaudeClient client = new RealClaudeClient(
+				messagesClient, promptBuilder, normalizer, compressionService, defaults);
+
+		// When-Then: a null node and a non-object node both yield an empty map
+		assertThat(client.parseNumberedTextMap(null)).isEmpty();
+		assertThat(client.parseNumberedTextMap(json.readTree("\"not an object\""))).isEmpty();
+	}
+
+	@Test
 	void batchStrategicNarrativeParsesProposalAndInsightsWithoutAudienceTest() throws Exception {
 		// Given: a real prompt builder/normalizer over a campaign with context, an identity compression pass,
 		// and a strategic-narrative response carrying a proposal and four insights but no audience fields

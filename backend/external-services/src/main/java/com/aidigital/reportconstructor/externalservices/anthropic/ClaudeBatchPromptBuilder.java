@@ -738,7 +738,8 @@ public class ClaudeBatchPromptBuilder {
 						+ "  //  One entry PER GROUP listed above (" + groupRanges + "). Each value covers ONLY that " +
 						"group's tactics.\n"
 						+ "  //  Include a key for every group number listed — no more, no fewer.\n"
-						+ "    \"G\": string,                       // EXACTLY 2 SENTENCES. Past tense, no bullets, no " +
+						+ "    \"1\": string,                       // Key is the group number as a string (never a " +
+						"letter). EXACTLY 2 SENTENCES. Past tense, no bullets, no " +
 						"line breaks. Hard limit: ≤380 chars total.\n"
 						+ "  //  SENTENCE 1 — Overall result + key metric vs plan + reason WHY performance was as it " +
 						"was.\n"
