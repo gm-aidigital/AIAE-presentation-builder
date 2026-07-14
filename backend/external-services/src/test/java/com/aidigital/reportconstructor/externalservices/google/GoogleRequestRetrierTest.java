@@ -22,18 +22,18 @@ import static org.mockito.Mockito.when;
 class GoogleRequestRetrierTest {
 
 	@Test
-	void shouldTreatConflictRateLimitAndServerErrorsAsRetryableTest() {
+	void shouldTreatNotFoundConflictRateLimitAndServerErrorsAsRetryableTest() {
 		// Given: a retrier
 		GoogleRequestRetrier retrier = new GoogleRequestRetrier();
 
-		// When-Then: only 409/429/500/503 are retryable
+		// When-Then: 404 (post-copy propagation) plus 409/429/500/503 are retryable
+		assertThat(retrier.isRetryable(404)).isTrue();
 		assertThat(retrier.isRetryable(409)).isTrue();
 		assertThat(retrier.isRetryable(429)).isTrue();
 		assertThat(retrier.isRetryable(500)).isTrue();
 		assertThat(retrier.isRetryable(503)).isTrue();
 		assertThat(retrier.isRetryable(400)).isFalse();
 		assertThat(retrier.isRetryable(403)).isFalse();
-		assertThat(retrier.isRetryable(404)).isFalse();
 	}
 
 	@Test
@@ -56,15 +56,15 @@ class GoogleRequestRetrierTest {
 
 	@Test
 	void shouldPropagateNonRetryableErrorWithoutRetryTest() throws IOException {
-		// Given: a request that fails with a non-retryable 404
+		// Given: a request that fails with a non-retryable 403
 		GoogleRequestRetrier retrier = spy(new GoogleRequestRetrier());
 		@SuppressWarnings("unchecked")
 		AbstractGoogleClientRequest<String> request = mock(AbstractGoogleClientRequest.class);
-		GoogleJsonResponseException notFound = googleError(404);
-		when(request.execute()).thenThrow(notFound);
+		GoogleJsonResponseException forbidden = googleError(403);
+		when(request.execute()).thenThrow(forbidden);
 
 		// When-Then: the error propagates immediately, no retry
-		assertThatThrownBy(() -> retrier.execute(request, "copy")).isSameAs(notFound);
+		assertThatThrownBy(() -> retrier.execute(request, "copy")).isSameAs(forbidden);
 		verify(request, times(1)).execute();
 		verify(retrier, times(0)).sleepBeforeRetry(anyLong());
 	}

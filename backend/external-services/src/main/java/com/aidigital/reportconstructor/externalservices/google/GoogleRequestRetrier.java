@@ -58,14 +58,22 @@ public class GoogleRequestRetrier {
 	}
 
 	/**
-	 * Reports whether a Google API HTTP status is worth retrying: 409 (ABORTED — concurrent-write conflict),
+	 * Reports whether a Google API HTTP status is worth retrying: 404 (NOT_FOUND — a freshly copied
+	 * workbook/deck not yet visible to the write replica), 409 (ABORTED — concurrent-write conflict),
 	 * 429 (rate limit), and 500/503 (transient server errors).
+	 *
+	 * <p>404 is transient here because every {@code batchUpdate}/read this retrier wraps runs against a
+	 * file we just created via Drive {@code files.copy}: the copy returns an id immediately, but Drive's
+	 * write replica can lag the read replica by a few seconds (worse for large templates and shared-drive
+	 * copies), so the first write to the new id intermittently returns NOT_FOUND before propagation settles.
+	 * A genuinely bad id simply exhausts the attempts and propagates the same 404.
 	 *
 	 * @param statusCode the HTTP status returned by Google
 	 * @return {@code true} when the request should be retried
 	 */
 	boolean isRetryable(int statusCode) {
-		return statusCode == 409 || statusCode == 429 || statusCode == 500 || statusCode == 503;
+		return statusCode == 404 || statusCode == 409 || statusCode == 429
+				|| statusCode == 500 || statusCode == 503;
 	}
 
 	/**
