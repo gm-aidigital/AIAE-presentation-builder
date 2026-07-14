@@ -22,6 +22,9 @@ import java.util.Map;
 public class TacticExtractionHelperImpl implements TacticExtractionHelper {
 
 
+	/** Substrings that mark a completion-led tactic as audio, so its completion rate is labelled ACR not VCR. */
+	private static final String[] AUDIO_KEYWORDS = {"audio", "podcast"};
+
 	private final TacticCatalog catalog;
 	private final MediaPlanTacticExtractor tacticExtractor;
 
@@ -104,6 +107,30 @@ public class TacticExtractionHelperImpl implements TacticExtractionHelper {
 			}
 		}
 		return null;
+	}
+
+	@Override
+	public String getCompletionRateLabel(String tacticName) {
+
+		if (tacticName != null) {
+			String key = tacticName.trim().toLowerCase(Locale.ROOT);
+			for (String kw : AUDIO_KEYWORDS) {
+				if (key.contains(kw)) {
+					return "ACR";
+				}
+			}
+		}
+		return "VCR";
+	}
+
+	@Override
+	public String getTacticKpiSeries(String tacticName) {
+
+		String type = getTacticKpiType(tacticName);
+		if ("vcr".equals(type) && "ACR".equals(getCompletionRateLabel(tacticName))) {
+			return "acr";
+		}
+		return type;
 	}
 
 	/**

@@ -132,7 +132,7 @@ public class TacticResolvers {
 		Tactic t = tactic(data, n);
 		Double planSpend = t == null ? null : t.planSpend();
 		if (planSpend != null && planSpend > 0) {
-			return new Resolved(label + " (auto: Estimates Total Cost)", "$" + fmt.intGroup(planSpend), "adj");
+			return new Resolved(label + " (auto: Estimates Total Cost)", fmt.moneyExact(planSpend), "adj");
 		}
 		return new Resolved(label, null, "not_found");
 	}
@@ -331,7 +331,9 @@ public class TacticResolvers {
 		if ("vcr".equals(kpiType)) {
 			Double val = t == null ? null : t.planVcr();
 			if (val != null) {
-				return new Resolved(label + " (auto: Estimates VCR)", "VCR \u2013 " + Math.round(val) + "%", "adj");
+				String rate = tacticExtraction.getCompletionRateLabel(tacticName);
+				return new Resolved(label + " (auto: Estimates " + rate + ")",
+						rate + " \u2013 " + Math.round(val) + "%", "adj");
 			}
 			return new Resolved(label, null, "not_found");
 		}
@@ -433,7 +435,8 @@ public class TacticResolvers {
 			return new Resolved(label + " (auto: tactic mapping)", "CTR", "adj");
 		}
 		if ("vcr".equals(kpiType)) {
-			return new Resolved(label + " (auto: tactic mapping)", "VCR", "adj");
+			return new Resolved(label + " (auto: tactic mapping)",
+					tacticExtraction.getCompletionRateLabel(tacticName), "adj");
 		}
 		return new Resolved(label, null, "not_found");
 	}

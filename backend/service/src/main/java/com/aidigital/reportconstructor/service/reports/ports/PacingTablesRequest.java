@@ -19,9 +19,10 @@ import java.util.Map;
  * @param distTacticNames       tactic-number &rarr; display name (from {@code {{tactic n}}})
  * @param distTacticImps        tactic-number &rarr; impressions (from {@code {{tactic n imps}}})
  * @param distTotalImps         total impressions (from {@code {{total imps}}})
- * @param tacticKpiTypes        tactic-number &rarr; KPI type ({@code "ctr"}/{@code "vcr"}, or {@code null}
- *                              when the tactic name maps to neither); drives the daily/monthly pacing
- *                              table's KPI-type header and which metric (clicks vs completions) fills
+ * @param tacticKpiTypes        tactic-number &rarr; KPI-series token ({@code "ctr"}/{@code "vcr"}/{@code "acr"},
+ *                              or {@code null} when the tactic name maps to none); {@code "acr"} (audio) behaves
+ *                              like {@code "vcr"} for the metric series but labels the header "ACR". Drives the
+ *                              daily/monthly pacing table's KPI-type header and which metric (clicks vs completions) fills
  *                              the Amount column
  * @param userGoogleAccessToken optional signed-in user token; when present the tables are written
  *                              under that user's Drive, matching where the workbook was created

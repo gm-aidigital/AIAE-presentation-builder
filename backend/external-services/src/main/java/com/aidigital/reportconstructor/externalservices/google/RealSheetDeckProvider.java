@@ -10,7 +10,7 @@ import com.google.api.services.drive.model.File;
 import com.google.api.services.sheets.v4.Sheets;
 import com.google.api.services.sheets.v4.model.BatchUpdateSpreadsheetRequest;
 import com.google.api.services.sheets.v4.model.CellData;
-import com.google.api.services.sheets.v4.model.CopyPasteRequest;
+import com.google.api.services.sheets.v4.model.ExtendedValue;
 import com.google.api.services.sheets.v4.model.FindReplaceRequest;
 import com.google.api.services.sheets.v4.model.GridRange;
 import com.google.api.services.sheets.v4.model.RepeatCellRequest;
@@ -83,15 +83,10 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 	private static final int MAX_TACTICS = 28;
 
 	/**
-	 * Column-0 label of the summary table's totals row.
+	 * Em-dash written into an unused tactic slot's cells. Text is ignored by the totals row's {@code =SUM(...)}
+	 * formulas, so dashing empty slots (instead of deleting or relocating rows) keeps those sums intact.
 	 */
-	private static final String TOTALS_LABEL = "Total";
-
-	/**
-	 * How many rows below the fixed 28 tactic slots to search for {@link #TOTALS_LABEL},
-	 * bounding the scan rather than assuming a single fixed offset.
-	 */
-	private static final int TOTALS_SEARCH_WINDOW = 20;
+	private static final String DASH = "—";
 
 	private final GoogleCredentialsFactory creds;
 	private final GoogleRequestRetrier retrier;
@@ -196,7 +191,7 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 			List<List<String>> grid = readGrid(sheetsClient, spreadsheetId, firstTab.getKey());
 
 			List<Request> requests = new ArrayList<>();
-			requests.addAll(summaryRowClearRequests(grid, sheetId, tacticCount));
+			requests.addAll(summaryRowDashRequests(grid, sheetId, tacticCount));
 			requests.addAll(mainSlideClearRequests(grid, sheetId, tacticCount));
 
 			if (requests.isEmpty()) {
@@ -251,50 +246,34 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 	}
 
 	/**
-	 * Builds the clear/relocate requests for the unused rows of the per-tactic summary
-	 * table (anchored by its {@link #SUMMARY_HEADER} row, one data row per tactic slot
-	 * 1..28 directly below it). A no-op when the header cannot be located.
+	 * Builds the requests that fill the unused rows of the per-tactic summary table with an em-dash
+	 * (anchored by its {@link #SUMMARY_HEADER} row, one data row per tactic slot 1..28 directly below it).
+	 * A no-op when the header cannot be located.
 	 *
-	 * <p>When some tactic slots are unused, the totals row is moved up to sit directly
-	 * under the last real tactic — the first freed slot — instead of leaving it below
-	 * a block of cleared rows; its old position is then cleared like the rest. Rows
-	 * are relocated via copy/paste, never deleted, so the sheet's row count and any
-	 * content below the table stay in place. When the totals row cannot be located,
-	 * every unused slot is simply cleared in place.
+	 * <p>Every row and the totals row stay exactly where the template put them — nothing is deleted or
+	 * relocated. Slots above {@code tacticCount} are overwritten with {@link #DASH} (replacing any leftover
+	 * {@code {{tactic N …}}} token), so the totals row keeps its original position and its live
+	 * {@code =SUM(...)} formulas re-sum over the full range — the dashes are text and are ignored by SUM,
+	 * so the total equals the sum of the real tactic rows. This avoids the earlier scheme of moving the
+	 * totals row up and pasting it as static values, which broke as soon as the underlying rows changed.
 	 *
 	 * @param grid        the workbook's first tab, read as trimmed cell strings
 	 * @param sheetId     numeric id of that tab, used to build the {@link GridRange}s
-	 * @param tacticCount number of real tactics; slots above this are cleared
-	 * @return clear/relocate requests for the unused summary-table rows, or an empty list
+	 * @param tacticCount number of real tactics; slots above this are dashed
+	 * @return dash-fill requests for the unused summary-table rows, or an empty list
 	 */
-	List<Request> summaryRowClearRequests(List<List<String>> grid, int sheetId, int tacticCount) {
+	List<Request> summaryRowDashRequests(List<List<String>> grid, int sheetId, int tacticCount) {
 		int headerRow = findSummaryHeaderRow(grid);
 		if (headerRow < 0) {
-			log.warn("[sheets] trimTactics: summary table header {} not found — skipping row clear", SUMMARY_HEADER);
+			log.warn("[sheets] trimTactics: summary table header {} not found — skipping row dash-fill",
+					SUMMARY_HEADER);
 			return List.of();
 		}
 		int tableWidth = tableWidth(grid.get(headerRow));
-		int firstFreedRow = headerRow + tacticCount + 1;
-		int totalsRow = findTotalsRow(grid, headerRow);
-
 		List<Request> requests = new ArrayList<>();
-		int clearFrom = tacticCount + 1;
-		if (totalsRow > firstFreedRow) {
-			// Relocate the totals row by pasting its VALUES then its FORMAT — never PASTE_NORMAL. A normal
-			// copy carries the totals cells' {@code =SUM(...)} formulas and rebases their relative ranges by
-			// the move distance, pushing a range like {@code =SUM(N16:N43)} off the top of the sheet → #REF!.
-			// Pasting the already-correct computed values (SUM ignores the unused rows' text tokens) as static
-			// numbers, then re-applying the source formatting, moves the row without any formula to rebase.
-			requests.add(moveRowRequest(sheetId, totalsRow, firstFreedRow, tableWidth, "PASTE_VALUES"));
-			requests.add(moveRowRequest(sheetId, totalsRow, firstFreedRow, tableWidth, "PASTE_FORMAT"));
-			requests.add(clearRequest(sheetId, totalsRow, totalsRow + 1, 0, tableWidth));
-			// The first freed slot now holds the relocated totals row; only the
-			// remaining unused slots still need clearing.
-			clearFrom = tacticCount + 2;
-		}
-		for (int t = clearFrom; t <= MAX_TACTICS; t++) {
+		for (int t = tacticCount + 1; t <= MAX_TACTICS; t++) {
 			int rowIndex = headerRow + t;
-			requests.add(clearRequest(sheetId, rowIndex, rowIndex + 1, 0, tableWidth));
+			requests.add(dashFillRequest(sheetId, rowIndex, rowIndex + 1, 0, tableWidth));
 		}
 		return requests;
 	}
@@ -332,57 +311,29 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 	}
 
 	/**
-	 * Finds the summary table's totals row: the first row at or below the fixed
-	 * 28 tactic slots whose column-0 cell is exactly {@link #TOTALS_LABEL}, searched
-	 * within a bounded window so an unrelated "Total" elsewhere in the tab isn't matched.
+	 * Builds a request that writes {@link #DASH} into every cell of a grid range, leaving formatting intact
+	 * (only the entered value is set). Used to mark an unused tactic slot as empty while keeping the row in
+	 * place so the totals row's {@code =SUM(...)} formulas below it stay valid.
 	 *
-	 * @param grid      the workbook tab, read as trimmed cell strings
-	 * @param headerRow the summary table's header row index
-	 * @return the totals row's zero-based index, or {@code -1} when none is found
+	 * @param sheetId  numeric id of the tab to write within
+	 * @param startRow inclusive zero-based start row
+	 * @param endRow   exclusive zero-based end row
+	 * @param startCol inclusive zero-based start column
+	 * @param endCol   exclusive zero-based end column
+	 * @return the {@code RepeatCell} dash-fill request
 	 */
-	int findTotalsRow(List<List<String>> grid, int headerRow) {
-		int searchStart = headerRow + MAX_TACTICS + 1;
-		int searchEnd = Math.min(grid.size(), searchStart + TOTALS_SEARCH_WINDOW);
-		for (int r = searchStart; r < searchEnd; r++) {
-			List<String> row = grid.get(r);
-			if (!row.isEmpty() && TOTALS_LABEL.equalsIgnoreCase(row.get(0))) {
-				return r;
-			}
-		}
-		return -1;
-	}
-
-	/**
-	 * Builds a request that copies a row to another row of the same tab under the given paste type,
-	 * used to relocate the totals row onto the first freed tactic slot. Callers paste {@code PASTE_VALUES}
-	 * then {@code PASTE_FORMAT} (never {@code PASTE_NORMAL}) so the totals cells' {@code =SUM(...)} formulas
-	 * are not carried and rebased into {@code #REF!}. The source row is left untouched — callers clear it
-	 * separately.
-	 *
-	 * @param sheetId    numeric id of the tab to copy within
-	 * @param sourceRow  zero-based row index to copy from
-	 * @param destRow    zero-based row index to copy to
-	 * @param tableWidth number of columns (from column 0) to copy
-	 * @param pasteType  the Sheets {@code PasteType} controlling what is copied (e.g. {@code PASTE_VALUES})
-	 * @return the {@code CopyPaste} request
-	 */
-	Request moveRowRequest(int sheetId, int sourceRow, int destRow, int tableWidth, String pasteType) {
-		GridRange source = new GridRange()
+	Request dashFillRequest(int sheetId, int startRow, int endRow, int startCol, int endCol) {
+		GridRange range = new GridRange()
 				.setSheetId(sheetId)
-				.setStartRowIndex(sourceRow)
-				.setEndRowIndex(sourceRow + 1)
-				.setStartColumnIndex(0)
-				.setEndColumnIndex(tableWidth);
-		GridRange destination = new GridRange()
-				.setSheetId(sheetId)
-				.setStartRowIndex(destRow)
-				.setEndRowIndex(destRow + 1)
-				.setStartColumnIndex(0)
-				.setEndColumnIndex(tableWidth);
-		return new Request().setCopyPaste(new CopyPasteRequest()
-				.setSource(source)
-				.setDestination(destination)
-				.setPasteType(pasteType));
+				.setStartRowIndex(startRow)
+				.setEndRowIndex(endRow)
+				.setStartColumnIndex(startCol)
+				.setEndColumnIndex(endCol);
+		CellData dash = new CellData().setUserEnteredValue(new ExtendedValue().setStringValue(DASH));
+		return new Request().setRepeatCell(new RepeatCellRequest()
+				.setRange(range)
+				.setCell(dash)
+				.setFields("userEnteredValue"));
 	}
 
 	/**

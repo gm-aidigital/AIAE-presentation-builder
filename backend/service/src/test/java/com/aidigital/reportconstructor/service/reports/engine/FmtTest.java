@@ -19,6 +19,12 @@ class FmtTest {
 	}
 
 	@Test
+	void moneyExact_keepsCentsWhenFractionalWholeOtherwise() {
+		assertEquals("$11,812.50", fmt.moneyExact(11_812.50));
+		assertEquals("$45,000", fmt.moneyExact(45_000));
+	}
+
+	@Test
 	void pctOrDash_zeroIsEmDash() {
 		assertEquals("\u2014", fmt.pctOrDash(0));
 		assertEquals("12.34%", fmt.pctOrDash(12.34));

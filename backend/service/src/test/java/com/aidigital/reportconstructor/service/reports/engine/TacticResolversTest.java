@@ -99,6 +99,29 @@ class TacticResolversTest {
 	}
 
 	@Test
+	void resolveTacticKpiType_audioMapsToAcr() {
+		Resolved acr = resolvers.resolveTacticKpiType(1, "Programmatic Audio", List.of(), List.of());
+		assertThat(acr.value()).isEqualTo("ACR");
+	}
+
+	@Test
+	void resolveTacticBench_audioUsesAcrLabel() {
+		Tactic audio = new Tactic(
+				"Programmatic Audio", "Audio", null,
+				0, 0, 0, 0, null, null, null, null,
+				null, null, null, 80.0, null,
+				null, null, null
+		);
+		CampaignData data = new CampaignData(
+				null, null, null, null, null, null, null, null, null, null, null,
+				new Totals(0, 0, 0, 0, null, null),
+				Map.of(1, audio), null
+		);
+		Resolved r = resolvers.resolveTacticBench(1, "Programmatic Audio", List.of(), List.of(), data);
+		assertThat(r.value()).isEqualTo("ACR – 80%");
+	}
+
+	@Test
 	void resolveTacticKpiType_prefersManualAdjustmentOverride() {
 		List<List<String>> adj = List.of(List.of("Tactic 1 KPI type:", "VCR"));
 		Resolved r = resolvers.resolveTacticKpiType(1, "Programmatic Display", List.of(), adj);

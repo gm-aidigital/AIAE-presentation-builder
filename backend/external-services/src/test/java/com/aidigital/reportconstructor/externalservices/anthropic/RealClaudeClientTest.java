@@ -80,7 +80,8 @@ class RealClaudeClientTest {
 				new ClaudeCompressionField("rec_text_2", "Layer lookalikes onto top segments to grow scale.", 130),
 				new ClaudeCompressionField("rec_title_3", "Add Measurement", 30),
 				new ClaudeCompressionField("rec_text_3", "Introduce a brand-lift study to prove impact.", 130));
-		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(3500), eq(60), eq("BatchC"), eq(true)))
+		// No tactics in this fixture → the Batch C budget is the fixed base (2500) with the base 60s timeout.
+		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(2500), eq(60), eq("BatchC"), eq(true)))
 				.thenReturn(response);
 		when(compressionService.compress(eq(expectedFields), eq("BatchD-Results")))
 				.thenAnswer(invocation -> {

@@ -20,9 +20,10 @@ import java.util.Map;
  * @param distTacticNames       tactic-number &rarr; display name (from {@code {{tactic n}}})
  * @param distTacticImps        tactic-number &rarr; impressions (from {@code {{tactic n imps}}})
  * @param distTotalImps         total impressions (from {@code {{total imps}}})
- * @param tacticKpiTypes        tactic-number &rarr; KPI type ({@code "ctr"}/{@code "vcr"}, or {@code null}
- *                              when the tactic name maps to neither) derived from the channel mapping; drives
- *                              the daily/monthly chart's KPI-type header and which metric (clicks vs
+ * @param tacticKpiTypes        tactic-number &rarr; KPI-series token ({@code "ctr"}/{@code "vcr"}/{@code "acr"},
+ *                              or {@code null} when the tactic name maps to none) derived from the channel mapping;
+ *                              {@code "acr"} (audio) acts like {@code "vcr"} for the series but labels the header "ACR".
+ *                              Drives the daily/monthly chart's KPI-type header and which metric (clicks vs
  *                              completions) fills the Amount column
  * @param userGoogleAccessToken optional signed-in user token; when present the
  *                              charts are built under that user's Drive, matching

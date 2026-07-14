@@ -172,7 +172,7 @@ public class ReportGenerationChartHelperImpl implements ReportGenerationChartHel
 			String name = firstNonBlank(flatReplacements.get("{{tactic " + n + "}}"), "Tactic " + n);
 			distNames.put(n, name);
 			distImps.put(n, reportNumbers.parseReportNumber(flatReplacements.get("{{tactic " + n + " imps}}")));
-			kpiTypes.put(n, tacticExtraction.getTacticKpiType(name));
+			kpiTypes.put(n, tacticExtraction.getTacticKpiSeries(name));
 		}
 	}
 

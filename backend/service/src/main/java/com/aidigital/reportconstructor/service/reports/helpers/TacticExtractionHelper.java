@@ -66,6 +66,28 @@ public interface TacticExtractionHelper {
 	String getTacticKpiType(String tacticName);
 
 	/**
+	 * Returns the completion-rate label for a completion-led ({@code vcr}) tactic: {@code "ACR"} (audio
+	 * completion rate) for audio/podcast tactics, otherwise {@code "VCR"}. Used so an Audio tactic's KPI
+	 * type and benchmark read "ACR" rather than the video-specific "VCR".
+	 *
+	 * @param tacticName media-plan tactic name (may be {@code null})
+	 * @return {@code "ACR"} for audio/podcast tactics, otherwise {@code "VCR"}
+	 */
+	String getCompletionRateLabel(String tacticName);
+
+	/**
+	 * Returns the chart/pacing KPI-series token for a tactic: {@code "ctr"}, {@code "vcr"}, or {@code "acr"}
+	 * (audio completion rate) — the latter for audio/podcast tactics that would otherwise be {@code "vcr"}.
+	 * Series-selection code treats {@code "acr"} exactly like {@code "vcr"} (completions), but the sheet's
+	 * KPI header then reads "ACR". Unlike {@link #getTacticKpiType(String)}, which resolver branching relies
+	 * on staying {@code ctr}/{@code vcr}, this token is for the chart/pacing writers.
+	 *
+	 * @param tacticName media-plan tactic name (may be {@code null})
+	 * @return {@code "ctr"}, {@code "vcr"}, {@code "acr"}, or {@code null} when unknown
+	 */
+	String getTacticKpiSeries(String tacticName);
+
+	/**
 	 * Returns the maximum addressable-audience coefficient (fraction of {@code {{market volume}}}, always
 	 * {@code < 1}) for a tactic, used to derive {@code {{tactic n volume}}}.
 	 *

@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -24,6 +25,13 @@ public class ClaudeBatchPromptBuilder {
 
 	/** Tactics per results-overview group; the deck carries one summary + overview slide per group. */
 	private static final int TACTICS_PER_GROUP = 7;
+
+	/**
+	 * Substrings marking a completion-led tactic as audio, so Claude sees its completion rate as ACR not VCR.
+	 * Mirrors {@code TacticExtractionHelper}'s audio keywords — kept local because the prompt context is
+	 * deliberately self-contained and this module does not inject the service-layer tactic helpers.
+	 */
+	private static final String[] AUDIO_KEYWORDS = {"audio", "podcast"};
 
 	/**
 	 * Volume-vs-rate deviation math rule (campaign-analyst principle 9), appended to the Batch C
@@ -49,6 +57,26 @@ public class ClaudeBatchPromptBuilder {
 	public ClaudeBatchPromptBuilder(ClaudeResponseNormalizer normalizer, Fmt fmt) {
 		this.normalizer = normalizer;
 		this.fmt = fmt;
+	}
+
+	/**
+	 * Returns the completion-rate label to show Claude for a tactic's completion metric: {@code "ACR"} (audio
+	 * completion rate) for audio/podcast tactics, otherwise {@code "VCR"}. So the per-tactic context lines and
+	 * the narrative Claude writes name an audio tactic's completions "ACR", matching the deck/sheet labels.
+	 *
+	 * @param tacticName the tactic display name (may be {@code null})
+	 * @return {@code "ACR"} for audio/podcast tactics, otherwise {@code "VCR"}
+	 */
+	String completionRateLabel(String tacticName) {
+		if (tacticName != null) {
+			String key = tacticName.toLowerCase(Locale.ROOT);
+			for (String kw : AUDIO_KEYWORDS) {
+				if (key.contains(kw)) {
+					return "ACR";
+				}
+			}
+		}
+		return "VCR";
 	}
 
 	/**
@@ -106,7 +134,8 @@ public class ClaudeBatchPromptBuilder {
 				line.append(" | CTR ").append(fmt.dec2(t.ctr())).append('%');
 			}
 			if (t.vcr() != null) {
-				line.append(" | VCR ").append(fmt.dec2(t.vcr())).append('%');
+				line.append(" | ").append(completionRateLabel(t.name())).append(' ').append(fmt.dec2(t.vcr()))
+						.append('%');
 			}
 			tacticLines.add(line.toString());
 		}
@@ -240,7 +269,8 @@ public class ClaudeBatchPromptBuilder {
 				line.append(" | CTR ").append(fmt.dec2(t.ctr())).append('%');
 			}
 			if (t.vcr() != null) {
-				line.append(" | VCR ").append(fmt.dec2(t.vcr())).append('%');
+				line.append(" | ").append(completionRateLabel(t.name())).append(' ').append(fmt.dec2(t.vcr()))
+						.append('%');
 			}
 			tacticLines.add(line.toString());
 		}
@@ -458,7 +488,8 @@ public class ClaudeBatchPromptBuilder {
 				line.append(" | CTR ").append(fmt.dec2(t.ctr())).append('%');
 			}
 			if (t.vcr() != null) {
-				line.append(" | VCR ").append(fmt.dec2(t.vcr())).append('%');
+				line.append(" | ").append(completionRateLabel(t.name())).append(' ').append(fmt.dec2(t.vcr()))
+						.append('%');
 			}
 			tacticLines.add(line.toString());
 		}
@@ -604,7 +635,8 @@ public class ClaudeBatchPromptBuilder {
 				line.append(" | Actual CTR ").append(fmt.dec2(t.ctr())).append('%');
 			}
 			if (t.vcr() != null) {
-				line.append(" | Actual VCR ").append(fmt.dec2(t.vcr())).append('%');
+				line.append(" | Actual ").append(completionRateLabel(t.name())).append(' ')
+						.append(fmt.dec2(t.vcr())).append('%');
 			}
 			if (t.planSpend() != null) {
 				line.append(" | Plan Spend $").append(fmt.intGroup(Math.round(t.planSpend())));
@@ -616,7 +648,8 @@ public class ClaudeBatchPromptBuilder {
 				line.append(" | Plan CTR ").append(fmt.dec2(t.planCtr())).append('%');
 			}
 			if (t.planVcr() != null) {
-				line.append(" | Plan VCR ").append(fmt.dec2(t.planVcr())).append('%');
+				line.append(" | Plan ").append(completionRateLabel(t.name())).append(' ')
+						.append(fmt.dec2(t.planVcr())).append('%');
 			}
 			tacticLines.add(line.toString());
 		}

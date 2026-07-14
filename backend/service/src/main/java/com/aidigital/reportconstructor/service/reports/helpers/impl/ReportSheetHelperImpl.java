@@ -76,7 +76,7 @@ public class ReportSheetHelperImpl implements ReportSheetHelper {
 			String name = firstNonBlank(flatReplacements.get("{{tactic " + n + "}}"), "Tactic " + n);
 			distNames.put(n, name);
 			distImps.put(n, reportNumbers.parseReportNumber(flatReplacements.get("{{tactic " + n + " imps}}")));
-			kpiTypes.put(n, tacticExtraction.getTacticKpiType(name));
+			kpiTypes.put(n, tacticExtraction.getTacticKpiSeries(name));
 		}
 		double totalImps = reportNumbers.parseReportNumber(flatReplacements.get("{{total imps}}"));
 

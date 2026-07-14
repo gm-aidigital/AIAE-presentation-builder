@@ -40,6 +40,35 @@ class CampaignDataCollectorTest {
 	}
 
 	@Test
+	void collect_repeatedTacticNameGetsItsOwnEstimatesLineItemInOrder() {
+		// Given: a media plan repeating "Display" twice around one "Audio", and an Estimates tab carrying a
+		// distinct planned spend/impressions per line item in the same top-to-bottom order
+		List<List<String>> sheet = List.of(
+				List.of("Media"),
+				List.of("programmatic display"),
+				List.of("programmatic audio"),
+				List.of("programmatic display")
+		);
+		List<List<String>> estimates = List.of(
+				List.of("Media", "Total Cost", "Impressions"),
+				List.of("programmatic display", "100000", "500000"),
+				List.of("programmatic audio", "200000", "700000"),
+				List.of("programmatic display", "300000", "900000")
+		);
+
+		// When:
+		CampaignData data = collector.collect(sheet, List.of(), List.of(), estimates, List.of(), null);
+
+		// Then: each occurrence keeps its own line item's figures rather than all Displays collapsing onto one
+		assertThat(data.tactics().get(1).planSpend()).isEqualTo(100000.0);
+		assertThat(data.tactics().get(1).planImps()).isEqualTo(500000.0);
+		assertThat(data.tactics().get(2).planSpend()).isEqualTo(200000.0);
+		assertThat(data.tactics().get(2).planImps()).isEqualTo(700000.0);
+		assertThat(data.tactics().get(3).planSpend()).isEqualTo(300000.0);
+		assertThat(data.tactics().get(3).planImps()).isEqualTo(900000.0);
+	}
+
+	@Test
 	void collect_buildsTacticMapFromMediaColumn() {
 		List<List<String>> sheet = List.of(
 				List.of("Media"),

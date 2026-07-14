@@ -30,6 +30,9 @@ public class SheetChartDataReaderImpl implements SheetChartDataReader {
 	/** KPI type whose single metric column carries completions (video/CTV → VCR rate series). */
 	private static final String KPI_VCR = "vcr";
 
+	/** Audio completion-rate token; behaves exactly like {@link #KPI_VCR} for series selection (labelled ACR). */
+	private static final String KPI_ACR = "acr";
+
 	/** Anchor label for a tactic's daily pacing block, capturing the trailing tactic number. */
 	private static final Pattern DAILY_ANCHOR = Pattern.compile("(?i)^daily pacing\\s+(\\d+)$");
 
@@ -89,7 +92,7 @@ public class SheetChartDataReaderImpl implements SheetChartDataReader {
 		}
 
 		boolean ctr = KPI_CTR.equalsIgnoreCase(kpiType);
-		boolean vcr = KPI_VCR.equalsIgnoreCase(kpiType);
+		boolean vcr = KPI_VCR.equalsIgnoreCase(kpiType) || KPI_ACR.equalsIgnoreCase(kpiType);
 		boolean anyMetric = false;
 
 		for (int r = header.headerRow() + 1; r < grid.size(); r++) {

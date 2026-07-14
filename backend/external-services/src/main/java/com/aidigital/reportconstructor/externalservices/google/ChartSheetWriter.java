@@ -159,7 +159,8 @@ public class ChartSheetWriter {
 					metricCol = ci;
 					dataStartRow = ri;
 				}
-				if (upper.equals("CTR") || upper.equals("VCR") || kpiTypePattern.matcher(cell).find()) {
+				if (upper.equals("CTR") || upper.equals("VCR") || upper.equals("ACR")
+						|| kpiTypePattern.matcher(cell).find()) {
 					ctrHeaderCol = ci;
 					headerRow = ri;
 				}
@@ -198,8 +199,9 @@ public class ChartSheetWriter {
 
 		if (!noCdCols && ctrHeaderCol >= 0 && headerRow >= 0) {
 			String hdrRange = tabName + "!" + colLetter(ctrHeaderCol) + (headerRow + 1);
+			String hdrLabel = useClicks ? "CTR" : ("acr".equalsIgnoreCase(kpiType) ? "ACR" : "VCR");
 			sheets.spreadsheets().values().update(spreadsheetId, hdrRange,
-							new ValueRange().setValues(List.of(List.of(useClicks ? "CTR" : "VCR"))))
+							new ValueRange().setValues(List.of(List.of(hdrLabel))))
 					.setValueInputOption("RAW").execute();
 		}
 

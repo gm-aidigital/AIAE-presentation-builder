@@ -26,6 +26,20 @@ class TacticUtilsTest {
 	}
 
 	@Test
+	void getCompletionRateLabel_audioIsAcrOthersAreVcr() {
+		assertEquals("ACR", tacticUtils.getCompletionRateLabel("Programmatic Audio"));
+		assertEquals("ACR", tacticUtils.getCompletionRateLabel("Amazon Podcast Ads"));
+		assertEquals("VCR", tacticUtils.getCompletionRateLabel("Programmatic CTV"));
+	}
+
+	@Test
+	void getTacticKpiSeries_audioVcrBecomesAcr() {
+		assertEquals("acr", tacticUtils.getTacticKpiSeries("Programmatic Audio"));
+		assertEquals("vcr", tacticUtils.getTacticKpiSeries("Programmatic CTV"));
+		assertEquals("ctr", tacticUtils.getTacticKpiSeries("Programmatic Display"));
+	}
+
+	@Test
 	void extractTacticsFromMedia_skipsSubtotalRowsWithoutStopping() {
 		// Given: a sub-total row sits between two tactic rows
 		List<List<String>> rows = List.of(

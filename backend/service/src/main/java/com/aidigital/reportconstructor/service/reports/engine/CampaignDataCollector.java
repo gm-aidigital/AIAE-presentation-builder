@@ -12,7 +12,9 @@ import org.springframework.stereotype.Component;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -115,8 +117,10 @@ public class CampaignDataCollector {
 				sheetUtils.findLabelValue(sheetRows, "Audience segments:"));
 
 		// ── 5. Estimates tab → planned KPIs by tactic ─────────────────────────
-		Map<String, double[]> estimatesByTactic = parseEstimates(estimatesRows);
-		// double[] layout: {spend, imps, ctr, vcr, maxFreq}; NaN = null
+		Map<String, Deque<double[]>> estimatesByTactic = parseEstimates(estimatesRows);
+		// double[] layout: {spend, imps, ctr, vcr, maxFreq}; NaN = null. Keyed by tactic name to a FIFO queue,
+		// because a media plan repeats a channel name across several line items (e.g. "Meta" four times) with
+		// different plan figures each; the queue keeps every line item's own numbers in media-plan order.
 
 		// ── 6. Tactics & channel mapping ──────────────────────────────────────
 		List<String> mediaTactics = tacticExtraction.extractTacticsFromMedia(sheetRows);
@@ -394,7 +398,10 @@ public class CampaignDataCollector {
 			Integer weekdaysPct = totalDayImps > 0 ? (int) Math.round(wdi / totalDayImps * 100) : null;
 			Integer weekendsPct = weekdaysPct != null ? 100 - weekdaysPct : null;
 
-			double[] plan = estimatesByTactic.get(name.trim().toLowerCase(Locale.ROOT));
+			// Consume this tactic's own line item from the queue: the N-th occurrence of a repeated name takes the
+			// N-th planned row for it, so duplicated channels no longer all collapse onto one line item's figures.
+			Deque<double[]> planQueue = estimatesByTactic.get(name.trim().toLowerCase(Locale.ROOT));
+			double[] plan = planQueue == null ? null : planQueue.poll();
 
 			String topName = liIdForTactic != null ? topCreativeName.get(liIdForTactic) : null;
 			double[] topCr = liIdForTactic != null ? topCreativeByLi.get(liIdForTactic) : null;
@@ -470,8 +477,18 @@ public class CampaignDataCollector {
 
 	// ── Estimates parser ──────────────────────────────────────────────────────
 
-	Map<String, double[]> parseEstimates(List<List<String>> estimatesRows) {
-		Map<String, double[]> out = new LinkedHashMap<>();
+	/**
+	 * Parses the Estimates tab into planned figures per tactic, preserving media-plan order. Each Media-column
+	 * name maps to a FIFO queue of {@code {spend, imps, ctr, vcr, maxFreq}} rows (NaN where blank), one entry
+	 * per line item in top-to-bottom order. A name repeated across line items (e.g. "Meta" appearing several
+	 * times with different budgets) therefore keeps every occurrence's own numbers instead of collapsing to a
+	 * single row, so the tactic loop can assign the N-th occurrence its N-th planned line item.
+	 *
+	 * @param estimatesRows the Estimates tab grid (may be empty)
+	 * @return a map from lowercased tactic name to its ordered queue of planned-figure rows (never {@code null})
+	 */
+	Map<String, Deque<double[]>> parseEstimates(List<List<String>> estimatesRows) {
+		Map<String, Deque<double[]>> out = new LinkedHashMap<>();
 		if (estimatesRows.isEmpty()) {
 			return out;
 		}
@@ -561,7 +578,8 @@ public class CampaignDataCollector {
 			double vcr = parseNumericCell(cellAt(row, eVcrCol), eVcrCol, false);
 			double freq = parseNumericCell(cellAt(row, eFreqCol), eFreqCol, false);
 
-			out.put(mediaVal.toLowerCase(Locale.ROOT), new double[]{spend, imps, ctr, vcr, freq});
+			out.computeIfAbsent(mediaVal.toLowerCase(Locale.ROOT), k -> new ArrayDeque<>())
+					.add(new double[]{spend, imps, ctr, vcr, freq});
 		}
 		return out;
 	}

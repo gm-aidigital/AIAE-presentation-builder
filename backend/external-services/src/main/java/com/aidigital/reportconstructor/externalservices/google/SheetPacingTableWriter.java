@@ -182,8 +182,24 @@ public class SheetPacingTableWriter {
 		if (cols.kpiHeaderCol() >= 0 && cols.kpiHeaderRow() >= 0) {
 			data.add(rangeValue(tabName, cols.kpiHeaderCol(), cols.kpiHeaderRow() + 1,
 					cols.kpiHeaderCol(), cols.kpiHeaderRow() + 1,
-					List.of(List.of(useClicks ? "CTR" : "VCR"))));
+					List.of(List.of(kpiHeaderLabel(useClicks, kpiType)))));
 		}
+	}
+
+	/**
+	 * Chooses the KPI column header for a pacing block: {@code "CTR"} for click-led tactics, otherwise the
+	 * completion-rate label — {@code "ACR"} when the tactic's series token is {@code "acr"} (audio), else
+	 * {@code "VCR"}.
+	 *
+	 * @param useClicks whether the block renders the clicks/CTR series
+	 * @param kpiType   the tactic's KPI-series token ({@code "ctr"}/{@code "vcr"}/{@code "acr"}, or {@code null})
+	 * @return the header label to write
+	 */
+	String kpiHeaderLabel(boolean useClicks, String kpiType) {
+		if (useClicks) {
+			return "CTR";
+		}
+		return "acr".equalsIgnoreCase(kpiType) ? "ACR" : "VCR";
 	}
 
 	/**

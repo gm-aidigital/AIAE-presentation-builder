@@ -33,6 +33,18 @@ public class Fmt {
 	}
 
 	/**
+	 * Dollar-prefixed amount that keeps cents when the value is fractional and stays whole otherwise, so a
+	 * planned spend such as {@code 11812.50} renders as {@code "$11,812.50"} rather than being rounded to
+	 * {@code "$11,813"}, while a whole amount like {@code 45000} still renders cleanly as {@code "$45,000"}.
+	 *
+	 * @param v the monetary amount to format
+	 * @return the value as a dollar-prefixed, comma-grouped string with two decimals only when non-integral
+	 */
+	public String moneyExact(double v) {
+		return v == Math.rint(v) ? money(v) : "$" + dec2(v);
+	}
+
+	/**
 	 * Two decimals with comma grouping.
 	 *
 	 * @param v the metric value to format with two fractional digits

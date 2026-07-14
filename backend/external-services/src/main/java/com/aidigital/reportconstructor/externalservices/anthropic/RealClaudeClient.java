@@ -49,6 +49,15 @@ public class RealClaudeClient implements ClaudeClient {
 	private static final int F_FACT_LIMIT = 140;
 	private static final int F_STORYTELLING_LIMIT = 320;
 
+	// Batch C emits one results-overview per tactic group plus one tactic-overview PER TACTIC (up to 28), on
+	// top of thoughts, four recommendations and the frequency copy — all in a single JSON reply. A fixed cap
+	// truncated the reply once a campaign carried ~20+ tactics, so the JSON failed to parse and the whole
+	// batch fell back to empty (every {{Our results overview N}} and {{tactic n overview}} rendered blank).
+	// Scale the output budget with the tactic count instead: fixed base for the shared copy + per-tactic room.
+	private static final int BATCH_C_BASE_TOKENS = 2500;
+	private static final int BATCH_C_TOKENS_PER_TACTIC = 170;
+	private static final int BATCH_C_MAX_TOKENS_CAP = 8000;
+
 	private final AnthropicMessagesClient messagesClient;
 	private final ClaudeBatchPromptBuilder promptBuilder;
 	private final ClaudeResponseNormalizer normalizer;
@@ -250,7 +259,13 @@ public class RealClaudeClient implements ClaudeClient {
 		if (prompt.isEmpty()) {
 			return claudeDefaults.emptyResults();
 		}
-		JsonNode parsed = messagesClient.callJsonObject(prompt.get(), 3500, 60, "BatchC", true);
+		int tacticCount = data.tactics() == null ? 0 : data.tactics().size();
+		int maxTokens = Math.min(BATCH_C_MAX_TOKENS_CAP,
+				BATCH_C_BASE_TOKENS + BATCH_C_TOKENS_PER_TACTIC * tacticCount);
+		// A larger reply also streams longer, so give big decks more HTTP head-room than the 60s that was
+		// enough for the old fixed cap.
+		int timeoutSec = tacticCount > 10 ? 120 : 60;
+		JsonNode parsed = messagesClient.callJsonObject(prompt.get(), maxTokens, timeoutSec, "BatchC", true);
 		if (parsed == null) {
 			return claudeDefaults.emptyResults();
 		}

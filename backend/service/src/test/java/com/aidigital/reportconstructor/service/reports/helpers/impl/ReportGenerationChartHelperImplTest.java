@@ -120,7 +120,7 @@ class ReportGenerationChartHelperImplTest {
 				"{{tactic 1}}", "Display",
 				"{{tactic 1 imps}}", "1,000",
 				"{{total imps}}", "1,000");
-		when(tacticExtraction.getTacticKpiType("Display")).thenReturn("ctr");
+		when(tacticExtraction.getTacticKpiSeries("Display")).thenReturn("ctr");
 		when(reportNumbers.parseReportNumber("1,000")).thenReturn(1000.0);
 		LinkedHashMap<String, double[]> series = new LinkedHashMap<>();
 		series.put("Jun 1", new double[] {1000.0, 10.0, 0.0});

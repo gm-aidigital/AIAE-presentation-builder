@@ -74,7 +74,7 @@ class ReportSheetHelperImplTest {
 	void shouldBuildPacingTablesRequestFromPayloadAndPlaceholdersTest() {
 		GeneratePayload payload = payloadWithPacingInputs();
 		when(tacticExtraction.countTacticsInMediaPlan(payload.sheetRows())).thenReturn(1);
-		when(tacticExtraction.getTacticKpiType("Display")).thenReturn("ctr");
+		when(tacticExtraction.getTacticKpiSeries("Display")).thenReturn("ctr");
 		when(reportNumbers.parseReportNumber("500")).thenReturn(500.0);
 		when(reportNumbers.parseReportNumber("1,234")).thenReturn(1234.0);
 		when(sheets.writePacingTables(eq("sheet-id"), any())).thenReturn(List.of());
