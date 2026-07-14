@@ -46,6 +46,17 @@ public class RealSlidesProvider implements SlidesProvider {
 	/** Max tactics the deck template carries (per-tactic detail slides 1..28). */
 	private static final int MAX_TACTICS = 28;
 
+	/**
+	 * Max requests sent in a single {@code batchUpdate}. Mirrors the Sheets provider: a full 28-tactic
+	 * report expands to ~800 {@code replaceAllText} operations, and packing them into one atomic
+	 * batchUpdate risks repeated 500/503 {@code backendError}s from Slides under the payload weight (the
+	 * same failure that hit the Sheets step on job 128). Splitting into fixed-size chunks — each its own
+	 * batchUpdate, retried independently — keeps every request small enough for Slides to accept. Safe
+	 * because replaceAllText targets disjoint tokens and the trim's ordered deletes stay in sequence
+	 * across chunk boundaries, so chunking never changes the outcome.
+	 */
+	private static final int BATCH_UPDATE_CHUNK_SIZE = 100;
+
 	/** Tactics per group; the deck carries one summary slide + one "Our results" slide per group. */
 	private static final int TACTICS_PER_GROUP = 7;
 
@@ -129,13 +140,10 @@ public class RealSlidesProvider implements SlidesProvider {
 			if (!requests.isEmpty()) {
 				// Fill the freshly-copied deck before granting access. Sharing is a Drive ACL write on the
 				// same file, and issuing it concurrently with a large content batchUpdate lets Google abort
-				// the write with 409 ABORTED (seen on long decks, whose batchUpdate runs longer). Retry the
-				// batchUpdate on transient conflicts/rate limits — Slides batchUpdate is atomic, so a retry
-				// never double-applies.
-				retrier.execute(
-						slidesClient.presentations()
-								.batchUpdate(newId, new BatchUpdatePresentationRequest().setRequests(requests)),
-						"createDeck batchUpdate for " + newId);
+				// the write with 409 ABORTED (seen on long decks, whose batchUpdate runs longer). Each chunk
+				// is retried on transient conflicts/rate limits — Slides batchUpdate is atomic, so a retry
+				// never double-applies. Chunking also shortens each write, further reducing the 409 window.
+				executeInChunks(slidesClient, newId, requests, "createDeck batchUpdate for " + newId);
 			}
 
 			// Grant standing access to the configured recipients (e.g. an admin owner) so decks created in a
@@ -161,14 +169,40 @@ public class RealSlidesProvider implements SlidesProvider {
 		boolean asUser = userGoogleAccessToken != null && !userGoogleAccessToken.isBlank();
 		Slides slidesClient = asUser ? buildSlides(userGoogleAccessToken) : slides;
 		try {
-			retrier.execute(
-					slidesClient.presentations()
-							.batchUpdate(presentationId, new BatchUpdatePresentationRequest().setRequests(requests)),
-					"trimTactics batchUpdate for " + presentationId);
+			executeInChunks(slidesClient, presentationId, requests, "trimTactics batchUpdate for " + presentationId);
 		} catch (IOException ex) {
 			log.error("[slides] trimTactics failed for {}", presentationId, ex);
 			throw new AppException(ErrorReason.C000,
 					"Google Slides trimTactics failed: " + ex.getMessage());
+		}
+	}
+
+	/**
+	 * Applies the given batchUpdate requests to a deck in fixed-size chunks of at most
+	 * {@link #BATCH_UPDATE_CHUNK_SIZE}, each sent as its own {@code batchUpdate} and retried
+	 * independently via {@link GoogleRequestRetrier}. Mirrors {@code RealSheetDeckProvider#executeInChunks}:
+	 * a single batchUpdate carrying every {@code replaceAllText} (~800 for a full 28-tactic report) risks
+	 * repeated 500/503 {@code backendError}s from Slides; chunking keeps each request small. Chunks are
+	 * sent in list order, so the trim's bottom-up {@code deleteTableRow} sequence stays valid across
+	 * boundaries, and replaceAllText targets disjoint tokens — chunking never changes the result.
+	 *
+	 * @param slidesClient   the authenticated Slides client
+	 * @param presentationId the deck to update
+	 * @param requests       the batchUpdate requests to apply, in list order
+	 * @param description    short context used in retry log lines
+	 * @throws IOException when a chunk fails with a non-retryable error or exhausts all attempts
+	 */
+	void executeInChunks(Slides slidesClient, String presentationId, List<Request> requests, String description)
+			throws IOException {
+		int total = requests.size();
+		int chunks = (total + BATCH_UPDATE_CHUNK_SIZE - 1) / BATCH_UPDATE_CHUNK_SIZE;
+		for (int start = 0, index = 1; start < total; start += BATCH_UPDATE_CHUNK_SIZE, index++) {
+			int end = Math.min(start + BATCH_UPDATE_CHUNK_SIZE, total);
+			List<Request> chunk = new ArrayList<>(requests.subList(start, end));
+			retrier.execute(
+					slidesClient.presentations()
+							.batchUpdate(presentationId, new BatchUpdatePresentationRequest().setRequests(chunk)),
+					description + " (chunk " + index + "/" + chunks + ")");
 		}
 	}
 
