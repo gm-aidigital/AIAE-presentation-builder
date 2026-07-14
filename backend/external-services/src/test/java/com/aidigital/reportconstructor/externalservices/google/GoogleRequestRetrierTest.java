@@ -70,7 +70,7 @@ class GoogleRequestRetrierTest {
 	}
 
 	@Test
-	void shouldStopAfterFiveAttemptsAndRethrowTest() throws IOException {
+	void shouldStopAfterMaxAttemptsAndRethrowTest() throws IOException {
 		// Given: a request that always fails with 500
 		GoogleRequestRetrier retrier = spy(new GoogleRequestRetrier());
 		doNothing().when(retrier).sleepBeforeRetry(anyLong());
@@ -78,11 +78,11 @@ class GoogleRequestRetrierTest {
 		AbstractGoogleClientRequest<String> request = mock(AbstractGoogleClientRequest.class);
 		when(request.execute()).thenThrow(googleError(500));
 
-		// When-Then: it exhausts 5 attempts (4 backoff sleeps) then rethrows the last error
+		// When-Then: it exhausts 8 attempts (7 backoff sleeps) then rethrows the last error
 		assertThatThrownBy(() -> retrier.execute(request, "copy"))
 				.isInstanceOf(GoogleJsonResponseException.class);
-		verify(request, times(5)).execute();
-		verify(retrier, times(4)).sleepBeforeRetry(anyLong());
+		verify(request, times(8)).execute();
+		verify(retrier, times(7)).sleepBeforeRetry(anyLong());
 	}
 
 	private static GoogleJsonResponseException googleError(int code) {

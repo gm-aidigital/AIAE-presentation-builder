@@ -21,8 +21,12 @@ import java.io.IOException;
 @Component
 public class GoogleRequestRetrier {
 
-	/** Attempts before giving up on a transient conflict/rate-limit/server error. */
-	private static final int MAX_ATTEMPTS = 5;
+	/**
+	 * Attempts before giving up on a transient conflict/rate-limit/server error. Sized so the cumulative
+	 * backoff (~31.5s at the {@link #MAX_BACKOFF_MILLIS} ceiling) comfortably outlasts Drive's post-copy
+	 * propagation window on large templates — 5 attempts (~7.5s) proved too short and still surfaced 404s.
+	 */
+	private static final int MAX_ATTEMPTS = 8;
 
 	/** Initial backoff before the first retry; doubled each attempt up to {@link #MAX_BACKOFF_MILLIS}. */
 	private static final long INITIAL_BACKOFF_MILLIS = 500L;

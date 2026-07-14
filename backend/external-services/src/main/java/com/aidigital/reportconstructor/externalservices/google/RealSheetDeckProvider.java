@@ -424,7 +424,11 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 	 */
 	List<List<String>> readGrid(Sheets sheetsClient, String spreadsheetId, String tabTitle) throws IOException {
 		String range = "'" + tabTitle.replace("'", "''") + "'!A1:ZZ";
-		ValueRange vr = sheetsClient.spreadsheets().values().get(spreadsheetId, range).execute();
+		// Reads a freshly copied workbook, so guard against the same post-copy propagation 404
+		// the write path sees: retry the GET until Drive's replica catches up.
+		ValueRange vr = retrier.execute(
+				sheetsClient.spreadsheets().values().get(spreadsheetId, range),
+				"readGrid values.get for " + spreadsheetId);
 		List<List<Object>> raw = vr.getValues() == null ? List.of() : vr.getValues();
 		List<List<String>> rows = new ArrayList<>(raw.size());
 		for (List<Object> r : raw) {
@@ -460,9 +464,13 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 	 * @throws IOException when the metadata request fails
 	 */
 	Map<String, Integer> fetchSheetIds(Sheets sheetsClient, String spreadsheetId) throws IOException {
-		Spreadsheet meta = sheetsClient.spreadsheets().get(spreadsheetId)
-				.setFields("sheets.properties(sheetId,title)")
-				.execute();
+		// Step (b) of createSheet — the first touch on the just-copied workbook. Drive's read replica
+		// can lag the copy by a few seconds, so this GET is subject to the same transient 404 as the
+		// batchUpdate that follows; retry it rather than failing the whole job on a propagation blip.
+		Spreadsheet meta = retrier.execute(
+				sheetsClient.spreadsheets().get(spreadsheetId)
+						.setFields("sheets.properties(sheetId,title)"),
+				"fetchSheetIds get for " + spreadsheetId);
 		Map<String, Integer> ids = new LinkedHashMap<>();
 		if (meta.getSheets() != null) {
 			for (Sheet s : meta.getSheets()) {
