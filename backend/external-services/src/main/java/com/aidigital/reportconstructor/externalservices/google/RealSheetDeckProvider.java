@@ -88,6 +88,17 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 	 */
 	private static final String DASH = "—";
 
+	/**
+	 * Max requests sent in a single {@code batchUpdate}. A 20–28-tactic EOC report expands to ~800
+	 * {@code {{token}}} find/replace operations; packing them all into one atomic batchUpdate made
+	 * Google Sheets return repeated 500/503 {@code backendError}s under the payload's weight (job 128
+	 * failed at "Building sheet" after exhausting every retry on a single oversized call). Splitting the
+	 * work into fixed-size chunks — each sent as its own batchUpdate and retried independently — keeps
+	 * every request small enough for Sheets to accept. Safe because find/replace and cell-clear requests
+	 * target disjoint tokens/ranges, so chunk boundaries and ordering never change the outcome.
+	 */
+	private static final int BATCH_UPDATE_CHUNK_SIZE = 100;
+
 	private final GoogleCredentialsFactory creds;
 	private final GoogleRequestRetrier retrier;
 	private final Sheets sheets;
@@ -161,10 +172,7 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 				requests.add(new Request().setFindReplace(findReplace));
 			}
 			if (!requests.isEmpty()) {
-				retrier.execute(
-						sheetsClient.spreadsheets()
-								.batchUpdate(newId, new BatchUpdateSpreadsheetRequest().setRequests(requests)),
-						"createSheet batchUpdate for " + newId);
+				executeInChunks(sheetsClient, newId, requests, "createSheet batchUpdate for " + newId);
 			}
 			return "https://docs.google.com/spreadsheets/d/" + newId + "/edit";
 		} catch (IOException ex) {
@@ -197,10 +205,7 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 			if (requests.isEmpty()) {
 				return;
 			}
-			retrier.execute(
-					sheetsClient.spreadsheets()
-							.batchUpdate(spreadsheetId, new BatchUpdateSpreadsheetRequest().setRequests(requests)),
-					"trimTactics batchUpdate for " + spreadsheetId);
+			executeInChunks(sheetsClient, spreadsheetId, requests, "trimTactics batchUpdate for " + spreadsheetId);
 		} catch (IOException ex) {
 			log.error("[sheets] trimTactics failed for {}", spreadsheetId, ex);
 			throw new AppException(ErrorReason.C000,
@@ -242,6 +247,34 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 			log.error("[sheets] readSheetGrid failed for {}", spreadsheetId, ex);
 			throw new AppException(ErrorReason.C000,
 					"Google Sheets read failed: " + ex.getMessage());
+		}
+	}
+
+	/**
+	 * Applies the given batchUpdate requests to a workbook in fixed-size chunks of at most
+	 * {@link #BATCH_UPDATE_CHUNK_SIZE}, each sent as its own {@code batchUpdate} and retried
+	 * independently via {@link GoogleRequestRetrier}. A single batchUpdate carrying every request
+	 * (~800 for a full 28-tactic report) drew repeated 500/503 {@code backendError}s from Sheets and
+	 * failed job 128 outright; chunking keeps each request small enough to succeed. Safe because the
+	 * requests target disjoint tokens/ranges, so splitting them across batches never changes the result.
+	 *
+	 * @param sheetsClient  the authenticated Sheets client
+	 * @param spreadsheetId the workbook to update
+	 * @param requests      the batchUpdate requests to apply, in any order
+	 * @param description   short context used in retry log lines
+	 * @throws IOException when a chunk fails with a non-retryable error or exhausts all attempts
+	 */
+	void executeInChunks(Sheets sheetsClient, String spreadsheetId, List<Request> requests, String description)
+			throws IOException {
+		int total = requests.size();
+		int chunks = (total + BATCH_UPDATE_CHUNK_SIZE - 1) / BATCH_UPDATE_CHUNK_SIZE;
+		for (int start = 0, index = 1; start < total; start += BATCH_UPDATE_CHUNK_SIZE, index++) {
+			int end = Math.min(start + BATCH_UPDATE_CHUNK_SIZE, total);
+			List<Request> chunk = new ArrayList<>(requests.subList(start, end));
+			retrier.execute(
+					sheetsClient.spreadsheets()
+							.batchUpdate(spreadsheetId, new BatchUpdateSpreadsheetRequest().setRequests(chunk)),
+					description + " (chunk " + index + "/" + chunks + ")");
 		}
 	}
 
