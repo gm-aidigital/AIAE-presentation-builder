@@ -1,5 +1,7 @@
 package com.aidigital.reportconstructor.service.reports.helpers.impl;
 
+import com.aidigital.reportconstructor.service.reports.dto.BreakdownSelection;
+import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
@@ -7,6 +9,7 @@ import com.aidigital.reportconstructor.service.reports.dto.LineItemMapping;
 import com.aidigital.reportconstructor.service.reports.dto.SheetChartData;
 import com.aidigital.reportconstructor.service.reports.dto.Totals;
 import com.aidigital.reportconstructor.service.reports.engine.Pivot;
+import com.aidigital.reportconstructor.service.reports.helpers.BreakdownSelectionResolver;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportNumberParser;
 import com.aidigital.reportconstructor.service.reports.helpers.SheetChartDataReader;
 import com.aidigital.reportconstructor.service.reports.helpers.TacticExtractionHelper;
@@ -20,9 +23,11 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -45,6 +50,8 @@ class ReportGenerationChartHelperImplTest {
 	ReportNumberParser reportNumbers;
 	@Mock
 	SheetChartDataReader sheetChartData;
+	@Mock
+	BreakdownSelectionResolver breakdownResolver;
 
 	@InjectMocks
 	ReportGenerationChartHelperImpl helper;
@@ -54,6 +61,62 @@ class ReportGenerationChartHelperImplTest {
 		assertThat(helper.extractPresentationId("https://docs.google.com/presentation/d/abc-123_9/edit"))
 				.isEqualTo("abc-123_9");
 		assertThat(helper.extractPresentationId(null)).isNull();
+	}
+
+	@Test
+	void shouldSkipBreakdownSlidesWhenSelectionsNullTest() {
+		// Given: a payload with no breakdown selections
+		GeneratePayload payload = new GeneratePayload(
+				"brief", "standard", "", List.of(), List.of(), List.of(), List.of(), List.of(),
+				List.of(), null, "", null, null, null);
+
+		// When:
+		helper.addBreakdownSlides("https://docs.google.com/presentation/d/pres-1/edit", payload, 5, "token");
+
+		// Then: the slides provider is never asked to add breakdown slides
+		verify(slides, never()).addBreakdownSlides(any(), any(), any());
+	}
+
+	@Test
+	void shouldInsertOnlyBreakdownSlidesWithinTacticCountTest() {
+		// Given: the resolver reports tactic 1 (Top Publishers) and tactic 3 (Device) enabled, but only
+		// 2 tactics are active
+		List<BreakdownSelection> selections = List.of(
+				new BreakdownSelection(1, List.of("tp")),
+				new BreakdownSelection(3, List.of("dev")));
+		GeneratePayload payload = new GeneratePayload(
+				"brief", "standard", "", List.of(), List.of(), List.of(), List.of(), List.of(),
+				List.of(), selections, "", null, null, null);
+		Map<Integer, Set<BreakdownType>> resolved = new LinkedHashMap<>();
+		resolved.put(1, EnumSet.of(BreakdownType.TOP_PUBLISHERS));
+		resolved.put(3, EnumSet.of(BreakdownType.DEVICE));
+		when(breakdownResolver.resolve(selections)).thenReturn(resolved);
+
+		// When:
+		helper.addBreakdownSlides("https://docs.google.com/presentation/d/pres-1/edit", payload, 2, "token");
+
+		// Then: only tactic 1 (within the active count) is passed to the provider; tactic 3 is dropped
+		Map<Integer, Set<BreakdownType>> expected = new LinkedHashMap<>();
+		expected.put(1, EnumSet.of(BreakdownType.TOP_PUBLISHERS));
+		verify(slides).addBreakdownSlides(eq("pres-1"), eq(expected), eq("token"));
+	}
+
+	@Test
+	void shouldSkipBreakdownSlidesWhenAllSelectionsBeyondTacticCountTest() {
+		// Given: the only enabled tactic is beyond the active count
+		List<BreakdownSelection> selections = List.of(new BreakdownSelection(5, List.of("tp")));
+		GeneratePayload payload = new GeneratePayload(
+				"brief", "standard", "", List.of(), List.of(), List.of(), List.of(), List.of(),
+				List.of(), selections, "", null, null, null);
+		Map<Integer, Set<BreakdownType>> resolved = new LinkedHashMap<>();
+		resolved.put(5, EnumSet.of(BreakdownType.TOP_PUBLISHERS));
+		when(breakdownResolver.resolve(selections)).thenReturn(resolved);
+
+		// When:
+		helper.addBreakdownSlides("https://docs.google.com/presentation/d/pres-1/edit", payload, 2, "token");
+
+		// Then: nothing is inserted
+		verify(slides, never()).addBreakdownSlides(any(), any(), any());
 	}
 
 	@Test

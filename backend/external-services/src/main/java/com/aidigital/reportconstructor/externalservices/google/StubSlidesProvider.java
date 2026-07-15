@@ -1,10 +1,12 @@
 package com.aidigital.reportconstructor.externalservices.google;
 
+import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
 import com.aidigital.reportconstructor.service.reports.ports.SlidesProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Deterministic Slides provider — the only candidate when no {@code @Primary}
@@ -34,5 +36,11 @@ public class StubSlidesProvider implements SlidesProvider {
 	@Override
 	public void trimTactics(String presentationId, int tacticCount, String userGoogleAccessToken) {
 		// No-op: the stub never clones a real deck, so there are no slides to trim.
+	}
+
+	@Override
+	public void addBreakdownSlides(
+			String presentationId, Map<Integer, Set<BreakdownType>> enabledByTactic, String userGoogleAccessToken) {
+		// No-op: the stub never clones a real deck, so there are no master slides to duplicate.
 	}
 }

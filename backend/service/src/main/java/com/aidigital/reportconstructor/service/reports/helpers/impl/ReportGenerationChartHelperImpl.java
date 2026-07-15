@@ -1,9 +1,11 @@
 package com.aidigital.reportconstructor.service.reports.helpers.impl;
 
+import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
 import com.aidigital.reportconstructor.service.reports.dto.SheetChartData;
 import com.aidigital.reportconstructor.service.reports.engine.Pivot;
+import com.aidigital.reportconstructor.service.reports.helpers.BreakdownSelectionResolver;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportGenerationChartHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportNumberParser;
 import com.aidigital.reportconstructor.service.reports.helpers.SheetChartDataReader;
@@ -18,6 +20,7 @@ import org.springframework.stereotype.Component;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -39,6 +42,7 @@ public class ReportGenerationChartHelperImpl implements ReportGenerationChartHel
 	private final TacticExtractionHelper tacticExtraction;
 	private final ReportNumberParser reportNumbers;
 	private final SheetChartDataReader sheetChartData;
+	private final BreakdownSelectionResolver breakdownResolver;
 
 	@Override
 	public List<String> buildCharts(
@@ -206,6 +210,32 @@ public class ReportGenerationChartHelperImpl implements ReportGenerationChartHel
 			slides.trimTactics(presentationId, clamped, userGoogleToken);
 		} catch (RuntimeException ex) {
 			log.warn("[slides] trimTactics failed for {} (non-fatal): {}", presentationId, ex.getMessage());
+		}
+	}
+
+	@Override
+	public void addBreakdownSlides(String slideUrl, GeneratePayload payload, int tacticCount, String userGoogleToken) {
+		if (payload.breakdownSelections() == null || payload.breakdownSelections().isEmpty()) {
+			return;
+		}
+		String presentationId = extractPresentationId(slideUrl);
+		if (presentationId == null) {
+			return;
+		}
+		int clamped = Math.clamp(tacticCount, 1, MAX_TACTICS);
+		Map<Integer, Set<BreakdownType>> enabledByTactic = new LinkedHashMap<>();
+		breakdownResolver.resolve(payload.breakdownSelections()).forEach((tacticNum, enabled) -> {
+			if (tacticNum != null && tacticNum >= 1 && tacticNum <= clamped && !enabled.isEmpty()) {
+				enabledByTactic.put(tacticNum, enabled);
+			}
+		});
+		if (enabledByTactic.isEmpty()) {
+			return;
+		}
+		try {
+			slides.addBreakdownSlides(presentationId, enabledByTactic, userGoogleToken);
+		} catch (RuntimeException ex) {
+			log.warn("[slides] addBreakdownSlides failed for {} (non-fatal): {}", presentationId, ex.getMessage());
 		}
 	}
 

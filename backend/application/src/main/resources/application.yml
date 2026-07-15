@@ -181,6 +181,19 @@ external:
       26: "g3f4b9ea3eb6_0_1318"
       27: "g3f4b9ea3eb6_0_1390"
       28: "g3f4b9ea3eb6_0_1462"
+    # Per-tactic breakdown master slides (SLIDES_FROM_SHEET flow). Keyed by BreakdownType
+    # wire code. Each id is a single generic master slide whose tokens carry the literal
+    # "n" tactic variable; for every enabled (tactic, breakdown) pair the master is
+    # duplicated, its "n" tokens renumbered to the tactic number, and the copy placed after
+    # that tactic's main slide. Masters are deleted at the end. Empty = feature disabled
+    # (safe no-op). Collect these object ids via presentations.get once the 5 master slides
+    # are added to the live deck (same method used for tactic-slide-object-ids above).
+    breakdown-master-slide-object-ids: {}
+      # tp:  ""   # Top Publishers
+      # ca:  ""   # Creative analysis
+      # geo: ""   # Geo performance
+      # aud: ""   # Audience analysis
+      # dev: ""   # Device breakdown
     # "Generate Sheet" flow: template workbook cloned + filled per placeholder.
     # Unused tactic slots (summary-table rows + "Main slide N" detail blocks) are
     # located by content (header labels / anchor cells) at trim time — see

@@ -68,4 +68,17 @@ public interface ReportGenerationChartHelper {
 	 * @param userGoogleToken OAuth token for Google Slides API, or null when unavailable
 	 */
 	void trimUnusedTactics(String slideUrl, int tacticCount, String userGoogleToken);
+
+	/**
+	 * Inserts the Step-3 per-tactic breakdown slides into the built deck for the "Slides from Sheet"
+	 * flow. Resolves the request's breakdown selections to enabled sections, drops tactics beyond the
+	 * active count, and delegates to the slides provider. Non-fatal: a failure is logged and the deck
+	 * is delivered without the breakdown slides.
+	 *
+	 * @param slideUrl        URL of the generated Google Slides deck
+	 * @param payload         generation request carrying the Step-3 breakdown selections
+	 * @param tacticCount     number of active tactics (clamped 1..28); selections above this are ignored
+	 * @param userGoogleToken OAuth token for Google Slides API, or null when unavailable
+	 */
+	void addBreakdownSlides(String slideUrl, GeneratePayload payload, int tacticCount, String userGoogleToken);
 }

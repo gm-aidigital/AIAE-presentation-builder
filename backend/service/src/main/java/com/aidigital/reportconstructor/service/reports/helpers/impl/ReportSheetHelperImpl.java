@@ -4,6 +4,7 @@ import com.aidigital.reportconstructor.service.reports.dto.BreakdownSelection;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
+import com.aidigital.reportconstructor.service.reports.helpers.BreakdownSelectionResolver;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportNumberParser;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportSheetHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.TacticExtractionHelper;
@@ -13,7 +14,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +37,7 @@ public class ReportSheetHelperImpl implements ReportSheetHelper {
 	private final SheetDeckProvider sheets;
 	private final TacticExtractionHelper tacticExtraction;
 	private final ReportNumberParser reportNumbers;
+	private final BreakdownSelectionResolver breakdownResolver;
 
 	@Override
 	public String buildSheet(String jobId, String fileName, Map<String, String> flatReplacements, String userGoogleToken) {
@@ -82,20 +83,7 @@ public class ReportSheetHelperImpl implements ReportSheetHelper {
 	 * @return tactic number → enabled breakdown sections (empty set when a tactic enabled none)
 	 */
 	Map<Integer, Set<BreakdownType>> toEnabledByTactic(List<BreakdownSelection> selections) {
-		Map<Integer, Set<BreakdownType>> enabledByTactic = new LinkedHashMap<>();
-		for (BreakdownSelection selection : selections) {
-			if (selection == null || selection.tacticNum() == null) {
-				continue;
-			}
-			Set<BreakdownType> enabled = EnumSet.noneOf(BreakdownType.class);
-			if (selection.breakdowns() != null) {
-				for (String code : selection.breakdowns()) {
-					BreakdownType.fromCode(code).ifPresent(enabled::add);
-				}
-			}
-			enabledByTactic.put(selection.tacticNum(), enabled);
-		}
-		return enabledByTactic;
+		return breakdownResolver.resolve(selections);
 	}
 
 	@Override

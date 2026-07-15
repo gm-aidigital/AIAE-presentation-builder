@@ -7,6 +7,7 @@ import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
 import com.aidigital.reportconstructor.service.reports.dto.LineItemMapping;
 import com.aidigital.reportconstructor.service.reports.dto.Totals;
+import com.aidigital.reportconstructor.service.reports.helpers.BreakdownSelectionResolver;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportNumberParser;
 import com.aidigital.reportconstructor.service.reports.helpers.TacticExtractionHelper;
 import com.aidigital.reportconstructor.service.reports.ports.PacingTablesRequest;
@@ -40,6 +41,8 @@ class ReportSheetHelperImplTest {
 	TacticExtractionHelper tacticExtraction;
 	@Mock
 	ReportNumberParser reportNumbers;
+	@Mock
+	BreakdownSelectionResolver breakdownResolver;
 
 	@InjectMocks
 	ReportSheetHelperImpl helper;
@@ -67,25 +70,23 @@ class ReportSheetHelperImplTest {
 
 	@Test
 	void shouldClearUnselectedBreakdownsFromResolvedSelectionsTest() {
-		// Given: tactic 1 enabled Top Publishers + Geo (plus an unknown code that must be dropped) and
-		// tactic 2 enabled nothing
+		// Given: selections the resolver reduces to an enabled-by-tactic map
+		List<BreakdownSelection> selections = List.of(
+				new BreakdownSelection(1, List.of("tp", "geo")),
+				new BreakdownSelection(2, List.of()));
 		GeneratePayload payload = new GeneratePayload(
 				"brief", "standard", "", List.of(), List.of(), List.of(), List.of(), List.of(),
-				List.of(),
-				List.of(
-						new BreakdownSelection(1, List.of("tp", "geo", "bogus")),
-						new BreakdownSelection(2, List.of())),
-				"", null, null, null);
+				List.of(), selections, "", null, null, null);
+		Map<Integer, Set<BreakdownType>> resolved = new LinkedHashMap<>();
+		resolved.put(1, EnumSet.of(BreakdownType.TOP_PUBLISHERS, BreakdownType.GEO));
+		resolved.put(2, EnumSet.noneOf(BreakdownType.class));
+		when(breakdownResolver.resolve(selections)).thenReturn(resolved);
 
 		// When:
 		helper.clearUnselectedBreakdowns("https://docs.google.com/spreadsheets/d/abc-1/edit", payload, "token");
 
-		// Then: the provider is asked to clear against the resolved enabled-by-tactic map (unknown code dropped)
-		ArgumentCaptor<Map<Integer, Set<BreakdownType>>> captor = ArgumentCaptor.forClass(Map.class);
-		verify(sheets).clearBreakdowns(eq("abc-1"), captor.capture(), eq("token"));
-		assertThat(captor.getValue())
-				.containsEntry(1, EnumSet.of(BreakdownType.TOP_PUBLISHERS, BreakdownType.GEO))
-				.containsEntry(2, EnumSet.noneOf(BreakdownType.class));
+		// Then: the resolved enabled-by-tactic map is passed straight to the provider
+		verify(sheets).clearBreakdowns(eq("abc-1"), eq(resolved), eq("token"));
 	}
 
 	@Test

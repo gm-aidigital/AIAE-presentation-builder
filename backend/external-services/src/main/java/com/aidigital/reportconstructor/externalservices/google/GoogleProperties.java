@@ -56,6 +56,17 @@ public class GoogleProperties {
 	private Map<Integer, String> tacticSlideObjectIds = Map.of();
 
 	/**
+	 * Master breakdown-slide object ids, keyed by the {@code BreakdownType} wire code
+	 * ({@code tp}, {@code ca}, {@code geo}, {@code aud}, {@code dev}). Each id points at a
+	 * single generic master slide in the template (tokens carry the literal {@code n} tactic
+	 * variable). For every enabled (tactic, breakdown) pair the master is duplicated, its
+	 * {@code n} tokens are renumbered to the tactic number, and the copy is placed after that
+	 * tactic's main slide; the masters themselves are deleted at the end. An empty map disables
+	 * the feature (safe no-op) — populate it once the master slides are added to the live deck.
+	 */
+	private Map<String, String> breakdownMasterSlideObjectIds = Map.of();
+
+	/**
 	 * Source Sheets workbook copied for every generated report in the "Generate
 	 * Sheet" flow. Independent of {@link #slidesTemplateId}.
 	 */
@@ -161,6 +172,27 @@ public class GoogleProperties {
 
 	public void setTacticSlideObjectIds(Map<Integer, String> tacticSlideObjectIds) {
 		this.tacticSlideObjectIds = tacticSlideObjectIds == null ? Map.of() : tacticSlideObjectIds;
+	}
+
+	/**
+	 * Returns the master breakdown-slide object ids keyed by {@code BreakdownType} wire code; an
+	 * empty map disables per-tactic breakdown slides.
+	 *
+	 * @return map of breakdown wire code ({@code tp}/{@code ca}/{@code geo}/{@code aud}/{@code dev})
+	 *         to its master slide object id
+	 */
+	public Map<String, String> getBreakdownMasterSlideObjectIds() {
+		return breakdownMasterSlideObjectIds;
+	}
+
+	/**
+	 * Sets the master breakdown-slide object ids, defaulting to an empty map when null.
+	 *
+	 * @param breakdownMasterSlideObjectIds map of breakdown wire code to master slide object id (may be null)
+	 */
+	public void setBreakdownMasterSlideObjectIds(Map<String, String> breakdownMasterSlideObjectIds) {
+		this.breakdownMasterSlideObjectIds =
+				breakdownMasterSlideObjectIds == null ? Map.of() : breakdownMasterSlideObjectIds;
 	}
 
 	public String getSheetsTemplateId() {

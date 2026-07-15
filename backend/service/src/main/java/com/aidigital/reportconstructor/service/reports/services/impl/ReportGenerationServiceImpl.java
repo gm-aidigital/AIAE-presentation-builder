@@ -271,6 +271,10 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 				payload.reportType(), flatReplacements.get(CLIENT_NAME_TOKEN), userEmail);
 		String slideUrl = slides.createDeck(String.valueOf(jobId), fileName, flatReplacements, userGoogleToken);
 		chartHelper.trimUnusedTactics(slideUrl, tacticCount, userGoogleToken);
+		// Step-3 per-tactic breakdown slides: duplicate the selected master slides, renumber their tokens
+		// to each tactic, and place them after the tactic's main slide. Non-fatal — the deck still ships
+		// without them on failure.
+		chartHelper.addBreakdownSlides(slideUrl, payload, tacticCount, userGoogleToken);
 
 		jobProgress.markJobRunningAtStep(jobId, 7, "Building charts");
 		List<String> chartWarnings = chartHelper.buildChartsFromSheet(
