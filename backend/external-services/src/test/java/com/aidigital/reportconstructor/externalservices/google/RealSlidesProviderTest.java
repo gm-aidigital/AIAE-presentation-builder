@@ -138,7 +138,7 @@ class RealSlidesProviderTest {
 		enabledByTactic.put(3, EnumSet.of(BreakdownType.TOP_PUBLISHERS));
 
 		// When:
-		List<Request> requests = provider.buildBreakdownRequests(deck, masterIds, enabledByTactic);
+		List<Request> requests = provider.buildBreakdownRequests(deck, masterIds, enabledByTactic, Map.of());
 
 		// Then: three duplicates — tp+dev for tactic 1 (enum order), tp for tactic 3
 		List<Request> dups = requests.stream().filter(r -> r.getDuplicateObject() != null).toList();
@@ -184,6 +184,58 @@ class RealSlidesProviderTest {
 	}
 
 	@Test
+	void buildBreakdownRequests_writesTheValueWhenOneIsKnownForTheRenumberedTokenTest() {
+		// Given: tactic 1 enables Top Publishers and its first publisher row's value is known. The deck's own
+		// placeholder pass has already run by the time these copies exist, so a token left merely renumbered
+		// here would ship raw.
+		RealSlidesProvider provider = newProvider(Map.of(1, "tactic1"));
+		List<Page> deck = List.of(
+				slide("tactic1"),
+				shapeSlide("m_tp", List.of(List.of("{{publisher_", "n", ".1}}"), List.of("{{pub_sov_n.1}}"))));
+		Map<BreakdownType, String> masterIds = Map.of(BreakdownType.TOP_PUBLISHERS, "m_tp");
+		Map<Integer, Set<BreakdownType>> enabledByTactic = Map.of(1, EnumSet.of(BreakdownType.TOP_PUBLISHERS));
+		Map<String, String> values = Map.of("{{publisher_1.1}}", "YouTube");
+
+		// When:
+		List<Request> requests = provider.buildBreakdownRequests(deck, masterIds, enabledByTactic, values);
+
+		// Then: the known token goes straight from its generic form to the final value, scoped to the copy
+		assertThat(requests).anyMatch(r -> r.getReplaceAllText() != null
+				&& r.getReplaceAllText().getContainsText().getText().equals("{{publisher_n.1}}")
+				&& r.getReplaceAllText().getReplaceText().equals("YouTube")
+				&& r.getReplaceAllText().getPageObjectIds().equals(List.of("bd_tp_1")));
+
+		// Then: nothing leaves that token in its intermediate renumbered form
+		assertThat(requests).noneMatch(r -> r.getReplaceAllText() != null
+				&& r.getReplaceAllText().getReplaceText().equals("{{publisher_1.1}}"));
+
+		// Then: a token with no known value still falls back to a plain renumber
+		assertThat(requests).anyMatch(r -> r.getReplaceAllText() != null
+				&& r.getReplaceAllText().getContainsText().getText().equals("{{pub_sov_n.1}}")
+				&& r.getReplaceAllText().getReplaceText().equals("{{pub_sov_1.1}}"));
+	}
+
+	@Test
+	void buildBreakdownRequests_blanksATokenWhoseKnownValueIsEmptyTest() {
+		// Given: tactic 1's observation bullet resolved to blank (its publisher table was never filled in)
+		RealSlidesProvider provider = newProvider(Map.of(1, "tactic1"));
+		List<Page> deck = List.of(
+				slide("tactic1"),
+				shapeSlide("m_tp", List.of(List.of("{{publishers_observation_", "n", "_1}}"))));
+		Map<BreakdownType, String> masterIds = Map.of(BreakdownType.TOP_PUBLISHERS, "m_tp");
+		Map<Integer, Set<BreakdownType>> enabledByTactic = Map.of(1, EnumSet.of(BreakdownType.TOP_PUBLISHERS));
+		Map<String, String> values = Map.of("{{publishers_observation_1_1}}", "");
+
+		// When:
+		List<Request> requests = provider.buildBreakdownRequests(deck, masterIds, enabledByTactic, values);
+
+		// Then: the token is replaced with nothing rather than left on the slide
+		assertThat(requests).anyMatch(r -> r.getReplaceAllText() != null
+				&& r.getReplaceAllText().getContainsText().getText().equals("{{publishers_observation_n_1}}")
+				&& r.getReplaceAllText().getReplaceText().isEmpty());
+	}
+
+	@Test
 	void buildBreakdownRequests_isNoopWhenNoTacticSlideMatchesTest() {
 		// Given: a tactic enables a breakdown, but its main slide is not present in the deck
 		RealSlidesProvider provider = newProvider(Map.of(1, "tactic1"));
@@ -193,7 +245,7 @@ class RealSlidesProviderTest {
 				Map.of(1, EnumSet.of(BreakdownType.TOP_PUBLISHERS));
 
 		// When:
-		List<Request> requests = provider.buildBreakdownRequests(deck, masterIds, enabledByTactic);
+		List<Request> requests = provider.buildBreakdownRequests(deck, masterIds, enabledByTactic, Map.of());
 
 		// Then: nothing is emitted because tactic 1's main slide is absent
 		assertThat(requests).isEmpty();

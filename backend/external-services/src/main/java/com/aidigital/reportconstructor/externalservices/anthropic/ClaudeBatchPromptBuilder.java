@@ -2,6 +2,8 @@ package com.aidigital.reportconstructor.externalservices.anthropic;
 
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
+import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationInput;
+import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
 import com.aidigital.reportconstructor.service.reports.dto.Tactic;
 import com.aidigital.reportconstructor.service.reports.dto.Totals;
 import com.aidigital.reportconstructor.service.reports.engine.Fmt;
@@ -892,6 +894,63 @@ public class ClaudeBatchPromptBuilder {
 								: "")
 						+ "- Output in English.\n\n"
 						+ "Campaign data:\n" + context;
+		return Optional.of(prompt);
+	}
+
+	/**
+	 * Builds the publisher-observations prompt for one chunk of tactics, or empty when the chunk carries
+	 * no tactic with publisher rows.
+	 *
+	 * <p>The per-bullet limit quoted to Claude is {@link #COMPRESSION_PROMPT_BUFFER_RATIO} of the slide's
+	 * real 155-character budget, for the same reason the compression prompt shrinks its quoted limit: text
+	 * written right up to the budget has nowhere to go when the truncation safety net runs, and gets cut
+	 * mid-thought. Asking for the smaller number up front means most bullets never need compressing at all.
+	 *
+	 * @param inputs   the chunk's tactics, each with its hand-entered publisher table
+	 * @param brief    free-text campaign brief, used to tie the channel mix back to the audience
+	 * @param maxChars the slide's real per-bullet character budget
+	 * @return the prompt requesting a JSON object of {@code "tactic_<n>"} → 4-bullet array, or empty when
+	 * every tactic in the chunk has an empty table
+	 */
+	public Optional<String> buildPublisherObservationsPrompt(
+			List<PublisherObservationInput> inputs, String brief, int maxChars) {
+		List<String> blocks = new ArrayList<>();
+		for (PublisherObservationInput input : inputs) {
+			if (input.rows() == null || input.rows().isEmpty()) {
+				continue;
+			}
+			StringBuilder block = new StringBuilder();
+			block.append("tactic_").append(input.tacticNum())
+					.append(" — ").append(input.tacticName()).append('\n')
+					.append("Publisher | Impressions | Share of voice\n");
+			for (PublisherRow row : input.rows()) {
+				block.append(row.name()).append(" | ").append(row.impressions())
+						.append(" | ").append(row.shareOfVoice()).append('\n');
+			}
+			blocks.add(block.toString());
+		}
+		if (blocks.isEmpty()) {
+			return Optional.empty();
+		}
+		int promptLimit = Math.max(1, (int) (maxChars * COMPRESSION_PROMPT_BUFFER_RATIO));
+		String prompt = "You are a senior programmatic media analyst writing the KEY OBSERVATIONS bullets for the "
+				+ "'Top Publishers' slide of an end-of-campaign report.\n\n"
+				+ "For EACH tactic below, write exactly 4 observations about its publisher delivery.\n\n"
+				+ "Rules:\n"
+				+ "- Each observation is ONE complete sentence, at most " + promptLimit + " characters.\n"
+				+ "- Ground every observation in the numbers given: name real publishers, cite real shares and "
+				+ "impressions, compare ranks, call out concentration and the long tail.\n"
+				+ "- At most ~20% of each observation may go beyond the table — a short, well-established read on "
+				+ "why that channel mix suits this campaign's audience or goal (e.g. an audience interested in home "
+				+ "improvement over-indexing on a given publisher). Never invent a metric that is not in the table, "
+				+ "and never state such a read as measured fact.\n"
+				+ "- Vary the angle across the 4: volume/reach anchor, engagement quality, premium/brand suitability, "
+				+ "and a consolidation or optimisation recommendation.\n"
+				+ "- Analyst tone, no filler, no bullet characters, no markdown.\n\n"
+				+ "Return ONLY a JSON object keyed by tactic, each key mapping to an array of exactly 4 strings:\n"
+				+ "{\"tactic_1\": [\"...\", \"...\", \"...\", \"...\"]}\n\n"
+				+ "=== CAMPAIGN BRIEF ===\n" + (brief == null ? "" : brief) + "\n\n"
+				+ "=== PUBLISHER DATA ===\n" + String.join("\n", blocks);
 		return Optional.of(prompt);
 	}
 

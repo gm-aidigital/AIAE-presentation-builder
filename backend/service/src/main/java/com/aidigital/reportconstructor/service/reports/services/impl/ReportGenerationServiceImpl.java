@@ -19,6 +19,7 @@ import com.aidigital.reportconstructor.service.reports.helpers.ReportNumberParse
 import com.aidigital.reportconstructor.service.reports.helpers.ReportGenerationChartHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportGenerationWarningsHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportJobProgressHelper;
+import com.aidigital.reportconstructor.service.reports.helpers.PublisherBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportSheetHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.SheetCampaignReader;
 import com.aidigital.reportconstructor.service.reports.helpers.SheetPlaceholderReader;
@@ -58,6 +59,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	private final ReportGenerationWarningsHelper warnings;
 	private final ReportGenerationChartHelper chartHelper;
 	private final ReportSheetHelper sheetHelper;
+	private final PublisherBreakdownHelper publisherBreakdown;
 	private final SheetPlaceholderReader placeholderReader;
 	private final SheetCampaignReader sheetCampaign;
 	private final PlaceholderResolverService placeholders;
@@ -271,10 +273,16 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 				payload.reportType(), flatReplacements.get(CLIENT_NAME_TOKEN), userEmail);
 		String slideUrl = slides.createDeck(String.valueOf(jobId), fileName, flatReplacements, userGoogleToken);
 		chartHelper.trimUnusedTactics(slideUrl, tacticCount, userGoogleToken);
-		// Step-3 per-tactic breakdown slides: duplicate the selected master slides, renumber their tokens
-		// to each tactic, and place them after the tactic's main slide. Non-fatal — the deck still ships
+		// Step-3 per-tactic breakdown slides: duplicate the selected master slides, fill their tokens for
+		// each tactic, and place them after the tactic's main slide. Non-fatal — the deck still ships
 		// without them on failure.
-		chartHelper.addBreakdownSlides(slideUrl, payload, tacticCount, userGoogleToken);
+		//
+		// The values are assembled here rather than folded into flatReplacements because these slides do
+		// not exist yet when createDeck runs its placeholder pass: they are duplicated from the masters
+		// afterwards, so their tokens have to be filled as part of that same insertion.
+		Map<String, String> publisherValues = publisherBreakdown.buildPublisherValues(
+				payload.sheetUrl(), payload.breakdownSelections(), flatReplacements, brief, userGoogleToken);
+		chartHelper.addBreakdownSlides(slideUrl, payload, tacticCount, publisherValues, userGoogleToken);
 
 		jobProgress.markJobRunningAtStep(jobId, 7, "Building charts");
 		List<String> chartWarnings = chartHelper.buildChartsFromSheet(

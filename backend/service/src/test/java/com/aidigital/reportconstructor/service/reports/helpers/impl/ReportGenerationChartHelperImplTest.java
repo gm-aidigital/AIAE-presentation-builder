@@ -71,10 +71,10 @@ class ReportGenerationChartHelperImplTest {
 				List.of(), null, "", null, null, null);
 
 		// When:
-		helper.addBreakdownSlides("https://docs.google.com/presentation/d/pres-1/edit", payload, 5, "token");
+		helper.addBreakdownSlides("https://docs.google.com/presentation/d/pres-1/edit", payload, 5, Map.of(), "token");
 
 		// Then: the slides provider is never asked to add breakdown slides
-		verify(slides, never()).addBreakdownSlides(any(), any(), any());
+		verify(slides, never()).addBreakdownSlides(any(), any(), any(), any());
 	}
 
 	@Test
@@ -93,12 +93,12 @@ class ReportGenerationChartHelperImplTest {
 		when(breakdownResolver.resolve(selections)).thenReturn(resolved);
 
 		// When:
-		helper.addBreakdownSlides("https://docs.google.com/presentation/d/pres-1/edit", payload, 2, "token");
+		helper.addBreakdownSlides("https://docs.google.com/presentation/d/pres-1/edit", payload, 2, Map.of(), "token");
 
 		// Then: only tactic 1 (within the active count) is passed to the provider; tactic 3 is dropped
 		Map<Integer, Set<BreakdownType>> expected = new LinkedHashMap<>();
 		expected.put(1, EnumSet.of(BreakdownType.TOP_PUBLISHERS));
-		verify(slides).addBreakdownSlides(eq("pres-1"), eq(expected), eq("token"));
+		verify(slides).addBreakdownSlides(eq("pres-1"), eq(expected), eq(Map.of()), eq("token"));
 	}
 
 	@Test
@@ -113,10 +113,10 @@ class ReportGenerationChartHelperImplTest {
 		when(breakdownResolver.resolve(selections)).thenReturn(resolved);
 
 		// When:
-		helper.addBreakdownSlides("https://docs.google.com/presentation/d/pres-1/edit", payload, 2, "token");
+		helper.addBreakdownSlides("https://docs.google.com/presentation/d/pres-1/edit", payload, 2, Map.of(), "token");
 
 		// Then: nothing is inserted
-		verify(slides, never()).addBreakdownSlides(any(), any(), any());
+		verify(slides, never()).addBreakdownSlides(any(), any(), any(), any());
 	}
 
 	@Test

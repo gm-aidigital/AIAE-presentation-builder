@@ -3,6 +3,7 @@ package com.aidigital.reportconstructor.externalservices.google;
 import com.aidigital.reportconstructor.service.common.error.AppException;
 import com.aidigital.reportconstructor.service.common.error.ErrorReason;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
+import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
 import com.aidigital.reportconstructor.service.reports.ports.PacingTablesRequest;
 import com.aidigital.reportconstructor.service.reports.ports.SheetDeckProvider;
 import com.google.api.client.http.HttpRequestInitializer;
@@ -110,6 +111,27 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 	private static final String BREAKDOWN_TAB = "Breakdowns";
 
 	/**
+	 * Header text of the "Top Publishers" block's publisher-name column. Matched on the whole cell
+	 * (case-insensitively), which is also what keeps it from colliding with the block's own
+	 * {@code "Top Publishers N"} anchor — that cell contains the plural "Publishers".
+	 */
+	private static final String PUBLISHER_NAME_HEADER = "Publisher";
+
+	/** Header text of the "Top Publishers" block's impressions column. */
+	private static final String PUBLISHER_IMPRESSIONS_HEADER = "Impressions";
+
+	/** Header text of the "Top Publishers" block's share-of-voice column. */
+	private static final String PUBLISHER_SOV_HEADER = "Share of voice";
+
+	/**
+	 * The only tokens the {@code "Breakdowns"} tab carries — each block's {@code {{tactic N}}} heading
+	 * and its {@code {{tactic N imps}}} total. {@link #createSheet} scopes its find/replace to the first
+	 * tab for speed, so these two are re-sent against the breakdown tab as well; matching on the whole
+	 * token keeps the extra pass to a couple of requests per tactic instead of the full ~800.
+	 */
+	private static final Pattern BREAKDOWN_TAB_TOKENS = Pattern.compile("^\\{\\{tactic \\d+( imps)?}}$");
+
+	/**
 	 * Fallback height (rows) of one tactic's breakdown block, used only when the spacing between
 	 * consecutive block headers cannot be inferred from the anchors themselves.
 	 */
@@ -180,18 +202,21 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 					"createSheet copy of " + templateId);
 			String newId = copied.getId();
 
-			// All EOC placeholders live on the workbook's first tab, so scope the find/replace
+			// Almost every EOC placeholder lives on the workbook's first tab, so scope the find/replace
 			// to that one sheet. The former setAllSheets(true) re-scanned every tab for every
 			// token — with 28 tactic slots (~800 tokens) times the template's many tabs that
 			// blew past the Sheets read timeout even for tiny campaigns. Fall back to all-sheets
 			// only when the tab id can't be resolved.
-			Integer placeholderSheetId = firstSheetId(sheetsClient, newId);
+			Map<String, Integer> tabSheetIds = fetchSheetIds(sheetsClient, newId);
+			Integer placeholderSheetId = tabSheetIds.isEmpty() ? null : tabSheetIds.values().iterator().next();
+			Integer breakdownSheetId = tabSheetIds.get(BREAKDOWN_TAB);
 			List<Request> requests = new ArrayList<>(placeholderMap.size());
 			for (Map.Entry<String, String> e : placeholderMap.entrySet()) {
 				// Template tokens are double-brace {{...}} — the key is the full token.
+				String replacement = e.getValue() == null ? "" : e.getValue();
 				FindReplaceRequest findReplace = new FindReplaceRequest()
 						.setFind(e.getKey())
-						.setReplacement(e.getValue() == null ? "" : e.getValue())
+						.setReplacement(replacement)
 						.setMatchCase(true);
 				if (placeholderSheetId != null) {
 					findReplace.setSheetId(placeholderSheetId);
@@ -199,6 +224,18 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 					findReplace.setAllSheets(true);
 				}
 				requests.add(new Request().setFindReplace(findReplace));
+				// The "Breakdowns" tab repeats a couple of the first tab's tokens in its block headers, so
+				// it needs its own scoped pass. Only the handful of tokens that tab actually carries are
+				// re-sent: replaying all ~800 across a second tab is exactly what caused the original
+				// timeout, so the filter — not the tab count — is what keeps this affordable.
+				if (breakdownSheetId != null && placeholderSheetId != null
+						&& BREAKDOWN_TAB_TOKENS.matcher(e.getKey()).matches()) {
+					requests.add(new Request().setFindReplace(new FindReplaceRequest()
+							.setFind(e.getKey())
+							.setReplacement(replacement)
+							.setMatchCase(true)
+							.setSheetId(breakdownSheetId)));
+				}
 			}
 			if (!requests.isEmpty()) {
 				executeInChunks(sheetsClient, newId, requests, "createSheet batchUpdate for " + newId);
@@ -302,6 +339,173 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 			throw new AppException(ErrorReason.C000,
 					"Google Sheets clearBreakdowns failed: " + ex.getMessage());
 		}
+	}
+
+	@Override
+	public Map<Integer, List<PublisherRow>> readPublisherTables(
+			String spreadsheetId, Set<Integer> tacticNums, String userGoogleAccessToken) {
+		if (tacticNums == null || tacticNums.isEmpty()) {
+			return Map.of();
+		}
+		boolean asUser = userGoogleAccessToken != null && !userGoogleAccessToken.isBlank();
+		Sheets sheetsClient = asUser ? buildSheets(userGoogleAccessToken) : sheets;
+		try {
+			Map<String, Integer> tabSheetIds = fetchSheetIds(sheetsClient, spreadsheetId);
+			if (!tabSheetIds.containsKey(BREAKDOWN_TAB)) {
+				log.warn("[sheets] readPublisherTables: no \"{}\" tab in {} — skipping", BREAKDOWN_TAB, spreadsheetId);
+				return Map.of();
+			}
+			// One read of the whole tab serves every requested tactic — the blocks all live on it.
+			List<List<String>> grid = readGrid(sheetsClient, spreadsheetId, BREAKDOWN_TAB);
+			return publisherTables(grid, tacticNums);
+		} catch (IOException ex) {
+			log.error("[sheets] readPublisherTables failed for {}", spreadsheetId, ex);
+			throw new AppException(ErrorReason.C000,
+					"Google Sheets readPublisherTables failed: " + ex.getMessage());
+		}
+	}
+
+	/**
+	 * Extracts the requested tactics' "Top Publishers" rows from an already-read {@code "Breakdowns"}
+	 * tab. Each block is bounded exactly as {@link #breakdownClearRequests} bounds it — anchor cell,
+	 * inferred block height, next anchor on the header row — so the read and the clear can never
+	 * disagree about where a block ends.
+	 *
+	 * @param grid       the {@code "Breakdowns"} tab, read as trimmed cell strings
+	 * @param tacticNums 1-based tactic numbers whose tables are wanted
+	 * @return tactic number → its filled publisher rows, in sheet order; tactics with no anchor or no
+	 *         filled rows map to an empty list
+	 */
+	Map<Integer, List<PublisherRow>> publisherTables(List<List<String>> grid, Set<Integer> tacticNums) {
+		Map<Integer, List<PublisherRow>> tables = new LinkedHashMap<>();
+		List<int[]> anchors = findBreakdownAnchors(grid);
+		if (anchors.isEmpty()) {
+			log.warn("[sheets] readPublisherTables: no breakdown anchors on \"{}\" tab — nothing to read",
+					BREAKDOWN_TAB);
+			return tables;
+		}
+		int blockHeight = breakdownBlockHeight(anchors);
+		int publisherOrdinal = BreakdownType.TOP_PUBLISHERS.ordinal();
+		for (int[] anchor : anchors) {
+			if (anchor[0] != publisherOrdinal || !tacticNums.contains(anchor[1])) {
+				continue;
+			}
+			int row = anchor[2];
+			int col = anchor[3];
+			int endRow = Math.min(row + blockHeight, grid.size());
+			int endCol = nextAnchorColOnRow(anchors, row, col, blockRightEdge(grid, row, endRow));
+			tables.put(anchor[1], publisherRowsInBlock(grid, row, endRow, col, endCol, anchor[1]));
+		}
+		for (Integer tacticNum : tacticNums) {
+			tables.putIfAbsent(tacticNum, List.of());
+		}
+		return tables;
+	}
+
+	/**
+	 * Reads one "Top Publishers" block's filled rows. The block's header row is located inside the
+	 * block window and its {@code Publisher} / {@code Impressions} / {@code Share of voice} columns
+	 * are resolved by header text — never by fixed offsets — so a column shift in the template cannot
+	 * silently shift the data. Rows whose publisher name is blank are skipped, so a partially filled
+	 * table returns only the rows the user actually typed.
+	 *
+	 * @param grid       the {@code "Breakdowns"} tab, read as trimmed cell strings
+	 * @param startRow   inclusive zero-based row of the block's anchor cell
+	 * @param endRowExcl exclusive zero-based end row of the block
+	 * @param startCol   inclusive zero-based column of the block's anchor cell
+	 * @param endColExcl exclusive zero-based end column of the block
+	 * @param tacticNum  the block's tactic number, used only for logging
+	 * @return the filled publisher rows in sheet order, or an empty list when the header is missing
+	 */
+	List<PublisherRow> publisherRowsInBlock(
+			List<List<String>> grid, int startRow, int endRowExcl, int startCol, int endColExcl, int tacticNum) {
+		int[] header = findPublisherHeader(grid, startRow, endRowExcl, startCol, endColExcl);
+		if (header == null) {
+			log.warn("[sheets] readPublisherTables: tactic {} block has no \"{}\" header — skipping",
+					tacticNum, PUBLISHER_NAME_HEADER);
+			return List.of();
+		}
+		List<PublisherRow> rows = new ArrayList<>();
+		for (int r = header[0] + 1; r < endRowExcl; r++) {
+			String name = cellAt(grid, r, header[1]);
+			if (name.isEmpty()) {
+				continue;
+			}
+			rows.add(new PublisherRow(name, cellAt(grid, r, header[2]), cellAt(grid, r, header[3])));
+		}
+		return rows;
+	}
+
+	/**
+	 * Finds the "Top Publishers" block's header row and the columns of its three data columns.
+	 * A row qualifies only when it carries the publisher-name header; the impressions and
+	 * share-of-voice columns are then taken from that same row, defaulting to {@code -1} when absent
+	 * so a template missing one column yields blanks rather than reading a neighbouring column's values.
+	 *
+	 * @param grid       the {@code "Breakdowns"} tab, read as trimmed cell strings
+	 * @param startRow   inclusive zero-based row of the block's anchor cell
+	 * @param endRowExcl exclusive zero-based end row of the block
+	 * @param startCol   inclusive zero-based column of the block's anchor cell
+	 * @param endColExcl exclusive zero-based end column of the block
+	 * @return {@code [headerRow, nameCol, impressionsCol, shareOfVoiceCol]}, or {@code null} when the
+	 *         block carries no publisher-name header
+	 */
+	int[] findPublisherHeader(List<List<String>> grid, int startRow, int endRowExcl, int startCol, int endColExcl) {
+		for (int r = startRow; r < endRowExcl; r++) {
+			int nameCol = columnOfHeader(grid, r, startCol, endColExcl, PUBLISHER_NAME_HEADER);
+			if (nameCol < 0) {
+				continue;
+			}
+			return new int[] {
+					r,
+					nameCol,
+					columnOfHeader(grid, r, startCol, endColExcl, PUBLISHER_IMPRESSIONS_HEADER),
+					columnOfHeader(grid, r, startCol, endColExcl, PUBLISHER_SOV_HEADER)};
+		}
+		return null;
+	}
+
+	/**
+	 * Finds the column within a row whose whole cell equals the given header text, ignoring case.
+	 * Whole-cell (not {@code contains}) matching is what keeps {@code "Publisher"} from matching the
+	 * block's {@code "Top Publishers N"} anchor cell.
+	 *
+	 * @param grid       the tab, read as trimmed cell strings
+	 * @param row        zero-based row to scan
+	 * @param startCol   inclusive zero-based start column
+	 * @param endColExcl exclusive zero-based end column
+	 * @param header     the header text to match
+	 * @return the zero-based column, or {@code -1} when the row has no such header
+	 */
+	int columnOfHeader(List<List<String>> grid, int row, int startCol, int endColExcl, String header) {
+		if (row < 0 || row >= grid.size()) {
+			return -1;
+		}
+		List<String> cells = grid.get(row);
+		int limit = Math.min(endColExcl, cells.size());
+		for (int c = Math.max(startCol, 0); c < limit; c++) {
+			if (cells.get(c).equalsIgnoreCase(header)) {
+				return c;
+			}
+		}
+		return -1;
+	}
+
+	/**
+	 * Reads one cell defensively from a rectangular-tolerant grid: rows are short when their trailing
+	 * cells are empty, and a column the template does not carry resolves to {@code -1}.
+	 *
+	 * @param grid the tab, read as trimmed cell strings
+	 * @param row  zero-based row
+	 * @param col  zero-based column, or {@code -1} for a column that was not found
+	 * @return the trimmed cell value, or an empty string when out of range
+	 */
+	String cellAt(List<List<String>> grid, int row, int col) {
+		if (col < 0 || row < 0 || row >= grid.size()) {
+			return "";
+		}
+		List<String> cells = grid.get(row);
+		return col < cells.size() ? cells.get(col) : "";
 	}
 
 	/**
@@ -660,20 +864,6 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 			rows.add(row);
 		}
 		return rows;
-	}
-
-	/**
-	 * Resolves the numeric id of the workbook's first tab — the tab that carries every
-	 * EOC placeholder — so a find/replace can be scoped to it instead of scanning all tabs.
-	 *
-	 * @param sheetsClient   the authenticated Sheets client
-	 * @param spreadsheetId  the workbook to inspect
-	 * @return the first tab's numeric sheet id, or {@code null} when the workbook has no tabs
-	 * @throws IOException when the metadata request fails
-	 */
-	Integer firstSheetId(Sheets sheetsClient, String spreadsheetId) throws IOException {
-		Map<String, Integer> ids = fetchSheetIds(sheetsClient, spreadsheetId);
-		return ids.isEmpty() ? null : ids.values().iterator().next();
 	}
 
 	/**

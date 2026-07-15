@@ -59,14 +59,23 @@ public interface SlidesProvider {
 	 * deleted from the deck at the end.
 	 *
 	 * <p>A no-op when no masters are configured, the map is empty, or the deck carries no matching tactic
-	 * slides — so an unconfigured deck degrades safely. Value fill is intentionally out of scope here: the
-	 * renumbered tokens (e.g. {@code {{publisher_3.1}}}) are filled by the normal placeholder pass.
+	 * slides — so an unconfigured deck degrades safely.
+	 *
+	 * <p>Values are filled here rather than by the deck's normal placeholder pass, because the copies do
+	 * not exist yet when that pass runs: the deck is built (and every token replaced) before this method
+	 * duplicates the masters, so a token first spelled {@code {{publisher_3.1}}} on a copy would never be
+	 * seen by it and would ship raw. For each master token whose renumbered form has an entry in
+	 * {@code breakdownValues}, the token is therefore replaced with its final value directly; tokens with
+	 * no entry fall back to a plain renumber.
 	 *
 	 * @param presentationId        the already-built deck to insert into
 	 * @param enabledByTactic       1-based tactic number → the breakdown sections that tactic enabled
+	 * @param breakdownValues       renumbered token (e.g. {@code {{publisher_3.1}}}) → value to write;
+	 *                              tokens absent from the map are only renumbered
 	 * @param userGoogleAccessToken optional signed-in user's Google OAuth token; falls back to the
 	 *                              service account when blank
 	 */
 	void addBreakdownSlides(
-			String presentationId, Map<Integer, Set<BreakdownType>> enabledByTactic, String userGoogleAccessToken);
+			String presentationId, Map<Integer, Set<BreakdownType>> enabledByTactic,
+			Map<String, String> breakdownValues, String userGoogleAccessToken);
 }

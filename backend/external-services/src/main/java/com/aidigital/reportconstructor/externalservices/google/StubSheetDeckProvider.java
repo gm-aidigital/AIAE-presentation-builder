@@ -1,6 +1,7 @@
 package com.aidigital.reportconstructor.externalservices.google;
 
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
+import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
 import com.aidigital.reportconstructor.service.reports.ports.PacingTablesRequest;
 import com.aidigital.reportconstructor.service.reports.ports.SheetDeckProvider;
 import lombok.RequiredArgsConstructor;
@@ -57,5 +58,12 @@ public class StubSheetDeckProvider implements SheetDeckProvider {
 	public void clearBreakdowns(
 			String spreadsheetId, Map<Integer, Set<BreakdownType>> enabledByTactic, String userGoogleAccessToken) {
 		// No-op: the stub never clones a real workbook, so there is no "Breakdowns" tab to clear.
+	}
+
+	@Override
+	public Map<Integer, List<PublisherRow>> readPublisherTables(
+			String spreadsheetId, Set<Integer> tacticNums, String userGoogleAccessToken) {
+		// The stub never clones a real workbook, so there are no hand-entered publisher rows to read.
+		return Map.of();
 	}
 }

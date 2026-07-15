@@ -1,6 +1,7 @@
 package com.aidigital.reportconstructor.externalservices.google;
 
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
+import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
 import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.services.sheets.v4.model.GridRange;
@@ -159,5 +160,114 @@ class RealSheetDeckProviderTest {
 				.map(r -> r.getRepeatCell().getRange())
 				.filter(range -> range.getStartRowIndex() == startRow && range.getStartColumnIndex() == startCol)
 				.toList();
+	}
+
+	@Test
+	void publisherTables_readsRowsByHeaderNameForTheRequestedTacticTest() {
+		// Given: a "Breakdowns" tab whose tactic-1 block carries a header row and two filled publisher rows
+		RealSheetDeckProvider provider = newProvider();
+		List<List<String>> grid = publisherGrid(Map.of(
+				1, List.of(List.of("YouTube", "1,200,000", "26%"), List.of("Hulu", "800,000", "17%"))));
+
+		// When:
+		Map<Integer, List<PublisherRow>> tables = provider.publisherTables(grid, Set.of(1));
+
+		// Then: both rows come back verbatim, in sheet order
+		assertThat(tables.get(1)).containsExactly(
+				new PublisherRow("YouTube", "1,200,000", "26%"),
+				new PublisherRow("Hulu", "800,000", "17%"));
+	}
+
+	@Test
+	void publisherTables_doesNotMatchTactic15BlockWhenReadingTactic1Test() {
+		// Given: a tab carrying both a "Top Publishers 1" and a "Top Publishers 15" block — the anchor of the
+		// first is a prefix of the second, so a loose match would pull tactic 15's rows into tactic 1
+		RealSheetDeckProvider provider = newProvider();
+		List<List<String>> grid = publisherGrid(Map.of(
+				1, List.of(List.of("YouTube", "1,200,000", "26%")),
+				15, List.of(List.of("Roku", "500,000", "11%"))));
+
+		// When:
+		Map<Integer, List<PublisherRow>> tables = provider.publisherTables(grid, Set.of(1));
+
+		// Then: only tactic 1's own row is returned and tactic 15's block is untouched
+		assertThat(tables.get(1)).containsExactly(new PublisherRow("YouTube", "1,200,000", "26%"));
+		assertThat(tables).doesNotContainKey(15);
+	}
+
+	@Test
+	void publisherTables_returnsEmptyListForATacticWhoseTableWasNeverFilledTest() {
+		// Given: tactic 1's block has its header but no rows under it
+		RealSheetDeckProvider provider = newProvider();
+		List<List<String>> grid = publisherGrid(Map.of(1, List.of()));
+
+		// When:
+		Map<Integer, List<PublisherRow>> tables = provider.publisherTables(grid, Set.of(1));
+
+		// Then: the tactic is present with no rows rather than absent, so the caller can still ship the slide
+		assertThat(tables).containsKey(1);
+		assertThat(tables.get(1)).isEmpty();
+	}
+
+	@Test
+	void publisherTables_doesNotReadTheBlocksTotalRowAsAPublisherTest() {
+		// Given: the template's real layout — anchor, header, 15 numbered rows, then a "Total" row carrying
+		// {{tactic 1 imps}}. The Total row falls inside the block's 18-row window, so only its blank
+		// publisher cell keeps it out of the results.
+		RealSheetDeckProvider provider = newProvider();
+		List<List<String>> grid = new ArrayList<>();
+		grid.add(new ArrayList<>(List.of("Top Publishers 1", "{{tactic 1}}", "", "")));
+		grid.add(new ArrayList<>(List.of("#", "Publisher", "Impressions", "Share of voice")));
+		grid.add(new ArrayList<>(List.of("1", "YouTube", "1,200,000", "26%")));
+		for (int i = 2; i <= 15; i++) {
+			grid.add(new ArrayList<>(List.of(String.valueOf(i), "", "", "")));
+		}
+		grid.add(new ArrayList<>(List.of("Total", "", "{{tactic 1 imps}}", "")));
+		grid.add(new ArrayList<>(List.of("Top Publishers 2", "{{tactic 2}}", "", "")));
+
+		// When:
+		Map<Integer, List<PublisherRow>> tables = provider.publisherTables(grid, Set.of(1));
+
+		// Then: only the one filled publisher comes back — the Total row is not mistaken for a 16th
+		assertThat(tables.get(1)).containsExactly(new PublisherRow("YouTube", "1,200,000", "26%"));
+	}
+
+	@Test
+	void findPublisherHeader_resolvesColumnsByHeaderTextRatherThanFixedOffsetsTest() {
+		// Given: a block whose columns sit in a different order than the template's default
+		RealSheetDeckProvider provider = newProvider();
+		List<List<String>> grid = new ArrayList<>();
+		grid.add(List.of("Top Publishers 1", "", "", ""));
+		grid.add(List.of("#", "Share of voice", "Publisher", "Impressions"));
+
+		// When:
+		int[] header = provider.findPublisherHeader(grid, 0, 2, 0, 4);
+
+		// Then: each column is found where its own header is, not where the template usually puts it
+		assertThat(header).containsExactly(1, 2, 3, 1);
+	}
+
+	/**
+	 * Builds a "Breakdowns" tab carrying an 18-row Top Publishers block per given tactic: the anchor row,
+	 * a header row, then the tactic's filled rows.
+	 *
+	 * @param rowsByTactic tactic number → its publisher rows as {@code [name, impressions, sov]}
+	 * @return the tab as trimmed cell strings
+	 */
+	private List<List<String>> publisherGrid(Map<Integer, List<List<String>>> rowsByTactic) {
+		List<List<String>> grid = new ArrayList<>();
+		for (Map.Entry<Integer, List<List<String>>> entry : new java.util.TreeMap<>(rowsByTactic).entrySet()) {
+			List<List<String>> block = new ArrayList<>();
+			block.add(new ArrayList<>(List.of("Top Publishers " + entry.getKey(), "", "", "")));
+			block.add(new ArrayList<>(List.of("#", "Publisher", "Impressions", "Share of voice")));
+			for (List<String> row : entry.getValue()) {
+				block.add(new ArrayList<>(List.of("", row.get(0), row.get(1), row.get(2))));
+			}
+			while (block.size() < 18) {
+				block.add(new ArrayList<>(Collections.nCopies(4, "")));
+			}
+			grid.addAll(block);
+		}
+		return grid;
 	}
 }

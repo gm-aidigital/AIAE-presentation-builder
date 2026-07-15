@@ -6,6 +6,7 @@ import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeSheetBatch;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
+import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationInput;
 import com.aidigital.reportconstructor.service.reports.dto.Recommendation;
 import com.aidigital.reportconstructor.service.reports.dto.StrategicInsight;
 import com.aidigital.reportconstructor.service.reports.dto.TacticInsight;
@@ -53,6 +54,22 @@ public class RealClaudeClient implements ClaudeClient {
 
 	/** First run of digits in a Batch C map key, used to recover the slot number from a drifted key. */
 	private static final Pattern KEY_NUMBER = Pattern.compile("\\d+");
+
+	/** Character budget of one {@code {{publishers_observation_N_x}}} bullet on the slide. */
+	private static final int PUBLISHER_OBSERVATION_LIMIT = 155;
+
+	/** Bullets per tactic on the "Top Publishers" slide. */
+	private static final int PUBLISHER_OBSERVATION_COUNT = 4;
+
+	/**
+	 * Tactics per publisher-observations call. Small chunks keep each reply far inside the output budget:
+	 * a single call covering all 28 tactics would repeat Batch C's failure, where an over-long reply was
+	 * truncated, failed to parse, and lost every field at once. A chunk that fails costs only its own tactics.
+	 */
+	private static final int PUBLISHER_OBSERVATION_CHUNK = 5;
+
+	/** Output budget per publisher-observations chunk: 4 bullets × 5 tactics plus JSON overhead. */
+	private static final int PUBLISHER_OBSERVATION_MAX_TOKENS = 1500;
 
 	// Batch C emits one results-overview per tactic group plus one tactic-overview PER TACTIC (up to 28), on
 	// top of thoughts, four recommendations and the frequency copy — all in a single JSON reply. A fixed cap
@@ -392,6 +409,74 @@ public class RealClaudeClient implements ClaudeClient {
 			}
 		}
 		return out;
+	}
+
+	@Override
+	public Map<Integer, List<String>> batchPublisherObservations(List<PublisherObservationInput> inputs, String brief) {
+		Map<Integer, List<String>> observations = new LinkedHashMap<>();
+		if (inputs == null || inputs.isEmpty()) {
+			return observations;
+		}
+		for (int start = 0; start < inputs.size(); start += PUBLISHER_OBSERVATION_CHUNK) {
+			List<PublisherObservationInput> chunk =
+					inputs.subList(start, Math.min(start + PUBLISHER_OBSERVATION_CHUNK, inputs.size()));
+			observations.putAll(publisherObservationsChunk(chunk, brief));
+		}
+		return observations;
+	}
+
+	/**
+	 * Runs one publisher-observations chunk: prompt, parse, compress the over-budget bullets, then apply
+	 * the truncation safety net. Returns an empty map — never partial or invented copy — when the call or
+	 * the parse fails, so only this chunk's tactics lose their bullets.
+	 *
+	 * @param chunk the tactics to cover in this single call
+	 * @param brief free-text campaign brief passed through to the prompt
+	 * @return tactic number → its four bullets; empty when the chunk produced no usable reply
+	 */
+	Map<Integer, List<String>> publisherObservationsChunk(List<PublisherObservationInput> chunk, String brief) {
+		Map<Integer, List<String>> observations = new LinkedHashMap<>();
+		var prompt = promptBuilder.buildPublisherObservationsPrompt(chunk, brief, PUBLISHER_OBSERVATION_LIMIT);
+		if (prompt.isEmpty()) {
+			return observations;
+		}
+		JsonNode parsed = messagesClient.callJsonObject(
+				prompt.get(), PUBLISHER_OBSERVATION_MAX_TOKENS, 60, "BatchPublishers", false);
+		if (parsed == null) {
+			return observations;
+		}
+
+		// Collect every bullet across the chunk's tactics first, so the whole chunk's over-budget text is
+		// compressed in one Batch D call rather than one per tactic.
+		List<ClaudeCompressionField> compressionFields = new ArrayList<>();
+		for (PublisherObservationInput input : chunk) {
+			JsonNode arr = parsed.get("tactic_" + input.tacticNum());
+			if (arr == null || !arr.isArray()) {
+				continue;
+			}
+			for (int i = 0; i < PUBLISHER_OBSERVATION_COUNT; i++) {
+				String raw = i < arr.size() ? arr.get(i).asText("").trim() : "";
+				compressionFields.add(new ClaudeCompressionField(
+						input.tacticNum() + "_" + i, raw, PUBLISHER_OBSERVATION_LIMIT));
+			}
+		}
+		if (compressionFields.isEmpty()) {
+			return observations;
+		}
+		Map<String, String> compressed = compressionService.compress(compressionFields, "BatchD-Publishers");
+
+		for (PublisherObservationInput input : chunk) {
+			if (parsed.get("tactic_" + input.tacticNum()) == null) {
+				continue;
+			}
+			List<String> bullets = new ArrayList<>(PUBLISHER_OBSERVATION_COUNT);
+			for (int i = 0; i < PUBLISHER_OBSERVATION_COUNT; i++) {
+				bullets.add(normalizer.normalizeC(
+						compressed.get(input.tacticNum() + "_" + i), PUBLISHER_OBSERVATION_LIMIT));
+			}
+			observations.put(input.tacticNum(), bullets);
+		}
+		return observations;
 	}
 
 	@Override

@@ -6,11 +6,13 @@ import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeSheetBatch;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
+import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationInput;
 import com.aidigital.reportconstructor.service.reports.engine.ReportClaudeDefaults;
 import com.aidigital.reportconstructor.service.reports.ports.ClaudeClient;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * No-op Claude client — the only candidate when {@code ANTHROPIC_API_KEY} is
@@ -57,6 +59,11 @@ public class StubClaudeClient implements ClaudeClient {
 	@Override
 	public ClaudeResults batchResults(CampaignData data, String brief, CampaignFrequencies frequencies) {
 		return claudeDefaults.emptyResults();
+	}
+
+	@Override
+	public Map<Integer, List<String>> batchPublisherObservations(List<PublisherObservationInput> inputs, String brief) {
+		return Map.of();
 	}
 
 	@Override

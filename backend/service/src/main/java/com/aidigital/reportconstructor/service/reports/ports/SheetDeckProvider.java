@@ -1,6 +1,7 @@
 package com.aidigital.reportconstructor.service.reports.ports;
 
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
+import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
 
 import java.util.List;
 import java.util.Map;
@@ -106,4 +107,29 @@ public interface SheetDeckProvider {
 	 */
 	void clearBreakdowns(
 			String spreadsheetId, Map<Integer, Set<BreakdownType>> enabledByTactic, String userGoogleAccessToken);
+
+	/**
+	 * Reads back the hand-entered "Top Publishers" tables from the generated workbook's
+	 * {@code "Breakdowns"} tab, so the deck can carry the publisher rows exactly as the user typed
+	 * them. Each tactic's table is located by its {@code "Top Publishers N"} anchor cell — matched
+	 * on the <em>whole</em> cell, never a prefix, because {@code "Top Publishers 1"} is a prefix of
+	 * {@code "Top Publishers 15"} and a loose match would pull tactic 15's rows into tactic 1.
+	 *
+	 * <p>Within each block the {@code Publisher} / {@code Impressions} / {@code Share of voice}
+	 * columns are resolved by their header text rather than fixed offsets, so a column shift in the
+	 * template cannot silently misalign the data. Rows the user left blank are omitted, so the
+	 * returned list is only as long as the table was actually filled (never padded).
+	 *
+	 * <p>The whole tab is read once for every requested tactic. A tactic whose anchor is missing, or
+	 * whose table is empty, maps to an empty list rather than failing the read; a workbook without a
+	 * {@code "Breakdowns"} tab yields an empty map.
+	 *
+	 * @param spreadsheetId         the workbook to read
+	 * @param tacticNums            1-based tactic numbers whose publisher tables are wanted
+	 * @param userGoogleAccessToken optional signed-in user's Google OAuth token; falls back to the
+	 *                              service account when blank
+	 * @return tactic number → its filled publisher rows, in sheet order
+	 */
+	Map<Integer, List<PublisherRow>> readPublisherTables(
+			String spreadsheetId, Set<Integer> tacticNums, String userGoogleAccessToken);
 }

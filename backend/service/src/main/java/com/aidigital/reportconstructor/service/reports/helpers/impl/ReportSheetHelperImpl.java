@@ -4,6 +4,7 @@ import com.aidigital.reportconstructor.service.reports.dto.BreakdownSelection;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
+import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
 import com.aidigital.reportconstructor.service.reports.helpers.BreakdownSelectionResolver;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportNumberParser;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportSheetHelper;
@@ -139,6 +140,22 @@ public class ReportSheetHelperImpl implements ReportSheetHelper {
 			return List.of();
 		}
 		return sheets.readSheetGrid(spreadsheetId, userGoogleToken);
+	}
+
+	@Override
+	public Map<Integer, List<PublisherRow>> readPublisherTables(
+			String sheetUrl, Set<Integer> tacticNums, String userGoogleToken) {
+		String spreadsheetId = extractSpreadsheetId(sheetUrl);
+		if (spreadsheetId == null) {
+			log.warn("[sheets] readPublisherTables: could not determine spreadsheet id from {}", sheetUrl);
+			return Map.of();
+		}
+		try {
+			return sheets.readPublisherTables(spreadsheetId, tacticNums, userGoogleToken);
+		} catch (RuntimeException ex) {
+			log.warn("[sheets] readPublisherTables failed for {} (non-fatal): {}", spreadsheetId, ex.getMessage());
+			return Map.of();
+		}
 	}
 
 	/**

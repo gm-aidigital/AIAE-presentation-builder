@@ -157,10 +157,21 @@ Note: these master slides are NOT yet in the live Slides template
 deck and their page object-ids collected before the config is wired.
 
 ## Design decision (n-renumber approach)
-Duplicate master → scoped `replaceAllText(pageObjectIds=[copy])` renumbering each
-`n`-token to the tactic number → position after `{{tactic N}}` slide. Scope is what
-prevents cross-copy override (two copies share identical generic tokens). Value fill
-is deferred: once renumbered, concrete tokens (`{{publisher_3.1}}`) can be filled by
-the existing global placeholder map — no new fill code path.
+Duplicate master → scoped `replaceAllText(pageObjectIds=[copy])` → position after
+`{{tactic N}}` slide. Scope is what prevents cross-copy override (two copies share
+identical generic tokens).
+
+**Correction (2026-07-15): value fill can NOT be deferred to the global placeholder
+map.** This note previously claimed that once renumbered, concrete tokens
+(`{{publisher_3.1}}`) would be filled by the existing pass. They are not: the order in
+`ReportGenerationServiceImpl.runSlidesFromSheet` is `createDeck` (which runs the only
+placeholder pass) *then* `addBreakdownSlides` (which duplicates the masters). The copies
+do not exist when the pass runs, so their tokens would ship raw.
+
+Actual behaviour: `addBreakdownSlides` takes a `breakdownValues` map and, per master
+token, replaces the generic token with its **final value** in one scoped call when the
+renumbered form has an entry; tokens with no entry fall back to a plain renumber (and
+would still ship raw — so every token a breakdown slide carries needs a value).
+Top Publishers values are assembled by `PublisherBreakdownHelper`.
 Every token now carries `n` (publisher observations updated to `_n_` form), so all
 renumber cleanly per tactic — no shared/global-collision tokens remain.

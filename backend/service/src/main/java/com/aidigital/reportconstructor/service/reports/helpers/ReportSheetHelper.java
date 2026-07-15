@@ -2,9 +2,11 @@ package com.aidigital.reportconstructor.service.reports.helpers;
 
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
+import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Builds the filled Google Sheet for the "Generate Sheet" flow and trims the
@@ -77,4 +79,18 @@ public interface ReportSheetHelper {
 	 *         no parseable spreadsheet id
 	 */
 	List<List<String>> readSheetGrid(String sheetUrl, String userGoogleToken);
+
+	/**
+	 * Reads back the hand-entered "Top Publishers" tables for the given tactics from the generated
+	 * workbook's "Breakdowns" tab, resolving the spreadsheet id from its URL. Non-fatal: a failed read
+	 * yields an empty map so the deck still ships, just without publisher rows.
+	 *
+	 * @param sheetUrl        URL of the generated Google Sheet
+	 * @param tacticNums      1-based tactic numbers whose publisher tables are wanted
+	 * @param userGoogleToken OAuth token for Google Sheets API, or null when unavailable
+	 * @return tactic number → its filled publisher rows; an empty map when the URL carries no parseable
+	 *         spreadsheet id or the read failed
+	 */
+	Map<Integer, List<PublisherRow>> readPublisherTables(
+			String sheetUrl, Set<Integer> tacticNums, String userGoogleToken);
 }

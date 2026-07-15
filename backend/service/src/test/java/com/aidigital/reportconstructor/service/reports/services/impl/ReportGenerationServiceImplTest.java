@@ -9,6 +9,7 @@ import com.aidigital.reportconstructor.service.reports.dto.GenerationTarget;
 import com.aidigital.reportconstructor.service.reports.dto.ProgressView;
 import com.aidigital.reportconstructor.service.reports.engine.Fmt;
 import com.aidigital.reportconstructor.service.reports.engine.ReportClaudeDefaults;
+import com.aidigital.reportconstructor.service.reports.helpers.PublisherBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportFileNamer;
 import com.aidigital.reportconstructor.service.reports.helpers.impl.ReportNumberParserImpl;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportGenerationChartHelper;
@@ -75,13 +76,15 @@ class ReportGenerationServiceImplTest {
 	ReportClaudeDefaults claudeDefaults;
 	@Mock
 	ReportFileNamer fileNamer;
+	@Mock
+	PublisherBreakdownHelper publisherBreakdown;
 
 	ReportGenerationServiceImpl service;
 
 	@BeforeEach
 	void setUp() {
 		service = new ReportGenerationServiceImpl(
-				jobProgress, warnings, chartHelper, sheetHelper, placeholderReader, sheetCampaign, placeholders,
+				jobProgress, warnings, chartHelper, sheetHelper, publisherBreakdown, placeholderReader, sheetCampaign, placeholders,
 				claude, slides, userGoogleTokens, self, claudeDefaults, fileNamer,
 				new ReportNumberParserImpl(), new Fmt());
 	}

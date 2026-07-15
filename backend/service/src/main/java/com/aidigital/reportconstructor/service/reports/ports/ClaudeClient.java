@@ -6,8 +6,10 @@ import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeSheetBatch;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
+import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationInput;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Abstraction over the Anthropic Claude calls the report engine makes:
@@ -70,6 +72,24 @@ public interface ClaudeClient {
 	 * @return the parsed, length-capped Batch C copy
 	 */
 	ClaudeResults batchResults(CampaignData data, String brief, CampaignFrequencies frequencies);
+
+	/**
+	 * Publisher-observations batch — the four {@code {{publishers_observation_N_1..4}}} bullets on each
+	 * tactic's "Top Publishers" breakdown slide, written from the hand-entered publisher table the user
+	 * reviewed in the sheet.
+	 *
+	 * <p>Each bullet is capped at 155 characters, the slide's text budget. Tactics are sent in small
+	 * chunks rather than one call, keeping the reply well inside the output budget — the failure mode
+	 * Batch C hit at ~20 tactics, where a truncated reply failed to parse and every bullet rendered blank.
+	 * A chunk that fails or fails to parse only drops its own tactics; the rest still get their copy.
+	 *
+	 * @param inputs one entry per tactic whose publisher table is non-empty; tactics with no rows must not
+	 *               be passed, since there is nothing to observe and the copy would be invented
+	 * @param brief  free-text campaign brief, used to tie the channel mix back to the campaign's audience
+	 * @return tactic number → its four bullets, in slide order; a tactic missing from the map got no usable
+	 *         reply and its bullets should render blank rather than fall back to invented copy
+	 */
+	Map<Integer, List<String>> batchPublisherObservations(List<PublisherObservationInput> inputs, String brief);
 
 	/**
 	 * Geo-tab → short ≤40-char comma-separated location string (or null).

@@ -214,7 +214,9 @@ public class ReportGenerationChartHelperImpl implements ReportGenerationChartHel
 	}
 
 	@Override
-	public void addBreakdownSlides(String slideUrl, GeneratePayload payload, int tacticCount, String userGoogleToken) {
+	public void addBreakdownSlides(
+			String slideUrl, GeneratePayload payload, int tacticCount, Map<String, String> breakdownValues,
+			String userGoogleToken) {
 		if (payload.breakdownSelections() == null || payload.breakdownSelections().isEmpty()) {
 			return;
 		}
@@ -233,7 +235,7 @@ public class ReportGenerationChartHelperImpl implements ReportGenerationChartHel
 			return;
 		}
 		try {
-			slides.addBreakdownSlides(presentationId, enabledByTactic, userGoogleToken);
+			slides.addBreakdownSlides(presentationId, enabledByTactic, breakdownValues, userGoogleToken);
 		} catch (RuntimeException ex) {
 			log.warn("[slides] addBreakdownSlides failed for {} (non-fatal): {}", presentationId, ex.getMessage());
 		}

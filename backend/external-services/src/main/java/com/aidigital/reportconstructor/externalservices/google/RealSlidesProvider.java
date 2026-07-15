@@ -300,17 +300,20 @@ public class RealSlidesProvider implements SlidesProvider {
 
 	@Override
 	public void addBreakdownSlides(
-			String presentationId, Map<Integer, Set<BreakdownType>> enabledByTactic, String userGoogleAccessToken) {
+			String presentationId, Map<Integer, Set<BreakdownType>> enabledByTactic,
+			Map<String, String> breakdownValues, String userGoogleAccessToken) {
 		if (enabledByTactic == null || enabledByTactic.isEmpty() || breakdownMasterIds.isEmpty()) {
 			return;
 		}
+		Map<String, String> values = breakdownValues == null ? Map.of() : breakdownValues;
 		boolean asUser = userGoogleAccessToken != null && !userGoogleAccessToken.isBlank();
 		Slides slidesClient = asUser ? buildSlides(userGoogleAccessToken) : slides;
 		try {
 			Presentation deck = retrier.execute(
 					slidesClient.presentations().get(presentationId).setFields(BREAKDOWN_FIELDS),
 					"addBreakdownSlides get " + presentationId);
-			List<Request> requests = buildBreakdownRequests(deck.getSlides(), breakdownMasterIds, enabledByTactic);
+			List<Request> requests =
+					buildBreakdownRequests(deck.getSlides(), breakdownMasterIds, enabledByTactic, values);
 			if (requests.isEmpty()) {
 				return;
 			}
@@ -339,15 +342,17 @@ public class RealSlidesProvider implements SlidesProvider {
 	 * order while accumulating the number of already-inserted copies, keeping every insertion index valid
 	 * against the live arrangement.
 	 *
-	 * @param slides          the deck's slides in order (from {@code presentations.get}), carrying master
-	 *                        text for token discovery
-	 * @param masterIds       configured master slide object id per breakdown type
-	 * @param enabledByTactic 1-based tactic number → the breakdown sections that tactic enabled
+	 * @param slides           the deck's slides in order (from {@code presentations.get}), carrying master
+	 *                         text for token discovery
+	 * @param masterIds        configured master slide object id per breakdown type
+	 * @param enabledByTactic  1-based tactic number → the breakdown sections that tactic enabled
+	 * @param breakdownValues  renumbered token → final value; a token found here is written straight to
+	 *                         its value, one found nowhere is only renumbered
 	 * @return the ordered batchUpdate requests, or an empty list when there is nothing to insert
 	 */
 	List<Request> buildBreakdownRequests(
 			List<Page> slides, Map<BreakdownType, String> masterIds,
-			Map<Integer, Set<BreakdownType>> enabledByTactic) {
+			Map<Integer, Set<BreakdownType>> enabledByTactic, Map<String, String> breakdownValues) {
 		List<Request> requests = new ArrayList<>();
 		if (slides == null || slides.isEmpty() || masterIds.isEmpty() || enabledByTactic.isEmpty()) {
 			return requests;
@@ -394,8 +399,11 @@ public class RealSlidesProvider implements SlidesProvider {
 			return requests;
 		}
 
-		// Phase 1: duplicate each master and renumber its n-tokens on the copy (scoped so identical
-		// master tokens on different copies never collide).
+		// Phase 1: duplicate each master, then write each of its n-tokens on the copy — to the token's
+		// final value when one is known, otherwise just renumbered. Both are scoped to the copy, which is
+		// what stops identical master tokens on different copies from overwriting each other. The deck's
+		// global placeholder pass has already run by now and will not run again, so a token left merely
+		// renumbered here stays raw in the delivered deck.
 		Map<BreakdownType, Set<String>> tokensByType = new EnumMap<>(BreakdownType.class);
 		Map<Integer, List<String>> copyIdsByTactic = new LinkedHashMap<>();
 		for (Map.Entry<Integer, List<BreakdownType>> entry : orderedByTactic.entrySet()) {
@@ -411,12 +419,14 @@ public class RealSlidesProvider implements SlidesProvider {
 						type, t -> extractRenumberableTokens(pageById.get(masterId)));
 				for (String token : tokens) {
 					String concrete = renumber(token, tacticNum);
-					if (concrete.equals(token)) {
+					String value = breakdownValues.get(concrete);
+					String replacement = value != null ? value : concrete;
+					if (replacement.equals(token)) {
 						continue;
 					}
 					requests.add(new Request().setReplaceAllText(new ReplaceAllTextRequest()
 							.setContainsText(new SubstringMatchCriteria().setText(token).setMatchCase(true))
-							.setReplaceText(concrete)
+							.setReplaceText(replacement)
 							.setPageObjectIds(List.of(copyId))));
 				}
 				copyIds.add(copyId);
