@@ -186,14 +186,14 @@ external:
     # "n" tactic variable; for every enabled (tactic, breakdown) pair the master is
     # duplicated, its "n" tokens renumbered to the tactic number, and the copy placed after
     # that tactic's main slide. Masters are deleted at the end. Empty = feature disabled
-    # (safe no-op). Collect these object ids via presentations.get once the 5 master slides
-    # are added to the live deck (same method used for tactic-slide-object-ids above).
-    breakdown-master-slide-object-ids: {}
-      # tp:  ""   # Top Publishers
-      # ca:  ""   # Creative analysis
-      # geo: ""   # Geo performance
-      # aud: ""   # Audience analysis
-      # dev: ""   # Device breakdown
+    # (safe no-op). Ids collected via presentations.get on 11qzOC7… (slides 45-49, the
+    # trailing master block) — same method used for tactic-slide-object-ids above.
+    breakdown-master-slide-object-ids:
+      tp: "g3f0a39e9ae9_0_2233"    # Top Publishers
+      ca: "g3f0a39e9ae9_0_2371"    # Creative analysis
+      geo: "g3f0a39e9ae9_0_2436"   # Geo performance
+      aud: "g3f0a39e9ae9_0_2534"   # Audience analysis
+      dev: "g3f0a39e9ae9_0_2623"   # Device breakdown
     # "Generate Sheet" flow: template workbook cloned + filled per placeholder.
     # Unused tactic slots (summary-table rows + "Main slide N" detail blocks) are
     # located by content (header labels / anchor cells) at trim time — see
