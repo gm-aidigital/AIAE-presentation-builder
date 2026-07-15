@@ -70,6 +70,67 @@ class PublisherBreakdownHelperImplTest {
 	}
 
 	@Test
+	void shouldCutPublisherNamesAtTheFirstSeparatorForDisplayTest() {
+		// Given: exported names carrying a descriptive tail and a platform/bundle-id suffix, alongside bare
+		// domains that carry no separator at all
+		List<BreakdownSelection> selections = List.of(new BreakdownSelection(1, List.of("tp")));
+		when(breakdownResolver.resolve(selections))
+				.thenReturn(Map.of(1, EnumSet.of(BreakdownType.TOP_PUBLISHERS)));
+		List<PublisherRow> rows = List.of(
+				new PublisherRow("Chai - Chat with AI bots - iOS (1544750895)", "25,534", "10.15%"),
+				new PublisherRow("mail.yahoo.com", "2,950", "1.17%"),
+				new PublisherRow("dailymotion.com", "2,281", "0.91%"));
+		when(sheetHelper.readPublisherTables("sheet-url", Set.of(1), "token")).thenReturn(Map.of(1, rows));
+		when(claude.batchPublisherObservations(
+				List.of(new PublisherObservationInput(1, "Display", rows)), "brief"))
+				.thenReturn(Map.of(1, List.of("a", "b", "c", "d")));
+
+		// When:
+		Map<String, String> values = helper.buildPublisherValues(
+				"sheet-url", selections, Map.of("{{tactic 1}}", "Display"), "brief", "token");
+
+		// Then: the name is cut at the FIRST separator, dropping both the tail and the bundle id
+		assertThat(values.get("{{publisher_1.1}}")).isEqualTo("Chai");
+
+		// Then: names without a separator are left exactly as typed
+		assertThat(values.get("{{publisher_1.2}}")).isEqualTo("mail.yahoo.com");
+		assertThat(values.get("{{publisher_1.3}}")).isEqualTo("dailymotion.com");
+
+		// Then: impressions and share of voice are untouched by the name cut
+		assertThat(values.get("{{pub_imp_1.1}}")).isEqualTo("25,534");
+		assertThat(values.get("{{pub_sov_1.1}}")).isEqualTo("10.15%");
+	}
+
+	@Test
+	void shouldSendClaudeTheFullPublisherNamesNotTheShortenedOnesTest() {
+		// Given: two listings of the same app that differ only past the separator — the distinction Claude
+		// needs to reason about the platform mix, and the one the slide's shortened names throw away
+		List<BreakdownSelection> selections = List.of(new BreakdownSelection(1, List.of("tp")));
+		when(breakdownResolver.resolve(selections))
+				.thenReturn(Map.of(1, EnumSet.of(BreakdownType.TOP_PUBLISHERS)));
+		List<PublisherRow> rows = List.of(
+				new PublisherRow("Chai - Chat with AI bots - iOS (1544750895)", "25,534", "10.15%"),
+				new PublisherRow("Chai - Chat with AI Friends - Android (com.Beauchamp.Messenger)", "3,493", "1.39%"));
+		when(sheetHelper.readPublisherTables("sheet-url", Set.of(1), "token")).thenReturn(Map.of(1, rows));
+		when(claude.batchPublisherObservations(
+				List.of(new PublisherObservationInput(1, "Display", rows)), "brief"))
+				.thenReturn(Map.of(1, List.of("a", "b", "c", "d")));
+
+		// When:
+		Map<String, String> values = helper.buildPublisherValues(
+				"sheet-url", selections, Map.of("{{tactic 1}}", "Display"), "brief", "token");
+
+		// Then: Claude was handed the rows verbatim, platform suffixes intact
+		ArgumentCaptor<List<PublisherObservationInput>> captor = ArgumentCaptor.captor();
+		verify(claude).batchPublisherObservations(captor.capture(), eq("brief"));
+		assertThat(captor.getValue().getFirst().rows()).isEqualTo(rows);
+
+		// Then: the slide still collapses both to the same short label
+		assertThat(values.get("{{publisher_1.1}}")).isEqualTo("Chai");
+		assertThat(values.get("{{publisher_1.2}}")).isEqualTo("Chai");
+	}
+
+	@Test
 	void shouldNotAskClaudeWhenTheTacticsPublisherTableIsEmptyTest() {
 		// Given: tactic 1 enabled Top Publishers but never filled the table in
 		List<BreakdownSelection> selections = List.of(new BreakdownSelection(1, List.of("tp")));

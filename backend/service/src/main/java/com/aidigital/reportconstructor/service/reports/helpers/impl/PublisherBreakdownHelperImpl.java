@@ -42,6 +42,13 @@ public class PublisherBreakdownHelperImpl implements PublisherBreakdownHelper {
 	 */
 	private static final String DASH = "—";
 
+	/**
+	 * Separator that ends a publisher's display name. Exported names carry their platform and bundle id
+	 * ({@code "Chai - Chat with AI bots - iOS (1544750895)"}), which wraps onto a second line and collides
+	 * with the next row in the slide's fixed-width table — only the leading name is kept for display.
+	 */
+	private static final String NAME_SEPARATOR = " - ";
+
 	private final ReportSheetHelper sheetHelper;
 	private final BreakdownSelectionResolver breakdownResolver;
 	private final ClaudeClient claude;
@@ -105,7 +112,8 @@ public class PublisherBreakdownHelperImpl implements PublisherBreakdownHelper {
 		putIfPresent(values, "{{tactic " + tacticNum + " imps}}", flatReplacements);
 		for (int i = 1; i <= PUBLISHER_ROWS; i++) {
 			PublisherRow row = i <= rows.size() ? rows.get(i - 1) : null;
-			values.put("{{publisher_" + tacticNum + "." + i + "}}", row == null ? DASH : orDash(row.name()));
+			values.put("{{publisher_" + tacticNum + "." + i + "}}",
+					row == null ? DASH : orDash(displayName(row.name())));
 			values.put("{{pub_imp_" + tacticNum + "." + i + "}}", row == null ? DASH : orDash(row.impressions()));
 			values.put("{{pub_sov_" + tacticNum + "." + i + "}}", row == null ? DASH : orDash(row.shareOfVoice()));
 		}
@@ -162,6 +170,27 @@ public class PublisherBreakdownHelperImpl implements PublisherBreakdownHelper {
 		if (value != null) {
 			values.put(token, value);
 		}
+	}
+
+	/**
+	 * Shortens a publisher name to the part before its first {@link #NAME_SEPARATOR}, so the slide's
+	 * fixed-width table shows {@code "Chai"} rather than
+	 * {@code "Chai - Chat with AI bots - iOS (1544750895)"} wrapped across two colliding lines. Cutting on
+	 * the <em>first</em> separator drops both the descriptive tail and the platform/bundle-id suffix.
+	 *
+	 * <p>Display only — Claude still receives the full names, so it can tell one platform's listing from
+	 * another's when reasoning about the mix. Names with no separator ({@code "mail.yahoo.com"}) are left
+	 * alone, as is a name that would otherwise shorten to nothing.
+	 *
+	 * @param name the publisher name as typed in the sheet, possibly {@code null}
+	 * @return the leading display name, or {@code name} unchanged when it carries no separator
+	 */
+	String displayName(String name) {
+		if (name == null) {
+			return null;
+		}
+		int cut = name.indexOf(NAME_SEPARATOR);
+		return cut > 0 ? name.substring(0, cut) : name;
 	}
 
 	/**
