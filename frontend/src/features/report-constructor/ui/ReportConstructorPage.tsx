@@ -8,7 +8,7 @@ import { useMatchLineItems } from "../api/useMatchLineItems";
 import { fetchReportJob, startReportJob } from "../api/useReportJob";
 import { MatchModal } from "./MatchModal";
 import { Stepper } from "./Stepper";
-import { StepBreakdowns, type BreakdownId, type BreakdownState, type TacticView } from "./StepBreakdowns";
+import { BREAKDOWNS, StepBreakdowns, type BreakdownId, type BreakdownState, type TacticView } from "./StepBreakdowns";
 import { StepDataInputs, type InputErrors } from "./StepDataInputs";
 import { StepGenerate, type GenStatus } from "./StepGenerate";
 import { StepReportType } from "./StepReportType";
@@ -96,7 +96,9 @@ function PageInner() {
     const [matchOpen, setMatchOpen] = useState(false);
     const [matchData, setMatchData] = useState<LineItemMatchResult | null>(null);
 
-    // Per-tactic breakdown toggles (cosmetic — no backend effect yet), keyed by tacticNum.
+    // Per-tactic breakdown toggles, keyed by tacticNum. Sent as breakdownSelections in the SHEET
+    // build payload: the backend clears every breakdown section a tactic did not enable on the
+    // generated sheet's "Breakdowns" tab.
     const [breakdowns, setBreakdowns] = useState<Record<number, BreakdownState>>({});
 
     // Sheet-assembly (target=SHEET) job → produces the review sheet.
@@ -381,6 +383,14 @@ function PageInner() {
             estimatesRows: w.mediaPlan?.estimatesRows ?? [],
             geoRows: w.mediaPlan?.geoRows ?? [],
             lineItemMapping: w.mapping ?? undefined,
+            // Step-3 breakdown toggles → the backend clears the sections a tactic didn't enable on the
+            // generated sheet's "Breakdowns" tab. One entry per mapped tactic (empty list = none enabled).
+            breakdownSelections: (w.mapping ?? []).map((m) => ({
+                tacticNum: m.tacticNum,
+                breakdowns: BREAKDOWNS.filter((b) => (breakdowns[m.tacticNum] ?? DEFAULT_BREAKDOWNS)[b.id]).map(
+                    (b) => b.id
+                ),
+            })),
             bqSheetId: w.elevate?.sheetId,
             // Persisted for the admin history so reviewers can open the user's source sheets.
             mediaPlanUrl: sheetUrlFromId(w.mediaPlan?.sheetId),

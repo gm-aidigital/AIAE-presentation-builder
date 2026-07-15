@@ -52,6 +52,7 @@ public interface PlaceholdersApiMapper {
 	@Mapping(target = "bqSheetId", ignore = true)
 	@Mapping(target = "sheetUrl", ignore = true)
 	@Mapping(target = "changeLog", ignore = true)
+	@Mapping(target = "breakdownSelections", ignore = true)
 	GeneratePayload toPayload(PreviewRequestV1 body);
 
 	/**

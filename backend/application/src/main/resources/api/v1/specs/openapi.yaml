@@ -804,6 +804,22 @@ components:
         autoMatched: { type: boolean }
         expectedChannel: { type: string, description: "Channel that needs manual assignment (when ambiguous)." }
 
+    BreakdownSelectionV1:
+      type: object
+      required: [ tacticNum ]
+      description: |
+        One tactic's Step-3 breakdown toggles. Lists the breakdown section ids the
+        user turned ON for this tactic on the "Breakdowns per tactic" screen. On the
+        generated Sheet's "Breakdowns" tab, every breakdown section NOT listed here is
+        cleared (cells blanked in place — no rows deleted) so only the enabled sections
+        remain for that tactic.
+      properties:
+        tacticNum: { type: integer, format: int32, description: "1-based tactic number this selection applies to." }
+        breakdowns:
+          type: array
+          description: "Enabled breakdown section ids for this tactic (tp, ca, geo, aud, dev). Empty means none enabled — all sections cleared."
+          items: { type: string }
+
     LineItemMatchResultV1:
       type: object
       required: [ mapping, uniqueIds, idNamings, channelToIds, warnings, autoMatched, autoMatchCount ]
@@ -938,6 +954,14 @@ components:
         lineItemMapping:
           type: array
           items: { $ref: "#/components/schemas/MappingEntryV1" }
+        breakdownSelections:
+          type: array
+          description: |
+            Per-tactic Step-3 breakdown toggle state. Used only for target=SHEET: the
+            server clears every breakdown section on the "Breakdowns" tab that a tactic
+            did NOT enable, leaving only the selected sections. Omit (null) to leave the
+            Breakdowns tab untouched; an empty array clears all sections for all tactics.
+          items: { $ref: "#/components/schemas/BreakdownSelectionV1" }
         bqSheetId:
           type: string
           description: |

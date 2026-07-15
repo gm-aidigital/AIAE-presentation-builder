@@ -1,5 +1,7 @@
 package com.aidigital.reportconstructor.service.reports.helpers.impl;
 
+import com.aidigital.reportconstructor.service.reports.dto.BreakdownSelection;
+import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportNumberParser;
@@ -11,9 +13,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -51,6 +55,47 @@ public class ReportSheetHelperImpl implements ReportSheetHelper {
 		} catch (RuntimeException ex) {
 			log.warn("[sheets] trimTactics failed for {} (non-fatal): {}", spreadsheetId, ex.getMessage());
 		}
+	}
+
+	@Override
+	public void clearUnselectedBreakdowns(String sheetUrl, GeneratePayload payload, String userGoogleToken) {
+		if (payload.breakdownSelections() == null) {
+			return;
+		}
+		String spreadsheetId = extractSpreadsheetId(sheetUrl);
+		if (spreadsheetId == null) {
+			return;
+		}
+		Map<Integer, Set<BreakdownType>> enabledByTactic = toEnabledByTactic(payload.breakdownSelections());
+		try {
+			sheets.clearBreakdowns(spreadsheetId, enabledByTactic, userGoogleToken);
+		} catch (RuntimeException ex) {
+			log.warn("[sheets] clearBreakdowns failed for {} (non-fatal): {}", spreadsheetId, ex.getMessage());
+		}
+	}
+
+	/**
+	 * Reduces the raw per-tactic breakdown selections to a map of 1-based tactic number to the set of
+	 * enabled breakdown sections, dropping unknown/blank section codes and null tactic numbers.
+	 *
+	 * @param selections the per-tactic breakdown selections from the request (never null)
+	 * @return tactic number → enabled breakdown sections (empty set when a tactic enabled none)
+	 */
+	Map<Integer, Set<BreakdownType>> toEnabledByTactic(List<BreakdownSelection> selections) {
+		Map<Integer, Set<BreakdownType>> enabledByTactic = new LinkedHashMap<>();
+		for (BreakdownSelection selection : selections) {
+			if (selection == null || selection.tacticNum() == null) {
+				continue;
+			}
+			Set<BreakdownType> enabled = EnumSet.noneOf(BreakdownType.class);
+			if (selection.breakdowns() != null) {
+				for (String code : selection.breakdowns()) {
+					BreakdownType.fromCode(code).ifPresent(enabled::add);
+				}
+			}
+			enabledByTactic.put(selection.tacticNum(), enabled);
+		}
+		return enabledByTactic;
 	}
 
 	@Override

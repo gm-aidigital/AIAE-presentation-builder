@@ -34,7 +34,11 @@ interface Props {
     onBack(): void;
 }
 
-/** Screen 3 — per-tactic analysis toggles. Cosmetic for now (no backend effect). */
+/**
+ * Screen 3 — per-tactic analysis toggles. The enabled sections are sent as breakdownSelections in
+ * the SHEET build payload; the backend clears every section a tactic did not enable on the generated
+ * sheet's "Breakdowns" tab.
+ */
 export function StepBreakdowns({ tactics, building, sheetBuilt, onToggle, onBuild, onContinue, onBack }: Props) {
     // Rebuilding overwrites the assembled sheet, so gate it behind a data-loss confirm.
     const [confirmRebuild, setConfirmRebuild] = useState(false);

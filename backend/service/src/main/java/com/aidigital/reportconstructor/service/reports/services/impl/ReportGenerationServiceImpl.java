@@ -184,6 +184,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 				String sheetUrl = sheetHelper.buildSheet(
 						String.valueOf(jobId), fileName, flatReplacements, userGoogleToken);
 				sheetHelper.trimUnusedTactics(sheetUrl, payload, userGoogleToken);
+				sheetHelper.clearUnselectedBreakdowns(sheetUrl, payload, userGoogleToken);
 
 				jobProgress.markJobRunningAtStep(jobId, 7, "Building pacing tables");
 				List<String> pacingWarnings = sheetHelper.writePacingTables(
@@ -332,7 +333,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		return new GeneratePayload(
 				payload.brief(), payload.reportType(), null,
 				List.of(), List.of(), List.of(), List.of(), List.of(),
-				null, null, payload.dateFilter(), payload.sheetUrl(), payload.changeLog());
+				null, null, null, payload.dateFilter(), payload.sheetUrl(), payload.changeLog());
 	}
 
 	/**

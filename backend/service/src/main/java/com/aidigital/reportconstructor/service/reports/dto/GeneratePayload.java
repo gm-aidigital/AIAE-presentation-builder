@@ -20,6 +20,9 @@ import java.util.List;
  * @param geoRows         every workbook tab flattened into one grid (each tab prefixed by a {@code "### TAB: <name>
  *                        ###"} marker row), scanned by Claude to extract the geo targeting wherever it lives
  * @param lineItemMapping mapping from media-plan tactics to their BigQuery line-item IDs, driving chart data queries
+ * @param breakdownSelections per-tactic Step-3 breakdown toggle state (SHEET flow only); the "Breakdowns" tab clears
+ *                        every section a tactic did not enable. {@code null} leaves the tab untouched; an empty list
+ *                        clears every section for every tactic
  * @param bqSheetId       Google Sheet ID backing the BigQuery export; when blank, chart generation is skipped
  * @param dateFilter      user-confirmed raw-data date window (ALL or an inclusive RANGE); when {@code null} or ALL the
  *                        full date range present in the raw data ("Basic" tab) is used. This is the sole source of the
@@ -43,6 +46,7 @@ public record GeneratePayload(
 		List<List<String>> estimatesRows,
 		List<List<String>> geoRows,
 		List<LineItemMapping> lineItemMapping,
+		List<BreakdownSelection> breakdownSelections,
 		String bqSheetId,
 		DateFilter dateFilter,
 		String sheetUrl,

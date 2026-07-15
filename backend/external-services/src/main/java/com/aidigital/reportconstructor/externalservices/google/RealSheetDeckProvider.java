@@ -2,6 +2,7 @@ package com.aidigital.reportconstructor.externalservices.google;
 
 import com.aidigital.reportconstructor.service.common.error.AppException;
 import com.aidigital.reportconstructor.service.common.error.ErrorReason;
+import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
 import com.aidigital.reportconstructor.service.reports.ports.PacingTablesRequest;
 import com.aidigital.reportconstructor.service.reports.ports.SheetDeckProvider;
 import com.google.api.client.http.HttpRequestInitializer;
@@ -29,9 +30,12 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -98,6 +102,31 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 	 * target disjoint tokens/ranges, so chunk boundaries and ordering never change the outcome.
 	 */
 	private static final int BATCH_UPDATE_CHUNK_SIZE = 100;
+
+	/**
+	 * Tab holding the per-tactic breakdown blocks (Top Publishers / Creative / Geo / Audience / Device),
+	 * one 18-row block per tactic. Located by title (never assumed to be the first tab).
+	 */
+	private static final String BREAKDOWN_TAB = "Breakdowns";
+
+	/**
+	 * Fallback height (rows) of one tactic's breakdown block, used only when the spacing between
+	 * consecutive block headers cannot be inferred from the anchors themselves.
+	 */
+	private static final int BREAKDOWN_BLOCK_ROWS_FALLBACK = 18;
+
+	/**
+	 * Compiled {@code "<label> N"} anchor pattern for each breakdown section, keyed by type. Each tactic
+	 * block repeats these headers (e.g. {@code "Geo analysis 3"}); the capture group is the 1-based tactic
+	 * number. Matching is case-insensitive so template casing drift does not break detection.
+	 */
+	private static final Map<BreakdownType, Pattern> BREAKDOWN_ANCHORS = new EnumMap<>(BreakdownType.class);
+
+	static {
+		for (BreakdownType type : BreakdownType.values()) {
+			BREAKDOWN_ANCHORS.put(type, Pattern.compile("(?i)^" + Pattern.quote(type.anchorLabel()) + "\\s+(\\d+)$"));
+		}
+	}
 
 	private final GoogleCredentialsFactory creds;
 	private final GoogleRequestRetrier retrier;
@@ -247,6 +276,31 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 			log.error("[sheets] readSheetGrid failed for {}", spreadsheetId, ex);
 			throw new AppException(ErrorReason.C000,
 					"Google Sheets read failed: " + ex.getMessage());
+		}
+	}
+
+	@Override
+	public void clearBreakdowns(
+			String spreadsheetId, Map<Integer, Set<BreakdownType>> enabledByTactic, String userGoogleAccessToken) {
+		boolean asUser = userGoogleAccessToken != null && !userGoogleAccessToken.isBlank();
+		Sheets sheetsClient = asUser ? buildSheets(userGoogleAccessToken) : sheets;
+		try {
+			Map<String, Integer> tabSheetIds = fetchSheetIds(sheetsClient, spreadsheetId);
+			Integer sheetId = tabSheetIds.get(BREAKDOWN_TAB);
+			if (sheetId == null) {
+				log.warn("[sheets] clearBreakdowns: no \"{}\" tab in {} — skipping", BREAKDOWN_TAB, spreadsheetId);
+				return;
+			}
+			List<List<String>> grid = readGrid(sheetsClient, spreadsheetId, BREAKDOWN_TAB);
+			List<Request> requests = breakdownClearRequests(grid, sheetId, enabledByTactic);
+			if (requests.isEmpty()) {
+				return;
+			}
+			executeInChunks(sheetsClient, spreadsheetId, requests, "clearBreakdowns batchUpdate for " + spreadsheetId);
+		} catch (IOException ex) {
+			log.error("[sheets] clearBreakdowns failed for {}", spreadsheetId, ex);
+			throw new AppException(ErrorReason.C000,
+					"Google Sheets clearBreakdowns failed: " + ex.getMessage());
 		}
 	}
 
@@ -444,6 +498,140 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 			}
 		}
 		return anchors;
+	}
+
+	/**
+	 * Builds the clear requests for every breakdown section a tactic did not enable, on the
+	 * {@code "Breakdowns"} tab. Each section is located by its {@code "<label> N"} header anchor; its
+	 * column span runs from the anchor to the next section's anchor on the same header row (the last
+	 * section extends to the block's right edge), and its row height is the spacing between consecutive
+	 * block headers. Sections a tactic enabled are left untouched; a tactic absent from
+	 * {@code enabledByTactic} has all of its sections cleared. A no-op returning an empty list when the
+	 * tab carries no recognizable anchors.
+	 *
+	 * @param grid            the {@code "Breakdowns"} tab, read as trimmed cell strings
+	 * @param sheetId         numeric id of that tab, used to build the {@link GridRange}s
+	 * @param enabledByTactic 1-based tactic number → the breakdown sections that tactic enabled
+	 * @return clear requests for the unselected sections, or an empty list
+	 */
+	List<Request> breakdownClearRequests(
+			List<List<String>> grid, int sheetId, Map<Integer, Set<BreakdownType>> enabledByTactic) {
+		List<int[]> anchors = findBreakdownAnchors(grid);
+		if (anchors.isEmpty()) {
+			log.warn("[sheets] clearBreakdowns: no breakdown anchors found on \"{}\" tab — nothing to clear",
+					BREAKDOWN_TAB);
+			return List.of();
+		}
+		int blockHeight = breakdownBlockHeight(anchors);
+		BreakdownType[] types = BreakdownType.values();
+		List<Request> requests = new ArrayList<>();
+		for (int[] anchor : anchors) {
+			BreakdownType type = types[anchor[0]];
+			int tacticNum = anchor[1];
+			int row = anchor[2];
+			int col = anchor[3];
+			Set<BreakdownType> enabled = enabledByTactic.get(tacticNum);
+			if (enabled != null && enabled.contains(type)) {
+				continue;
+			}
+			int endRow = row + blockHeight;
+			int endCol = nextAnchorColOnRow(anchors, row, col, blockRightEdge(grid, row, endRow));
+			requests.add(clearRequest(sheetId, row, endRow, col, endCol));
+		}
+		return requests;
+	}
+
+	/**
+	 * Scans the whole tab for breakdown-section anchor cells ({@code "Top Publishers N"},
+	 * {@code "Creative analysis N"}, …).
+	 *
+	 * @param grid the {@code "Breakdowns"} tab, read as trimmed cell strings
+	 * @return one entry per anchor as {@code [type ordinal, tacticNum, row, col]} (all zero-based
+	 *         except {@code tacticNum}), in row-major order
+	 */
+	List<int[]> findBreakdownAnchors(List<List<String>> grid) {
+		List<int[]> anchors = new ArrayList<>();
+		BreakdownType[] types = BreakdownType.values();
+		for (int r = 0; r < grid.size(); r++) {
+			List<String> rowCells = grid.get(r);
+			for (int c = 0; c < rowCells.size(); c++) {
+				String cell = rowCells.get(c);
+				if (cell.isEmpty()) {
+					continue;
+				}
+				for (int t = 0; t < types.length; t++) {
+					Matcher m = BREAKDOWN_ANCHORS.get(types[t]).matcher(cell);
+					if (m.matches()) {
+						anchors.add(new int[] {t, Integer.parseInt(m.group(1)), r, c});
+						break;
+					}
+				}
+			}
+		}
+		return anchors;
+	}
+
+	/**
+	 * Infers the height (rows) of one tactic's breakdown block from the smallest gap between
+	 * consecutive block-header rows, falling back to {@link #BREAKDOWN_BLOCK_ROWS_FALLBACK} when
+	 * fewer than two header rows are present.
+	 *
+	 * @param anchors the breakdown anchors found on the tab
+	 * @return the block height in rows
+	 */
+	int breakdownBlockHeight(List<int[]> anchors) {
+		TreeSet<Integer> headerRows = new TreeSet<>();
+		for (int[] anchor : anchors) {
+			headerRows.add(anchor[2]);
+		}
+		int minGap = Integer.MAX_VALUE;
+		Integer prev = null;
+		for (int row : headerRows) {
+			if (prev != null) {
+				minGap = Math.min(minGap, row - prev);
+			}
+			prev = row;
+		}
+		return minGap == Integer.MAX_VALUE ? BREAKDOWN_BLOCK_ROWS_FALLBACK : minGap;
+	}
+
+	/**
+	 * Finds the column of the next anchor to the right of {@code col} on the given header {@code row},
+	 * which bounds a section's column span; when none exists (the rightmost section) the block's right
+	 * edge is used instead.
+	 *
+	 * @param anchors      the breakdown anchors found on the tab
+	 * @param row          the header row to search within
+	 * @param col          the current section's start column
+	 * @param fallbackEdge the block's right edge, used for the rightmost section
+	 * @return the exclusive end column for the section starting at {@code col}
+	 */
+	int nextAnchorColOnRow(List<int[]> anchors, int row, int col, int fallbackEdge) {
+		int next = Integer.MAX_VALUE;
+		for (int[] anchor : anchors) {
+			if (anchor[2] == row && anchor[3] > col) {
+				next = Math.min(next, anchor[3]);
+			}
+		}
+		return next == Integer.MAX_VALUE ? fallbackEdge : next;
+	}
+
+	/**
+	 * Computes the widest populated column count across the rows of a block, giving the block's
+	 * right edge (exclusive end column) used to bound the rightmost section's clear range.
+	 *
+	 * @param grid       the {@code "Breakdowns"} tab, read as trimmed cell strings
+	 * @param startRow   inclusive zero-based block start row
+	 * @param endRowExcl exclusive zero-based block end row
+	 * @return the block's exclusive right-edge column
+	 */
+	int blockRightEdge(List<List<String>> grid, int startRow, int endRowExcl) {
+		int width = 0;
+		int limit = Math.min(endRowExcl, grid.size());
+		for (int r = startRow; r < limit; r++) {
+			width = Math.max(width, grid.get(r).size());
+		}
+		return width;
 	}
 
 	/**

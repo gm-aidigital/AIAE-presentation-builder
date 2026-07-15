@@ -1,5 +1,7 @@
 package com.aidigital.reportconstructor.service.reports.helpers.impl;
 
+import com.aidigital.reportconstructor.service.reports.dto.BreakdownSelection;
+import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
@@ -16,9 +18,11 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -48,9 +52,46 @@ class ReportSheetHelperImplTest {
 	}
 
 	@Test
+	void shouldLeaveBreakdownsTabUntouchedWhenSelectionsNullTest() {
+		// Given: a payload carrying no breakdown selections (null)
+		GeneratePayload payload = new GeneratePayload(
+				"brief", "standard", "", List.of(), List.of(), List.of(), List.of(), List.of(),
+				List.of(), null, "", null, null, null);
+
+		// When:
+		helper.clearUnselectedBreakdowns("https://docs.google.com/spreadsheets/d/abc/edit", payload, "token");
+
+		// Then: the provider's breakdown clear is never invoked
+		verify(sheets, never()).clearBreakdowns(any(), any(), any());
+	}
+
+	@Test
+	void shouldClearUnselectedBreakdownsFromResolvedSelectionsTest() {
+		// Given: tactic 1 enabled Top Publishers + Geo (plus an unknown code that must be dropped) and
+		// tactic 2 enabled nothing
+		GeneratePayload payload = new GeneratePayload(
+				"brief", "standard", "", List.of(), List.of(), List.of(), List.of(), List.of(),
+				List.of(),
+				List.of(
+						new BreakdownSelection(1, List.of("tp", "geo", "bogus")),
+						new BreakdownSelection(2, List.of())),
+				"", null, null, null);
+
+		// When:
+		helper.clearUnselectedBreakdowns("https://docs.google.com/spreadsheets/d/abc-1/edit", payload, "token");
+
+		// Then: the provider is asked to clear against the resolved enabled-by-tactic map (unknown code dropped)
+		ArgumentCaptor<Map<Integer, Set<BreakdownType>>> captor = ArgumentCaptor.forClass(Map.class);
+		verify(sheets).clearBreakdowns(eq("abc-1"), captor.capture(), eq("token"));
+		assertThat(captor.getValue())
+				.containsEntry(1, EnumSet.of(BreakdownType.TOP_PUBLISHERS, BreakdownType.GEO))
+				.containsEntry(2, EnumSet.noneOf(BreakdownType.class));
+	}
+
+	@Test
 	void shouldSkipPacingTablesWhenRequiredInputsMissingTest() {
 		GeneratePayload payload = new GeneratePayload(
-				"brief", "standard", "", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", null, null, null);
+				"brief", "standard", "", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), null, "", null, null, null);
 
 		List<String> warnings = helper.writePacingTables(
 				"https://docs.google.com/spreadsheets/d/abc/edit", payload, emptyCampaignData(), Map.of(), "token");
@@ -133,6 +174,7 @@ class ReportSheetHelperImplTest {
 				List.of(),
 				List.of(),
 				List.of(new LineItemMapping("Display", "99", 1)),
+				null,
 				"sheet-id",
 				null,
 				null,

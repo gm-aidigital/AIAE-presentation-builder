@@ -37,6 +37,19 @@ public interface ReportSheetHelper {
 	void trimUnusedTactics(String sheetUrl, GeneratePayload payload, String userGoogleToken);
 
 	/**
+	 * Applies the Step-3 breakdown toggles to the generated workbook's "Breakdowns" tab: every
+	 * per-tactic breakdown section a tactic did not enable is cleared in place (no rows deleted),
+	 * leaving only the selected sections. A no-op when the payload carries no breakdown selections
+	 * (null) or the spreadsheet id cannot be parsed from the URL. Non-fatal: failures are logged and
+	 * swallowed so a filled sheet is still returned.
+	 *
+	 * @param sheetUrl        URL of the generated Google Sheet
+	 * @param payload         generation request carrying the per-tactic breakdown selections
+	 * @param userGoogleToken OAuth token for Google Sheets API, or null when unavailable
+	 */
+	void clearUnselectedBreakdowns(String sheetUrl, GeneratePayload payload, String userGoogleToken);
+
+	/**
 	 * Writes the Daily pacing / Monthly pacing / Channel Distribution tables for every
 	 * active tactic into the generated workbook, sourced from the same BigQuery actuals
 	 * used by the Slides chart pipeline. A no-op returning no warnings when the payload

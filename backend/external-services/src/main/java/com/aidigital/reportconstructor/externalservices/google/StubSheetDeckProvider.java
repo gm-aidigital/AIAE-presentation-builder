@@ -1,5 +1,6 @@
 package com.aidigital.reportconstructor.externalservices.google;
 
+import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
 import com.aidigital.reportconstructor.service.reports.ports.PacingTablesRequest;
 import com.aidigital.reportconstructor.service.reports.ports.SheetDeckProvider;
 import lombok.RequiredArgsConstructor;
@@ -7,6 +8,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Deterministic Sheets provider — the only candidate when no {@code @Primary}
@@ -49,5 +51,11 @@ public class StubSheetDeckProvider implements SheetDeckProvider {
 	public List<List<String>> readSheetGrid(String spreadsheetId, String userGoogleAccessToken) {
 		// No workbook is ever cloned offline, so there is no grid to read back.
 		return List.of();
+	}
+
+	@Override
+	public void clearBreakdowns(
+			String spreadsheetId, Map<Integer, Set<BreakdownType>> enabledByTactic, String userGoogleAccessToken) {
+		// No-op: the stub never clones a real workbook, so there is no "Breakdowns" tab to clear.
 	}
 }

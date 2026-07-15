@@ -1,7 +1,10 @@
 package com.aidigital.reportconstructor.service.reports.ports;
 
+import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
+
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Abstraction over Google Sheets + Drive workbook generation, mirroring
@@ -81,4 +84,26 @@ public interface SheetDeckProvider {
 	 * @return the first tab's rows, each cell trimmed; an empty list when the workbook has no tabs
 	 */
 	List<List<String>> readSheetGrid(String spreadsheetId, String userGoogleAccessToken);
+
+	/**
+	 * Applies the Step-3 breakdown toggles to the generated workbook's {@code "Breakdowns"}
+	 * tab: for every per-tactic breakdown section (Top Publishers / Creative / Geo / Audience
+	 * / Device) that the tactic did <em>not</em> enable, clears that section's cells (values,
+	 * formulas and formatting) in place — no rows or columns are ever deleted, so the surviving
+	 * sections and any totals formulas stay valid. Each section is located by its
+	 * {@code "<label> N"} header anchor (e.g. {@code "Geo analysis 3"}); its column span is
+	 * derived from the next section's anchor on the same row and its row height from the spacing
+	 * between tactic blocks, so the clear survives template layout edits. A tactic absent from
+	 * {@code enabledByTactic} (or mapped to an empty set) has all five sections cleared.
+	 *
+	 * <p>A no-op when the workbook has no {@code "Breakdowns"} tab; sections whose anchor cannot
+	 * be found are skipped rather than failing the whole operation.
+	 *
+	 * @param spreadsheetId         the workbook to update
+	 * @param enabledByTactic       1-based tactic number → the breakdown sections that tactic enabled
+	 * @param userGoogleAccessToken optional signed-in user's Google OAuth token; falls back to the
+	 *                              service account when blank
+	 */
+	void clearBreakdowns(
+			String spreadsheetId, Map<Integer, Set<BreakdownType>> enabledByTactic, String userGoogleAccessToken);
 }
