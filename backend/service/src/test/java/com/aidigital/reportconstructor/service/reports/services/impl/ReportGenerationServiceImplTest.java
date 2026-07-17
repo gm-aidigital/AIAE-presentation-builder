@@ -12,6 +12,7 @@ import com.aidigital.reportconstructor.service.reports.engine.ReportClaudeDefaul
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownValues;
 import com.aidigital.reportconstructor.service.reports.helpers.CreativeBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.AudienceBreakdownHelper;
+import com.aidigital.reportconstructor.service.reports.helpers.DeviceBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.GeoBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.PublisherBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportFileNamer;
@@ -88,13 +89,15 @@ class ReportGenerationServiceImplTest {
 	GeoBreakdownHelper geoBreakdown;
 	@Mock
 	AudienceBreakdownHelper audienceBreakdown;
+	@Mock
+	DeviceBreakdownHelper deviceBreakdown;
 
 	ReportGenerationServiceImpl service;
 
 	@BeforeEach
 	void setUp() {
 		service = new ReportGenerationServiceImpl(
-				jobProgress, warnings, chartHelper, sheetHelper, publisherBreakdown, creativeBreakdown, geoBreakdown, audienceBreakdown, placeholderReader, sheetCampaign, placeholders,
+				jobProgress, warnings, chartHelper, sheetHelper, publisherBreakdown, creativeBreakdown, geoBreakdown, audienceBreakdown, deviceBreakdown, placeholderReader, sheetCampaign, placeholders,
 				claude, slides, userGoogleTokens, self, claudeDefaults, fileNamer,
 				new ReportNumberParserImpl(), new Fmt());
 	}
@@ -229,6 +232,9 @@ class ReportGenerationServiceImplTest {
 				eq("http://sheet"), isNull(), any(), eq("Campaign brief."), isNull()))
 				.thenReturn(BreakdownValues.empty());
 		when(audienceBreakdown.buildAudienceValues(
+				eq("http://sheet"), isNull(), any(), eq("Campaign brief."), isNull()))
+				.thenReturn(BreakdownValues.empty());
+		when(deviceBreakdown.buildDeviceValues(
 				eq("http://sheet"), isNull(), any(), eq("Campaign brief."), isNull()))
 				.thenReturn(BreakdownValues.empty());
 		when(chartHelper.buildChartsFromSheet(eq("http://deck"), eq(grid), any(), eq(2), isNull()))

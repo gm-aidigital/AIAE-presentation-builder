@@ -4,6 +4,7 @@ import com.aidigital.reportconstructor.service.reports.dto.AudienceTable;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownSelection;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
+import com.aidigital.reportconstructor.service.reports.dto.DeviceTable;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTable;
 import com.aidigital.reportconstructor.service.reports.dto.GeoTable;
@@ -205,6 +206,22 @@ public class ReportSheetHelperImpl implements ReportSheetHelper {
 			return sheets.readAudienceTables(spreadsheetId, tacticNums, userGoogleToken);
 		} catch (RuntimeException ex) {
 			log.warn("[sheets] readAudienceTables failed for {} (non-fatal): {}", spreadsheetId, ex.getMessage());
+			return Map.of();
+		}
+	}
+
+	@Override
+	public Map<Integer, DeviceTable> readDeviceTables(
+			String sheetUrl, Set<Integer> tacticNums, String userGoogleToken) {
+		String spreadsheetId = extractSpreadsheetId(sheetUrl);
+		if (spreadsheetId == null) {
+			log.warn("[sheets] readDeviceTables: could not determine spreadsheet id from {}", sheetUrl);
+			return Map.of();
+		}
+		try {
+			return sheets.readDeviceTables(spreadsheetId, tacticNums, userGoogleToken);
+		} catch (RuntimeException ex) {
+			log.warn("[sheets] readDeviceTables failed for {} (non-fatal): {}", spreadsheetId, ex.getMessage());
 			return Map.of();
 		}
 	}

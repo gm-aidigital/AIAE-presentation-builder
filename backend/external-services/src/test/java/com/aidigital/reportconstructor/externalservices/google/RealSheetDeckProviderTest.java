@@ -6,6 +6,8 @@ import com.aidigital.reportconstructor.service.reports.dto.AudienceTable;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeRow;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTable;
+import com.aidigital.reportconstructor.service.reports.dto.DeviceRow;
+import com.aidigital.reportconstructor.service.reports.dto.DeviceTable;
 import com.aidigital.reportconstructor.service.reports.dto.GeoRow;
 import com.aidigital.reportconstructor.service.reports.dto.GeoTable;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
@@ -523,6 +525,115 @@ class RealSheetDeckProviderTest {
 	}
 
 	@Test
+	void deviceTables_readsAllFiveStatTilesAndTheDeviceRowsForTheRequestedTacticTest() {
+		// Given: a "Breakdowns" tab whose tactic-1 device block carries its five stat tiles and its filled
+		// per-device rows
+		RealSheetDeckProvider provider = newProvider();
+		List<List<String>> grid = deviceGrid(Map.of(
+				1, new DeviceTable("1.20%", "82%", "4", "Mobile", "61%",
+						List.of(new DeviceRow("Mobile", "1,200,000", "1.20%", "78%", "$4,000"),
+								new DeviceRow("Desktop", "300,000", "0.90%", "85%", "$1,000")))));
+
+		// When:
+		Map<Integer, DeviceTable> tables = provider.deviceTables(grid, Set.of(1));
+
+		// Then: every stat tile comes back as typed
+		DeviceTable table = tables.get(1);
+		assertThat(table.highestCtr()).isEqualTo("1.20%");
+		assertThat(table.bestCompletion()).isEqualTo("82%");
+		assertThat(table.devicesTracked()).isEqualTo("4");
+		assertThat(table.topDevice()).isEqualTo("Mobile");
+		assertThat(table.topDeviceImpressionsPct()).isEqualTo("61%");
+
+		// Then: the table's filled rows come back verbatim, in sheet order
+		assertThat(table.rows()).containsExactly(
+				new DeviceRow("Mobile", "1,200,000", "1.20%", "78%", "$4,000"),
+				new DeviceRow("Desktop", "300,000", "0.90%", "85%", "$1,000"));
+	}
+
+	@Test
+	void deviceTables_keepsRowsOnlyWhereTheUserTypedImpressionsTest() {
+		// Given: the template pre-fills every device label, but the user typed impressions for only one
+		RealSheetDeckProvider provider = newProvider();
+		List<List<String>> grid = deviceGrid(Map.of(
+				1, new DeviceTable("1.20%", "", "", "", "",
+						List.of(new DeviceRow("Mobile", "", "", "", ""),
+								new DeviceRow("Desktop", "300,000", "0.90%", "85%", "$1,000")))));
+
+		// When:
+		Map<Integer, DeviceTable> tables = provider.deviceTables(grid, Set.of(1));
+
+		// Then: only the impressions-filled device is kept, so a blank device row never reads as data
+		assertThat(tables.get(1).rows())
+				.containsExactly(new DeviceRow("Desktop", "300,000", "0.90%", "85%", "$1,000"));
+	}
+
+	@Test
+	void deviceTables_doesNotMatchTactic15BlockWhenReadingTactic1Test() {
+		// Given: a tab carrying both a "Device breakdown 1" and a "Device breakdown 15" block — the anchor
+		// of the first is a prefix of the second, so a loose match would pull tactic 15's rows in
+		RealSheetDeckProvider provider = newProvider();
+		List<List<String>> grid = deviceGrid(Map.of(
+				1, new DeviceTable("1.20%", "82%", "4", "Mobile", "61%",
+						List.of(new DeviceRow("Mobile", "1,200,000", "1.20%", "78%", "$4,000"))),
+				15, new DeviceTable("0.40%", "60%", "2", "Desktop", "70%",
+						List.of(new DeviceRow("Desktop", "500,000", "0.40%", "60%", "$900")))));
+
+		// When:
+		Map<Integer, DeviceTable> tables = provider.deviceTables(grid, Set.of(1));
+
+		// Then: only tactic 1's own row is returned and tactic 15's block is untouched
+		assertThat(tables.get(1).rows())
+				.containsExactly(new DeviceRow("Mobile", "1,200,000", "1.20%", "78%", "$4,000"));
+		assertThat(tables).doesNotContainKey(15);
+	}
+
+	@Test
+	void deviceTables_returnsEmptyTableForATacticWhoseBlockWasNeverFilledTest() {
+		// Given: a tab carrying no device anchor for the requested tactic
+		RealSheetDeckProvider provider = newProvider();
+		List<List<String>> grid = deviceGrid(Map.of(1, DeviceTable.empty()));
+
+		// When:
+		Map<Integer, DeviceTable> tables = provider.deviceTables(grid, Set.of(2));
+
+		// Then: the tactic is present with an empty table rather than absent, so the slide still ships
+		assertThat(tables).containsKey(2);
+		assertThat(tables.get(2).isEmpty()).isTrue();
+	}
+
+	@Test
+	void deviceTables_readsTopDevicePctTileWithoutMatchingItToTheTopDeviceTileTest() {
+		// Given: the two "TOP DEVICE" tiles sit on adjacent rows — the whole-cell match must not let the
+		// shorter "TOP DEVICE" label read the "% OF IMPRESSIONS" tile's value or vice versa
+		RealSheetDeckProvider provider = newProvider();
+		List<List<String>> grid = deviceGrid(Map.of(
+				1, new DeviceTable("1.20%", "82%", "4", "Mobile", "61%", List.of())));
+
+		// When:
+		DeviceTable table = provider.deviceTables(grid, Set.of(1)).get(1);
+
+		// Then: each tile keeps its own value
+		assertThat(table.topDevice()).isEqualTo("Mobile");
+		assertThat(table.topDeviceImpressionsPct()).isEqualTo("61%");
+	}
+
+	@Test
+	void findDeviceHeader_resolvesTheFiveColumnsByTextOnTheHeaderRowTest() {
+		// Given: the device table's header row
+		RealSheetDeckProvider provider = newProvider();
+		List<List<String>> grid = new ArrayList<>();
+		grid.add(List.of("Device breakdown 1", "", "", "", ""));
+		grid.add(List.of("Device", "Impressions", "CTR", "VCR", "Spend"));
+
+		// When:
+		int[] header = provider.findDeviceHeader(grid, 0, 2, 0, 5);
+
+		// Then: the five columns resolve by header text, not by fixed offset
+		assertThat(header).containsExactly(1, 0, 1, 2, 3, 4);
+	}
+
+	@Test
 	void creativeTables_findsBlocksByAnchorWhereverTheySitNotByTacticOrderTest() {
 		// Given: the real shape after Step-3 toggles — tactic 1 did NOT enable Creative analysis, so its
 		// section was cleared and the first surviving anchor is "Creative analysis 2", 18 rows down the tab.
@@ -837,6 +948,38 @@ class RealSheetDeckProviderTest {
 			row.add("");
 		}
 		return row;
+	}
+
+	/**
+	 * Builds a "Breakdowns" tab carrying an 18-row Device breakdown block per given tactic: the anchor
+	 * row, the five stat-tile rows (label in col 0, value in col 1), a spacer, the header row, then the
+	 * tactic's device rows (name in col 0, metrics in cols 1-4).
+	 *
+	 * @param tablesByTactic tactic number → the device block to render on the tab
+	 * @return the tab as trimmed cell strings, five columns wide
+	 */
+	private List<List<String>> deviceGrid(Map<Integer, DeviceTable> tablesByTactic) {
+		List<List<String>> grid = new ArrayList<>();
+		for (Map.Entry<Integer, DeviceTable> entry : new java.util.TreeMap<>(tablesByTactic).entrySet()) {
+			DeviceTable table = entry.getValue();
+			List<List<String>> block = new ArrayList<>();
+			block.add(padAudience(List.of("Device breakdown " + entry.getKey(), "{{tactic " + entry.getKey() + "}}")));
+			block.add(padAudience(List.of("HIGHEST CTR", table.highestCtr())));
+			block.add(padAudience(List.of("BEST COMPLETION", table.bestCompletion())));
+			block.add(padAudience(List.of("DEVICES TRACKED", table.devicesTracked())));
+			block.add(padAudience(List.of("TOP DEVICE", table.topDevice())));
+			block.add(padAudience(List.of("TOP DEVICE - % OF IMPRESSIONS", table.topDeviceImpressionsPct())));
+			block.add(padAudience(List.of("")));
+			block.add(padAudience(List.of("Device", "Impressions", "CTR", "VCR", "Spend")));
+			for (DeviceRow row : table.rows()) {
+				block.add(padAudience(List.of(row.device(), row.impressions(), row.ctr(), row.vcr(), row.spend())));
+			}
+			while (block.size() < 18) {
+				block.add(new ArrayList<>(Collections.nCopies(5, "")));
+			}
+			grid.addAll(block);
+		}
+		return grid;
 	}
 
 	/**

@@ -4,6 +4,9 @@ import com.aidigital.reportconstructor.service.reports.dto.AudienceAgeRow;
 import com.aidigital.reportconstructor.service.reports.dto.AudienceInsightInput;
 import com.aidigital.reportconstructor.service.reports.dto.AudienceSegmentRow;
 import com.aidigital.reportconstructor.service.reports.dto.AudienceTable;
+import com.aidigital.reportconstructor.service.reports.dto.DeviceInsightInput;
+import com.aidigital.reportconstructor.service.reports.dto.DeviceRow;
+import com.aidigital.reportconstructor.service.reports.dto.DeviceTable;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeRow;
@@ -1297,6 +1300,100 @@ public class ClaudeBatchPromptBuilder {
 			block.append("Segment | Affinity index (100 = campaign average)\n");
 			for (AudienceSegmentRow row : table.segmentRows()) {
 				block.append(row.segment()).append(" | ").append(row.affinityIndex()).append('\n');
+			}
+		}
+		return block.toString();
+	}
+
+	/**
+	 * Builds the device-insights prompt for one chunk of tactics, or empty when the chunk carries no
+	 * tactic with a filled device block.
+	 *
+	 * <p>The per-string limits quoted to Claude are {@link #COMPRESSION_PROMPT_BUFFER_RATIO} of the
+	 * slide's real budgets — 256 characters for the key takeaway and 120 for the other three — for the
+	 * same reason {@link #buildAudienceInsightsPrompt}'s are: copy written right up to the budget gets cut
+	 * mid-thought when the truncation safety net runs, so asking for the smaller number up front means
+	 * most strings never need compressing.
+	 *
+	 * <p>The fourth string is a forward-looking recommended action: which devices to lean into next, tied
+	 * to the campaign brief. The other three describe what already happened during the flight.
+	 *
+	 * @param inputs           the chunk's tactics, each with its hand-entered device block
+	 * @param brief            free-text campaign brief, used to tie the device read back to the goals
+	 * @param takeawayMaxChars the slide's real character budget for the key takeaway
+	 * @param shortMaxChars    the slide's real character budget for the other three fields
+	 * @return the prompt requesting a JSON object of {@code "tactic_<n>"} → 4-string array, or empty when
+	 * every tactic in the chunk has a blank block
+	 */
+	public Optional<String> buildDeviceInsightsPrompt(
+			List<DeviceInsightInput> inputs, String brief, int takeawayMaxChars, int shortMaxChars) {
+		List<String> blocks = new ArrayList<>();
+		for (DeviceInsightInput input : inputs) {
+			if (input.table() == null || input.table().isEmpty()) {
+				continue;
+			}
+			blocks.add(deviceContextBlock(input));
+		}
+		if (blocks.isEmpty()) {
+			return Optional.empty();
+		}
+		int takeawayLimit = Math.max(1, (int) (takeawayMaxChars * COMPRESSION_PROMPT_BUFFER_RATIO));
+		int shortLimit = Math.max(1, (int) (shortMaxChars * COMPRESSION_PROMPT_BUFFER_RATIO));
+		String prompt = "You are a senior programmatic media analyst writing the four copy fields on the "
+				+ "'Device breakdown' slide of an end-of-campaign report. You are writing on behalf of the team "
+				+ "that ran this campaign, so the tone is confident and complimentary of our own delivery.\n\n"
+				+ "For EACH tactic below, write exactly 4 strings, in this order:\n"
+				+ "1. KEY TAKEAWAY — the single most important read on how this tactic performed across devices, "
+				+ "at most " + takeawayLimit + " characters. One or two complete sentences.\n"
+				+ "2. WHAT WORKED — the strongest device result, at most " + shortLimit
+				+ " characters, one complete sentence.\n"
+				+ "3. WATCH-OUT — a caveat or soft spot in the device delivery, at most " + shortLimit
+				+ " characters, one complete sentence.\n"
+				+ "4. RECOMMENDED ACTION — a FORWARD-LOOKING recommendation about which devices to lean into "
+				+ "next, at most " + shortLimit + " characters, one complete sentence. This one MAY be future "
+				+ "advice; strings 1-3 describe what already happened.\n\n"
+				+ "Rules:\n"
+				+ "- Ground every string in the numbers given: name the real devices, cite real impressions, "
+				+ "CTR, completion rate (VCR) and spend, and read where delivery and engagement concentrated.\n"
+				+ "- Focus the recommendation on the MOST EFFECTIVE devices — those with the strongest engagement "
+				+ "for their share of delivery and spend.\n"
+				+ "- CTR does not apply to Connected TV (non-clickable inventory); never treat a missing CTV CTR "
+				+ "as a zero or a weakness.\n"
+				+ "- Tie your read and hypotheses to the campaign brief's audience and goals, but at most ~20% of "
+				+ "any string may go beyond the table, and never invent a number that is not in the data.\n"
+				+ "- SMALL-SAMPLE OUTLIERS. A device with a very high rate on tiny volume is noise, not a "
+				+ "headline; judge it alongside how much of delivery it actually represents.\n"
+				+ "- Analyst tone, no filler, no bullet characters, no markdown.\n\n"
+				+ "Return ONLY a JSON object keyed by tactic, each key mapping to an array of exactly 4 strings:\n"
+				+ "{\"tactic_1\": [\"...\", \"...\", \"...\", \"...\"]}\n\n"
+				+ "=== CAMPAIGN BRIEF ===\n" + (brief == null ? "" : brief) + "\n\n"
+				+ "=== DEVICE DATA ===\n" + String.join("\n", blocks);
+		return Optional.of(prompt);
+	}
+
+	/**
+	 * Renders one tactic's device block as prompt context: its name, the five stat tiles the slide shows
+	 * and the per-device performance table. Blank stat tiles are omitted rather than sent as empty labels,
+	 * so the user leaving a tile empty never reads to Claude as a zero.
+	 *
+	 * @param input the tactic's device block
+	 * @return the tactic's {@code tactic_<n>} context block
+	 */
+	String deviceContextBlock(DeviceInsightInput input) {
+		DeviceTable table = input.table();
+		StringBuilder block = new StringBuilder();
+		block.append("tactic_").append(input.tacticNum()).append(" — ").append(input.tacticName()).append('\n');
+		appendCreativeStat(block, "Highest CTR", table.highestCtr());
+		appendCreativeStat(block, "Best completion (VCR)", table.bestCompletion());
+		appendCreativeStat(block, "Devices tracked", table.devicesTracked());
+		appendCreativeStat(block, "Top device", table.topDevice());
+		appendCreativeStat(block, "Top device % of impressions", table.topDeviceImpressionsPct());
+		if (!table.rows().isEmpty()) {
+			block.append("Device | Impressions | CTR | VCR | Spend\n");
+			for (DeviceRow row : table.rows()) {
+				block.append(row.device()).append(" | ").append(row.impressions())
+						.append(" | ").append(row.ctr()).append(" | ").append(row.vcr())
+						.append(" | ").append(row.spend()).append('\n');
 			}
 		}
 		return block.toString();

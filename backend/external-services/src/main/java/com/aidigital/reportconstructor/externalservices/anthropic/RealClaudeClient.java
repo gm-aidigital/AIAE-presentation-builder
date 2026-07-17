@@ -8,6 +8,7 @@ import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
 import com.aidigital.reportconstructor.service.reports.dto.AudienceInsightInput;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTakeawayInput;
+import com.aidigital.reportconstructor.service.reports.dto.DeviceInsightInput;
 import com.aidigital.reportconstructor.service.reports.dto.GeoInsightInput;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationInput;
 import com.aidigital.reportconstructor.service.reports.dto.Recommendation;
@@ -160,6 +161,34 @@ public class RealClaudeClient implements ClaudeClient {
 	 * {@link #PUBLISHER_OBSERVATION_MAX_TOKENS} is.
 	 */
 	private static final int AUDIENCE_INSIGHT_MAX_TOKENS = 4000;
+
+	/**
+	 * Character budget of the "Device breakdown" slide's key takeaway ({@code {{dev_N_takeaway}}}), the
+	 * widest of the four device fields.
+	 */
+	private static final int DEVICE_TAKEAWAY_LIMIT = 256;
+
+	/**
+	 * Character budget of the "Device breakdown" slide's three shorter fields — "what worked"
+	 * ({@code {{dev_N_worked}}}), the watch-out ({@code {{dev_N_flag}}}) and the recommended action
+	 * ({@code {{dev_N_reco}}}).
+	 */
+	private static final int DEVICE_SHORT_LIMIT = 120;
+
+	/**
+	 * Strings per tactic on the "Device breakdown" slide: the key takeaway, "what worked", the watch-out
+	 * and the recommended action, in that order.
+	 */
+	private static final int DEVICE_FIELD_COUNT = 4;
+
+	/** Tactics per device-insights call, chunked for the same reason publisher observations are. */
+	private static final int DEVICE_INSIGHT_CHUNK = 5;
+
+	/**
+	 * Output budget per device-insights chunk, over-provisioned for the same reason
+	 * {@link #PUBLISHER_OBSERVATION_MAX_TOKENS} is.
+	 */
+	private static final int DEVICE_INSIGHT_MAX_TOKENS = 4000;
 
 	// Batch C emits one results-overview per tactic group plus one tactic-overview PER TACTIC (up to 28), on
 	// top of thoughts, four recommendations and the frequency copy — all in a single JSON reply. A fixed cap
@@ -958,6 +987,119 @@ public class RealClaudeClient implements ClaudeClient {
 	 */
 	int audienceFieldLimit(int index) {
 		return index == 0 ? AUDIENCE_TAKEAWAY_LIMIT : AUDIENCE_SHORT_LIMIT;
+	}
+
+	@Override
+	public Map<Integer, List<String>> batchDeviceInsights(List<DeviceInsightInput> inputs, String brief) {
+		Map<Integer, List<String>> insights = new LinkedHashMap<>();
+		if (inputs == null || inputs.isEmpty()) {
+			return insights;
+		}
+		for (int start = 0; start < inputs.size(); start += DEVICE_INSIGHT_CHUNK) {
+			List<DeviceInsightInput> chunk =
+					inputs.subList(start, Math.min(start + DEVICE_INSIGHT_CHUNK, inputs.size()));
+			insights.putAll(deviceInsightsResilient(chunk, brief));
+		}
+		return insights;
+	}
+
+	/**
+	 * Runs one device-insights chunk and retries an empty result, mirroring
+	 * {@link #publisherObservationsResilient} — see it for why a multi-tactic chunk is retried one tactic
+	 * at a time.
+	 *
+	 * @param chunk the tactics to cover
+	 * @param brief free-text campaign brief passed through to the prompt
+	 * @return tactic number → its four strings; empty only when every attempt failed
+	 */
+	Map<Integer, List<String>> deviceInsightsResilient(List<DeviceInsightInput> chunk, String brief) {
+		Map<Integer, List<String>> insights = deviceInsightsChunk(chunk, brief);
+		if (!insights.isEmpty() || chunk.isEmpty()) {
+			return insights;
+		}
+		if (chunk.size() == 1) {
+			log.warn("[claude:BatchDevice] tactic {} came back with no fields — retrying once",
+					chunk.getFirst().tacticNum());
+			return deviceInsightsChunk(chunk, brief);
+		}
+		log.warn("[claude:BatchDevice] chunk {} came back empty — retrying one tactic per call",
+				chunk.stream().map(DeviceInsightInput::tacticNum).toList());
+		Map<Integer, List<String>> perTactic = new LinkedHashMap<>();
+		for (DeviceInsightInput input : chunk) {
+			perTactic.putAll(deviceInsightsResilient(List.of(input), brief));
+		}
+		return perTactic;
+	}
+
+	/**
+	 * Runs one device-insights chunk: prompt, parse, compress the over-budget strings, then apply the
+	 * truncation safety net. Returns an empty map — never partial or invented copy — when the call or the
+	 * parse fails, so only this chunk's tactics lose their copy.
+	 *
+	 * @param chunk the tactics to cover in this single call
+	 * @param brief free-text campaign brief passed through to the prompt
+	 * @return tactic number → its four strings (takeaway, what-worked, watch-out, recommendation); empty
+	 * when the chunk produced no usable reply
+	 */
+	Map<Integer, List<String>> deviceInsightsChunk(List<DeviceInsightInput> chunk, String brief) {
+		Map<Integer, List<String>> insights = new LinkedHashMap<>();
+		var prompt = promptBuilder.buildDeviceInsightsPrompt(
+				chunk, brief, DEVICE_TAKEAWAY_LIMIT, DEVICE_SHORT_LIMIT);
+		if (prompt.isEmpty()) {
+			return insights;
+		}
+		// allowPartial for the same reason publisher observations use it.
+		JsonNode parsed = messagesClient.callJsonObject(
+				prompt.get(), DEVICE_INSIGHT_MAX_TOKENS, 60, "BatchDevice", true);
+		if (parsed == null) {
+			return insights;
+		}
+
+		// Collect every string across the chunk's tactics first, so the whole chunk's over-budget text is
+		// compressed in one Batch D call rather than one per tactic.
+		Map<Integer, JsonNode> byTactic = bulletsByTactic(parsed, "BatchDevice");
+		List<ClaudeCompressionField> compressionFields = new ArrayList<>();
+		for (DeviceInsightInput input : chunk) {
+			JsonNode arr = byTactic.get(input.tacticNum());
+			if (arr == null) {
+				log.warn("[claude:BatchDevice] reply carries no fields for tactic {} (keys: {})",
+						input.tacticNum(), byTactic.keySet());
+				continue;
+			}
+			for (int i = 0; i < DEVICE_FIELD_COUNT; i++) {
+				String raw = i < arr.size() ? arr.get(i).asText("").trim() : "";
+				compressionFields.add(new ClaudeCompressionField(
+						input.tacticNum() + "_" + i, raw, deviceFieldLimit(i)));
+			}
+		}
+		if (compressionFields.isEmpty()) {
+			return insights;
+		}
+		Map<String, String> compressed = compressionService.compress(compressionFields, "BatchD-Device");
+
+		for (DeviceInsightInput input : chunk) {
+			if (byTactic.get(input.tacticNum()) == null) {
+				continue;
+			}
+			List<String> fields = new ArrayList<>(DEVICE_FIELD_COUNT);
+			for (int i = 0; i < DEVICE_FIELD_COUNT; i++) {
+				fields.add(normalizer.normalizeC(
+						compressed.get(input.tacticNum() + "_" + i), deviceFieldLimit(i)));
+			}
+			insights.put(input.tacticNum(), fields);
+		}
+		return insights;
+	}
+
+	/**
+	 * Returns the character budget of one device field by its zero-based slide position: the first
+	 * string is the wider key takeaway, the other three share the shorter budget.
+	 *
+	 * @param index zero-based field index within the tactic's four strings
+	 * @return the field's character budget
+	 */
+	int deviceFieldLimit(int index) {
+		return index == 0 ? DEVICE_TAKEAWAY_LIMIT : DEVICE_SHORT_LIMIT;
 	}
 
 	@Override

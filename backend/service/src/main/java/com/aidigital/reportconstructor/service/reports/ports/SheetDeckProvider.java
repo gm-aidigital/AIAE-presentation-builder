@@ -3,6 +3,7 @@ package com.aidigital.reportconstructor.service.reports.ports;
 import com.aidigital.reportconstructor.service.reports.dto.AudienceTable;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTable;
+import com.aidigital.reportconstructor.service.reports.dto.DeviceTable;
 import com.aidigital.reportconstructor.service.reports.dto.GeoTable;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
 
@@ -216,5 +217,32 @@ public interface SheetDeckProvider {
 	 * @return tactic number → its audience block, with rows in sheet order
 	 */
 	Map<Integer, AudienceTable> readAudienceTables(
+			String spreadsheetId, Set<Integer> tacticNums, String userGoogleAccessToken);
+
+	/**
+	 * Reads back the hand-entered "Device breakdown" blocks from the generated workbook's
+	 * {@code "Breakdowns"} tab, so the deck can carry the device stat tiles and per-device performance
+	 * rows exactly as the user typed them. The block-location rules are {@link #readGeoTables}': the
+	 * {@code "Device breakdown N"} anchor is matched on the <em>whole</em> cell (never a prefix, or
+	 * block 1 would swallow block 15).
+	 *
+	 * <p>The block carries five stat tiles ({@code HIGHEST CTR}, {@code BEST COMPLETION},
+	 * {@code DEVICES TRACKED}, {@code TOP DEVICE}, {@code TOP DEVICE - % OF IMPRESSIONS}), each located
+	 * by its label and read from the first populated cell to the label's right, plus a single
+	 * "PERFORMANCE BY DEVICE" table ({@code Device} / {@code Impressions} / {@code CTR} / {@code VCR} /
+	 * {@code Spend}). The device labels are pre-filled by the template, so a table row is kept only
+	 * where the user typed an impressions value.
+	 *
+	 * <p>The whole tab is read once for every requested tactic. A tactic whose anchor is missing, or
+	 * whose block is blank, maps to {@link DeviceTable#empty()} rather than failing the read; a
+	 * workbook without a {@code "Breakdowns"} tab yields an empty map.
+	 *
+	 * @param spreadsheetId         the workbook to read
+	 * @param tacticNums            1-based tactic numbers whose device blocks are wanted
+	 * @param userGoogleAccessToken optional signed-in user's Google OAuth token; falls back to the
+	 *                              service account when blank
+	 * @return tactic number → its device block, with rows in sheet order
+	 */
+	Map<Integer, DeviceTable> readDeviceTables(
 			String spreadsheetId, Set<Integer> tacticNums, String userGoogleAccessToken);
 }

@@ -8,6 +8,8 @@ import com.aidigital.reportconstructor.service.reports.dto.AudienceTable;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeRow;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTable;
+import com.aidigital.reportconstructor.service.reports.dto.DeviceRow;
+import com.aidigital.reportconstructor.service.reports.dto.DeviceTable;
 import com.aidigital.reportconstructor.service.reports.dto.GeoRow;
 import com.aidigital.reportconstructor.service.reports.dto.GeoTable;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
@@ -198,6 +200,35 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 	 */
 	private static final String AUDIENCE_SEGMENT_HEADER = "Segment";
 	private static final String AUDIENCE_SEGMENT_INDEX_HEADER = "Affinity index";
+
+	/**
+	 * Row labels of the five summary cells above each "Device breakdown" block, whose values the slide
+	 * shows in its stat tiles. Each is matched whole-cell and its value taken from the first populated
+	 * cell to the label's right — the same rule the creative, geo and audience stat tiles use.
+	 * Whole-cell matching keeps {@code "TOP DEVICE"} from also matching
+	 * {@code "TOP DEVICE - % OF IMPRESSIONS"}.
+	 */
+	private static final String DEVICE_HIGHEST_CTR_LABEL = "HIGHEST CTR";
+	private static final String DEVICE_BEST_COMPLETION_LABEL = "BEST COMPLETION";
+	private static final String DEVICE_TRACKED_LABEL = "DEVICES TRACKED";
+	private static final String DEVICE_TOP_LABEL = "TOP DEVICE";
+	private static final String DEVICE_TOP_IMPRESSIONS_PCT_LABEL = "TOP DEVICE - % OF IMPRESSIONS";
+
+	/**
+	 * Header text of the "Device breakdown" block's device-name column. Whole-cell matching keeps it from
+	 * colliding with the block's own {@code "Device breakdown N"} anchor.
+	 */
+	private static final String DEVICE_NAME_HEADER = "Device";
+
+	/**
+	 * Header texts of the "Device breakdown" table's metric columns, in slide order. Each is resolved on
+	 * the device-name header's own row so a template edit that shifts the block cannot read a neighbouring
+	 * column.
+	 */
+	private static final String DEVICE_IMPRESSIONS_HEADER = "Impressions";
+	private static final String DEVICE_CTR_HEADER = "CTR";
+	private static final String DEVICE_VCR_HEADER = "VCR";
+	private static final String DEVICE_SPEND_HEADER = "Spend";
 
 	/**
 	 * The only tokens the {@code "Breakdowns"} tab carries — each block's {@code {{tactic N}}} heading,
@@ -512,6 +543,30 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 			log.error("[sheets] readAudienceTables failed for {}", spreadsheetId, ex);
 			throw new AppException(ErrorReason.C000,
 					"Google Sheets readAudienceTables failed: " + ex.getMessage());
+		}
+	}
+
+	@Override
+	public Map<Integer, DeviceTable> readDeviceTables(
+			String spreadsheetId, Set<Integer> tacticNums, String userGoogleAccessToken) {
+		if (tacticNums == null || tacticNums.isEmpty()) {
+			return Map.of();
+		}
+		boolean asUser = userGoogleAccessToken != null && !userGoogleAccessToken.isBlank();
+		Sheets sheetsClient = asUser ? buildSheets(userGoogleAccessToken) : sheets;
+		try {
+			Map<String, Integer> tabSheetIds = fetchSheetIds(sheetsClient, spreadsheetId);
+			if (!tabSheetIds.containsKey(BREAKDOWN_TAB)) {
+				log.warn("[sheets] readDeviceTables: no \"{}\" tab in {} — skipping", BREAKDOWN_TAB, spreadsheetId);
+				return Map.of();
+			}
+			// One read of the whole tab serves every requested tactic — the blocks all live on it.
+			List<List<String>> grid = readGrid(sheetsClient, spreadsheetId, BREAKDOWN_TAB);
+			return deviceTables(grid, tacticNums);
+		} catch (IOException ex) {
+			log.error("[sheets] readDeviceTables failed for {}", spreadsheetId, ex);
+			throw new AppException(ErrorReason.C000,
+					"Google Sheets readDeviceTables failed: " + ex.getMessage());
 		}
 	}
 
@@ -882,6 +937,135 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 			}
 			return new int[] {
 					r, segmentCol, columnOfHeader(grid, r, startCol, endColExcl, AUDIENCE_SEGMENT_INDEX_HEADER)};
+		}
+		return null;
+	}
+
+	/**
+	 * Extracts the requested tactics' "Device breakdown" blocks from an already-read
+	 * {@code "Breakdowns"} tab. Blocks are bounded exactly as {@link #creativeTables} bounds theirs —
+	 * anchor cell, inferred block height, next anchor on the header row — so the read, the clear and the
+	 * other breakdown reads can never disagree about where a block ends.
+	 *
+	 * @param grid       the {@code "Breakdowns"} tab, read as trimmed cell strings
+	 * @param tacticNums 1-based tactic numbers whose blocks are wanted
+	 * @return tactic number → its device block; tactics with no anchor map to {@link DeviceTable#empty()}
+	 */
+	Map<Integer, DeviceTable> deviceTables(List<List<String>> grid, Set<Integer> tacticNums) {
+		Map<Integer, DeviceTable> tables = new LinkedHashMap<>();
+		List<int[]> anchors = findBreakdownAnchors(grid);
+		if (anchors.isEmpty()) {
+			log.warn("[sheets] readDeviceTables: no breakdown anchors on \"{}\" tab — nothing to read",
+					BREAKDOWN_TAB);
+			return tables;
+		}
+		int blockHeight = breakdownBlockHeight(anchors);
+		int deviceOrdinal = BreakdownType.DEVICE.ordinal();
+		for (int[] anchor : anchors) {
+			if (anchor[0] != deviceOrdinal || !tacticNums.contains(anchor[1])) {
+				continue;
+			}
+			int row = anchor[2];
+			int col = anchor[3];
+			int endRow = Math.min(row + blockHeight, grid.size());
+			int endCol = nextAnchorColOnRow(anchors, row, col, blockRightEdge(grid, row, endRow));
+			tables.put(anchor[1], deviceBlock(grid, row, endRow, col, endCol, anchor[1]));
+		}
+		for (Integer tacticNum : tacticNums) {
+			tables.putIfAbsent(tacticNum, DeviceTable.empty());
+		}
+		return tables;
+	}
+
+	/**
+	 * Reads one "Device breakdown" block: its five stat tiles and its filled table rows. The stat tiles
+	 * and the table are independent — a user who filled only the tiles still gets them on the slide, and
+	 * vice versa — so a missing table header costs only the rows.
+	 *
+	 * @param grid       the {@code "Breakdowns"} tab, read as trimmed cell strings
+	 * @param startRow   inclusive zero-based row of the block's anchor cell
+	 * @param endRowExcl exclusive zero-based end row of the block
+	 * @param startCol   inclusive zero-based column of the block's anchor cell
+	 * @param endColExcl exclusive zero-based end column of the block
+	 * @param tacticNum  the block's tactic number, used only for logging
+	 * @return the block's stat tiles and rows, blank/empty where the user typed nothing
+	 */
+	DeviceTable deviceBlock(
+			List<List<String>> grid, int startRow, int endRowExcl, int startCol, int endColExcl, int tacticNum) {
+		return new DeviceTable(
+				summaryValue(grid, startRow, endRowExcl, startCol, endColExcl, DEVICE_HIGHEST_CTR_LABEL),
+				summaryValue(grid, startRow, endRowExcl, startCol, endColExcl, DEVICE_BEST_COMPLETION_LABEL),
+				summaryValue(grid, startRow, endRowExcl, startCol, endColExcl, DEVICE_TRACKED_LABEL),
+				summaryValue(grid, startRow, endRowExcl, startCol, endColExcl, DEVICE_TOP_LABEL),
+				summaryValue(grid, startRow, endRowExcl, startCol, endColExcl, DEVICE_TOP_IMPRESSIONS_PCT_LABEL),
+				deviceRowsInBlock(grid, startRow, endRowExcl, startCol, endColExcl, tacticNum));
+	}
+
+	/**
+	 * Reads one "Device breakdown" block's filled table rows, resolving the {@code Device} /
+	 * {@code Impressions} / {@code CTR} / {@code VCR} / {@code Spend} columns by header text rather than
+	 * fixed offsets. The device labels are pre-filled by the template, so a row is kept only where the
+	 * user typed an impressions value — that value, not the label, is what marks a row as filled.
+	 *
+	 * @param grid       the {@code "Breakdowns"} tab, read as trimmed cell strings
+	 * @param startRow   inclusive zero-based row of the block's anchor cell
+	 * @param endRowExcl exclusive zero-based end row of the block
+	 * @param startCol   inclusive zero-based column of the block's anchor cell
+	 * @param endColExcl exclusive zero-based end column of the block
+	 * @param tacticNum  the block's tactic number, used only for logging
+	 * @return the filled device rows in sheet order, or an empty list when the header is missing
+	 */
+	List<DeviceRow> deviceRowsInBlock(
+			List<List<String>> grid, int startRow, int endRowExcl, int startCol, int endColExcl, int tacticNum) {
+		int[] header = findDeviceHeader(grid, startRow, endRowExcl, startCol, endColExcl);
+		if (header == null) {
+			log.warn("[sheets] readDeviceTables: tactic {} block has no \"{}\" header — skipping rows",
+					tacticNum, DEVICE_NAME_HEADER);
+			return List.of();
+		}
+		List<DeviceRow> rows = new ArrayList<>();
+		for (int r = header[0] + 1; r < endRowExcl; r++) {
+			String impressions = cellAt(grid, r, header[2]);
+			if (impressions.isEmpty()) {
+				continue;
+			}
+			rows.add(new DeviceRow(
+					cellAt(grid, r, header[1]),
+					impressions,
+					cellAt(grid, r, header[3]),
+					cellAt(grid, r, header[4]),
+					cellAt(grid, r, header[5])));
+		}
+		return rows;
+	}
+
+	/**
+	 * Finds the "Device breakdown" table's header row and the columns of its five data columns. A row
+	 * qualifies only when it carries the device-name header; the metric columns are then taken from that
+	 * same row, defaulting to {@code -1} when absent so a template missing one column yields blanks rather
+	 * than reading a neighbouring column's values.
+	 *
+	 * @param grid       the {@code "Breakdowns"} tab, read as trimmed cell strings
+	 * @param startRow   inclusive zero-based row of the block's anchor cell
+	 * @param endRowExcl exclusive zero-based end row of the block
+	 * @param startCol   inclusive zero-based column of the block's anchor cell
+	 * @param endColExcl exclusive zero-based end column of the block
+	 * @return {@code [headerRow, deviceCol, impsCol, ctrCol, vcrCol, spendCol]}, or {@code null} when the
+	 *         block carries no device-name header
+	 */
+	int[] findDeviceHeader(List<List<String>> grid, int startRow, int endRowExcl, int startCol, int endColExcl) {
+		for (int r = startRow; r < endRowExcl; r++) {
+			int nameCol = columnOfHeader(grid, r, startCol, endColExcl, DEVICE_NAME_HEADER);
+			if (nameCol < 0) {
+				continue;
+			}
+			return new int[] {
+					r,
+					nameCol,
+					columnOfHeader(grid, r, startCol, endColExcl, DEVICE_IMPRESSIONS_HEADER),
+					columnOfHeader(grid, r, startCol, endColExcl, DEVICE_CTR_HEADER),
+					columnOfHeader(grid, r, startCol, endColExcl, DEVICE_VCR_HEADER),
+					columnOfHeader(grid, r, startCol, endColExcl, DEVICE_SPEND_HEADER)};
 		}
 		return null;
 	}

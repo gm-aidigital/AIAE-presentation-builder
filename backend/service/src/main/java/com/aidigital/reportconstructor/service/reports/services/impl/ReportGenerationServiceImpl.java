@@ -22,6 +22,7 @@ import com.aidigital.reportconstructor.service.reports.helpers.ReportGenerationW
 import com.aidigital.reportconstructor.service.reports.helpers.ReportJobProgressHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.AudienceBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.CreativeBreakdownHelper;
+import com.aidigital.reportconstructor.service.reports.helpers.DeviceBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.GeoBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.PublisherBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportSheetHelper;
@@ -68,6 +69,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	private final CreativeBreakdownHelper creativeBreakdown;
 	private final GeoBreakdownHelper geoBreakdown;
 	private final AudienceBreakdownHelper audienceBreakdown;
+	private final DeviceBreakdownHelper deviceBreakdown;
 	private final SheetPlaceholderReader placeholderReader;
 	private final SheetCampaignReader sheetCampaign;
 	private final PlaceholderResolverService placeholders;
@@ -299,10 +301,13 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 				payload.sheetUrl(), payload.breakdownSelections(), flatReplacements, brief, userGoogleToken);
 		BreakdownValues audienceValues = audienceBreakdown.buildAudienceValues(
 				payload.sheetUrl(), payload.breakdownSelections(), flatReplacements, brief, userGoogleToken);
+		BreakdownValues deviceValues = deviceBreakdown.buildDeviceValues(
+				payload.sheetUrl(), payload.breakdownSelections(), flatReplacements, brief, userGoogleToken);
 		Map<String, String> breakdownValues = new LinkedHashMap<>(publisherValues.values());
 		breakdownValues.putAll(creativeValues.values());
 		breakdownValues.putAll(geoValues.values());
 		breakdownValues.putAll(audienceValues.values());
+		breakdownValues.putAll(deviceValues.values());
 		chartHelper.addBreakdownSlides(slideUrl, payload, tacticCount, breakdownValues, userGoogleToken);
 
 		jobProgress.markJobRunningAtStep(jobId, 7, "Building charts");
@@ -315,6 +320,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		jobWarnings.addAll(creativeValues.warnings());
 		jobWarnings.addAll(geoValues.warnings());
 		jobWarnings.addAll(audienceValues.warnings());
+		jobWarnings.addAll(deviceValues.warnings());
 		jobWarnings.addAll(chartWarnings);
 
 		jobProgress.recordArtifact(jobId, fileName, payload.sheetUrl());

@@ -8,6 +8,7 @@ import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
 import com.aidigital.reportconstructor.service.reports.dto.AudienceInsightInput;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTakeawayInput;
+import com.aidigital.reportconstructor.service.reports.dto.DeviceInsightInput;
 import com.aidigital.reportconstructor.service.reports.dto.GeoInsightInput;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationInput;
 
@@ -154,6 +155,27 @@ public interface ClaudeClient {
 	 * rather than fall back to invented copy
 	 */
 	Map<Integer, List<String>> batchAudienceInsights(List<AudienceInsightInput> inputs, String brief);
+
+	/**
+	 * Device-insights batch — the four Claude-written strings on each tactic's "Device breakdown" slide,
+	 * written from the hand-entered device block the user reviewed in the sheet: the
+	 * {@code {{dev_N_takeaway}}} key takeaway, the {@code {{dev_N_worked}}} "what worked", the
+	 * {@code {{dev_N_flag}}} watch-out, and the {@code {{dev_N_reco}}} recommended action.
+	 *
+	 * <p>The four strings are returned in that fixed slide order. The takeaway is capped at 256
+	 * characters and the other three at 120, the slide's text budgets. The recommendation is
+	 * forward-looking — it advises which devices to lean into next, tied to the campaign brief.
+	 * Chunking and failure behaviour mirror {@link #batchAudienceInsights}: small chunks keep each reply
+	 * inside the output budget, and a chunk that fails only drops its own tactics.
+	 *
+	 * @param inputs one entry per tactic whose device block is non-empty; tactics with a blank block
+	 *               must not be passed, since there is nothing to observe and the copy would be invented
+	 * @param brief  free-text campaign brief, used to tie the device read back to the campaign's goals
+	 * @return tactic number → its four strings (takeaway, what-worked, watch-out, recommendation), in
+	 * slide order; a tactic missing from the map got no usable reply and its fields should render blank
+	 * rather than fall back to invented copy
+	 */
+	Map<Integer, List<String>> batchDeviceInsights(List<DeviceInsightInput> inputs, String brief);
 
 	/**
 	 * Geo-tab → short ≤40-char comma-separated location string (or null).

@@ -9,6 +9,9 @@ import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeRow;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTable;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTakeawayInput;
+import com.aidigital.reportconstructor.service.reports.dto.DeviceInsightInput;
+import com.aidigital.reportconstructor.service.reports.dto.DeviceRow;
+import com.aidigital.reportconstructor.service.reports.dto.DeviceTable;
 import com.aidigital.reportconstructor.service.reports.dto.GeoInsightInput;
 import com.aidigital.reportconstructor.service.reports.dto.GeoRow;
 import com.aidigital.reportconstructor.service.reports.dto.GeoTable;
@@ -263,6 +266,58 @@ class ClaudeBatchPromptBuilderTest {
 
 		// When:
 		Optional<String> prompt = builder.buildAudienceInsightsPrompt(List.of(input), "brief", 256, 120);
+
+		// Then: no call is worth making — there is nothing to observe
+		assertThat(prompt).isEmpty();
+	}
+
+	@Test
+	void buildDeviceInsightsPrompt_quotesBothBudgetsAtEightyPercentAndCarriesTheDeviceDataTest() {
+		// Given: a tactic whose device block the user filled in
+		DeviceInsightInput input = new DeviceInsightInput(1, "CTV",
+				new DeviceTable("1.20%", "82%", "4", "Mobile", "61%",
+						List.of(new DeviceRow("Mobile", "1,200,000", "1.20%", "78%", "$4,000"),
+								new DeviceRow("Connected TV", "900,000", "", "95%", "$6,000"))));
+
+		// When: asked with the slide's real 256/120-character budgets
+		String prompt = builder.buildDeviceInsightsPrompt(List.of(input), "brief", 256, 120).orElseThrow();
+
+		// Then: Claude is asked for the smaller numbers, leaving the truncation safety net headroom
+		assertThat(prompt).contains("at most 204 characters");
+		assertThat(prompt).contains("at most 96 characters");
+
+		// Then: the tactic's name, stat tiles and the device table reach the prompt
+		assertThat(prompt).contains("tactic_1 — CTV");
+		assertThat(prompt).contains("Highest CTR: 1.20%");
+		assertThat(prompt).contains("Top device: Mobile");
+		assertThat(prompt).contains("Device | Impressions | CTR | VCR | Spend");
+		assertThat(prompt).contains("Mobile | 1,200,000 | 1.20% | 78% | $4,000");
+	}
+
+	@Test
+	void buildDeviceInsightsPrompt_asksFourStringsWithAForwardLookingRecommendedActionTest() {
+		// Given: a filled device block
+		DeviceInsightInput input = new DeviceInsightInput(1, "CTV",
+				new DeviceTable("1.20%", "82%", "4", "Mobile", "61%",
+						List.of(new DeviceRow("Mobile", "1,200,000", "1.20%", "78%", "$4,000"))));
+
+		// When:
+		String prompt = builder.buildDeviceInsightsPrompt(List.of(input), "brief", 256, 120).orElseThrow();
+
+		// Then: exactly four strings are requested, the fourth forward-looking, and CTV's missing CTR flagged
+		assertThat(prompt).contains("array of exactly 4 strings");
+		assertThat(prompt).contains("FORWARD-LOOKING recommendation");
+		assertThat(prompt).contains("MOST EFFECTIVE devices");
+		assertThat(prompt).contains("CTR does not apply to Connected TV");
+	}
+
+	@Test
+	void buildDeviceInsightsPrompt_emptyWhenNoTacticInTheChunkHasDataTest() {
+		// Given: a chunk whose only tactic left its block blank
+		DeviceInsightInput input = new DeviceInsightInput(1, "CTV", DeviceTable.empty());
+
+		// When:
+		Optional<String> prompt = builder.buildDeviceInsightsPrompt(List.of(input), "brief", 256, 120);
 
 		// Then: no call is worth making — there is nothing to observe
 		assertThat(prompt).isEmpty();
