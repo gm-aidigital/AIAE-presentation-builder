@@ -6,6 +6,7 @@ import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeSheetBatch;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
+import com.aidigital.reportconstructor.service.reports.dto.CreativeTakeawayInput;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationInput;
 
 import java.util.List;
@@ -90,6 +91,25 @@ public interface ClaudeClient {
 	 *         reply and its bullets should render blank rather than fall back to invented copy
 	 */
 	Map<Integer, List<String>> batchPublisherObservations(List<PublisherObservationInput> inputs, String brief);
+
+	/**
+	 * Creative-takeaways batch — the four {@code {{cr_takeaway_tactic N_1..4}}} bullets on each tactic's
+	 * "Creative analysis" breakdown slide, written from the hand-entered creative table the user reviewed
+	 * in the sheet.
+	 *
+	 * <p>The first three bullets read the creative mix (capped at 100 characters, the slide's text budget);
+	 * the fourth is a recommendation bullet describing an optimisation already made during the flight, and
+	 * gets a wider 140-character budget because it has to state both the action and its result. Chunking
+	 * and failure behaviour mirror {@link #batchPublisherObservations}: small chunks keep each reply inside
+	 * the output budget, and a chunk that fails only drops its own tactics.
+	 *
+	 * @param inputs one entry per tactic whose creative block is non-empty; tactics with a blank block must
+	 *               not be passed, since there is nothing to observe and the copy would be invented
+	 * @param brief  free-text campaign brief, used to tie the creative read back to the client's industry
+	 * @return tactic number → its four bullets, in slide order; a tactic missing from the map got no usable
+	 *         reply and its bullets should render blank rather than fall back to invented copy
+	 */
+	Map<Integer, List<String>> batchCreativeTakeaways(List<CreativeTakeawayInput> inputs, String brief);
 
 	/**
 	 * Geo-tab → short ≤40-char comma-separated location string (or null).

@@ -1,6 +1,7 @@
 package com.aidigital.reportconstructor.service.reports.ports;
 
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
+import com.aidigital.reportconstructor.service.reports.dto.CreativeTable;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
 
 import java.util.List;
@@ -131,5 +132,31 @@ public interface SheetDeckProvider {
 	 * @return tactic number → its filled publisher rows, in sheet order
 	 */
 	Map<Integer, List<PublisherRow>> readPublisherTables(
+			String spreadsheetId, Set<Integer> tacticNums, String userGoogleAccessToken);
+
+	/**
+	 * Reads back the hand-entered "Creative analysis" blocks from the generated workbook's
+	 * {@code "Breakdowns"} tab, so the deck can carry the creative rows exactly as the user typed them.
+	 * The block-location rules are {@link #readPublisherTables}': the {@code "Creative analysis N"}
+	 * anchor is matched on the <em>whole</em> cell (never a prefix, or block 1 would swallow block 15),
+	 * and the {@code Creative} / {@code Impressions} / {@code CTR} / {@code VCR} / {@code Spend} columns
+	 * are resolved by header text rather than fixed offsets.
+	 *
+	 * <p>Each block also carries four summary cells above the table ({@code CREATIVES LIVE},
+	 * {@code BEST CTR / VCR}, {@code AVG. CTR / VCR}, {@code TOP CREATIVE}), located by their label and
+	 * read from the first populated cell to the label's right — the template pairs them with the cell
+	 * immediately beside the label, but resolving by label survives a column being inserted between them.
+	 *
+	 * <p>The whole tab is read once for every requested tactic. A tactic whose anchor is missing, or whose
+	 * block is blank, maps to {@link CreativeTable#empty()} rather than failing the read; a workbook
+	 * without a {@code "Breakdowns"} tab yields an empty map.
+	 *
+	 * @param spreadsheetId         the workbook to read
+	 * @param tacticNums            1-based tactic numbers whose creative blocks are wanted
+	 * @param userGoogleAccessToken optional signed-in user's Google OAuth token; falls back to the
+	 *                              service account when blank
+	 * @return tactic number → its creative block, with rows in sheet order
+	 */
+	Map<Integer, CreativeTable> readCreativeTables(
 			String spreadsheetId, Set<Integer> tacticNums, String userGoogleAccessToken);
 }

@@ -19,6 +19,7 @@ import com.aidigital.reportconstructor.service.reports.helpers.ReportNumberParse
 import com.aidigital.reportconstructor.service.reports.helpers.ReportGenerationChartHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportGenerationWarningsHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportJobProgressHelper;
+import com.aidigital.reportconstructor.service.reports.helpers.CreativeBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.PublisherBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportSheetHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.SheetCampaignReader;
@@ -60,6 +61,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	private final ReportGenerationChartHelper chartHelper;
 	private final ReportSheetHelper sheetHelper;
 	private final PublisherBreakdownHelper publisherBreakdown;
+	private final CreativeBreakdownHelper creativeBreakdown;
 	private final SheetPlaceholderReader placeholderReader;
 	private final SheetCampaignReader sheetCampaign;
 	private final PlaceholderResolverService placeholders;
@@ -280,9 +282,14 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		// The values are assembled here rather than folded into flatReplacements because these slides do
 		// not exist yet when createDeck runs its placeholder pass: they are duplicated from the masters
 		// afterwards, so their tokens have to be filled as part of that same insertion.
-		Map<String, String> publisherValues = publisherBreakdown.buildPublisherValues(
-				payload.sheetUrl(), payload.breakdownSelections(), flatReplacements, brief, userGoogleToken);
-		chartHelper.addBreakdownSlides(slideUrl, payload, tacticCount, publisherValues, userGoogleToken);
+		//
+		// One map across all breakdown sections: each helper only emits tokens for the tactics that enabled
+		// its own section, and the sections share no tokens, so the merge cannot collide.
+		Map<String, String> breakdownValues = new LinkedHashMap<>(publisherBreakdown.buildPublisherValues(
+				payload.sheetUrl(), payload.breakdownSelections(), flatReplacements, brief, userGoogleToken));
+		breakdownValues.putAll(creativeBreakdown.buildCreativeValues(
+				payload.sheetUrl(), payload.breakdownSelections(), flatReplacements, brief, userGoogleToken));
+		chartHelper.addBreakdownSlides(slideUrl, payload, tacticCount, breakdownValues, userGoogleToken);
 
 		jobProgress.markJobRunningAtStep(jobId, 7, "Building charts");
 		List<String> chartWarnings = chartHelper.buildChartsFromSheet(

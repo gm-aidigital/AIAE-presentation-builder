@@ -1,6 +1,8 @@
 package com.aidigital.reportconstructor.externalservices.google;
 
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
+import com.aidigital.reportconstructor.service.reports.dto.CreativeRow;
+import com.aidigital.reportconstructor.service.reports.dto.CreativeTable;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
 import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
@@ -245,6 +247,314 @@ class RealSheetDeckProviderTest {
 
 		// Then: each column is found where its own header is, not where the template usually puts it
 		assertThat(header).containsExactly(1, 2, 3, 1);
+	}
+
+	@Test
+	void creativeTables_readsStatsAndRowsForTheRequestedTacticTest() {
+		// Given: a "Breakdowns" tab whose tactic-1 creative block carries all four stat tiles and two rows
+		RealSheetDeckProvider provider = newProvider();
+		List<List<String>> grid = creativeGrid(Map.of(
+				1, List.of(
+						List.of("Hero 15s", "1,200,000", "0.58%", "82.9%", "$4,800"),
+						List.of("Cutdown 6s", "600,000", "0.31%", "71.2%", "$2,100"))));
+
+		// When:
+		Map<Integer, CreativeTable> tables = provider.creativeTables(grid, Set.of(1));
+
+		// Then: the stat tiles come back as typed
+		CreativeTable table = tables.get(1);
+		assertThat(table.creativesLive()).isEqualTo("12");
+		assertThat(table.bestKpi()).isEqualTo("0.58");
+		assertThat(table.avgKpi()).isEqualTo("0.42");
+		assertThat(table.topCreative()).isEqualTo("Hero 15s");
+
+		// Then: both rows come back verbatim, in sheet order
+		assertThat(table.rows()).containsExactly(
+				new CreativeRow("Hero 15s", "1,200,000", "0.58%", "82.9%", "$4,800"),
+				new CreativeRow("Cutdown 6s", "600,000", "0.31%", "71.2%", "$2,100"));
+	}
+
+	@Test
+	void creativeTables_doesNotMatchTactic15BlockWhenReadingTactic1Test() {
+		// Given: a tab carrying both a "Creative analysis 1" and a "Creative analysis 15" block — the anchor
+		// of the first is a prefix of the second, so a loose match would pull tactic 15's rows into tactic 1
+		RealSheetDeckProvider provider = newProvider();
+		List<List<String>> grid = creativeGrid(Map.of(
+				1, List.of(List.of("Hero 15s", "1,200,000", "0.58%", "82.9%", "$4,800")),
+				15, List.of(List.of("Banner 300x250", "500,000", "0.11%", "—", "$900"))));
+
+		// When:
+		Map<Integer, CreativeTable> tables = provider.creativeTables(grid, Set.of(1));
+
+		// Then: only tactic 1's own row is returned and tactic 15's block is untouched
+		assertThat(tables.get(1).rows())
+				.containsExactly(new CreativeRow("Hero 15s", "1,200,000", "0.58%", "82.9%", "$4,800"));
+		assertThat(tables).doesNotContainKey(15);
+	}
+
+	@Test
+	void creativeTables_returnsEmptyTableForATacticWhoseBlockWasNeverFilledTest() {
+		// Given: a tab carrying no creative anchor for the requested tactic
+		RealSheetDeckProvider provider = newProvider();
+		List<List<String>> grid = creativeGrid(Map.of(1, List.of()));
+
+		// When:
+		Map<Integer, CreativeTable> tables = provider.creativeTables(grid, Set.of(2));
+
+		// Then: the tactic is present with an empty table rather than absent, so the slide still ships
+		assertThat(tables).containsKey(2);
+		assertThat(tables.get(2).isEmpty()).isTrue();
+	}
+
+	@Test
+	void findCreativeHeader_resolvesColumnsByHeaderTextRatherThanFixedOffsetsTest() {
+		// Given: a block whose metric columns sit in a different order than the template's default
+		RealSheetDeckProvider provider = newProvider();
+		List<List<String>> grid = new ArrayList<>();
+		grid.add(List.of("Creative analysis 1", "", "", "", ""));
+		grid.add(List.of("Spend", "VCR", "Creative", "CTR", "Impressions"));
+
+		// When:
+		int[] header = provider.findCreativeHeader(grid, 0, 2, 0, 5);
+
+		// Then: each column is found where its own header is, not where the template usually puts it
+		assertThat(header).containsExactly(1, 2, 4, 3, 1, 0);
+	}
+
+	@Test
+	void summaryValue_stopsAtTheBlocksRightEdgeRatherThanReadingTheNextSectionTest() {
+		// Given: a block whose "CREATIVES LIVE" value cell is blank, with the neighbouring section's text
+		// sitting just past the block's right edge
+		RealSheetDeckProvider provider = newProvider();
+		List<List<String>> grid = new ArrayList<>();
+		grid.add(new ArrayList<>(List.of("Creative analysis 1", "", "Geo analysis 1", "")));
+		grid.add(new ArrayList<>(List.of("CREATIVES LIVE", "", "MARKETS ACTIVATED", "14")));
+
+		// When: the block is bounded to its own two columns
+		String value = provider.summaryValue(grid, 0, 2, 0, 2, "CREATIVES LIVE");
+
+		// Then: the blank reads as blank — the next section's value is never pulled in
+		assertThat(value).isEmpty();
+	}
+
+	@Test
+	void creativeTables_findsBlocksByAnchorWhereverTheySitNotByTacticOrderTest() {
+		// Given: the real shape after Step-3 toggles — tactic 1 did NOT enable Creative analysis, so its
+		// section was cleared and the first surviving anchor is "Creative analysis 2", 18 rows down the tab.
+		// Tactics 2 and 3 both enabled it. Every other section of tactic 1's block stays put.
+		RealSheetDeckProvider provider = newProvider();
+		List<List<String>> grid = new ArrayList<>();
+		for (int block = 1; block <= 3; block++) {
+			for (int row = 0; row < 18; row++) {
+				List<String> cells = new ArrayList<>(Collections.nCopies(22, ""));
+				if (row == 0) {
+					cells.set(0, "Top Publishers " + block);
+					if (block > 1) {
+						cells.set(4, "Creative analysis " + block);
+					}
+					cells.set(9, "Geo analysis " + block);
+				}
+				if (block > 1) {
+					// The block's structure relative to its own anchor never changes, wherever it lands.
+					if (row == 1) {
+						cells.set(4, "CREATIVES LIVE");
+						cells.set(5, "1" + block);
+					}
+					if (row == 5) {
+						cells.set(4, "Creative");
+						cells.set(5, "Impressions");
+						cells.set(6, "CTR");
+						cells.set(7, "VCR");
+						cells.set(8, "Spend");
+					}
+					if (row == 6) {
+						cells.set(4, "Hero " + block);
+						cells.set(5, "1,200,00" + block);
+						cells.set(6, "0.5" + block + "%");
+						cells.set(7, "82.9%");
+						cells.set(8, "$4,800");
+					}
+				}
+				grid.add(cells);
+			}
+		}
+
+		// When: both surviving tactics are read
+		Map<Integer, CreativeTable> tables = provider.creativeTables(grid, Set.of(2, 3));
+
+		// Then: each block is read off its own anchor, so neither picks up the other's row
+		assertThat(tables.get(2).creativesLive()).isEqualTo("12");
+		assertThat(tables.get(2).rows())
+				.containsExactly(new CreativeRow("Hero 2", "1,200,002", "0.52%", "82.9%", "$4,800"));
+		assertThat(tables.get(3).creativesLive()).isEqualTo("13");
+		assertThat(tables.get(3).rows())
+				.containsExactly(new CreativeRow("Hero 3", "1,200,003", "0.53%", "82.9%", "$4,800"));
+	}
+
+	@Test
+	void creativeTables_readsOnlyTheCreativeSectionsColumnsNotItsNeighboursTest() {
+		// Given: a full block — Top Publishers (A–D), Creative analysis (E–I), Geo (J–L) — each carrying its
+		// own data, with a "Creative"-named row in the publisher table and a geo row alongside
+		RealSheetDeckProvider provider = newProvider();
+		List<List<String>> grid = new ArrayList<>();
+		List<String> header = new ArrayList<>(Collections.nCopies(13, ""));
+		header.set(0, "Top Publishers 1");
+		header.set(4, "Creative analysis 1");
+		header.set(9, "Geo analysis 1");
+		grid.add(header);
+		grid.add(row(13, Map.of(0, "CREATIVES LIVE", 1, "999", 4, "CREATIVES LIVE", 5, "12", 9, "MARKETS", 10, "14")));
+		grid.add(row(13, Map.of(
+				1, "Publisher", 2, "Impressions", 3, "Share of voice",
+				4, "Creative", 5, "Impressions", 6, "CTR", 7, "VCR", 8, "Spend",
+				9, "Geo", 10, "IMPS")));
+		grid.add(row(13, Map.of(
+				1, "YouTube", 2, "9,000,000", 3, "99%",
+				4, "Hero 15s", 5, "1,200,000", 6, "0.58%", 7, "82.9%", 8, "$4,800",
+				9, "New York", 10, "500,000")));
+		while (grid.size() < 18) {
+			grid.add(new ArrayList<>(Collections.nCopies(13, "")));
+		}
+
+		// When:
+		Map<Integer, CreativeTable> tables = provider.creativeTables(grid, Set.of(1));
+
+		// Then: only the creative section's own columns are read — the publisher row, the publisher block's
+		// identically-labelled stat tile, and the geo columns are all outside the block and never picked up
+		CreativeTable table = tables.get(1);
+		assertThat(table.creativesLive()).isEqualTo("12");
+		assertThat(table.rows())
+				.containsExactly(new CreativeRow("Hero 15s", "1,200,000", "0.58%", "82.9%", "$4,800"));
+	}
+
+	@Test
+	void creativeTables_survivesTheNeighbouringSectionBeingClearedTest() {
+		// Given: tactic 1 enabled Creative analysis but not Geo, so the Geo anchor is gone and the creative
+		// block's column span now runs to the next surviving anchor (Audience, col 12) instead of col 9
+		RealSheetDeckProvider provider = newProvider();
+		List<List<String>> grid = new ArrayList<>();
+		List<String> header = new ArrayList<>(Collections.nCopies(17, ""));
+		header.set(4, "Creative analysis 1");
+		header.set(12, "Audience analysis 1");
+		grid.add(header);
+		grid.add(row(17, Map.of(4, "CREATIVES LIVE", 5, "12", 12, "AGE DISTRIBUTION", 13, "25-34")));
+		grid.add(row(17, Map.of(4, "Creative", 5, "Impressions", 6, "CTR", 7, "VCR", 8, "Spend")));
+		grid.add(row(17, Map.of(4, "Hero 15s", 5, "1,200,000", 6, "0.58%", 7, "82.9%", 8, "$4,800")));
+		while (grid.size() < 18) {
+			grid.add(new ArrayList<>(Collections.nCopies(17, "")));
+		}
+
+		// When:
+		Map<Integer, CreativeTable> tables = provider.creativeTables(grid, Set.of(1));
+
+		// Then: the wider span reads only blank geo columns, so the block still comes back intact and the
+		// audience section's value is never mistaken for a creative stat
+		CreativeTable table = tables.get(1);
+		assertThat(table.creativesLive()).isEqualTo("12");
+		assertThat(table.rows())
+				.containsExactly(new CreativeRow("Hero 15s", "1,200,000", "0.58%", "82.9%", "$4,800"));
+	}
+
+	@Test
+	void creativeTables_doesNotBleedIntoTheNextTacticWhenAWholeBlockIsClearedTest() {
+		// Given: tactic 2 turned every breakdown off, so its whole 18-row block is blank and carries no
+		// anchor at all — the block height can then only be inferred from the 36-row gap between tactic 1's
+		// and tactic 3's anchors, which is twice the real block height
+		RealSheetDeckProvider provider = newProvider();
+		List<List<String>> grid = new ArrayList<>();
+		for (int block = 1; block <= 3; block++) {
+			for (int row = 0; row < 18; row++) {
+				List<String> cells = new ArrayList<>(Collections.nCopies(9, ""));
+				if (block != 2) {
+					if (row == 0) {
+						cells.set(4, "Creative analysis " + block);
+					}
+					if (row == 1) {
+						cells.set(4, "CREATIVES LIVE");
+						cells.set(5, "1" + block);
+					}
+					if (row == 5) {
+						cells.set(4, "Creative");
+						cells.set(5, "Impressions");
+						cells.set(6, "CTR");
+						cells.set(7, "VCR");
+						cells.set(8, "Spend");
+					}
+					if (row == 6) {
+						cells.set(4, "Hero " + block);
+						cells.set(5, "1,200,00" + block);
+						cells.set(6, "0.5" + block + "%");
+						cells.set(7, "82.9%");
+						cells.set(8, "$4,800");
+					}
+				}
+				grid.add(cells);
+			}
+		}
+
+		// When:
+		Map<Integer, CreativeTable> tables = provider.creativeTables(grid, Set.of(1, 3));
+
+		// Then: tactic 1's over-wide window only ever reaches the cleared block's blank rows — tactic 3's
+		// own block starts exactly where the window ends, so its creative is never pulled into tactic 1
+		assertThat(tables.get(1).rows())
+				.containsExactly(new CreativeRow("Hero 1", "1,200,001", "0.51%", "82.9%", "$4,800"));
+		assertThat(tables.get(3).rows())
+				.containsExactly(new CreativeRow("Hero 3", "1,200,003", "0.53%", "82.9%", "$4,800"));
+	}
+
+	/**
+	 * Builds one grid row of the given width with the given cells populated.
+	 *
+	 * @param width        the row's column count
+	 * @param cellsByIndex zero-based column → value
+	 * @return the row as trimmed cell strings
+	 */
+	private List<String> row(int width, Map<Integer, String> cellsByIndex) {
+		List<String> cells = new ArrayList<>(Collections.nCopies(width, ""));
+		cellsByIndex.forEach(cells::set);
+		return cells;
+	}
+
+	/**
+	 * Builds a "Breakdowns" tab carrying an 18-row Creative analysis block per given tactic: the anchor
+	 * row, the four stat-tile rows, a header row, then the tactic's filled rows.
+	 *
+	 * @param rowsByTactic tactic number → its creative rows as {@code [name, imps, ctr, vcr, spend]}
+	 * @return the tab as trimmed cell strings
+	 */
+	private List<List<String>> creativeGrid(Map<Integer, List<List<String>>> rowsByTactic) {
+		List<List<String>> grid = new ArrayList<>();
+		for (Map.Entry<Integer, List<List<String>>> entry : new java.util.TreeMap<>(rowsByTactic).entrySet()) {
+			List<List<String>> block = new ArrayList<>();
+			block.add(pad(List.of("Creative analysis " + entry.getKey(), "{{tactic " + entry.getKey() + "}}")));
+			block.add(pad(List.of("CREATIVES LIVE", "12")));
+			block.add(pad(List.of("BEST CTR / VCR", "0.58")));
+			block.add(pad(List.of("AVG. CTR / VCR", "0.42")));
+			block.add(pad(List.of("TOP CREATIVE", "Hero 15s")));
+			block.add(pad(List.of("Creative", "Impressions", "CTR", "VCR", "Spend")));
+			for (List<String> row : entry.getValue()) {
+				block.add(pad(row));
+			}
+			while (block.size() < 18) {
+				block.add(new ArrayList<>(Collections.nCopies(5, "")));
+			}
+			grid.addAll(block);
+		}
+		return grid;
+	}
+
+	/**
+	 * Pads a row out to the creative block's five columns so every grid row is the same width.
+	 *
+	 * @param cells the row's populated leading cells
+	 * @return a five-column row
+	 */
+	private List<String> pad(List<String> cells) {
+		List<String> row = new ArrayList<>(cells);
+		while (row.size() < 5) {
+			row.add("");
+		}
+		return row;
 	}
 
 	/**

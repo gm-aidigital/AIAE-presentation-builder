@@ -172,6 +172,33 @@ Actual behaviour: `addBreakdownSlides` takes a `breakdownValues` map and, per ma
 token, replaces the generic token with its **final value** in one scoped call when the
 renumbered form has an entry; tokens with no entry fall back to a plain renumber (and
 would still ship raw — so every token a breakdown slide carries needs a value).
-Top Publishers values are assembled by `PublisherBreakdownHelper`.
+Top Publishers values are assembled by `PublisherBreakdownHelper`; Creative analysis
+values by `CreativeBreakdownHelper` (both maps are merged in `runSlidesFromSheet` — the
+sections share no tokens, so the merge cannot collide).
+
+**Creative analysis sheet mapping (added 2026-07-17).** The `Creative analysis N` block on
+the `Breakdowns` tab is hand-filled by the user and read back by
+`SheetDeckProvider.readCreativeTables`:
+
+| Sheet cell | Slide token |
+|---|---|
+| `CREATIVES LIVE` value | `{{cr_live_n}}` |
+| `BEST CTR / VCR` value | `{{cr_bKPI_n}}` |
+| `AVG. CTR / VCR` value | `{{cr_aKPI_n}}` |
+| `TOP CREATIVE` value | `{{tactic n top creative name}}` |
+| table col `Creative` | `{{tactic n top creative name n.i}}` |
+| table cols `Impressions`/`CTR`/`VCR`/`Spend` | `{{tactic n.i top creative imps/ctr/vcr/spend}}` |
+
+`{{tactic n}}` and `{{tactic n KPI type}}` are carried over from the deck's own placeholder
+map. The five table rows and every stat tile are always written (em-dash when unfilled).
+
+Unlike the publisher table — whose cells the template leaves empty — the creative block
+ships with its tokens pre-typed as hints, so a cell still matching `{{…}}` is treated as
+unfilled: dashed on the slide, and hidden from Claude so it cannot read `{{cr_live_n}}` as
+a value.
+
+`{{cr_takeaway_tactic n_1..3}}` are Claude reads of the creative mix at **100 chars**;
+`{{cr_takeaway_tactic n_4}}` is a mid-flight optimisation + its result at **140 chars**.
+Both quoted to Claude at 0.8 of budget, then compressed + sentence-aware truncated.
 Every token now carries `n` (publisher observations updated to `_n_` form), so all
 renumber cleanly per tactic — no shared/global-collision tokens remain.

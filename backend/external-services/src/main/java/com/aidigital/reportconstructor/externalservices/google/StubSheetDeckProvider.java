@@ -1,6 +1,7 @@
 package com.aidigital.reportconstructor.externalservices.google;
 
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
+import com.aidigital.reportconstructor.service.reports.dto.CreativeTable;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
 import com.aidigital.reportconstructor.service.reports.ports.PacingTablesRequest;
 import com.aidigital.reportconstructor.service.reports.ports.SheetDeckProvider;
@@ -64,6 +65,13 @@ public class StubSheetDeckProvider implements SheetDeckProvider {
 	public Map<Integer, List<PublisherRow>> readPublisherTables(
 			String spreadsheetId, Set<Integer> tacticNums, String userGoogleAccessToken) {
 		// The stub never clones a real workbook, so there are no hand-entered publisher rows to read.
+		return Map.of();
+	}
+
+	@Override
+	public Map<Integer, CreativeTable> readCreativeTables(
+			String spreadsheetId, Set<Integer> tacticNums, String userGoogleAccessToken) {
+		// The stub never clones a real workbook, so there are no hand-entered creative rows to read.
 		return Map.of();
 	}
 }

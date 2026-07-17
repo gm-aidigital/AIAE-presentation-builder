@@ -6,6 +6,7 @@ import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeSheetBatch;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
+import com.aidigital.reportconstructor.service.reports.dto.CreativeTakeawayInput;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationInput;
 import com.aidigital.reportconstructor.service.reports.dto.Recommendation;
 import com.aidigital.reportconstructor.service.reports.dto.StrategicInsight;
@@ -70,6 +71,24 @@ public class RealClaudeClient implements ClaudeClient {
 
 	/** Output budget per publisher-observations chunk: 4 bullets × 5 tactics plus JSON overhead. */
 	private static final int PUBLISHER_OBSERVATION_MAX_TOKENS = 1500;
+
+	/** Character budget of the first three {@code {{cr_takeaway_tactic N_x}}} bullets on the slide. */
+	private static final int CREATIVE_TAKEAWAY_LIMIT = 100;
+
+	/**
+	 * Character budget of the fourth {@code {{cr_takeaway_tactic N_4}}} bullet. Wider than the other three
+	 * because it carries the mid-flight optimisation <em>and</em> its result, which does not fit in 100.
+	 */
+	private static final int CREATIVE_RECO_LIMIT = 140;
+
+	/** Bullets per tactic on the "Creative analysis" slide; the last one is the recommendation. */
+	private static final int CREATIVE_TAKEAWAY_COUNT = 4;
+
+	/** Tactics per creative-takeaways call, chunked for the same reason publisher observations are. */
+	private static final int CREATIVE_TAKEAWAY_CHUNK = 5;
+
+	/** Output budget per creative-takeaways chunk: 4 bullets × 5 tactics plus JSON overhead. */
+	private static final int CREATIVE_TAKEAWAY_MAX_TOKENS = 1500;
 
 	// Batch C emits one results-overview per tactic group plus one tactic-overview PER TACTIC (up to 28), on
 	// top of thoughts, four recommendations and the frequency copy — all in a single JSON reply. A fixed cap
@@ -477,6 +496,86 @@ public class RealClaudeClient implements ClaudeClient {
 			observations.put(input.tacticNum(), bullets);
 		}
 		return observations;
+	}
+
+	@Override
+	public Map<Integer, List<String>> batchCreativeTakeaways(List<CreativeTakeawayInput> inputs, String brief) {
+		Map<Integer, List<String>> takeaways = new LinkedHashMap<>();
+		if (inputs == null || inputs.isEmpty()) {
+			return takeaways;
+		}
+		for (int start = 0; start < inputs.size(); start += CREATIVE_TAKEAWAY_CHUNK) {
+			List<CreativeTakeawayInput> chunk =
+					inputs.subList(start, Math.min(start + CREATIVE_TAKEAWAY_CHUNK, inputs.size()));
+			takeaways.putAll(creativeTakeawaysChunk(chunk, brief));
+		}
+		return takeaways;
+	}
+
+	/**
+	 * Runs one creative-takeaways chunk: prompt, parse, compress the over-budget bullets, then apply the
+	 * truncation safety net. Returns an empty map — never partial or invented copy — when the call or the
+	 * parse fails, so only this chunk's tactics lose their bullets.
+	 *
+	 * @param chunk the tactics to cover in this single call
+	 * @param brief free-text campaign brief passed through to the prompt
+	 * @return tactic number → its four bullets; empty when the chunk produced no usable reply
+	 */
+	Map<Integer, List<String>> creativeTakeawaysChunk(List<CreativeTakeawayInput> chunk, String brief) {
+		Map<Integer, List<String>> takeaways = new LinkedHashMap<>();
+		var prompt = promptBuilder.buildCreativeTakeawaysPrompt(
+				chunk, brief, CREATIVE_TAKEAWAY_LIMIT, CREATIVE_RECO_LIMIT);
+		if (prompt.isEmpty()) {
+			return takeaways;
+		}
+		JsonNode parsed = messagesClient.callJsonObject(
+				prompt.get(), CREATIVE_TAKEAWAY_MAX_TOKENS, 60, "BatchCreatives", false);
+		if (parsed == null) {
+			return takeaways;
+		}
+
+		// Collect every bullet across the chunk's tactics first, so the whole chunk's over-budget text is
+		// compressed in one Batch D call rather than one per tactic.
+		List<ClaudeCompressionField> compressionFields = new ArrayList<>();
+		for (CreativeTakeawayInput input : chunk) {
+			JsonNode arr = parsed.get("tactic_" + input.tacticNum());
+			if (arr == null || !arr.isArray()) {
+				continue;
+			}
+			for (int i = 0; i < CREATIVE_TAKEAWAY_COUNT; i++) {
+				String raw = i < arr.size() ? arr.get(i).asText("").trim() : "";
+				compressionFields.add(new ClaudeCompressionField(
+						input.tacticNum() + "_" + i, raw, creativeTakeawayLimit(i)));
+			}
+		}
+		if (compressionFields.isEmpty()) {
+			return takeaways;
+		}
+		Map<String, String> compressed = compressionService.compress(compressionFields, "BatchD-Creatives");
+
+		for (CreativeTakeawayInput input : chunk) {
+			if (parsed.get("tactic_" + input.tacticNum()) == null) {
+				continue;
+			}
+			List<String> bullets = new ArrayList<>(CREATIVE_TAKEAWAY_COUNT);
+			for (int i = 0; i < CREATIVE_TAKEAWAY_COUNT; i++) {
+				bullets.add(normalizer.normalizeC(
+						compressed.get(input.tacticNum() + "_" + i), creativeTakeawayLimit(i)));
+			}
+			takeaways.put(input.tacticNum(), bullets);
+		}
+		return takeaways;
+	}
+
+	/**
+	 * Returns the character budget of one creative takeaway by its zero-based slide position: the last
+	 * bullet is the mid-flight optimisation note and gets the wider {@link #CREATIVE_RECO_LIMIT}.
+	 *
+	 * @param index zero-based bullet index within the tactic's four takeaways
+	 * @return the bullet's character budget
+	 */
+	int creativeTakeawayLimit(int index) {
+		return index == CREATIVE_TAKEAWAY_COUNT - 1 ? CREATIVE_RECO_LIMIT : CREATIVE_TAKEAWAY_LIMIT;
 	}
 
 	@Override

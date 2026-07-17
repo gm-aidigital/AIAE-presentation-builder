@@ -2,6 +2,9 @@ package com.aidigital.reportconstructor.externalservices.anthropic;
 
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
+import com.aidigital.reportconstructor.service.reports.dto.CreativeRow;
+import com.aidigital.reportconstructor.service.reports.dto.CreativeTable;
+import com.aidigital.reportconstructor.service.reports.dto.CreativeTakeawayInput;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationInput;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
 import com.aidigital.reportconstructor.service.reports.dto.Tactic;
@@ -52,6 +55,25 @@ public class ClaudeBatchPromptBuilder {
 	private static final String LEARNING_PHASE_RULE =
 			"7. DATA SUFFICIENCY. If the flight window is under 7 days live, flag DSP learning-phase volatility and "
 					+ "avoid firm conclusions or scaling recommendations drawn from that short window.\n";
+
+	/**
+	 * Small-sample caveat for the creative-takeaways prompt. A creative with few impressions routinely
+	 * posts a CTR or completion rate far above the tactic's average (20% against 1.2%) — that is noise on
+	 * low volume, not a winner. Left unsaid, Claude reads the outlier as the campaign's best creative and
+	 * recommends shifting budget into it, which is the one recommendation the DSP cannot honour: its model
+	 * either fails to spend there at all or delivers well below the current average, and a large shift
+	 * resets the learning phase on top of it. The ~20% ceiling is the house rule for the case where such a
+	 * creative is genuinely worth backing.
+	 */
+	private static final String CREATIVE_SMALL_SAMPLE_RULE =
+			"- SMALL-SAMPLE OUTLIERS. A creative with few impressions can post a CTR/completion rate many times "
+					+ "the tactic's average (e.g. 20% against a 1.2% average). Treat that as statistical noise on "
+					+ "low volume, NOT as the best creative: say so plainly rather than crowning it. Judge "
+					+ "engagement leadership on creatives with meaningful impression volume.\n"
+					+ "- NEVER recommend shifting significant budget onto such a low-volume outlier. The DSP's "
+					+ "model would either fail to spend it or deliver well below the current average. Where a "
+					+ "creative genuinely deserves more budget, the action is an increase of at most ~20%, so the "
+					+ "DSP's learning phase is not reset.\n";
 
 	private final ClaudeResponseNormalizer normalizer;
 	private final Fmt fmt;
@@ -952,6 +974,107 @@ public class ClaudeBatchPromptBuilder {
 				+ "=== CAMPAIGN BRIEF ===\n" + (brief == null ? "" : brief) + "\n\n"
 				+ "=== PUBLISHER DATA ===\n" + String.join("\n", blocks);
 		return Optional.of(prompt);
+	}
+
+	/**
+	 * Builds the creative-takeaways prompt for one chunk of tactics, or empty when the chunk carries no
+	 * tactic with a filled creative block.
+	 *
+	 * <p>Both quoted limits are {@link #COMPRESSION_PROMPT_BUFFER_RATIO} of the slide's real budgets, for
+	 * the same reason {@link #buildPublisherObservationsPrompt}'s is: copy written right up to the budget
+	 * has nowhere to go when the truncation safety net runs and gets cut mid-thought, so asking for the
+	 * smaller number up front means most bullets never need compressing at all.
+	 *
+	 * @param inputs        the chunk's tactics, each with its hand-entered creative block
+	 * @param brief         free-text campaign brief, used to tie the creative read back to the industry
+	 * @param maxChars      the slide's real budget for the three observation bullets
+	 * @param recoMaxChars  the slide's real budget for the fourth (recommendation) bullet
+	 * @return the prompt requesting a JSON object of {@code "tactic_<n>"} → 4-bullet array, or empty when
+	 * every tactic in the chunk has a blank block
+	 */
+	public Optional<String> buildCreativeTakeawaysPrompt(
+			List<CreativeTakeawayInput> inputs, String brief, int maxChars, int recoMaxChars) {
+		List<String> blocks = new ArrayList<>();
+		for (CreativeTakeawayInput input : inputs) {
+			if (input.table() == null || input.table().isEmpty()) {
+				continue;
+			}
+			blocks.add(creativeContextBlock(input));
+		}
+		if (blocks.isEmpty()) {
+			return Optional.empty();
+		}
+		int promptLimit = Math.max(1, (int) (maxChars * COMPRESSION_PROMPT_BUFFER_RATIO));
+		int recoPromptLimit = Math.max(1, (int) (recoMaxChars * COMPRESSION_PROMPT_BUFFER_RATIO));
+		String prompt = "You are a senior programmatic media analyst writing the KEY TAKEAWAYS bullets for the "
+				+ "'Creative analysis' slide of an end-of-campaign report.\n\n"
+				+ "For EACH tactic below, write exactly 4 takeaways about its creative performance.\n\n"
+				+ "Rules:\n"
+				+ "- Takeaways 1-3 read the creative mix: ONE complete sentence each, at most " + promptLimit
+				+ " characters.\n"
+				+ "- Ground every takeaway in the numbers given: name real creatives, cite real impressions "
+				+ "shares, CTR/VCR and spend, and compare creatives against each other.\n"
+				+ "- Vary the angle across takeaways 1-3: the delivery/completion anchor, the engagement "
+				+ "leader, and a read on creative format or size (e.g. what a top creative's size implies "
+				+ "about device or placement distribution).\n"
+				+ "- At most ~20% of each takeaway may go beyond the table — a short, well-established read on "
+				+ "why that creative or format suits this campaign's industry or audience. Never invent a "
+				+ "metric that is not in the table, and never state such a read as measured fact.\n"
+				+ CREATIVE_SMALL_SAMPLE_RULE
+				+ "- Takeaway 4 is DIFFERENT: it states an optimisation ALREADY MADE on creative during the "
+				+ "flight and the result it produced (e.g. a mid-flight budget shift from one creative to "
+				+ "another after a deviation was spotted). At most " + recoPromptLimit + " characters, still "
+				+ "one complete sentence, still grounded in the table's creatives and numbers, and still bound "
+				+ "by the small-sample and ~20% rules above.\n"
+				+ "- Use the tactic's own KPI type when talking about its lead metric.\n"
+				+ "- Analyst tone, no filler, no bullet characters, no markdown.\n\n"
+				+ "Return ONLY a JSON object keyed by tactic, each key mapping to an array of exactly 4 strings:\n"
+				+ "{\"tactic_1\": [\"...\", \"...\", \"...\", \"...\"]}\n\n"
+				+ "=== CAMPAIGN BRIEF ===\n" + (brief == null ? "" : brief) + "\n\n"
+				+ "=== CREATIVE DATA ===\n" + String.join("\n", blocks);
+		return Optional.of(prompt);
+	}
+
+	/**
+	 * Renders one tactic's creative block as prompt context: its name and KPI type, the four summary
+	 * stats the slide shows, and the creative table. Blank summary cells are omitted rather than sent as
+	 * empty labels, so the user leaving a stat tile empty never reads to Claude as a zero.
+	 *
+	 * @param input the tactic's creative block
+	 * @return the tactic's {@code tactic_<n>} context block
+	 */
+	String creativeContextBlock(CreativeTakeawayInput input) {
+		CreativeTable table = input.table();
+		StringBuilder block = new StringBuilder();
+		block.append("tactic_").append(input.tacticNum()).append(" — ").append(input.tacticName());
+		if (input.kpiType() != null && !input.kpiType().isBlank()) {
+			block.append(" (lead KPI: ").append(input.kpiType()).append(')');
+		}
+		block.append('\n');
+		appendCreativeStat(block, "Creatives live", table.creativesLive());
+		appendCreativeStat(block, "Best CTR/VCR", table.bestKpi());
+		appendCreativeStat(block, "Avg CTR/VCR", table.avgKpi());
+		appendCreativeStat(block, "Top creative", table.topCreative());
+		block.append("Creative | Impressions | CTR | VCR | Spend\n");
+		for (CreativeRow row : table.rows()) {
+			block.append(row.name()).append(" | ").append(row.impressions()).append(" | ").append(row.ctr())
+					.append(" | ").append(row.vcr()).append(" | ").append(row.spend()).append('\n');
+		}
+		return block.toString();
+	}
+
+	/**
+	 * Appends one summary stat line to a creative context block, skipping the stat entirely when the user
+	 * left its cell blank.
+	 *
+	 * @param block the block being built
+	 * @param label the stat's prompt label
+	 * @param value the stat's value as typed in the sheet, possibly blank
+	 */
+	void appendCreativeStat(StringBuilder block, String label, String value) {
+		if (value != null && !value.isBlank()) {
+			block.append(label).append(": ").append(value).append('\n');
+		}
 	}
 
 	/**

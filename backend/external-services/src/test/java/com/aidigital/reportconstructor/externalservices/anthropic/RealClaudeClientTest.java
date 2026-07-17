@@ -4,6 +4,9 @@ import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
+import com.aidigital.reportconstructor.service.reports.dto.CreativeRow;
+import com.aidigital.reportconstructor.service.reports.dto.CreativeTable;
+import com.aidigital.reportconstructor.service.reports.dto.CreativeTakeawayInput;
 import com.aidigital.reportconstructor.service.reports.dto.Recommendation;
 import com.aidigital.reportconstructor.service.reports.dto.StrategicInsight;
 import com.aidigital.reportconstructor.service.reports.dto.Totals;
@@ -21,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
@@ -208,5 +212,66 @@ class RealClaudeClientTest {
 		assertThat(strategic.strategicInsights())
 				.extracting(StrategicInsight::point)
 				.containsExactly("Precision", "Reach", "Timing", "Efficiency");
+	}
+
+	@Test
+	void batchCreativeTakeawaysGivesTheRecommendationBulletTheWiderBudgetTest() throws Exception {
+		// Given: a real prompt builder/normalizer, an identity compression pass, and a reply whose four
+		// bullets all run past 100 characters — the budget of the three reads, but not of the fourth bullet
+		ClaudeResponseNormalizer normalizer = new ClaudeResponseNormalizer();
+		ClaudeBatchPromptBuilder promptBuilder = new ClaudeBatchPromptBuilder(normalizer, new Fmt());
+		RealClaudeClient client = new RealClaudeClient(
+				messagesClient, promptBuilder, normalizer, compressionService, new ReportClaudeDefaults());
+
+		CreativeTakeawayInput input = new CreativeTakeawayInput(1, "CTV", "VCR",
+				new CreativeTable("12", "0.58", "0.42", "Hero 15s",
+						List.of(new CreativeRow("Hero 15s", "1,200,000", "0.58%", "82.9%", "$4,800"))));
+		String expectedPrompt = promptBuilder
+				.buildCreativeTakeawaysPrompt(List.of(input), "brief", 100, 140).orElseThrow();
+		String long120 = "Hero 15s carried 71% of impressions and posted the campaign's strongest completion "
+				+ "rate at 82.9% overall now.";
+		JsonNode response = json.readTree(json.writeValueAsString(Map.of(
+				"tactic_1", List.of(long120, long120, long120, long120))));
+		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(1500), eq(60), eq("BatchCreatives"), eq(false)))
+				.thenReturn(response);
+		when(compressionService.compress(any(), eq("BatchD-Creatives")))
+				.thenAnswer(call -> {
+					Map<String, String> out = new LinkedHashMap<>();
+					for (ClaudeCompressionField field : call.<List<ClaudeCompressionField>>getArgument(0)) {
+						out.put(field.key(), field.text());
+					}
+					return out;
+				});
+
+		// When:
+		Map<Integer, List<String>> takeaways = client.batchCreativeTakeaways(List.of(input), "brief");
+
+		// Then: the three read bullets are cut to their 100-character budget
+		List<String> bullets = takeaways.get(1);
+		assertThat(bullets).hasSize(4);
+		assertThat(bullets.get(0)).hasSizeLessThanOrEqualTo(100);
+		assertThat(bullets.get(2)).hasSizeLessThanOrEqualTo(100);
+
+		// Then: the recommendation bullet keeps the wider 140-character budget, so it is not cut at all
+		assertThat(bullets.get(3)).isEqualTo(long120);
+	}
+
+	@Test
+	void batchCreativeTakeawaysReturnsNothingWhenTheCallFailsTest() {
+		// Given: a chunk whose call comes back unusable (timeout / unparseable JSON)
+		ClaudeResponseNormalizer normalizer = new ClaudeResponseNormalizer();
+		ClaudeBatchPromptBuilder promptBuilder = new ClaudeBatchPromptBuilder(normalizer, new Fmt());
+		RealClaudeClient client = new RealClaudeClient(
+				messagesClient, promptBuilder, normalizer, compressionService, new ReportClaudeDefaults());
+		CreativeTakeawayInput input = new CreativeTakeawayInput(1, "CTV", "VCR",
+				new CreativeTable("12", "0.58", "0.42", "Hero 15s", List.of()));
+		when(messagesClient.callJsonObject(any(), eq(1500), eq(60), eq("BatchCreatives"), eq(false)))
+				.thenReturn(null);
+
+		// When:
+		Map<Integer, List<String>> takeaways = client.batchCreativeTakeaways(List.of(input), "brief");
+
+		// Then: the tactic is absent rather than carrying invented copy — the caller blanks its bullets
+		assertThat(takeaways).isEmpty();
 	}
 }

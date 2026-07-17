@@ -4,6 +4,7 @@ import com.aidigital.reportconstructor.service.reports.dto.BreakdownSelection;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
+import com.aidigital.reportconstructor.service.reports.dto.CreativeTable;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
 import com.aidigital.reportconstructor.service.reports.helpers.BreakdownSelectionResolver;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportNumberParser;
@@ -154,6 +155,22 @@ public class ReportSheetHelperImpl implements ReportSheetHelper {
 			return sheets.readPublisherTables(spreadsheetId, tacticNums, userGoogleToken);
 		} catch (RuntimeException ex) {
 			log.warn("[sheets] readPublisherTables failed for {} (non-fatal): {}", spreadsheetId, ex.getMessage());
+			return Map.of();
+		}
+	}
+
+	@Override
+	public Map<Integer, CreativeTable> readCreativeTables(
+			String sheetUrl, Set<Integer> tacticNums, String userGoogleToken) {
+		String spreadsheetId = extractSpreadsheetId(sheetUrl);
+		if (spreadsheetId == null) {
+			log.warn("[sheets] readCreativeTables: could not determine spreadsheet id from {}", sheetUrl);
+			return Map.of();
+		}
+		try {
+			return sheets.readCreativeTables(spreadsheetId, tacticNums, userGoogleToken);
+		} catch (RuntimeException ex) {
+			log.warn("[sheets] readCreativeTables failed for {} (non-fatal): {}", spreadsheetId, ex.getMessage());
 			return Map.of();
 		}
 	}

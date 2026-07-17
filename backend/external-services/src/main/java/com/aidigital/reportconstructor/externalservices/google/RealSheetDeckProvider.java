@@ -3,6 +3,8 @@ package com.aidigital.reportconstructor.externalservices.google;
 import com.aidigital.reportconstructor.service.common.error.AppException;
 import com.aidigital.reportconstructor.service.common.error.ErrorReason;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
+import com.aidigital.reportconstructor.service.reports.dto.CreativeRow;
+import com.aidigital.reportconstructor.service.reports.dto.CreativeTable;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
 import com.aidigital.reportconstructor.service.reports.ports.PacingTablesRequest;
 import com.aidigital.reportconstructor.service.reports.ports.SheetDeckProvider;
@@ -122,6 +124,33 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 
 	/** Header text of the "Top Publishers" block's share-of-voice column. */
 	private static final String PUBLISHER_SOV_HEADER = "Share of voice";
+
+	/**
+	 * Header text of the "Creative analysis" block's creative-name column. Whole-cell matching keeps it
+	 * from colliding with the block's own {@code "Creative analysis N"} anchor or its {@code "TOP CREATIVE"}
+	 * summary label.
+	 */
+	private static final String CREATIVE_NAME_HEADER = "Creative";
+
+	/**
+	 * Header texts of the "Creative analysis" table's metric columns, in slide order. Each is resolved on
+	 * the header row by text, so inserting a column in the template cannot shift a metric onto the wrong
+	 * slide cell.
+	 */
+	private static final String CREATIVE_IMPRESSIONS_HEADER = "Impressions";
+	private static final String CREATIVE_CTR_HEADER = "CTR";
+	private static final String CREATIVE_VCR_HEADER = "VCR";
+	private static final String CREATIVE_SPEND_HEADER = "Spend";
+
+	/**
+	 * Row labels of the four summary cells above each "Creative analysis" table, whose values the slide
+	 * shows in its stat tiles. Each label is matched on the whole cell and its value taken from the first
+	 * populated cell to its right within the block.
+	 */
+	private static final String CREATIVES_LIVE_LABEL = "CREATIVES LIVE";
+	private static final String CREATIVE_BEST_KPI_LABEL = "BEST CTR / VCR";
+	private static final String CREATIVE_AVG_KPI_LABEL = "AVG. CTR / VCR";
+	private static final String CREATIVE_TOP_LABEL = "TOP CREATIVE";
 
 	/**
 	 * The only tokens the {@code "Breakdowns"} tab carries — each block's {@code {{tactic N}}} heading
@@ -363,6 +392,190 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 			throw new AppException(ErrorReason.C000,
 					"Google Sheets readPublisherTables failed: " + ex.getMessage());
 		}
+	}
+
+	@Override
+	public Map<Integer, CreativeTable> readCreativeTables(
+			String spreadsheetId, Set<Integer> tacticNums, String userGoogleAccessToken) {
+		if (tacticNums == null || tacticNums.isEmpty()) {
+			return Map.of();
+		}
+		boolean asUser = userGoogleAccessToken != null && !userGoogleAccessToken.isBlank();
+		Sheets sheetsClient = asUser ? buildSheets(userGoogleAccessToken) : sheets;
+		try {
+			Map<String, Integer> tabSheetIds = fetchSheetIds(sheetsClient, spreadsheetId);
+			if (!tabSheetIds.containsKey(BREAKDOWN_TAB)) {
+				log.warn("[sheets] readCreativeTables: no \"{}\" tab in {} — skipping", BREAKDOWN_TAB, spreadsheetId);
+				return Map.of();
+			}
+			// One read of the whole tab serves every requested tactic — the blocks all live on it.
+			List<List<String>> grid = readGrid(sheetsClient, spreadsheetId, BREAKDOWN_TAB);
+			return creativeTables(grid, tacticNums);
+		} catch (IOException ex) {
+			log.error("[sheets] readCreativeTables failed for {}", spreadsheetId, ex);
+			throw new AppException(ErrorReason.C000,
+					"Google Sheets readCreativeTables failed: " + ex.getMessage());
+		}
+	}
+
+	/**
+	 * Extracts the requested tactics' "Creative analysis" blocks from an already-read
+	 * {@code "Breakdowns"} tab. Blocks are bounded exactly as {@link #publisherTables} bounds theirs —
+	 * anchor cell, inferred block height, next anchor on the header row — so the read, the clear and
+	 * the publisher read can never disagree about where a block ends.
+	 *
+	 * @param grid       the {@code "Breakdowns"} tab, read as trimmed cell strings
+	 * @param tacticNums 1-based tactic numbers whose blocks are wanted
+	 * @return tactic number → its creative block; tactics with no anchor map to {@link CreativeTable#empty()}
+	 */
+	Map<Integer, CreativeTable> creativeTables(List<List<String>> grid, Set<Integer> tacticNums) {
+		Map<Integer, CreativeTable> tables = new LinkedHashMap<>();
+		List<int[]> anchors = findBreakdownAnchors(grid);
+		if (anchors.isEmpty()) {
+			log.warn("[sheets] readCreativeTables: no breakdown anchors on \"{}\" tab — nothing to read",
+					BREAKDOWN_TAB);
+			return tables;
+		}
+		int blockHeight = breakdownBlockHeight(anchors);
+		int creativeOrdinal = BreakdownType.CREATIVE.ordinal();
+		for (int[] anchor : anchors) {
+			if (anchor[0] != creativeOrdinal || !tacticNums.contains(anchor[1])) {
+				continue;
+			}
+			int row = anchor[2];
+			int col = anchor[3];
+			int endRow = Math.min(row + blockHeight, grid.size());
+			int endCol = nextAnchorColOnRow(anchors, row, col, blockRightEdge(grid, row, endRow));
+			tables.put(anchor[1], creativeBlock(grid, row, endRow, col, endCol, anchor[1]));
+		}
+		for (Integer tacticNum : tacticNums) {
+			tables.putIfAbsent(tacticNum, CreativeTable.empty());
+		}
+		return tables;
+	}
+
+	/**
+	 * Reads one "Creative analysis" block: its four summary cells and its filled table rows. The four
+	 * summary cells and the table are independent — a user who filled only the stat tiles still gets
+	 * them on the slide, and vice versa — so a missing table header costs only the rows.
+	 *
+	 * @param grid       the {@code "Breakdowns"} tab, read as trimmed cell strings
+	 * @param startRow   inclusive zero-based row of the block's anchor cell
+	 * @param endRowExcl exclusive zero-based end row of the block
+	 * @param startCol   inclusive zero-based column of the block's anchor cell
+	 * @param endColExcl exclusive zero-based end column of the block
+	 * @param tacticNum  the block's tactic number, used only for logging
+	 * @return the block's summary cells and rows, blank/empty where the user typed nothing
+	 */
+	CreativeTable creativeBlock(
+			List<List<String>> grid, int startRow, int endRowExcl, int startCol, int endColExcl, int tacticNum) {
+		return new CreativeTable(
+				summaryValue(grid, startRow, endRowExcl, startCol, endColExcl, CREATIVES_LIVE_LABEL),
+				summaryValue(grid, startRow, endRowExcl, startCol, endColExcl, CREATIVE_BEST_KPI_LABEL),
+				summaryValue(grid, startRow, endRowExcl, startCol, endColExcl, CREATIVE_AVG_KPI_LABEL),
+				summaryValue(grid, startRow, endRowExcl, startCol, endColExcl, CREATIVE_TOP_LABEL),
+				creativeRowsInBlock(grid, startRow, endRowExcl, startCol, endColExcl, tacticNum));
+	}
+
+	/**
+	 * Reads one "Creative analysis" block's filled table rows, resolving the {@code Creative} /
+	 * {@code Impressions} / {@code CTR} / {@code VCR} / {@code Spend} columns by header text rather than
+	 * fixed offsets. Rows whose creative name is blank are skipped, so a partially filled table returns
+	 * only the rows the user actually typed.
+	 *
+	 * @param grid       the {@code "Breakdowns"} tab, read as trimmed cell strings
+	 * @param startRow   inclusive zero-based row of the block's anchor cell
+	 * @param endRowExcl exclusive zero-based end row of the block
+	 * @param startCol   inclusive zero-based column of the block's anchor cell
+	 * @param endColExcl exclusive zero-based end column of the block
+	 * @param tacticNum  the block's tactic number, used only for logging
+	 * @return the filled creative rows in sheet order, or an empty list when the header is missing
+	 */
+	List<CreativeRow> creativeRowsInBlock(
+			List<List<String>> grid, int startRow, int endRowExcl, int startCol, int endColExcl, int tacticNum) {
+		int[] header = findCreativeHeader(grid, startRow, endRowExcl, startCol, endColExcl);
+		if (header == null) {
+			log.warn("[sheets] readCreativeTables: tactic {} block has no \"{}\" header — skipping rows",
+					tacticNum, CREATIVE_NAME_HEADER);
+			return List.of();
+		}
+		List<CreativeRow> rows = new ArrayList<>();
+		for (int r = header[0] + 1; r < endRowExcl; r++) {
+			String name = cellAt(grid, r, header[1]);
+			if (name.isEmpty()) {
+				continue;
+			}
+			rows.add(new CreativeRow(
+					name,
+					cellAt(grid, r, header[2]),
+					cellAt(grid, r, header[3]),
+					cellAt(grid, r, header[4]),
+					cellAt(grid, r, header[5])));
+		}
+		return rows;
+	}
+
+	/**
+	 * Finds the "Creative analysis" table's header row and the columns of its five data columns. A row
+	 * qualifies only when it carries the creative-name header; the metric columns are then taken from that
+	 * same row, defaulting to {@code -1} when absent so a template missing one column yields blanks rather
+	 * than reading a neighbouring column's values.
+	 *
+	 * @param grid       the {@code "Breakdowns"} tab, read as trimmed cell strings
+	 * @param startRow   inclusive zero-based row of the block's anchor cell
+	 * @param endRowExcl exclusive zero-based end row of the block
+	 * @param startCol   inclusive zero-based column of the block's anchor cell
+	 * @param endColExcl exclusive zero-based end column of the block
+	 * @return {@code [headerRow, nameCol, impsCol, ctrCol, vcrCol, spendCol]}, or {@code null} when the
+	 *         block carries no creative-name header
+	 */
+	int[] findCreativeHeader(List<List<String>> grid, int startRow, int endRowExcl, int startCol, int endColExcl) {
+		for (int r = startRow; r < endRowExcl; r++) {
+			int nameCol = columnOfHeader(grid, r, startCol, endColExcl, CREATIVE_NAME_HEADER);
+			if (nameCol < 0) {
+				continue;
+			}
+			return new int[] {
+					r,
+					nameCol,
+					columnOfHeader(grid, r, startCol, endColExcl, CREATIVE_IMPRESSIONS_HEADER),
+					columnOfHeader(grid, r, startCol, endColExcl, CREATIVE_CTR_HEADER),
+					columnOfHeader(grid, r, startCol, endColExcl, CREATIVE_VCR_HEADER),
+					columnOfHeader(grid, r, startCol, endColExcl, CREATIVE_SPEND_HEADER)};
+		}
+		return null;
+	}
+
+	/**
+	 * Reads the value paired with a summary label inside a block: the first populated cell to the label's
+	 * right, bounded by the block's own right edge so a blank cell can never pull in the neighbouring
+	 * section's text. Resolving by label rather than a fixed cell is what lets the template gain a column
+	 * between the label and its value without silently blanking the slide's stat tile.
+	 *
+	 * @param grid       the {@code "Breakdowns"} tab, read as trimmed cell strings
+	 * @param startRow   inclusive zero-based row of the block's anchor cell
+	 * @param endRowExcl exclusive zero-based end row of the block
+	 * @param startCol   inclusive zero-based column of the block's anchor cell
+	 * @param endColExcl exclusive zero-based end column of the block
+	 * @param label      the whole-cell summary label to find (e.g. {@code "CREATIVES LIVE"})
+	 * @return the label's value, or an empty string when the label or its value is absent
+	 */
+	String summaryValue(
+			List<List<String>> grid, int startRow, int endRowExcl, int startCol, int endColExcl, String label) {
+		for (int r = startRow; r < endRowExcl; r++) {
+			int labelCol = columnOfHeader(grid, r, startCol, endColExcl, label);
+			if (labelCol < 0) {
+				continue;
+			}
+			for (int c = labelCol + 1; c < endColExcl; c++) {
+				String value = cellAt(grid, r, c);
+				if (!value.isEmpty()) {
+					return value;
+				}
+			}
+			return "";
+		}
+		return "";
 	}
 
 	/**
