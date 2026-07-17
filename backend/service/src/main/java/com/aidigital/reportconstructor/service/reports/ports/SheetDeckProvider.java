@@ -2,6 +2,7 @@ package com.aidigital.reportconstructor.service.reports.ports;
 
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTable;
+import com.aidigital.reportconstructor.service.reports.dto.GeoTable;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
 
 import java.util.List;
@@ -158,5 +159,32 @@ public interface SheetDeckProvider {
 	 * @return tactic number → its creative block, with rows in sheet order
 	 */
 	Map<Integer, CreativeTable> readCreativeTables(
+			String spreadsheetId, Set<Integer> tacticNums, String userGoogleAccessToken);
+
+	/**
+	 * Reads back the hand-entered "Geo analysis" blocks from the generated workbook's
+	 * {@code "Breakdowns"} tab, so the deck can carry the geo rows exactly as the user typed them. The
+	 * block-location rules are {@link #readCreativeTables}': the {@code "Geo analysis N"} anchor is matched
+	 * on the <em>whole</em> cell (never a prefix, or block 1 would swallow block 15), and the {@code Geo} /
+	 * {@code IMPS} columns are resolved by header text; the KPI column — whose header is the tactic's own
+	 * {@code {{tactic n KPI type}}} token/value and so has no stable text — is taken as the next populated
+	 * header column to the right of {@code IMPS}.
+	 *
+	 * <p>Each block also carries three summary cells above the table ({@code MARKETS ACTIVATED},
+	 * {@code TOP GEO}, {@code MOST EFFICIENT …}), located by their label and read from the first populated
+	 * cell to the label's right. {@code MARKETS ACTIVATED} and {@code TOP GEO} are matched whole-cell;
+	 * {@code MOST EFFICIENT} is matched as a prefix because its label carries the KPI type after it.
+	 *
+	 * <p>The whole tab is read once for every requested tactic. A tactic whose anchor is missing, or whose
+	 * block is blank, maps to {@link GeoTable#empty()} rather than failing the read; a workbook without a
+	 * {@code "Breakdowns"} tab yields an empty map.
+	 *
+	 * @param spreadsheetId         the workbook to read
+	 * @param tacticNums            1-based tactic numbers whose geo blocks are wanted
+	 * @param userGoogleAccessToken optional signed-in user's Google OAuth token; falls back to the
+	 *                              service account when blank
+	 * @return tactic number → its geo block, with rows in sheet order
+	 */
+	Map<Integer, GeoTable> readGeoTables(
 			String spreadsheetId, Set<Integer> tacticNums, String userGoogleAccessToken);
 }

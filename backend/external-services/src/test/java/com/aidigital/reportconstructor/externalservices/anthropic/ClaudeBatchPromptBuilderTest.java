@@ -5,6 +5,9 @@ import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeRow;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTable;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTakeawayInput;
+import com.aidigital.reportconstructor.service.reports.dto.GeoInsightInput;
+import com.aidigital.reportconstructor.service.reports.dto.GeoRow;
+import com.aidigital.reportconstructor.service.reports.dto.GeoTable;
 import com.aidigital.reportconstructor.service.reports.dto.Tactic;
 import com.aidigital.reportconstructor.service.reports.dto.Totals;
 import com.aidigital.reportconstructor.service.reports.engine.Fmt;
@@ -157,6 +160,54 @@ class ClaudeBatchPromptBuilderTest {
 
 		// When:
 		Optional<String> prompt = builder.buildCreativeTakeawaysPrompt(List.of(input), "brief", 100, 140);
+
+		// Then: no call is worth making — there is nothing to observe
+		assertThat(prompt).isEmpty();
+	}
+
+	@Test
+	void buildGeoInsightsPrompt_quotesTheBudgetAtEightyPercentAndCarriesTheGeoDataTest() {
+		// Given: a tactic whose geo block the user filled in
+		GeoInsightInput input = new GeoInsightInput(1, "CTV", "VCR",
+				new GeoTable("42", "Miami", "0.48%", List.of(
+						new GeoRow("Miami", "1,200,000", "0.48%"),
+						new GeoRow("Atlanta", "900,000", "0.46%"))));
+
+		// When: asked with the slide's real 140-character budget
+		String prompt = builder.buildGeoInsightsPrompt(List.of(input), "brief", 140).orElseThrow();
+
+		// Then: Claude is asked for the smaller number, leaving the truncation safety net headroom
+		assertThat(prompt).contains("at most 112 characters");
+
+		// Then: the tactic's data, stat tiles and lead KPI reach the prompt, with the KPI-named column
+		assertThat(prompt).contains("tactic_1 — CTV (lead KPI: VCR)");
+		assertThat(prompt).contains("Markets activated: 42");
+		assertThat(prompt).contains("Top geo: Miami");
+		assertThat(prompt).contains("Geo | Impressions | VCR");
+		assertThat(prompt).contains("Miami | 1,200,000 | 0.48%");
+	}
+
+	@Test
+	void buildGeoInsightsPrompt_asksFiveStringsWithAForwardLookingFifthRecommendationTest() {
+		// Given: a filled geo block
+		GeoInsightInput input = new GeoInsightInput(1, "CTV", "VCR",
+				new GeoTable("42", "Miami", "0.48%", List.of(new GeoRow("Miami", "1,200,000", "0.48%"))));
+
+		// When:
+		String prompt = builder.buildGeoInsightsPrompt(List.of(input), "brief", 140).orElseThrow();
+
+		// Then: exactly five strings are requested and the fifth is explicitly a forward-looking recommendation
+		assertThat(prompt).contains("array of exactly 5 strings");
+		assertThat(prompt).contains("FORWARD-LOOKING recommendation");
+	}
+
+	@Test
+	void buildGeoInsightsPrompt_emptyWhenNoTacticInTheChunkHasDataTest() {
+		// Given: a chunk whose only tactic left its block blank
+		GeoInsightInput input = new GeoInsightInput(1, "CTV", "VCR", GeoTable.empty());
+
+		// When:
+		Optional<String> prompt = builder.buildGeoInsightsPrompt(List.of(input), "brief", 140);
 
 		// Then: no call is worth making — there is nothing to observe
 		assertThat(prompt).isEmpty();

@@ -3,6 +3,7 @@ package com.aidigital.reportconstructor.service.reports.helpers;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTable;
+import com.aidigital.reportconstructor.service.reports.dto.GeoTable;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
 
 import java.util.List;
@@ -107,5 +108,19 @@ public interface ReportSheetHelper {
 	 *         spreadsheet id or the read failed
 	 */
 	Map<Integer, CreativeTable> readCreativeTables(
+			String sheetUrl, Set<Integer> tacticNums, String userGoogleToken);
+
+	/**
+	 * Reads back the hand-entered "Geo analysis" blocks for the given tactics from the generated
+	 * workbook's "Breakdowns" tab, resolving the spreadsheet id from its URL. Non-fatal: a failed read
+	 * yields an empty map so the deck still ships, just without geo rows.
+	 *
+	 * @param sheetUrl        URL of the generated Google Sheet
+	 * @param tacticNums      1-based tactic numbers whose geo blocks are wanted
+	 * @param userGoogleToken OAuth token for Google Sheets API, or null when unavailable
+	 * @return tactic number → its geo block; an empty map when the URL carries no parseable
+	 *         spreadsheet id or the read failed
+	 */
+	Map<Integer, GeoTable> readGeoTables(
 			String sheetUrl, Set<Integer> tacticNums, String userGoogleToken);
 }

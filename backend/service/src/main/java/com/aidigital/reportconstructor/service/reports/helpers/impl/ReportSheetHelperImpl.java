@@ -5,6 +5,7 @@ import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTable;
+import com.aidigital.reportconstructor.service.reports.dto.GeoTable;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
 import com.aidigital.reportconstructor.service.reports.helpers.BreakdownSelectionResolver;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportNumberParser;
@@ -171,6 +172,22 @@ public class ReportSheetHelperImpl implements ReportSheetHelper {
 			return sheets.readCreativeTables(spreadsheetId, tacticNums, userGoogleToken);
 		} catch (RuntimeException ex) {
 			log.warn("[sheets] readCreativeTables failed for {} (non-fatal): {}", spreadsheetId, ex.getMessage());
+			return Map.of();
+		}
+	}
+
+	@Override
+	public Map<Integer, GeoTable> readGeoTables(
+			String sheetUrl, Set<Integer> tacticNums, String userGoogleToken) {
+		String spreadsheetId = extractSpreadsheetId(sheetUrl);
+		if (spreadsheetId == null) {
+			log.warn("[sheets] readGeoTables: could not determine spreadsheet id from {}", sheetUrl);
+			return Map.of();
+		}
+		try {
+			return sheets.readGeoTables(spreadsheetId, tacticNums, userGoogleToken);
+		} catch (RuntimeException ex) {
+			log.warn("[sheets] readGeoTables failed for {} (non-fatal): {}", spreadsheetId, ex.getMessage());
 			return Map.of();
 		}
 	}

@@ -11,6 +11,7 @@ import com.aidigital.reportconstructor.service.reports.engine.Fmt;
 import com.aidigital.reportconstructor.service.reports.engine.ReportClaudeDefaults;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownValues;
 import com.aidigital.reportconstructor.service.reports.helpers.CreativeBreakdownHelper;
+import com.aidigital.reportconstructor.service.reports.helpers.GeoBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.PublisherBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportFileNamer;
 import com.aidigital.reportconstructor.service.reports.helpers.impl.ReportNumberParserImpl;
@@ -82,13 +83,15 @@ class ReportGenerationServiceImplTest {
 	PublisherBreakdownHelper publisherBreakdown;
 	@Mock
 	CreativeBreakdownHelper creativeBreakdown;
+	@Mock
+	GeoBreakdownHelper geoBreakdown;
 
 	ReportGenerationServiceImpl service;
 
 	@BeforeEach
 	void setUp() {
 		service = new ReportGenerationServiceImpl(
-				jobProgress, warnings, chartHelper, sheetHelper, publisherBreakdown, creativeBreakdown, placeholderReader, sheetCampaign, placeholders,
+				jobProgress, warnings, chartHelper, sheetHelper, publisherBreakdown, creativeBreakdown, geoBreakdown, placeholderReader, sheetCampaign, placeholders,
 				claude, slides, userGoogleTokens, self, claudeDefaults, fileNamer,
 				new ReportNumberParserImpl(), new Fmt());
 	}
@@ -217,6 +220,9 @@ class ReportGenerationServiceImplTest {
 				eq("http://sheet"), isNull(), any(), eq("Campaign brief."), isNull()))
 				.thenReturn(BreakdownValues.empty());
 		when(creativeBreakdown.buildCreativeValues(
+				eq("http://sheet"), isNull(), any(), eq("Campaign brief."), isNull()))
+				.thenReturn(BreakdownValues.empty());
+		when(geoBreakdown.buildGeoValues(
 				eq("http://sheet"), isNull(), any(), eq("Campaign brief."), isNull()))
 				.thenReturn(BreakdownValues.empty());
 		when(chartHelper.buildChartsFromSheet(eq("http://deck"), eq(grid), any(), eq(2), isNull()))

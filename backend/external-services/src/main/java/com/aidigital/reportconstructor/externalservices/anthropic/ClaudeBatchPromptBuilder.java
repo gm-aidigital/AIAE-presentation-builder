@@ -5,6 +5,9 @@ import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeRow;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTable;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTakeawayInput;
+import com.aidigital.reportconstructor.service.reports.dto.GeoInsightInput;
+import com.aidigital.reportconstructor.service.reports.dto.GeoRow;
+import com.aidigital.reportconstructor.service.reports.dto.GeoTable;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationInput;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
 import com.aidigital.reportconstructor.service.reports.dto.Tactic;
@@ -1095,6 +1098,110 @@ public class ClaudeBatchPromptBuilder {
 		if (value != null && !value.isBlank()) {
 			block.append(label).append(": ").append(value).append('\n');
 		}
+	}
+
+	/**
+	 * Builds the geo-insights prompt for one chunk of tactics, or empty when the chunk carries no tactic
+	 * with a filled geo block.
+	 *
+	 * <p>The per-string limit quoted to Claude is {@link #COMPRESSION_PROMPT_BUFFER_RATIO} of the slide's
+	 * real 140-character budget, for the same reason {@link #buildPublisherObservationsPrompt}'s is: copy
+	 * written right up to the budget has nowhere to go when the truncation safety net runs and gets cut
+	 * mid-thought, so asking for the smaller number up front means most strings never need compressing.
+	 *
+	 * <p>Unlike the creative and publisher prompts — whose recommendations must be framed as something
+	 * already done during the flight — the fifth geo string is a genuinely forward-looking recommendation:
+	 * what we would do next to improve results.
+	 *
+	 * @param inputs   the chunk's tactics, each with its hand-entered geo block
+	 * @param brief    free-text campaign brief, used to tie the geo read back to the audience and goals
+	 * @param maxChars the slide's real per-string character budget (shared by the insights and the reco)
+	 * @return the prompt requesting a JSON object of {@code "tactic_<n>"} → 5-string array, or empty when
+	 * every tactic in the chunk has a blank block
+	 */
+	public Optional<String> buildGeoInsightsPrompt(List<GeoInsightInput> inputs, String brief, int maxChars) {
+		List<String> blocks = new ArrayList<>();
+		for (GeoInsightInput input : inputs) {
+			if (input.table() == null || input.table().isEmpty()) {
+				continue;
+			}
+			blocks.add(geoContextBlock(input));
+		}
+		if (blocks.isEmpty()) {
+			return Optional.empty();
+		}
+		int promptLimit = Math.max(1, (int) (maxChars * COMPRESSION_PROMPT_BUFFER_RATIO));
+		String prompt = "You are a senior programmatic media analyst writing the 'WHAT THE MAP TELLS US' bullets "
+				+ "and the recommendation for the 'Geo analysis' slide of an end-of-campaign report. You are writing "
+				+ "on behalf of the team that ran this campaign, so the tone is confident and complimentary of our "
+				+ "own delivery.\n\n"
+				+ "For EACH tactic below, write exactly 5 strings: 4 insights about its geographic delivery, then a "
+				+ "5th recommendation.\n\n"
+				+ "Rules:\n"
+				+ "- Strings 1-4 are the insights: ONE complete sentence each, at most " + promptLimit
+				+ " characters.\n"
+				+ "- Ground every insight in the numbers given: name real markets/geos, cite real impressions and "
+				+ "the tactic's lead KPI, compare geos against each other and against the top-geo/most-efficient "
+				+ "stats, and read where delivery concentrated.\n"
+				+ "- Vary the angle across insights 1-4: the concentration of delivery across the top geos, the "
+				+ "geos that over-indexed on the lead KPI (efficient markets), the geos with reach but softer "
+				+ "engagement, and the audience/market fit of where delivery landed.\n"
+				+ "- At most ~20% of each insight may go beyond the table — a short, well-established read on why a "
+				+ "given market fits this campaign's audience, industry or goals (you may draw on the campaign brief "
+				+ "and goals for this). Never invent a metric that is not in the table, and never state such a read "
+				+ "as measured fact.\n"
+				+ "- SMALL-SAMPLE OUTLIERS. A market with few impressions can post a KPI far above the average; "
+				+ "treat that as noise on low volume, not as a top market, and judge efficiency alongside volume.\n"
+				+ "- String 5 is DIFFERENT: it is a FORWARD-LOOKING recommendation — what we would do next to "
+				+ "improve results (e.g. where to open incremental budget, which markets to scale, where to tighten "
+				+ "frequency). At most " + promptLimit + " characters, one complete sentence, still grounded in the "
+				+ "table's geos and numbers. This one MAY be future advice (the insights and the other slides' "
+				+ "recommendations may not).\n"
+				+ "- Use the tactic's own KPI type when talking about its lead metric.\n"
+				+ "- Analyst tone, no filler, no bullet characters, no markdown.\n\n"
+				+ "Return ONLY a JSON object keyed by tactic, each key mapping to an array of exactly 5 strings:\n"
+				+ "{\"tactic_1\": [\"...\", \"...\", \"...\", \"...\", \"...\"]}\n\n"
+				+ "=== CAMPAIGN BRIEF ===\n" + (brief == null ? "" : brief) + "\n\n"
+				+ "=== GEO DATA ===\n" + String.join("\n", blocks);
+		return Optional.of(prompt);
+	}
+
+	/**
+	 * Renders one tactic's geo block as prompt context: its name and KPI type, the three summary stats the
+	 * slide shows, and the geo table. Blank summary cells are omitted rather than sent as empty labels, so
+	 * the user leaving a stat tile empty never reads to Claude as a zero.
+	 *
+	 * @param input the tactic's geo block
+	 * @return the tactic's {@code tactic_<n>} context block
+	 */
+	String geoContextBlock(GeoInsightInput input) {
+		GeoTable table = input.table();
+		StringBuilder block = new StringBuilder();
+		block.append("tactic_").append(input.tacticNum()).append(" — ").append(input.tacticName());
+		if (input.kpiType() != null && !input.kpiType().isBlank()) {
+			block.append(" (lead KPI: ").append(input.kpiType()).append(')');
+		}
+		block.append('\n');
+		appendCreativeStat(block, "Markets activated", table.marketsActivated());
+		appendCreativeStat(block, "Top geo", table.topGeo());
+		appendCreativeStat(block, "Most efficient geo KPI", table.topKpi());
+		block.append("Geo | Impressions | ").append(kpiColumnLabel(input.kpiType())).append('\n');
+		for (GeoRow row : table.rows()) {
+			block.append(row.name()).append(" | ").append(row.impressions())
+					.append(" | ").append(row.kpi()).append('\n');
+		}
+		return block.toString();
+	}
+
+	/**
+	 * Names the geo table's KPI column for the prompt, using the tactic's own KPI type when known so the
+	 * column reads as {@code "CTR"}/{@code "VCR"}/{@code "ACR"} rather than a generic label.
+	 *
+	 * @param kpiType the tactic's KPI type as the deck spells it, possibly blank
+	 * @return the KPI column header for the prompt block
+	 */
+	String kpiColumnLabel(String kpiType) {
+		return kpiType == null || kpiType.isBlank() ? "KPI" : kpiType.trim();
 	}
 
 	/**

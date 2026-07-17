@@ -3,6 +3,8 @@ package com.aidigital.reportconstructor.externalservices.google;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeRow;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTable;
+import com.aidigital.reportconstructor.service.reports.dto.GeoRow;
+import com.aidigital.reportconstructor.service.reports.dto.GeoTable;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
 import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
@@ -338,6 +340,91 @@ class RealSheetDeckProviderTest {
 	}
 
 	@Test
+	void geoTables_readsStatsAndRowsForTheRequestedTacticTest() {
+		// Given: a "Breakdowns" tab whose tactic-1 geo block carries its three stat tiles and two rows
+		RealSheetDeckProvider provider = newProvider();
+		List<List<String>> grid = geoGrid(Map.of(
+				1, List.of(
+						List.of("Miami", "1,200,000", "0.48%"),
+						List.of("Atlanta", "900,000", "0.46%"))));
+
+		// When:
+		Map<Integer, GeoTable> tables = provider.geoTables(grid, Set.of(1));
+
+		// Then: the stat tiles come back as typed, including the prefix-matched "MOST EFFICIENT CTR" tile
+		GeoTable table = tables.get(1);
+		assertThat(table.marketsActivated()).isEqualTo("42");
+		assertThat(table.topGeo()).isEqualTo("Miami");
+		assertThat(table.topKpi()).isEqualTo("0.48%");
+
+		// Then: both rows come back verbatim, in sheet order
+		assertThat(table.rows()).containsExactly(
+				new GeoRow("Miami", "1,200,000", "0.48%"),
+				new GeoRow("Atlanta", "900,000", "0.46%"));
+	}
+
+	@Test
+	void geoTables_doesNotMatchTactic15BlockWhenReadingTactic1Test() {
+		// Given: a tab carrying both a "Geo analysis 1" and a "Geo analysis 15" block — the anchor of the
+		// first is a prefix of the second, so a loose match would pull tactic 15's rows into tactic 1
+		RealSheetDeckProvider provider = newProvider();
+		List<List<String>> grid = geoGrid(Map.of(
+				1, List.of(List.of("Miami", "1,200,000", "0.48%")),
+				15, List.of(List.of("Boise", "50,000", "0.11%"))));
+
+		// When:
+		Map<Integer, GeoTable> tables = provider.geoTables(grid, Set.of(1));
+
+		// Then: only tactic 1's own row is returned and tactic 15's block is untouched
+		assertThat(tables.get(1).rows()).containsExactly(new GeoRow("Miami", "1,200,000", "0.48%"));
+		assertThat(tables).doesNotContainKey(15);
+	}
+
+	@Test
+	void geoTables_returnsEmptyTableForATacticWhoseBlockWasNeverFilledTest() {
+		// Given: a tab carrying no geo anchor for the requested tactic
+		RealSheetDeckProvider provider = newProvider();
+		List<List<String>> grid = geoGrid(Map.of(1, List.of()));
+
+		// When:
+		Map<Integer, GeoTable> tables = provider.geoTables(grid, Set.of(2));
+
+		// Then: the tactic is present with an empty table rather than absent, so the slide still ships
+		assertThat(tables).containsKey(2);
+		assertThat(tables.get(2).isEmpty()).isTrue();
+	}
+
+	@Test
+	void findGeoHeader_takesKpiColumnAsTheNextPopulatedHeaderAfterImpsTest() {
+		// Given: a geo header row whose KPI column header is the tactic's resolved KPI type, not a fixed word
+		RealSheetDeckProvider provider = newProvider();
+		List<List<String>> grid = new ArrayList<>();
+		grid.add(List.of("Geo analysis 1", "", ""));
+		grid.add(List.of("Geo", "IMPS", "VCR"));
+
+		// When:
+		int[] header = provider.findGeoHeader(grid, 0, 2, 0, 3);
+
+		// Then: name and IMPS resolve by header text, and the KPI column is the next populated cell after IMPS
+		assertThat(header).containsExactly(1, 0, 1, 2);
+	}
+
+	@Test
+	void geoSummaryValueByPrefix_matchesTheMostEfficientLabelDespiteItsTrailingKpiTypeTest() {
+		// Given: the "MOST EFFICIENT" stat tile whose label cell carries the KPI type after the fixed prefix
+		RealSheetDeckProvider provider = newProvider();
+		List<List<String>> grid = new ArrayList<>();
+		grid.add(new ArrayList<>(List.of("Geo analysis 1", "")));
+		grid.add(new ArrayList<>(List.of("MOST EFFICIENT CTR", "0.52%")));
+
+		// When:
+		String value = provider.geoSummaryValueByPrefix(grid, 0, 2, 0, 2, "MOST EFFICIENT");
+
+		// Then: the value beside the prefix-matched label is returned
+		assertThat(value).isEqualTo("0.52%");
+	}
+
+	@Test
 	void creativeTables_findsBlocksByAnchorWhereverTheySitNotByTacticOrderTest() {
 		// Given: the real shape after Step-3 toggles — tactic 1 did NOT enable Creative analysis, so its
 		// section was cleared and the first surviving anchor is "Creative analysis 2", 18 rows down the tab.
@@ -552,6 +639,50 @@ class RealSheetDeckProviderTest {
 	private List<String> pad(List<String> cells) {
 		List<String> row = new ArrayList<>(cells);
 		while (row.size() < 5) {
+			row.add("");
+		}
+		return row;
+	}
+
+	/**
+	 * Builds a "Breakdowns" tab carrying an 18-row Geo analysis block per given tactic: the anchor row, the
+	 * three stat-tile rows (the last matched by its "MOST EFFICIENT" prefix), a blank row, a header row
+	 * whose KPI column header is the resolved KPI type, then the tactic's filled rows.
+	 *
+	 * @param rowsByTactic tactic number → its geo rows as {@code [name, imps, kpi]}
+	 * @return the tab as trimmed cell strings
+	 */
+	private List<List<String>> geoGrid(Map<Integer, List<List<String>>> rowsByTactic) {
+		List<List<String>> grid = new ArrayList<>();
+		for (Map.Entry<Integer, List<List<String>>> entry : new java.util.TreeMap<>(rowsByTactic).entrySet()) {
+			List<List<String>> block = new ArrayList<>();
+			block.add(padGeo(List.of("Geo analysis " + entry.getKey(), "{{tactic " + entry.getKey() + "}}")));
+			block.add(padGeo(List.of("MARKETS ACTIVATED", "42")));
+			block.add(padGeo(List.of("TOP GEO", "Miami")));
+			block.add(padGeo(List.of("MOST EFFICIENT CTR", "0.48%")));
+			block.add(padGeo(List.of("AUDIENCE FOOTPRINT", "{{tactic n}}")));
+			block.add(padGeo(List.of("")));
+			block.add(padGeo(List.of("Geo", "IMPS", "CTR")));
+			for (List<String> row : entry.getValue()) {
+				block.add(padGeo(row));
+			}
+			while (block.size() < 18) {
+				block.add(new ArrayList<>(Collections.nCopies(3, "")));
+			}
+			grid.addAll(block);
+		}
+		return grid;
+	}
+
+	/**
+	 * Pads a row out to the geo block's three columns so every grid row is the same width.
+	 *
+	 * @param cells the row's populated leading cells
+	 * @return a three-column row
+	 */
+	private List<String> padGeo(List<String> cells) {
+		List<String> row = new ArrayList<>(cells);
+		while (row.size() < 3) {
 			row.add("");
 		}
 		return row;

@@ -7,6 +7,7 @@ import com.aidigital.reportconstructor.service.reports.dto.ClaudeSheetBatch;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTakeawayInput;
+import com.aidigital.reportconstructor.service.reports.dto.GeoInsightInput;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationInput;
 
 import java.util.List;
@@ -110,6 +111,27 @@ public interface ClaudeClient {
 	 *         reply and its bullets should render blank rather than fall back to invented copy
 	 */
 	Map<Integer, List<String>> batchCreativeTakeaways(List<CreativeTakeawayInput> inputs, String brief);
+
+	/**
+	 * Geo-insights batch — the four {@code {{geo_insight_N.1..4}}} "what the map tells us" bullets plus the
+	 * single {@code {{geo_N_reco}}} recommendation on each tactic's "Geo analysis" breakdown slide, written
+	 * from the hand-entered geo table the user reviewed in the sheet.
+	 *
+	 * <p>Each of the five strings is capped at 140 characters, the slide's text budget. Unlike the creative
+	 * and publisher batches — whose recommendations must be framed as something already done during the
+	 * flight — the geo recommendation is genuinely forward-looking: it states what we would do next to
+	 * improve results (e.g. where to open incremental budget). Chunking and failure behaviour mirror
+	 * {@link #batchPublisherObservations}: small chunks keep each reply inside the output budget, and a
+	 * chunk that fails only drops its own tactics.
+	 *
+	 * @param inputs one entry per tactic whose geo block is non-empty; tactics with a blank block must not
+	 *               be passed, since there is nothing to observe and the copy would be invented
+	 * @param brief  free-text campaign brief, used to tie the geo read back to the campaign's audience/goals
+	 * @return tactic number → its five strings (four insights then the recommendation), in slide order; a
+	 * tactic missing from the map got no usable reply and its bullets should render blank rather than fall
+	 * back to invented copy
+	 */
+	Map<Integer, List<String>> batchGeoInsights(List<GeoInsightInput> inputs, String brief);
 
 	/**
 	 * Geo-tab → short ≤40-char comma-separated location string (or null).

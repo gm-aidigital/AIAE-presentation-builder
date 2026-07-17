@@ -5,6 +5,8 @@ import com.aidigital.reportconstructor.service.common.error.ErrorReason;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeRow;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTable;
+import com.aidigital.reportconstructor.service.reports.dto.GeoRow;
+import com.aidigital.reportconstructor.service.reports.dto.GeoTable;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
 import com.aidigital.reportconstructor.service.reports.ports.PacingTablesRequest;
 import com.aidigital.reportconstructor.service.reports.ports.SheetDeckProvider;
@@ -153,12 +155,33 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 	private static final String CREATIVE_TOP_LABEL = "TOP CREATIVE";
 
 	/**
-	 * The only tokens the {@code "Breakdowns"} tab carries — each block's {@code {{tactic N}}} heading
-	 * and its {@code {{tactic N imps}}} total. {@link #createSheet} scopes its find/replace to the first
-	 * tab for speed, so these two are re-sent against the breakdown tab as well; matching on the whole
-	 * token keeps the extra pass to a couple of requests per tactic instead of the full ~800.
+	 * Header text of the "Geo analysis" block's geo-name column. Whole-cell matching keeps it from
+	 * colliding with the block's own {@code "Geo analysis N"} anchor cell.
 	 */
-	private static final Pattern BREAKDOWN_TAB_TOKENS = Pattern.compile("^\\{\\{tactic \\d+( imps)?}}$");
+	private static final String GEO_NAME_HEADER = "Geo";
+
+	/** Header text of the "Geo analysis" table's impressions column. */
+	private static final String GEO_IMPRESSIONS_HEADER = "IMPS";
+
+	/**
+	 * Row labels of the three summary cells above each "Geo analysis" table, whose values the slide shows
+	 * in its stat tiles. {@code MARKETS ACTIVATED} and {@code TOP GEO} are matched whole-cell; the "most
+	 * efficient" label is matched as a prefix because it carries the tactic's KPI type after it (typed in
+	 * the template as {@code "MOST EFFICIENT {{tactic n KPI type}}"}), so the trailing text is not stable.
+	 */
+	private static final String GEO_MARKETS_LABEL = "MARKETS ACTIVATED";
+	private static final String GEO_TOP_GEO_LABEL = "TOP GEO";
+	private static final String GEO_TOP_KPI_LABEL_PREFIX = "MOST EFFICIENT";
+
+	/**
+	 * The only tokens the {@code "Breakdowns"} tab carries — each block's {@code {{tactic N}}} heading,
+	 * its {@code {{tactic N imps}}} total, and its {@code {{tactic N KPI type}}} KPI label (the geo table's
+	 * KPI column header and its "MOST EFFICIENT" stat tile). {@link #createSheet} scopes its find/replace
+	 * to the first tab for speed, so these are re-sent against the breakdown tab as well; matching on the
+	 * whole token keeps the extra pass to a few requests per tactic instead of the full ~800.
+	 */
+	private static final Pattern BREAKDOWN_TAB_TOKENS =
+			Pattern.compile("^\\{\\{tactic \\d+( imps| KPI type)?}}$");
 
 	/**
 	 * Fallback height (rows) of one tactic's breakdown block, used only when the spacing between
@@ -416,6 +439,230 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 			throw new AppException(ErrorReason.C000,
 					"Google Sheets readCreativeTables failed: " + ex.getMessage());
 		}
+	}
+
+	@Override
+	public Map<Integer, GeoTable> readGeoTables(
+			String spreadsheetId, Set<Integer> tacticNums, String userGoogleAccessToken) {
+		if (tacticNums == null || tacticNums.isEmpty()) {
+			return Map.of();
+		}
+		boolean asUser = userGoogleAccessToken != null && !userGoogleAccessToken.isBlank();
+		Sheets sheetsClient = asUser ? buildSheets(userGoogleAccessToken) : sheets;
+		try {
+			Map<String, Integer> tabSheetIds = fetchSheetIds(sheetsClient, spreadsheetId);
+			if (!tabSheetIds.containsKey(BREAKDOWN_TAB)) {
+				log.warn("[sheets] readGeoTables: no \"{}\" tab in {} — skipping", BREAKDOWN_TAB, spreadsheetId);
+				return Map.of();
+			}
+			// One read of the whole tab serves every requested tactic — the blocks all live on it.
+			List<List<String>> grid = readGrid(sheetsClient, spreadsheetId, BREAKDOWN_TAB);
+			return geoTables(grid, tacticNums);
+		} catch (IOException ex) {
+			log.error("[sheets] readGeoTables failed for {}", spreadsheetId, ex);
+			throw new AppException(ErrorReason.C000,
+					"Google Sheets readGeoTables failed: " + ex.getMessage());
+		}
+	}
+
+	/**
+	 * Extracts the requested tactics' "Geo analysis" blocks from an already-read {@code "Breakdowns"} tab.
+	 * Blocks are bounded exactly as {@link #creativeTables} and {@link #publisherTables} bound theirs —
+	 * anchor cell, inferred block height, next anchor on the header row — so the read, the clear and the
+	 * other breakdown reads can never disagree about where a block ends.
+	 *
+	 * @param grid       the {@code "Breakdowns"} tab, read as trimmed cell strings
+	 * @param tacticNums 1-based tactic numbers whose blocks are wanted
+	 * @return tactic number → its geo block; tactics with no anchor map to {@link GeoTable#empty()}
+	 */
+	Map<Integer, GeoTable> geoTables(List<List<String>> grid, Set<Integer> tacticNums) {
+		Map<Integer, GeoTable> tables = new LinkedHashMap<>();
+		List<int[]> anchors = findBreakdownAnchors(grid);
+		if (anchors.isEmpty()) {
+			log.warn("[sheets] readGeoTables: no breakdown anchors on \"{}\" tab — nothing to read", BREAKDOWN_TAB);
+			return tables;
+		}
+		int blockHeight = breakdownBlockHeight(anchors);
+		int geoOrdinal = BreakdownType.GEO.ordinal();
+		for (int[] anchor : anchors) {
+			if (anchor[0] != geoOrdinal || !tacticNums.contains(anchor[1])) {
+				continue;
+			}
+			int row = anchor[2];
+			int col = anchor[3];
+			int endRow = Math.min(row + blockHeight, grid.size());
+			int endCol = nextAnchorColOnRow(anchors, row, col, blockRightEdge(grid, row, endRow));
+			tables.put(anchor[1], geoBlock(grid, row, endRow, col, endCol, anchor[1]));
+		}
+		for (Integer tacticNum : tacticNums) {
+			tables.putIfAbsent(tacticNum, GeoTable.empty());
+		}
+		return tables;
+	}
+
+	/**
+	 * Reads one "Geo analysis" block: its three summary cells and its filled table rows. The summary cells
+	 * and the table are independent — a user who filled only the stat tiles still gets them on the slide,
+	 * and vice versa — so a missing table header costs only the rows.
+	 *
+	 * @param grid       the {@code "Breakdowns"} tab, read as trimmed cell strings
+	 * @param startRow   inclusive zero-based row of the block's anchor cell
+	 * @param endRowExcl exclusive zero-based end row of the block
+	 * @param startCol   inclusive zero-based column of the block's anchor cell
+	 * @param endColExcl exclusive zero-based end column of the block
+	 * @param tacticNum  the block's tactic number, used only for logging
+	 * @return the block's summary cells and rows, blank/empty where the user typed nothing
+	 */
+	GeoTable geoBlock(
+			List<List<String>> grid, int startRow, int endRowExcl, int startCol, int endColExcl, int tacticNum) {
+		return new GeoTable(
+				summaryValue(grid, startRow, endRowExcl, startCol, endColExcl, GEO_MARKETS_LABEL),
+				summaryValue(grid, startRow, endRowExcl, startCol, endColExcl, GEO_TOP_GEO_LABEL),
+				geoSummaryValueByPrefix(grid, startRow, endRowExcl, startCol, endColExcl, GEO_TOP_KPI_LABEL_PREFIX),
+				geoRowsInBlock(grid, startRow, endRowExcl, startCol, endColExcl, tacticNum));
+	}
+
+	/**
+	 * Reads one "Geo analysis" block's filled table rows. The {@code Geo} name and {@code IMPS} columns are
+	 * resolved by header text; the KPI-value column — whose header is the tactic's own
+	 * {@code {{tactic n KPI type}}} token/value and so has no stable text — is taken as the next populated
+	 * header column to the right of {@code IMPS}. Rows whose geo name is blank are skipped, so a partially
+	 * filled table returns only the rows the user actually typed.
+	 *
+	 * @param grid       the {@code "Breakdowns"} tab, read as trimmed cell strings
+	 * @param startRow   inclusive zero-based row of the block's anchor cell
+	 * @param endRowExcl exclusive zero-based end row of the block
+	 * @param startCol   inclusive zero-based column of the block's anchor cell
+	 * @param endColExcl exclusive zero-based end column of the block
+	 * @param tacticNum  the block's tactic number, used only for logging
+	 * @return the filled geo rows in sheet order, or an empty list when the header is missing
+	 */
+	List<GeoRow> geoRowsInBlock(
+			List<List<String>> grid, int startRow, int endRowExcl, int startCol, int endColExcl, int tacticNum) {
+		int[] header = findGeoHeader(grid, startRow, endRowExcl, startCol, endColExcl);
+		if (header == null) {
+			log.warn("[sheets] readGeoTables: tactic {} block has no \"{}\" header — skipping rows",
+					tacticNum, GEO_NAME_HEADER);
+			return List.of();
+		}
+		List<GeoRow> rows = new ArrayList<>();
+		for (int r = header[0] + 1; r < endRowExcl; r++) {
+			String name = cellAt(grid, r, header[1]);
+			if (name.isEmpty()) {
+				continue;
+			}
+			rows.add(new GeoRow(name, cellAt(grid, r, header[2]), cellAt(grid, r, header[3])));
+		}
+		return rows;
+	}
+
+	/**
+	 * Finds the "Geo analysis" table's header row and the columns of its three data columns. A row
+	 * qualifies only when it carries the geo-name header; the impressions column is then taken from that
+	 * same row by header text, and the KPI column as the next populated header cell to its right — the
+	 * KPI header is the tactic's {@code {{tactic n KPI type}}} value, which has no fixed text to match on.
+	 *
+	 * @param grid       the {@code "Breakdowns"} tab, read as trimmed cell strings
+	 * @param startRow   inclusive zero-based row of the block's anchor cell
+	 * @param endRowExcl exclusive zero-based end row of the block
+	 * @param startCol   inclusive zero-based column of the block's anchor cell
+	 * @param endColExcl exclusive zero-based end column of the block
+	 * @return {@code [headerRow, nameCol, impsCol, kpiCol]}, or {@code null} when the block carries no
+	 *         geo-name header
+	 */
+	int[] findGeoHeader(List<List<String>> grid, int startRow, int endRowExcl, int startCol, int endColExcl) {
+		for (int r = startRow; r < endRowExcl; r++) {
+			int nameCol = columnOfHeader(grid, r, startCol, endColExcl, GEO_NAME_HEADER);
+			if (nameCol < 0) {
+				continue;
+			}
+			int impsCol = columnOfHeader(grid, r, startCol, endColExcl, GEO_IMPRESSIONS_HEADER);
+			return new int[] {r, nameCol, impsCol, nextPopulatedCol(grid, r, impsCol, endColExcl)};
+		}
+		return null;
+	}
+
+	/**
+	 * Finds the first populated cell to the right of {@code afterCol} on a row, bounded by the block's
+	 * right edge — used to locate the geo table's KPI-value column, whose header carries no fixed text.
+	 * Returns {@code -1} when {@code afterCol} is itself absent or no populated cell follows it, so the KPI
+	 * column resolves to blank rather than to a neighbouring section's cell.
+	 *
+	 * @param grid       the {@code "Breakdowns"} tab, read as trimmed cell strings
+	 * @param row        zero-based header row to scan
+	 * @param afterCol   the column to start scanning after (typically the {@code IMPS} column)
+	 * @param endColExcl exclusive zero-based end column of the block
+	 * @return the zero-based column of the next populated cell, or {@code -1} when there is none
+	 */
+	int nextPopulatedCol(List<List<String>> grid, int row, int afterCol, int endColExcl) {
+		if (afterCol < 0) {
+			return -1;
+		}
+		for (int c = afterCol + 1; c < endColExcl; c++) {
+			if (!cellAt(grid, row, c).isEmpty()) {
+				return c;
+			}
+		}
+		return -1;
+	}
+
+	/**
+	 * Reads the value paired with a summary label matched by prefix rather than whole cell: the first
+	 * populated cell to the label's right, bounded by the block's own right edge. Used for the geo "most
+	 * efficient" stat tile, whose label cell carries the KPI type after the fixed prefix (typed as
+	 * {@code "MOST EFFICIENT {{tactic n KPI type}}"}), so a whole-cell match would never find it.
+	 *
+	 * @param grid        the {@code "Breakdowns"} tab, read as trimmed cell strings
+	 * @param startRow    inclusive zero-based row of the block's anchor cell
+	 * @param endRowExcl  exclusive zero-based end row of the block
+	 * @param startCol    inclusive zero-based column of the block's anchor cell
+	 * @param endColExcl  exclusive zero-based end column of the block
+	 * @param labelPrefix the case-insensitive label prefix to find (e.g. {@code "MOST EFFICIENT"})
+	 * @return the label's value, or an empty string when the label or its value is absent
+	 */
+	String geoSummaryValueByPrefix(
+			List<List<String>> grid, int startRow, int endRowExcl, int startCol, int endColExcl, String labelPrefix) {
+		for (int r = startRow; r < endRowExcl; r++) {
+			int labelCol = columnOfHeaderPrefix(grid, r, startCol, endColExcl, labelPrefix);
+			if (labelCol < 0) {
+				continue;
+			}
+			for (int c = labelCol + 1; c < endColExcl; c++) {
+				String value = cellAt(grid, r, c);
+				if (!value.isEmpty()) {
+					return value;
+				}
+			}
+			return "";
+		}
+		return "";
+	}
+
+	/**
+	 * Finds the column within a row whose cell starts with the given prefix, ignoring case. The prefix
+	 * counterpart of {@link #columnOfHeader}, used for the geo "most efficient" label whose trailing KPI
+	 * type makes a whole-cell match impossible.
+	 *
+	 * @param grid       the tab, read as trimmed cell strings
+	 * @param row        zero-based row to scan
+	 * @param startCol   inclusive zero-based start column
+	 * @param endColExcl exclusive zero-based end column
+	 * @param prefix     the header prefix to match
+	 * @return the zero-based column, or {@code -1} when the row has no cell starting with the prefix
+	 */
+	int columnOfHeaderPrefix(List<List<String>> grid, int row, int startCol, int endColExcl, String prefix) {
+		if (row < 0 || row >= grid.size()) {
+			return -1;
+		}
+		List<String> cells = grid.get(row);
+		int limit = Math.min(endColExcl, cells.size());
+		String lower = prefix.toLowerCase();
+		for (int c = Math.max(startCol, 0); c < limit; c++) {
+			if (cells.get(c).toLowerCase().startsWith(lower)) {
+				return c;
+			}
+		}
+		return -1;
 	}
 
 	/**

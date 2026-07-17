@@ -21,6 +21,7 @@ import com.aidigital.reportconstructor.service.reports.helpers.ReportGenerationC
 import com.aidigital.reportconstructor.service.reports.helpers.ReportGenerationWarningsHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportJobProgressHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.CreativeBreakdownHelper;
+import com.aidigital.reportconstructor.service.reports.helpers.GeoBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.PublisherBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportSheetHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.SheetCampaignReader;
@@ -64,6 +65,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	private final ReportSheetHelper sheetHelper;
 	private final PublisherBreakdownHelper publisherBreakdown;
 	private final CreativeBreakdownHelper creativeBreakdown;
+	private final GeoBreakdownHelper geoBreakdown;
 	private final SheetPlaceholderReader placeholderReader;
 	private final SheetCampaignReader sheetCampaign;
 	private final PlaceholderResolverService placeholders;
@@ -291,8 +293,11 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 				payload.sheetUrl(), payload.breakdownSelections(), flatReplacements, brief, userGoogleToken);
 		BreakdownValues creativeValues = creativeBreakdown.buildCreativeValues(
 				payload.sheetUrl(), payload.breakdownSelections(), flatReplacements, brief, userGoogleToken);
+		BreakdownValues geoValues = geoBreakdown.buildGeoValues(
+				payload.sheetUrl(), payload.breakdownSelections(), flatReplacements, brief, userGoogleToken);
 		Map<String, String> breakdownValues = new LinkedHashMap<>(publisherValues.values());
 		breakdownValues.putAll(creativeValues.values());
+		breakdownValues.putAll(geoValues.values());
 		chartHelper.addBreakdownSlides(slideUrl, payload, tacticCount, breakdownValues, userGoogleToken);
 
 		jobProgress.markJobRunningAtStep(jobId, 7, "Building charts");
@@ -303,6 +308,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		// as much a partial result as a chart that could not be drawn, and is invisible on the slide itself.
 		List<String> jobWarnings = new ArrayList<>(publisherValues.warnings());
 		jobWarnings.addAll(creativeValues.warnings());
+		jobWarnings.addAll(geoValues.warnings());
 		jobWarnings.addAll(chartWarnings);
 
 		jobProgress.recordArtifact(jobId, fileName, payload.sheetUrl());

@@ -7,6 +7,7 @@ import com.aidigital.reportconstructor.service.reports.dto.ClaudeSheetBatch;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTakeawayInput;
+import com.aidigital.reportconstructor.service.reports.dto.GeoInsightInput;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationInput;
 import com.aidigital.reportconstructor.service.reports.dto.Recommendation;
 import com.aidigital.reportconstructor.service.reports.dto.StrategicInsight;
@@ -109,6 +110,27 @@ public class RealClaudeClient implements ClaudeClient {
 	 * {@link #PUBLISHER_OBSERVATION_MAX_TOKENS} is.
 	 */
 	private static final int CREATIVE_TAKEAWAY_MAX_TOKENS = 4000;
+
+	/**
+	 * Character budget of each geo string on the slide — the four {@code {{geo_insight_N.x}}} bullets and
+	 * the {@code {{geo_N_reco}}} recommendation all share the same 140-character budget.
+	 */
+	private static final int GEO_INSIGHT_LIMIT = 140;
+
+	/**
+	 * Strings per tactic on the "Geo analysis" slide: four "what the map tells us" insight bullets plus one
+	 * forward-looking recommendation, in that order.
+	 */
+	private static final int GEO_BULLET_COUNT = 5;
+
+	/** Tactics per geo-insights call, chunked for the same reason publisher observations are. */
+	private static final int GEO_INSIGHT_CHUNK = 5;
+
+	/**
+	 * Output budget per geo-insights chunk, over-provisioned for the same reason
+	 * {@link #PUBLISHER_OBSERVATION_MAX_TOKENS} is.
+	 */
+	private static final int GEO_INSIGHT_MAX_TOKENS = 4000;
 
 	// Batch C emits one results-overview per tactic group plus one tactic-overview PER TACTIC (up to 28), on
 	// top of thoughts, four recommendations and the frequency copy — all in a single JSON reply. A fixed cap
@@ -667,6 +689,107 @@ public class RealClaudeClient implements ClaudeClient {
 	 */
 	int creativeTakeawayLimit(int index) {
 		return index == CREATIVE_TAKEAWAY_COUNT - 1 ? CREATIVE_RECO_LIMIT : CREATIVE_TAKEAWAY_LIMIT;
+	}
+
+	@Override
+	public Map<Integer, List<String>> batchGeoInsights(List<GeoInsightInput> inputs, String brief) {
+		Map<Integer, List<String>> insights = new LinkedHashMap<>();
+		if (inputs == null || inputs.isEmpty()) {
+			return insights;
+		}
+		for (int start = 0; start < inputs.size(); start += GEO_INSIGHT_CHUNK) {
+			List<GeoInsightInput> chunk =
+					inputs.subList(start, Math.min(start + GEO_INSIGHT_CHUNK, inputs.size()));
+			insights.putAll(geoInsightsResilient(chunk, brief));
+		}
+		return insights;
+	}
+
+	/**
+	 * Runs one geo-insights chunk and retries an empty result, mirroring
+	 * {@link #publisherObservationsResilient} — see it for why a multi-tactic chunk is retried one tactic
+	 * at a time.
+	 *
+	 * @param chunk the tactics to cover
+	 * @param brief free-text campaign brief passed through to the prompt
+	 * @return tactic number → its five strings; empty only when every attempt failed
+	 */
+	Map<Integer, List<String>> geoInsightsResilient(List<GeoInsightInput> chunk, String brief) {
+		Map<Integer, List<String>> insights = geoInsightsChunk(chunk, brief);
+		if (!insights.isEmpty() || chunk.isEmpty()) {
+			return insights;
+		}
+		if (chunk.size() == 1) {
+			log.warn("[claude:BatchGeo] tactic {} came back with no bullets — retrying once",
+					chunk.getFirst().tacticNum());
+			return geoInsightsChunk(chunk, brief);
+		}
+		log.warn("[claude:BatchGeo] chunk {} came back empty — retrying one tactic per call",
+				chunk.stream().map(GeoInsightInput::tacticNum).toList());
+		Map<Integer, List<String>> perTactic = new LinkedHashMap<>();
+		for (GeoInsightInput input : chunk) {
+			perTactic.putAll(geoInsightsResilient(List.of(input), brief));
+		}
+		return perTactic;
+	}
+
+	/**
+	 * Runs one geo-insights chunk: prompt, parse, compress the over-budget strings, then apply the
+	 * truncation safety net. Returns an empty map — never partial or invented copy — when the call or the
+	 * parse fails, so only this chunk's tactics lose their bullets.
+	 *
+	 * @param chunk the tactics to cover in this single call
+	 * @param brief free-text campaign brief passed through to the prompt
+	 * @return tactic number → its five strings (four insights then the recommendation); empty when the
+	 * chunk produced no usable reply
+	 */
+	Map<Integer, List<String>> geoInsightsChunk(List<GeoInsightInput> chunk, String brief) {
+		Map<Integer, List<String>> insights = new LinkedHashMap<>();
+		var prompt = promptBuilder.buildGeoInsightsPrompt(chunk, brief, GEO_INSIGHT_LIMIT);
+		if (prompt.isEmpty()) {
+			return insights;
+		}
+		// allowPartial for the same reason publisher observations use it.
+		JsonNode parsed = messagesClient.callJsonObject(
+				prompt.get(), GEO_INSIGHT_MAX_TOKENS, 60, "BatchGeo", true);
+		if (parsed == null) {
+			return insights;
+		}
+
+		// Collect every string across the chunk's tactics first, so the whole chunk's over-budget text is
+		// compressed in one Batch D call rather than one per tactic.
+		Map<Integer, JsonNode> byTactic = bulletsByTactic(parsed, "BatchGeo");
+		List<ClaudeCompressionField> compressionFields = new ArrayList<>();
+		for (GeoInsightInput input : chunk) {
+			JsonNode arr = byTactic.get(input.tacticNum());
+			if (arr == null) {
+				log.warn("[claude:BatchGeo] reply carries no bullets for tactic {} (keys: {})",
+						input.tacticNum(), byTactic.keySet());
+				continue;
+			}
+			for (int i = 0; i < GEO_BULLET_COUNT; i++) {
+				String raw = i < arr.size() ? arr.get(i).asText("").trim() : "";
+				compressionFields.add(new ClaudeCompressionField(
+						input.tacticNum() + "_" + i, raw, GEO_INSIGHT_LIMIT));
+			}
+		}
+		if (compressionFields.isEmpty()) {
+			return insights;
+		}
+		Map<String, String> compressed = compressionService.compress(compressionFields, "BatchD-Geo");
+
+		for (GeoInsightInput input : chunk) {
+			if (byTactic.get(input.tacticNum()) == null) {
+				continue;
+			}
+			List<String> bullets = new ArrayList<>(GEO_BULLET_COUNT);
+			for (int i = 0; i < GEO_BULLET_COUNT; i++) {
+				bullets.add(normalizer.normalizeC(
+						compressed.get(input.tacticNum() + "_" + i), GEO_INSIGHT_LIMIT));
+			}
+			insights.put(input.tacticNum(), bullets);
+		}
+		return insights;
 	}
 
 	/**
