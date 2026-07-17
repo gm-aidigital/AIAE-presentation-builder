@@ -1,5 +1,6 @@
 package com.aidigital.reportconstructor.service.reports.ports;
 
+import com.aidigital.reportconstructor.service.reports.dto.AudienceTable;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTable;
 import com.aidigital.reportconstructor.service.reports.dto.GeoTable;
@@ -186,5 +187,34 @@ public interface SheetDeckProvider {
 	 * @return tactic number → its geo block, with rows in sheet order
 	 */
 	Map<Integer, GeoTable> readGeoTables(
+			String spreadsheetId, Set<Integer> tacticNums, String userGoogleAccessToken);
+
+	/**
+	 * Reads back the hand-entered "Audience analysis" blocks from the generated workbook's
+	 * {@code "Breakdowns"} tab, so the deck can carry the audience stat tiles and segment rows exactly
+	 * as the user typed them. The block-location rules are {@link #readGeoTables}': the
+	 * {@code "Audience analysis N"} anchor is matched on the <em>whole</em> cell (never a prefix, or
+	 * block 1 would swallow block 15).
+	 *
+	 * <p>Unlike the other sections, an audience block carries <em>two</em> side-by-side sub-tables,
+	 * each located by its own header on the same row: the age-distribution table ({@code age} /
+	 * {@code impressions}) and the top-audience-segments table ({@code Segment} /
+	 * {@code Affinity index}). Above them sit two stat tiles ({@code AGE DISTRIBUTION},
+	 * {@code GENDER DEMOGRAPHICS}), located by their label and read from the first populated cell to
+	 * the label's right. The age table's bucket labels are pre-filled by the template, so its rows are
+	 * kept only where the user typed an impressions value; the segment table's rows are kept only where
+	 * the user typed a segment name.
+	 *
+	 * <p>The whole tab is read once for every requested tactic. A tactic whose anchor is missing, or
+	 * whose block is blank, maps to {@link AudienceTable#empty()} rather than failing the read; a
+	 * workbook without a {@code "Breakdowns"} tab yields an empty map.
+	 *
+	 * @param spreadsheetId         the workbook to read
+	 * @param tacticNums            1-based tactic numbers whose audience blocks are wanted
+	 * @param userGoogleAccessToken optional signed-in user's Google OAuth token; falls back to the
+	 *                              service account when blank
+	 * @return tactic number → its audience block, with rows in sheet order
+	 */
+	Map<Integer, AudienceTable> readAudienceTables(
 			String spreadsheetId, Set<Integer> tacticNums, String userGoogleAccessToken);
 }

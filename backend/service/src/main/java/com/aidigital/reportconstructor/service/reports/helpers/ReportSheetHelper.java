@@ -1,5 +1,6 @@
 package com.aidigital.reportconstructor.service.reports.helpers;
 
+import com.aidigital.reportconstructor.service.reports.dto.AudienceTable;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTable;
@@ -122,5 +123,19 @@ public interface ReportSheetHelper {
 	 *         spreadsheet id or the read failed
 	 */
 	Map<Integer, GeoTable> readGeoTables(
+			String sheetUrl, Set<Integer> tacticNums, String userGoogleToken);
+
+	/**
+	 * Reads back the hand-entered "Audience analysis" blocks for the given tactics from the generated
+	 * workbook's "Breakdowns" tab, resolving the spreadsheet id from its URL. Non-fatal: a failed read
+	 * yields an empty map so the deck still ships, just without audience rows.
+	 *
+	 * @param sheetUrl        URL of the generated Google Sheet
+	 * @param tacticNums      1-based tactic numbers whose audience blocks are wanted
+	 * @param userGoogleToken OAuth token for Google Sheets API, or null when unavailable
+	 * @return tactic number → its audience block; an empty map when the URL carries no parseable
+	 *         spreadsheet id or the read failed
+	 */
+	Map<Integer, AudienceTable> readAudienceTables(
 			String sheetUrl, Set<Integer> tacticNums, String userGoogleToken);
 }

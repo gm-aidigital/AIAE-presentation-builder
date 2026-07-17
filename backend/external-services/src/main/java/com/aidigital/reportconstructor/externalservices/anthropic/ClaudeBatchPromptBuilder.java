@@ -1,5 +1,9 @@
 package com.aidigital.reportconstructor.externalservices.anthropic;
 
+import com.aidigital.reportconstructor.service.reports.dto.AudienceAgeRow;
+import com.aidigital.reportconstructor.service.reports.dto.AudienceInsightInput;
+import com.aidigital.reportconstructor.service.reports.dto.AudienceSegmentRow;
+import com.aidigital.reportconstructor.service.reports.dto.AudienceTable;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeRow;
@@ -1202,6 +1206,100 @@ public class ClaudeBatchPromptBuilder {
 	 */
 	String kpiColumnLabel(String kpiType) {
 		return kpiType == null || kpiType.isBlank() ? "KPI" : kpiType.trim();
+	}
+
+	/**
+	 * Builds the audience-insights prompt for one chunk of tactics, or empty when the chunk carries no
+	 * tactic with a filled audience block.
+	 *
+	 * <p>The per-string limits quoted to Claude are {@link #COMPRESSION_PROMPT_BUFFER_RATIO} of the
+	 * slide's real budgets — 256 characters for the key takeaway and 120 for the other three — for the
+	 * same reason {@link #buildGeoInsightsPrompt}'s is: copy written right up to the budget gets cut
+	 * mid-thought when the truncation safety net runs, so asking for the smaller number up front means
+	 * most strings never need compressing.
+	 *
+	 * <p>The fourth string is a forward-looking recommended action: which age groups and audience
+	 * segments to lean into next, tied to the campaign brief. The other three describe what already
+	 * happened during the flight.
+	 *
+	 * @param inputs          the chunk's tactics, each with its hand-entered audience block
+	 * @param brief           free-text campaign brief, used to tie the audience read back to the goals
+	 * @param takeawayMaxChars the slide's real character budget for the key takeaway
+	 * @param shortMaxChars    the slide's real character budget for the other three fields
+	 * @return the prompt requesting a JSON object of {@code "tactic_<n>"} → 4-string array, or empty when
+	 * every tactic in the chunk has a blank block
+	 */
+	public Optional<String> buildAudienceInsightsPrompt(
+			List<AudienceInsightInput> inputs, String brief, int takeawayMaxChars, int shortMaxChars) {
+		List<String> blocks = new ArrayList<>();
+		for (AudienceInsightInput input : inputs) {
+			if (input.table() == null || input.table().isEmpty()) {
+				continue;
+			}
+			blocks.add(audienceContextBlock(input));
+		}
+		if (blocks.isEmpty()) {
+			return Optional.empty();
+		}
+		int takeawayLimit = Math.max(1, (int) (takeawayMaxChars * COMPRESSION_PROMPT_BUFFER_RATIO));
+		int shortLimit = Math.max(1, (int) (shortMaxChars * COMPRESSION_PROMPT_BUFFER_RATIO));
+		String prompt = "You are a senior programmatic media analyst writing the four copy fields on the "
+				+ "'Audience analysis' slide of an end-of-campaign report. You are writing on behalf of the team "
+				+ "that ran this campaign, so the tone is confident and complimentary of our own delivery.\n\n"
+				+ "For EACH tactic below, write exactly 4 strings, in this order:\n"
+				+ "1. KEY TAKEAWAY — the single most important read on who this tactic reached, at most "
+				+ takeawayLimit + " characters. One or two complete sentences.\n"
+				+ "2. WHAT WORKED — the strongest audience result, at most " + shortLimit
+				+ " characters, one complete sentence.\n"
+				+ "3. WATCH-OUT — a caveat or soft spot in the audience delivery, at most " + shortLimit
+				+ " characters, one complete sentence.\n"
+				+ "4. RECOMMENDED ACTION — a FORWARD-LOOKING recommendation about which age groups and audience "
+				+ "segments to lean into next, at most " + shortLimit + " characters, one complete sentence. This "
+				+ "one MAY be future advice; strings 1-3 describe what already happened.\n\n"
+				+ "Rules:\n"
+				+ "- Ground every string in the numbers given: name the real dominant age groups and the real "
+				+ "top segments with their affinity indexes, and read where delivery and engagement concentrated.\n"
+				+ "- Focus the recommendation on the MOST EFFECTIVE ages and segments — the buckets with the "
+				+ "strongest delivery and the segments with the highest affinity index (100 = campaign average).\n"
+				+ "- Tie your read and hypotheses to the campaign brief's audience and goals, but at most ~20% of "
+				+ "any string may go beyond the table, and never invent a number that is not in the data.\n"
+				+ "- SMALL-SAMPLE OUTLIERS. A segment with a very high affinity index on tiny volume is noise, not "
+				+ "a headline; judge it alongside how much of delivery it actually represents.\n"
+				+ "- Analyst tone, no filler, no bullet characters, no markdown.\n\n"
+				+ "Return ONLY a JSON object keyed by tactic, each key mapping to an array of exactly 4 strings:\n"
+				+ "{\"tactic_1\": [\"...\", \"...\", \"...\", \"...\"]}\n\n"
+				+ "=== CAMPAIGN BRIEF ===\n" + (brief == null ? "" : brief) + "\n\n"
+				+ "=== AUDIENCE DATA ===\n" + String.join("\n", blocks);
+		return Optional.of(prompt);
+	}
+
+	/**
+	 * Renders one tactic's audience block as prompt context: its name, the two stat tiles the slide shows,
+	 * the age-distribution table and the top-audience-segments table. Blank stat tiles are omitted rather
+	 * than sent as empty labels, so the user leaving a tile empty never reads to Claude as a zero.
+	 *
+	 * @param input the tactic's audience block
+	 * @return the tactic's {@code tactic_<n>} context block
+	 */
+	String audienceContextBlock(AudienceInsightInput input) {
+		AudienceTable table = input.table();
+		StringBuilder block = new StringBuilder();
+		block.append("tactic_").append(input.tacticNum()).append(" — ").append(input.tacticName()).append('\n');
+		appendCreativeStat(block, "Dominant age group", table.ageDistribution());
+		appendCreativeStat(block, "Gender demographics", table.genderDemographics());
+		if (!table.ageRows().isEmpty()) {
+			block.append("Age | Impressions\n");
+			for (AudienceAgeRow row : table.ageRows()) {
+				block.append(row.ageGroup()).append(" | ").append(row.impressions()).append('\n');
+			}
+		}
+		if (!table.segmentRows().isEmpty()) {
+			block.append("Segment | Affinity index (100 = campaign average)\n");
+			for (AudienceSegmentRow row : table.segmentRows()) {
+				block.append(row.segment()).append(" | ").append(row.affinityIndex()).append('\n');
+			}
+		}
+		return block.toString();
 	}
 
 	/**

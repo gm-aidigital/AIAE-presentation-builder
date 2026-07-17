@@ -2,6 +2,9 @@ package com.aidigital.reportconstructor.externalservices.google;
 
 import com.aidigital.reportconstructor.service.common.error.AppException;
 import com.aidigital.reportconstructor.service.common.error.ErrorReason;
+import com.aidigital.reportconstructor.service.reports.dto.AudienceAgeRow;
+import com.aidigital.reportconstructor.service.reports.dto.AudienceSegmentRow;
+import com.aidigital.reportconstructor.service.reports.dto.AudienceTable;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeRow;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTable;
@@ -172,6 +175,29 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 	private static final String GEO_MARKETS_LABEL = "MARKETS ACTIVATED";
 	private static final String GEO_TOP_GEO_LABEL = "TOP GEO";
 	private static final String GEO_TOP_KPI_LABEL_PREFIX = "MOST EFFICIENT";
+
+	/**
+	 * Row labels of the two summary cells above each "Audience analysis" block, whose values the slide
+	 * shows in its stat tiles. Both are matched whole-cell and their value taken from the first populated
+	 * cell to the label's right — the same rule the creative and geo stat tiles use.
+	 */
+	private static final String AUDIENCE_AGE_LABEL = "AGE DISTRIBUTION";
+	private static final String AUDIENCE_GENDER_LABEL = "GENDER DEMOGRAPHICS";
+
+	/**
+	 * Header texts of the "Audience analysis" block's age-distribution sub-table (age bucket → delivered
+	 * impressions). Whole-cell matching keeps {@code "age"} from matching the {@code AGE DISTRIBUTION}
+	 * stat-tile label.
+	 */
+	private static final String AUDIENCE_AGE_HEADER = "age";
+	private static final String AUDIENCE_AGE_IMPRESSIONS_HEADER = "impressions";
+
+	/**
+	 * Header texts of the "Audience analysis" block's top-audience-segments sub-table (segment name →
+	 * affinity index), which sits to the right of the age-distribution sub-table on the same header row.
+	 */
+	private static final String AUDIENCE_SEGMENT_HEADER = "Segment";
+	private static final String AUDIENCE_SEGMENT_INDEX_HEADER = "Affinity index";
 
 	/**
 	 * The only tokens the {@code "Breakdowns"} tab carries — each block's {@code {{tactic N}}} heading,
@@ -465,6 +491,30 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 		}
 	}
 
+	@Override
+	public Map<Integer, AudienceTable> readAudienceTables(
+			String spreadsheetId, Set<Integer> tacticNums, String userGoogleAccessToken) {
+		if (tacticNums == null || tacticNums.isEmpty()) {
+			return Map.of();
+		}
+		boolean asUser = userGoogleAccessToken != null && !userGoogleAccessToken.isBlank();
+		Sheets sheetsClient = asUser ? buildSheets(userGoogleAccessToken) : sheets;
+		try {
+			Map<String, Integer> tabSheetIds = fetchSheetIds(sheetsClient, spreadsheetId);
+			if (!tabSheetIds.containsKey(BREAKDOWN_TAB)) {
+				log.warn("[sheets] readAudienceTables: no \"{}\" tab in {} — skipping", BREAKDOWN_TAB, spreadsheetId);
+				return Map.of();
+			}
+			// One read of the whole tab serves every requested tactic — the blocks all live on it.
+			List<List<String>> grid = readGrid(sheetsClient, spreadsheetId, BREAKDOWN_TAB);
+			return audienceTables(grid, tacticNums);
+		} catch (IOException ex) {
+			log.error("[sheets] readAudienceTables failed for {}", spreadsheetId, ex);
+			throw new AppException(ErrorReason.C000,
+					"Google Sheets readAudienceTables failed: " + ex.getMessage());
+		}
+	}
+
 	/**
 	 * Extracts the requested tactics' "Geo analysis" blocks from an already-read {@code "Breakdowns"} tab.
 	 * Blocks are bounded exactly as {@link #creativeTables} and {@link #publisherTables} bound theirs —
@@ -663,6 +713,177 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 			}
 		}
 		return -1;
+	}
+
+	/**
+	 * Extracts the requested tactics' "Audience analysis" blocks from an already-read {@code "Breakdowns"}
+	 * tab. Blocks are bounded exactly as {@link #geoTables} bounds theirs — anchor cell, inferred block
+	 * height, next anchor on the header row — so the read, the clear and the other breakdown reads can
+	 * never disagree about where a block ends.
+	 *
+	 * @param grid       the {@code "Breakdowns"} tab, read as trimmed cell strings
+	 * @param tacticNums 1-based tactic numbers whose blocks are wanted
+	 * @return tactic number → its audience block; tactics with no anchor map to {@link AudienceTable#empty()}
+	 */
+	Map<Integer, AudienceTable> audienceTables(List<List<String>> grid, Set<Integer> tacticNums) {
+		Map<Integer, AudienceTable> tables = new LinkedHashMap<>();
+		List<int[]> anchors = findBreakdownAnchors(grid);
+		if (anchors.isEmpty()) {
+			log.warn("[sheets] readAudienceTables: no breakdown anchors on \"{}\" tab — nothing to read",
+					BREAKDOWN_TAB);
+			return tables;
+		}
+		int blockHeight = breakdownBlockHeight(anchors);
+		int audienceOrdinal = BreakdownType.AUDIENCE.ordinal();
+		for (int[] anchor : anchors) {
+			if (anchor[0] != audienceOrdinal || !tacticNums.contains(anchor[1])) {
+				continue;
+			}
+			int row = anchor[2];
+			int col = anchor[3];
+			int endRow = Math.min(row + blockHeight, grid.size());
+			int endCol = nextAnchorColOnRow(anchors, row, col, blockRightEdge(grid, row, endRow));
+			tables.put(anchor[1], audienceBlock(grid, row, endRow, col, endCol, anchor[1]));
+		}
+		for (Integer tacticNum : tacticNums) {
+			tables.putIfAbsent(tacticNum, AudienceTable.empty());
+		}
+		return tables;
+	}
+
+	/**
+	 * Reads one "Audience analysis" block: its two stat tiles and its two side-by-side sub-tables. The
+	 * stat tiles and each sub-table are independent — a user who filled only the tiles still gets them on
+	 * the slide, and vice versa — so a missing sub-table header costs only that sub-table's rows.
+	 *
+	 * @param grid       the {@code "Breakdowns"} tab, read as trimmed cell strings
+	 * @param startRow   inclusive zero-based row of the block's anchor cell
+	 * @param endRowExcl exclusive zero-based end row of the block
+	 * @param startCol   inclusive zero-based column of the block's anchor cell
+	 * @param endColExcl exclusive zero-based end column of the block
+	 * @param tacticNum  the block's tactic number, used only for logging
+	 * @return the block's stat tiles and rows, blank/empty where the user typed nothing
+	 */
+	AudienceTable audienceBlock(
+			List<List<String>> grid, int startRow, int endRowExcl, int startCol, int endColExcl, int tacticNum) {
+		return new AudienceTable(
+				summaryValue(grid, startRow, endRowExcl, startCol, endColExcl, AUDIENCE_AGE_LABEL),
+				summaryValue(grid, startRow, endRowExcl, startCol, endColExcl, AUDIENCE_GENDER_LABEL),
+				audienceAgeRowsInBlock(grid, startRow, endRowExcl, startCol, endColExcl, tacticNum),
+				audienceSegmentRowsInBlock(grid, startRow, endRowExcl, startCol, endColExcl, tacticNum));
+	}
+
+	/**
+	 * Reads one "Audience analysis" block's age-distribution rows. The bucket labels are pre-filled by the
+	 * template, so a row is kept only where the user typed an impressions value — that value, not the
+	 * label, is what marks a row as filled.
+	 *
+	 * @param grid       the {@code "Breakdowns"} tab, read as trimmed cell strings
+	 * @param startRow   inclusive zero-based row of the block's anchor cell
+	 * @param endRowExcl exclusive zero-based end row of the block
+	 * @param startCol   inclusive zero-based column of the block's anchor cell
+	 * @param endColExcl exclusive zero-based end column of the block
+	 * @param tacticNum  the block's tactic number, used only for logging
+	 * @return the filled age rows in sheet order, or an empty list when the header is missing
+	 */
+	List<AudienceAgeRow> audienceAgeRowsInBlock(
+			List<List<String>> grid, int startRow, int endRowExcl, int startCol, int endColExcl, int tacticNum) {
+		int[] header = findAudienceAgeHeader(grid, startRow, endRowExcl, startCol, endColExcl);
+		if (header == null) {
+			log.warn("[sheets] readAudienceTables: tactic {} block has no \"{}\" header — skipping age rows",
+					tacticNum, AUDIENCE_AGE_HEADER);
+			return List.of();
+		}
+		List<AudienceAgeRow> rows = new ArrayList<>();
+		for (int r = header[0] + 1; r < endRowExcl; r++) {
+			String impressions = cellAt(grid, r, header[2]);
+			if (impressions.isEmpty()) {
+				continue;
+			}
+			rows.add(new AudienceAgeRow(cellAt(grid, r, header[1]), impressions));
+		}
+		return rows;
+	}
+
+	/**
+	 * Reads one "Audience analysis" block's top-audience-segment rows. Both the segment name and the
+	 * affinity index are user-entered, so a row is kept only where the segment name is present.
+	 *
+	 * @param grid       the {@code "Breakdowns"} tab, read as trimmed cell strings
+	 * @param startRow   inclusive zero-based row of the block's anchor cell
+	 * @param endRowExcl exclusive zero-based end row of the block
+	 * @param startCol   inclusive zero-based column of the block's anchor cell
+	 * @param endColExcl exclusive zero-based end column of the block
+	 * @param tacticNum  the block's tactic number, used only for logging
+	 * @return the filled segment rows in sheet order, or an empty list when the header is missing
+	 */
+	List<AudienceSegmentRow> audienceSegmentRowsInBlock(
+			List<List<String>> grid, int startRow, int endRowExcl, int startCol, int endColExcl, int tacticNum) {
+		int[] header = findAudienceSegmentHeader(grid, startRow, endRowExcl, startCol, endColExcl);
+		if (header == null) {
+			log.warn("[sheets] readAudienceTables: tactic {} block has no \"{}\" header — skipping segment rows",
+					tacticNum, AUDIENCE_SEGMENT_HEADER);
+			return List.of();
+		}
+		List<AudienceSegmentRow> rows = new ArrayList<>();
+		for (int r = header[0] + 1; r < endRowExcl; r++) {
+			String segment = cellAt(grid, r, header[1]);
+			if (segment.isEmpty()) {
+				continue;
+			}
+			rows.add(new AudienceSegmentRow(segment, cellAt(grid, r, header[2])));
+		}
+		return rows;
+	}
+
+	/**
+	 * Finds the age-distribution sub-table's header row and the columns of its two data columns, resolving
+	 * both by header text so a template edit that shifts the block cannot read a neighbouring column.
+	 *
+	 * @param grid       the {@code "Breakdowns"} tab, read as trimmed cell strings
+	 * @param startRow   inclusive zero-based row of the block's anchor cell
+	 * @param endRowExcl exclusive zero-based end row of the block
+	 * @param startCol   inclusive zero-based column of the block's anchor cell
+	 * @param endColExcl exclusive zero-based end column of the block
+	 * @return {@code [headerRow, ageCol, impsCol]}, or {@code null} when the block carries no {@code age}
+	 *         header
+	 */
+	int[] findAudienceAgeHeader(List<List<String>> grid, int startRow, int endRowExcl, int startCol, int endColExcl) {
+		for (int r = startRow; r < endRowExcl; r++) {
+			int ageCol = columnOfHeader(grid, r, startCol, endColExcl, AUDIENCE_AGE_HEADER);
+			if (ageCol < 0) {
+				continue;
+			}
+			return new int[] {
+					r, ageCol, columnOfHeader(grid, r, startCol, endColExcl, AUDIENCE_AGE_IMPRESSIONS_HEADER)};
+		}
+		return null;
+	}
+
+	/**
+	 * Finds the top-audience-segments sub-table's header row and the columns of its two data columns,
+	 * resolving both by header text so a template edit that shifts the block cannot read a neighbouring
+	 * column.
+	 *
+	 * @param grid       the {@code "Breakdowns"} tab, read as trimmed cell strings
+	 * @param startRow   inclusive zero-based row of the block's anchor cell
+	 * @param endRowExcl exclusive zero-based end row of the block
+	 * @param startCol   inclusive zero-based column of the block's anchor cell
+	 * @param endColExcl exclusive zero-based end column of the block
+	 * @return {@code [headerRow, segmentCol, indexCol]}, or {@code null} when the block carries no
+	 *         {@code Segment} header
+	 */
+	int[] findAudienceSegmentHeader(
+			List<List<String>> grid, int startRow, int endRowExcl, int startCol, int endColExcl) {
+		for (int r = startRow; r < endRowExcl; r++) {
+			int segmentCol = columnOfHeader(grid, r, startCol, endColExcl, AUDIENCE_SEGMENT_HEADER);
+			if (segmentCol < 0) {
+				continue;
+			}
+			return new int[] {
+					r, segmentCol, columnOfHeader(grid, r, startCol, endColExcl, AUDIENCE_SEGMENT_INDEX_HEADER)};
+		}
+		return null;
 	}
 
 	/**

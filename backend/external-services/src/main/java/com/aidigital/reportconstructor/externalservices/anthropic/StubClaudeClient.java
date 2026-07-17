@@ -6,6 +6,7 @@ import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeSheetBatch;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
+import com.aidigital.reportconstructor.service.reports.dto.AudienceInsightInput;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTakeawayInput;
 import com.aidigital.reportconstructor.service.reports.dto.GeoInsightInput;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationInput;
@@ -75,6 +76,11 @@ public class StubClaudeClient implements ClaudeClient {
 
 	@Override
 	public Map<Integer, List<String>> batchGeoInsights(List<GeoInsightInput> inputs, String brief) {
+		return Map.of();
+	}
+
+	@Override
+	public Map<Integer, List<String>> batchAudienceInsights(List<AudienceInsightInput> inputs, String brief) {
 		return Map.of();
 	}
 

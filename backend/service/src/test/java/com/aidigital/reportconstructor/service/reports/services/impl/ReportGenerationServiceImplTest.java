@@ -11,6 +11,7 @@ import com.aidigital.reportconstructor.service.reports.engine.Fmt;
 import com.aidigital.reportconstructor.service.reports.engine.ReportClaudeDefaults;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownValues;
 import com.aidigital.reportconstructor.service.reports.helpers.CreativeBreakdownHelper;
+import com.aidigital.reportconstructor.service.reports.helpers.AudienceBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.GeoBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.PublisherBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportFileNamer;
@@ -85,13 +86,15 @@ class ReportGenerationServiceImplTest {
 	CreativeBreakdownHelper creativeBreakdown;
 	@Mock
 	GeoBreakdownHelper geoBreakdown;
+	@Mock
+	AudienceBreakdownHelper audienceBreakdown;
 
 	ReportGenerationServiceImpl service;
 
 	@BeforeEach
 	void setUp() {
 		service = new ReportGenerationServiceImpl(
-				jobProgress, warnings, chartHelper, sheetHelper, publisherBreakdown, creativeBreakdown, geoBreakdown, placeholderReader, sheetCampaign, placeholders,
+				jobProgress, warnings, chartHelper, sheetHelper, publisherBreakdown, creativeBreakdown, geoBreakdown, audienceBreakdown, placeholderReader, sheetCampaign, placeholders,
 				claude, slides, userGoogleTokens, self, claudeDefaults, fileNamer,
 				new ReportNumberParserImpl(), new Fmt());
 	}
@@ -223,6 +226,9 @@ class ReportGenerationServiceImplTest {
 				eq("http://sheet"), isNull(), any(), eq("Campaign brief."), isNull()))
 				.thenReturn(BreakdownValues.empty());
 		when(geoBreakdown.buildGeoValues(
+				eq("http://sheet"), isNull(), any(), eq("Campaign brief."), isNull()))
+				.thenReturn(BreakdownValues.empty());
+		when(audienceBreakdown.buildAudienceValues(
 				eq("http://sheet"), isNull(), any(), eq("Campaign brief."), isNull()))
 				.thenReturn(BreakdownValues.empty());
 		when(chartHelper.buildChartsFromSheet(eq("http://deck"), eq(grid), any(), eq(2), isNull()))

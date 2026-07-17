@@ -1,5 +1,6 @@
 package com.aidigital.reportconstructor.externalservices.google;
 
+import com.aidigital.reportconstructor.service.reports.dto.AudienceTable;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTable;
 import com.aidigital.reportconstructor.service.reports.dto.GeoTable;
@@ -80,6 +81,13 @@ public class StubSheetDeckProvider implements SheetDeckProvider {
 	public Map<Integer, GeoTable> readGeoTables(
 			String spreadsheetId, Set<Integer> tacticNums, String userGoogleAccessToken) {
 		// The stub never clones a real workbook, so there are no hand-entered geo rows to read.
+		return Map.of();
+	}
+
+	@Override
+	public Map<Integer, AudienceTable> readAudienceTables(
+			String spreadsheetId, Set<Integer> tacticNums, String userGoogleAccessToken) {
+		// The stub never clones a real workbook, so there are no hand-entered audience rows to read.
 		return Map.of();
 	}
 }

@@ -1,5 +1,9 @@
 package com.aidigital.reportconstructor.externalservices.anthropic;
 
+import com.aidigital.reportconstructor.service.reports.dto.AudienceAgeRow;
+import com.aidigital.reportconstructor.service.reports.dto.AudienceInsightInput;
+import com.aidigital.reportconstructor.service.reports.dto.AudienceSegmentRow;
+import com.aidigital.reportconstructor.service.reports.dto.AudienceTable;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeRow;
@@ -208,6 +212,57 @@ class ClaudeBatchPromptBuilderTest {
 
 		// When:
 		Optional<String> prompt = builder.buildGeoInsightsPrompt(List.of(input), "brief", 140);
+
+		// Then: no call is worth making — there is nothing to observe
+		assertThat(prompt).isEmpty();
+	}
+
+	@Test
+	void buildAudienceInsightsPrompt_quotesBothBudgetsAtEightyPercentAndCarriesTheAudienceDataTest() {
+		// Given: a tactic whose audience block the user filled in
+		AudienceInsightInput input = new AudienceInsightInput(1, "CTV",
+				new AudienceTable("25-34", "58% F / 42% M",
+						List.of(new AudienceAgeRow("18-24", "800,000"), new AudienceAgeRow("25-34", "1,200,000")),
+						List.of(new AudienceSegmentRow("Auto Intenders", "142"))));
+
+		// When: asked with the slide's real 256/120-character budgets
+		String prompt = builder.buildAudienceInsightsPrompt(List.of(input), "brief", 256, 120).orElseThrow();
+
+		// Then: Claude is asked for the smaller numbers, leaving the truncation safety net headroom
+		assertThat(prompt).contains("at most 204 characters");
+		assertThat(prompt).contains("at most 96 characters");
+
+		// Then: the tactic's name, stat tiles and both sub-tables reach the prompt
+		assertThat(prompt).contains("tactic_1 — CTV");
+		assertThat(prompt).contains("Dominant age group: 25-34");
+		assertThat(prompt).contains("Gender demographics: 58% F / 42% M");
+		assertThat(prompt).contains("18-24 | 800,000");
+		assertThat(prompt).contains("Auto Intenders | 142");
+	}
+
+	@Test
+	void buildAudienceInsightsPrompt_asksFourStringsWithAForwardLookingRecommendedActionTest() {
+		// Given: a filled audience block
+		AudienceInsightInput input = new AudienceInsightInput(1, "CTV",
+				new AudienceTable("25-34", "58% F", List.of(),
+						List.of(new AudienceSegmentRow("Auto Intenders", "142"))));
+
+		// When:
+		String prompt = builder.buildAudienceInsightsPrompt(List.of(input), "brief", 256, 120).orElseThrow();
+
+		// Then: exactly four strings are requested and the fourth is explicitly a forward-looking action
+		assertThat(prompt).contains("array of exactly 4 strings");
+		assertThat(prompt).contains("FORWARD-LOOKING recommendation");
+		assertThat(prompt).contains("MOST EFFECTIVE ages and segments");
+	}
+
+	@Test
+	void buildAudienceInsightsPrompt_emptyWhenNoTacticInTheChunkHasDataTest() {
+		// Given: a chunk whose only tactic left its block blank
+		AudienceInsightInput input = new AudienceInsightInput(1, "CTV", AudienceTable.empty());
+
+		// When:
+		Optional<String> prompt = builder.buildAudienceInsightsPrompt(List.of(input), "brief", 256, 120);
 
 		// Then: no call is worth making — there is nothing to observe
 		assertThat(prompt).isEmpty();

@@ -6,6 +6,7 @@ import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeSheetBatch;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
+import com.aidigital.reportconstructor.service.reports.dto.AudienceInsightInput;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTakeawayInput;
 import com.aidigital.reportconstructor.service.reports.dto.GeoInsightInput;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationInput;
@@ -132,6 +133,27 @@ public interface ClaudeClient {
 	 * back to invented copy
 	 */
 	Map<Integer, List<String>> batchGeoInsights(List<GeoInsightInput> inputs, String brief);
+
+	/**
+	 * Audience-insights batch — the four Claude-written strings on each tactic's "Audience analysis"
+	 * breakdown slide, written from the hand-entered audience block the user reviewed in the sheet:
+	 * the {@code {{aud_N_takeaway}}} key takeaway, the {@code {{aud_N_worked}}} "what worked", the
+	 * {@code {{aud_N_flag}}} watch-out, and the {@code {{aud_N_reco}}} recommended action.
+	 *
+	 * <p>The four strings are returned in that fixed slide order. The takeaway is capped at 256
+	 * characters and the other three at 120, the slide's text budgets. The recommendation is
+	 * forward-looking — it advises which age groups and segments to lean into next, tied to the
+	 * campaign brief. Chunking and failure behaviour mirror {@link #batchGeoInsights}: small chunks
+	 * keep each reply inside the output budget, and a chunk that fails only drops its own tactics.
+	 *
+	 * @param inputs one entry per tactic whose audience block is non-empty; tactics with a blank block
+	 *               must not be passed, since there is nothing to observe and the copy would be invented
+	 * @param brief  free-text campaign brief, used to tie the audience read back to the campaign's goals
+	 * @return tactic number → its four strings (takeaway, what-worked, watch-out, recommendation), in
+	 * slide order; a tactic missing from the map got no usable reply and its fields should render blank
+	 * rather than fall back to invented copy
+	 */
+	Map<Integer, List<String>> batchAudienceInsights(List<AudienceInsightInput> inputs, String brief);
 
 	/**
 	 * Geo-tab → short ≤40-char comma-separated location string (or null).

@@ -6,6 +6,7 @@ import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeSheetBatch;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
+import com.aidigital.reportconstructor.service.reports.dto.AudienceInsightInput;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTakeawayInput;
 import com.aidigital.reportconstructor.service.reports.dto.GeoInsightInput;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationInput;
@@ -131,6 +132,34 @@ public class RealClaudeClient implements ClaudeClient {
 	 * {@link #PUBLISHER_OBSERVATION_MAX_TOKENS} is.
 	 */
 	private static final int GEO_INSIGHT_MAX_TOKENS = 4000;
+
+	/**
+	 * Character budget of the "Audience analysis" slide's key takeaway ({@code {{aud_N_takeaway}}}), the
+	 * widest of the four audience fields.
+	 */
+	private static final int AUDIENCE_TAKEAWAY_LIMIT = 256;
+
+	/**
+	 * Character budget of the "Audience analysis" slide's three shorter fields — "what worked"
+	 * ({@code {{aud_N_worked}}}), the watch-out ({@code {{aud_N_flag}}}) and the recommended action
+	 * ({@code {{aud_N_reco}}}).
+	 */
+	private static final int AUDIENCE_SHORT_LIMIT = 120;
+
+	/**
+	 * Strings per tactic on the "Audience analysis" slide: the key takeaway, "what worked", the watch-out
+	 * and the recommended action, in that order.
+	 */
+	private static final int AUDIENCE_FIELD_COUNT = 4;
+
+	/** Tactics per audience-insights call, chunked for the same reason publisher observations are. */
+	private static final int AUDIENCE_INSIGHT_CHUNK = 5;
+
+	/**
+	 * Output budget per audience-insights chunk, over-provisioned for the same reason
+	 * {@link #PUBLISHER_OBSERVATION_MAX_TOKENS} is.
+	 */
+	private static final int AUDIENCE_INSIGHT_MAX_TOKENS = 4000;
 
 	// Batch C emits one results-overview per tactic group plus one tactic-overview PER TACTIC (up to 28), on
 	// top of thoughts, four recommendations and the frequency copy — all in a single JSON reply. A fixed cap
@@ -816,6 +845,119 @@ public class RealClaudeClient implements ClaudeClient {
 			byTactic.putIfAbsent(Integer.parseInt(matcher.group(1)), entry.getValue());
 		}
 		return byTactic;
+	}
+
+	@Override
+	public Map<Integer, List<String>> batchAudienceInsights(List<AudienceInsightInput> inputs, String brief) {
+		Map<Integer, List<String>> insights = new LinkedHashMap<>();
+		if (inputs == null || inputs.isEmpty()) {
+			return insights;
+		}
+		for (int start = 0; start < inputs.size(); start += AUDIENCE_INSIGHT_CHUNK) {
+			List<AudienceInsightInput> chunk =
+					inputs.subList(start, Math.min(start + AUDIENCE_INSIGHT_CHUNK, inputs.size()));
+			insights.putAll(audienceInsightsResilient(chunk, brief));
+		}
+		return insights;
+	}
+
+	/**
+	 * Runs one audience-insights chunk and retries an empty result, mirroring
+	 * {@link #publisherObservationsResilient} — see it for why a multi-tactic chunk is retried one tactic
+	 * at a time.
+	 *
+	 * @param chunk the tactics to cover
+	 * @param brief free-text campaign brief passed through to the prompt
+	 * @return tactic number → its four strings; empty only when every attempt failed
+	 */
+	Map<Integer, List<String>> audienceInsightsResilient(List<AudienceInsightInput> chunk, String brief) {
+		Map<Integer, List<String>> insights = audienceInsightsChunk(chunk, brief);
+		if (!insights.isEmpty() || chunk.isEmpty()) {
+			return insights;
+		}
+		if (chunk.size() == 1) {
+			log.warn("[claude:BatchAudience] tactic {} came back with no fields — retrying once",
+					chunk.getFirst().tacticNum());
+			return audienceInsightsChunk(chunk, brief);
+		}
+		log.warn("[claude:BatchAudience] chunk {} came back empty — retrying one tactic per call",
+				chunk.stream().map(AudienceInsightInput::tacticNum).toList());
+		Map<Integer, List<String>> perTactic = new LinkedHashMap<>();
+		for (AudienceInsightInput input : chunk) {
+			perTactic.putAll(audienceInsightsResilient(List.of(input), brief));
+		}
+		return perTactic;
+	}
+
+	/**
+	 * Runs one audience-insights chunk: prompt, parse, compress the over-budget strings, then apply the
+	 * truncation safety net. Returns an empty map — never partial or invented copy — when the call or the
+	 * parse fails, so only this chunk's tactics lose their copy.
+	 *
+	 * @param chunk the tactics to cover in this single call
+	 * @param brief free-text campaign brief passed through to the prompt
+	 * @return tactic number → its four strings (takeaway, what-worked, watch-out, recommendation); empty
+	 * when the chunk produced no usable reply
+	 */
+	Map<Integer, List<String>> audienceInsightsChunk(List<AudienceInsightInput> chunk, String brief) {
+		Map<Integer, List<String>> insights = new LinkedHashMap<>();
+		var prompt = promptBuilder.buildAudienceInsightsPrompt(
+				chunk, brief, AUDIENCE_TAKEAWAY_LIMIT, AUDIENCE_SHORT_LIMIT);
+		if (prompt.isEmpty()) {
+			return insights;
+		}
+		// allowPartial for the same reason publisher observations use it.
+		JsonNode parsed = messagesClient.callJsonObject(
+				prompt.get(), AUDIENCE_INSIGHT_MAX_TOKENS, 60, "BatchAudience", true);
+		if (parsed == null) {
+			return insights;
+		}
+
+		// Collect every string across the chunk's tactics first, so the whole chunk's over-budget text is
+		// compressed in one Batch D call rather than one per tactic.
+		Map<Integer, JsonNode> byTactic = bulletsByTactic(parsed, "BatchAudience");
+		List<ClaudeCompressionField> compressionFields = new ArrayList<>();
+		for (AudienceInsightInput input : chunk) {
+			JsonNode arr = byTactic.get(input.tacticNum());
+			if (arr == null) {
+				log.warn("[claude:BatchAudience] reply carries no fields for tactic {} (keys: {})",
+						input.tacticNum(), byTactic.keySet());
+				continue;
+			}
+			for (int i = 0; i < AUDIENCE_FIELD_COUNT; i++) {
+				String raw = i < arr.size() ? arr.get(i).asText("").trim() : "";
+				compressionFields.add(new ClaudeCompressionField(
+						input.tacticNum() + "_" + i, raw, audienceFieldLimit(i)));
+			}
+		}
+		if (compressionFields.isEmpty()) {
+			return insights;
+		}
+		Map<String, String> compressed = compressionService.compress(compressionFields, "BatchD-Audience");
+
+		for (AudienceInsightInput input : chunk) {
+			if (byTactic.get(input.tacticNum()) == null) {
+				continue;
+			}
+			List<String> fields = new ArrayList<>(AUDIENCE_FIELD_COUNT);
+			for (int i = 0; i < AUDIENCE_FIELD_COUNT; i++) {
+				fields.add(normalizer.normalizeC(
+						compressed.get(input.tacticNum() + "_" + i), audienceFieldLimit(i)));
+			}
+			insights.put(input.tacticNum(), fields);
+		}
+		return insights;
+	}
+
+	/**
+	 * Returns the character budget of one audience field by its zero-based slide position: the first
+	 * string is the wider key takeaway, the other three share the shorter budget.
+	 *
+	 * @param index zero-based field index within the tactic's four strings
+	 * @return the field's character budget
+	 */
+	int audienceFieldLimit(int index) {
+		return index == 0 ? AUDIENCE_TAKEAWAY_LIMIT : AUDIENCE_SHORT_LIMIT;
 	}
 
 	@Override

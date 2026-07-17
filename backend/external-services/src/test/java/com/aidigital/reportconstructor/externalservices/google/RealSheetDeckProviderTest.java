@@ -1,5 +1,8 @@
 package com.aidigital.reportconstructor.externalservices.google;
 
+import com.aidigital.reportconstructor.service.reports.dto.AudienceAgeRow;
+import com.aidigital.reportconstructor.service.reports.dto.AudienceSegmentRow;
+import com.aidigital.reportconstructor.service.reports.dto.AudienceTable;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeRow;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTable;
@@ -425,6 +428,101 @@ class RealSheetDeckProviderTest {
 	}
 
 	@Test
+	void audienceTables_readsStatTilesAndBothSubTablesForTheRequestedTacticTest() {
+		// Given: a "Breakdowns" tab whose tactic-1 audience block carries its two stat tiles, its filled
+		// age rows and its filled segment rows
+		RealSheetDeckProvider provider = newProvider();
+		List<List<String>> grid = audienceGrid(Map.of(
+				1, new AudienceTable("25-34", "58% F / 42% M",
+						List.of(new AudienceAgeRow("18-24", "800,000"), new AudienceAgeRow("25-34", "1,200,000")),
+						List.of(new AudienceSegmentRow("Auto Intenders", "142"),
+								new AudienceSegmentRow("Sports Fans", "128")))));
+
+		// When:
+		Map<Integer, AudienceTable> tables = provider.audienceTables(grid, Set.of(1));
+
+		// Then: the stat tiles come back as typed
+		AudienceTable table = tables.get(1);
+		assertThat(table.ageDistribution()).isEqualTo("25-34");
+		assertThat(table.genderDemographics()).isEqualTo("58% F / 42% M");
+
+		// Then: both sub-tables come back verbatim, in sheet order
+		assertThat(table.ageRows()).containsExactly(
+				new AudienceAgeRow("18-24", "800,000"),
+				new AudienceAgeRow("25-34", "1,200,000"));
+		assertThat(table.segmentRows()).containsExactly(
+				new AudienceSegmentRow("Auto Intenders", "142"),
+				new AudienceSegmentRow("Sports Fans", "128"));
+	}
+
+	@Test
+	void audienceTables_keepsAgeRowsOnlyWhereTheUserTypedImpressionsTest() {
+		// Given: the template pre-fills every age bucket label, but the user typed impressions for only one
+		RealSheetDeckProvider provider = newProvider();
+		List<List<String>> grid = audienceGrid(Map.of(
+				1, new AudienceTable("25-34", "",
+						List.of(new AudienceAgeRow("18-24", ""), new AudienceAgeRow("25-34", "1,200,000")),
+						List.of())));
+
+		// When:
+		Map<Integer, AudienceTable> tables = provider.audienceTables(grid, Set.of(1));
+
+		// Then: only the impressions-filled bucket is kept, so a blank age table never reads as data
+		assertThat(tables.get(1).ageRows()).containsExactly(new AudienceAgeRow("25-34", "1,200,000"));
+	}
+
+	@Test
+	void audienceTables_doesNotMatchTactic15BlockWhenReadingTactic1Test() {
+		// Given: a tab carrying both an "Audience analysis 1" and an "Audience analysis 15" block — the
+		// anchor of the first is a prefix of the second, so a loose match would pull tactic 15's rows in
+		RealSheetDeckProvider provider = newProvider();
+		List<List<String>> grid = audienceGrid(Map.of(
+				1, new AudienceTable("25-34", "58% F", List.of(),
+						List.of(new AudienceSegmentRow("Auto Intenders", "142"))),
+				15, new AudienceTable("55-64", "50% F", List.of(),
+						List.of(new AudienceSegmentRow("Retirees", "90")))));
+
+		// When:
+		Map<Integer, AudienceTable> tables = provider.audienceTables(grid, Set.of(1));
+
+		// Then: only tactic 1's own segment is returned and tactic 15's block is untouched
+		assertThat(tables.get(1).segmentRows()).containsExactly(new AudienceSegmentRow("Auto Intenders", "142"));
+		assertThat(tables).doesNotContainKey(15);
+	}
+
+	@Test
+	void audienceTables_returnsEmptyTableForATacticWhoseBlockWasNeverFilledTest() {
+		// Given: a tab carrying no audience anchor for the requested tactic
+		RealSheetDeckProvider provider = newProvider();
+		List<List<String>> grid = audienceGrid(Map.of(1, AudienceTable.empty()));
+
+		// When:
+		Map<Integer, AudienceTable> tables = provider.audienceTables(grid, Set.of(2));
+
+		// Then: the tactic is present with an empty table rather than absent, so the slide still ships
+		assertThat(tables).containsKey(2);
+		assertThat(tables.get(2).isEmpty()).isTrue();
+	}
+
+	@Test
+	void findAudienceHeaders_resolveEachSubTablesColumnsByTextOnTheSharedHeaderRowTest() {
+		// Given: the audience block's shared header row — age/impressions on the left, Segment/Affinity
+		// index on the right, separated by a spacer column
+		RealSheetDeckProvider provider = newProvider();
+		List<List<String>> grid = new ArrayList<>();
+		grid.add(List.of("Audience analysis 1", "", "", "", ""));
+		grid.add(List.of("age", "impressions", "", "Segment", "Affinity index"));
+
+		// When:
+		int[] ageHeader = provider.findAudienceAgeHeader(grid, 0, 2, 0, 5);
+		int[] segmentHeader = provider.findAudienceSegmentHeader(grid, 0, 2, 0, 5);
+
+		// Then: each sub-table's two columns resolve by header text, not by fixed offset
+		assertThat(ageHeader).containsExactly(1, 0, 1);
+		assertThat(segmentHeader).containsExactly(1, 3, 4);
+	}
+
+	@Test
 	void creativeTables_findsBlocksByAnchorWhereverTheySitNotByTacticOrderTest() {
 		// Given: the real shape after Step-3 toggles — tactic 1 did NOT enable Creative analysis, so its
 		// section was cleared and the first surviving anchor is "Creative analysis 2", 18 rows down the tab.
@@ -683,6 +781,59 @@ class RealSheetDeckProviderTest {
 	private List<String> padGeo(List<String> cells) {
 		List<String> row = new ArrayList<>(cells);
 		while (row.size() < 3) {
+			row.add("");
+		}
+		return row;
+	}
+
+	/**
+	 * Builds a "Breakdowns" tab carrying an 18-row Audience analysis block per given tactic: the anchor
+	 * row, the two stat tiles, the shared header row, then the age-distribution rows (cols 0-1) and the
+	 * top-audience-segments rows (cols 3-4) laid out side by side.
+	 *
+	 * @param tablesByTactic tactic number → the audience block to render on the tab
+	 * @return the tab as trimmed cell strings, five columns wide
+	 */
+	private List<List<String>> audienceGrid(Map<Integer, AudienceTable> tablesByTactic) {
+		List<List<String>> grid = new ArrayList<>();
+		for (Map.Entry<Integer, AudienceTable> entry : new java.util.TreeMap<>(tablesByTactic).entrySet()) {
+			AudienceTable table = entry.getValue();
+			List<List<String>> block = new ArrayList<>();
+			block.add(padAudience(List.of("Audience analysis " + entry.getKey(), "{{tactic " + entry.getKey() + "}}")));
+			block.add(padAudience(List.of("AGE DISTRIBUTION", table.ageDistribution())));
+			block.add(padAudience(List.of("GENDER DEMOGRAPHICS", table.genderDemographics())));
+			block.add(padAudience(List.of("TOP SEGMENT", "{{aud_n_1}}")));
+			block.add(padAudience(List.of("age", "impressions", "", "Segment", "Affinity index")));
+			int dataRows = Math.max(table.ageRows().size(), table.segmentRows().size());
+			for (int i = 0; i < dataRows; i++) {
+				List<String> row = new ArrayList<>(List.of("", "", "", "", ""));
+				if (i < table.ageRows().size()) {
+					row.set(0, table.ageRows().get(i).ageGroup());
+					row.set(1, table.ageRows().get(i).impressions());
+				}
+				if (i < table.segmentRows().size()) {
+					row.set(3, table.segmentRows().get(i).segment());
+					row.set(4, table.segmentRows().get(i).affinityIndex());
+				}
+				block.add(row);
+			}
+			while (block.size() < 18) {
+				block.add(new ArrayList<>(Collections.nCopies(5, "")));
+			}
+			grid.addAll(block);
+		}
+		return grid;
+	}
+
+	/**
+	 * Pads a row out to the audience block's five columns so every grid row is the same width.
+	 *
+	 * @param cells the row's populated leading cells
+	 * @return a five-column row
+	 */
+	private List<String> padAudience(List<String> cells) {
+		List<String> row = new ArrayList<>(cells);
+		while (row.size() < 5) {
 			row.add("");
 		}
 		return row;
