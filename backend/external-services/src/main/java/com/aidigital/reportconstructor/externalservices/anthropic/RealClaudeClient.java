@@ -76,12 +76,18 @@ public class RealClaudeClient implements ClaudeClient {
 	/**
 	 * Tactics per publisher-observations call. Small chunks keep each reply far inside the output budget:
 	 * a single call covering all 28 tactics would repeat Batch C's failure, where an over-long reply was
-	 * truncated, failed to parse, and lost every field at once. A chunk that fails costs only its own tactics.
+	 * truncated, failed to parse, and lost every field at once. A chunk that fails costs only its own tactics
+	 * — and even that is retried one tactic at a time, see {@link #publisherObservationsResilient}.
 	 */
 	private static final int PUBLISHER_OBSERVATION_CHUNK = 5;
 
-	/** Output budget per publisher-observations chunk: 4 bullets × 5 tactics plus JSON overhead. */
-	private static final int PUBLISHER_OBSERVATION_MAX_TOKENS = 1500;
+	/**
+	 * Output budget per publisher-observations chunk: 4 bullets × 5 tactics plus JSON overhead, with room
+	 * for the model writing past the character limit it was asked for (it cannot count characters, so it
+	 * routinely does). Cheap to over-provision — unused output tokens are not billed — and running out is
+	 * what blanks a whole slide.
+	 */
+	private static final int PUBLISHER_OBSERVATION_MAX_TOKENS = 4000;
 
 	/** Character budget of the first three {@code {{cr_takeaway_tactic N_x}}} bullets on the slide. */
 	private static final int CREATIVE_TAKEAWAY_LIMIT = 100;
@@ -98,8 +104,11 @@ public class RealClaudeClient implements ClaudeClient {
 	/** Tactics per creative-takeaways call, chunked for the same reason publisher observations are. */
 	private static final int CREATIVE_TAKEAWAY_CHUNK = 5;
 
-	/** Output budget per creative-takeaways chunk: 4 bullets × 5 tactics plus JSON overhead. */
-	private static final int CREATIVE_TAKEAWAY_MAX_TOKENS = 1500;
+	/**
+	 * Output budget per creative-takeaways chunk, over-provisioned for the same reason
+	 * {@link #PUBLISHER_OBSERVATION_MAX_TOKENS} is.
+	 */
+	private static final int CREATIVE_TAKEAWAY_MAX_TOKENS = 4000;
 
 	// Batch C emits one results-overview per tactic group plus one tactic-overview PER TACTIC (up to 28), on
 	// top of thoughts, four recommendations and the frequency copy — all in a single JSON reply. A fixed cap
@@ -450,9 +459,43 @@ public class RealClaudeClient implements ClaudeClient {
 		for (int start = 0; start < inputs.size(); start += PUBLISHER_OBSERVATION_CHUNK) {
 			List<PublisherObservationInput> chunk =
 					inputs.subList(start, Math.min(start + PUBLISHER_OBSERVATION_CHUNK, inputs.size()));
-			observations.putAll(publisherObservationsChunk(chunk, brief));
+			observations.putAll(publisherObservationsResilient(chunk, brief));
 		}
 		return observations;
+	}
+
+	/**
+	 * Runs one publisher-observations chunk and, when it comes back with nothing at all, tries again rather
+	 * than shipping the whole chunk's slides with blank bullets.
+	 *
+	 * <p>A chunk of several tactics is retried one tactic at a time: whatever cost the first reply its
+	 * bullets — a rate limit, an unparseable reply, an over-long answer — the single-tactic calls are
+	 * smaller, independent, and a tactic that fails again can no longer take its neighbours down with it. A
+	 * chunk already down to one tactic simply gets one more attempt, since these failures are usually
+	 * transient. A chunk that came back partially filled is left alone: {@link #bulletsByTactic} has
+	 * already logged which tactics the reply skipped.
+	 *
+	 * @param chunk the tactics to cover
+	 * @param brief free-text campaign brief passed through to the prompt
+	 * @return tactic number → its four bullets; empty only when every attempt failed
+	 */
+	Map<Integer, List<String>> publisherObservationsResilient(List<PublisherObservationInput> chunk, String brief) {
+		Map<Integer, List<String>> observations = publisherObservationsChunk(chunk, brief);
+		if (!observations.isEmpty() || chunk.isEmpty()) {
+			return observations;
+		}
+		if (chunk.size() == 1) {
+			log.warn("[claude:BatchPublishers] tactic {} came back with no bullets — retrying once",
+					chunk.getFirst().tacticNum());
+			return publisherObservationsChunk(chunk, brief);
+		}
+		log.warn("[claude:BatchPublishers] chunk {} came back empty — retrying one tactic per call",
+				chunk.stream().map(PublisherObservationInput::tacticNum).toList());
+		Map<Integer, List<String>> perTactic = new LinkedHashMap<>();
+		for (PublisherObservationInput input : chunk) {
+			perTactic.putAll(publisherObservationsResilient(List.of(input), brief));
+		}
+		return perTactic;
 	}
 
 	/**
@@ -470,8 +513,10 @@ public class RealClaudeClient implements ClaudeClient {
 		if (prompt.isEmpty()) {
 			return observations;
 		}
+		// allowPartial: a reply that ran past the budget still carries whole bullets for the tactics it did
+		// answer, and salvaging those beats blanking the chunk over its unfinished tail.
 		JsonNode parsed = messagesClient.callJsonObject(
-				prompt.get(), PUBLISHER_OBSERVATION_MAX_TOKENS, 60, "BatchPublishers", false);
+				prompt.get(), PUBLISHER_OBSERVATION_MAX_TOKENS, 60, "BatchPublishers", true);
 		if (parsed == null) {
 			return observations;
 		}
@@ -521,9 +566,37 @@ public class RealClaudeClient implements ClaudeClient {
 		for (int start = 0; start < inputs.size(); start += CREATIVE_TAKEAWAY_CHUNK) {
 			List<CreativeTakeawayInput> chunk =
 					inputs.subList(start, Math.min(start + CREATIVE_TAKEAWAY_CHUNK, inputs.size()));
-			takeaways.putAll(creativeTakeawaysChunk(chunk, brief));
+			takeaways.putAll(creativeTakeawaysResilient(chunk, brief));
 		}
 		return takeaways;
+	}
+
+	/**
+	 * Runs one creative-takeaways chunk and retries an empty result, mirroring
+	 * {@link #publisherObservationsResilient} — see it for why a multi-tactic chunk is retried one tactic
+	 * at a time.
+	 *
+	 * @param chunk the tactics to cover
+	 * @param brief free-text campaign brief passed through to the prompt
+	 * @return tactic number → its four bullets; empty only when every attempt failed
+	 */
+	Map<Integer, List<String>> creativeTakeawaysResilient(List<CreativeTakeawayInput> chunk, String brief) {
+		Map<Integer, List<String>> takeaways = creativeTakeawaysChunk(chunk, brief);
+		if (!takeaways.isEmpty() || chunk.isEmpty()) {
+			return takeaways;
+		}
+		if (chunk.size() == 1) {
+			log.warn("[claude:BatchCreatives] tactic {} came back with no bullets — retrying once",
+					chunk.getFirst().tacticNum());
+			return creativeTakeawaysChunk(chunk, brief);
+		}
+		log.warn("[claude:BatchCreatives] chunk {} came back empty — retrying one tactic per call",
+				chunk.stream().map(CreativeTakeawayInput::tacticNum).toList());
+		Map<Integer, List<String>> perTactic = new LinkedHashMap<>();
+		for (CreativeTakeawayInput input : chunk) {
+			perTactic.putAll(creativeTakeawaysResilient(List.of(input), brief));
+		}
+		return perTactic;
 	}
 
 	/**
@@ -542,8 +615,9 @@ public class RealClaudeClient implements ClaudeClient {
 		if (prompt.isEmpty()) {
 			return takeaways;
 		}
+		// allowPartial for the same reason publisher observations use it.
 		JsonNode parsed = messagesClient.callJsonObject(
-				prompt.get(), CREATIVE_TAKEAWAY_MAX_TOKENS, 60, "BatchCreatives", false);
+				prompt.get(), CREATIVE_TAKEAWAY_MAX_TOKENS, 60, "BatchCreatives", true);
 		if (parsed == null) {
 			return takeaways;
 		}

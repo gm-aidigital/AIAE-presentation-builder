@@ -1,6 +1,7 @@
 package com.aidigital.reportconstructor.service.reports.helpers;
 
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownSelection;
+import com.aidigital.reportconstructor.service.reports.dto.BreakdownValues;
 
 import java.util.List;
 import java.util.Map;
@@ -31,10 +32,10 @@ public interface PublisherBreakdownHelper {
 	 *                         total impressions
 	 * @param brief            free-text campaign brief passed to Claude for audience context
 	 * @param userGoogleToken  OAuth token for Google Sheets API, or null when unavailable
-	 * @return renumbered token (e.g. {@code {{publisher_3.1}}}) → value; empty when no tactic enabled the
-	 *         Top Publishers breakdown
+	 * @return the section's token values, plus a warning per tactic whose observations Claude failed to
+	 *         write; empty when no tactic enabled the Top Publishers breakdown
 	 */
-	Map<String, String> buildPublisherValues(
+	BreakdownValues buildPublisherValues(
 			String sheetUrl, List<BreakdownSelection> selections,
 			Map<String, String> flatReplacements, String brief, String userGoogleToken);
 }

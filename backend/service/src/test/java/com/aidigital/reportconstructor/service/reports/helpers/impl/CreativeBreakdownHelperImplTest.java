@@ -2,6 +2,7 @@ package com.aidigital.reportconstructor.service.reports.helpers.impl;
 
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownSelection;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
+import com.aidigital.reportconstructor.service.reports.dto.BreakdownValues;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeRow;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTable;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTakeawayInput;
@@ -54,7 +55,7 @@ class CreativeBreakdownHelperImplTest {
 
 		// When:
 		Map<String, String> values = helper.buildCreativeValues(
-				"sheet-url", selections, Map.of("{{tactic 1}}", "CTV"), "brief", "token");
+				"sheet-url", selections, Map.of("{{tactic 1}}", "CTV"), "brief", "token").values();
 
 		// Then: the stat tiles are carried across exactly as typed
 		assertThat(values.get("{{cr_live_1}}")).isEqualTo("12");
@@ -89,7 +90,7 @@ class CreativeBreakdownHelperImplTest {
 
 		// When:
 		Map<String, String> values = helper.buildCreativeValues(
-				"sheet-url", selections, Map.of("{{tactic 1}}", "CTV"), "brief", "token");
+				"sheet-url", selections, Map.of("{{tactic 1}}", "CTV"), "brief", "token").values();
 
 		// Then: the untouched hints are dashed rather than shipped as raw tokens
 		assertThat(values.get("{{cr_live_1}}")).isEqualTo("12");
@@ -130,7 +131,7 @@ class CreativeBreakdownHelperImplTest {
 				1, new CreativeTable("{{cr_live_n}}", "{{cr_bKPI_n}}", "{{cr_aKPI_n}}", "", List.of())));
 
 		// When:
-		Map<String, String> values = helper.buildCreativeValues("sheet-url", selections, Map.of(), "brief", "token");
+		Map<String, String> values = helper.buildCreativeValues("sheet-url", selections, Map.of(), "brief", "token").values();
 
 		// Then: Claude is never asked — there is nothing to observe and any copy would be invented
 		verifyNoInteractions(claude);
@@ -161,7 +162,7 @@ class CreativeBreakdownHelperImplTest {
 		Map<String, String> values = helper.buildCreativeValues(
 				"sheet-url", selections,
 				Map.of("{{tactic 1}}", "CTV", "{{tactic 1 KPI type}}", "VCR", "{{tactic 2}}", "Display"),
-				"brief", "token");
+				"brief", "token").values();
 
 		// Then: only tactic 1 is sent, carrying its deck name and KPI type
 		ArgumentCaptor<List<CreativeTakeawayInput>> captor = ArgumentCaptor.captor();
@@ -178,13 +179,41 @@ class CreativeBreakdownHelperImplTest {
 	}
 
 	@Test
+	void shouldWarnOnlyForTheTacticWhoseFilledBlockGotNoTakeawaysTest() {
+		// Given: tactic 1 has a filled block Claude answered nothing for, tactic 2 left its block empty and
+		// was never sent — only the first is a failure worth telling the user about
+		List<BreakdownSelection> selections =
+				List.of(new BreakdownSelection(1, List.of("ca")), new BreakdownSelection(2, List.of("ca")));
+		when(breakdownResolver.resolve(selections)).thenReturn(Map.of(
+				1, EnumSet.of(BreakdownType.CREATIVE),
+				2, EnumSet.of(BreakdownType.CREATIVE)));
+		CreativeTable filled = new CreativeTable("12", "0.58", "0.42", "Hero 15s",
+				List.of(new CreativeRow("Hero 15s", "1,200,000", "0.58%", "82.9%", "$4,800")));
+		when(sheetHelper.readCreativeTables("sheet-url", Set.of(1, 2), "token")).thenReturn(Map.of(
+				1, filled,
+				2, CreativeTable.empty()));
+		when(claude.batchCreativeTakeaways(any(), eq("brief"))).thenReturn(Map.of());
+
+		// When:
+		BreakdownValues result = helper.buildCreativeValues(
+				"sheet-url", selections,
+				Map.of("{{tactic 1}}", "CTV", "{{tactic 1 KPI type}}", "VCR", "{{tactic 2}}", "Display"),
+				"brief", "token");
+
+		// Then: exactly one warning, naming the tactic that lost its bullets
+		assertThat(result.warnings()).hasSize(1);
+		assertThat(result.warnings().getFirst()).contains("Creative analysis", "CTV", "KEY TAKEAWAYS");
+		assertThat(result.warnings().getFirst()).doesNotContain("Display");
+	}
+
+	@Test
 	void shouldSkipEverythingWhenNoTacticEnabledCreativeAnalysisTest() {
 		// Given: the only selection is a different breakdown
 		List<BreakdownSelection> selections = List.of(new BreakdownSelection(1, List.of("tp")));
 		when(breakdownResolver.resolve(selections)).thenReturn(Map.of(1, EnumSet.of(BreakdownType.TOP_PUBLISHERS)));
 
 		// When:
-		Map<String, String> values = helper.buildCreativeValues("sheet-url", selections, Map.of(), "brief", "token");
+		Map<String, String> values = helper.buildCreativeValues("sheet-url", selections, Map.of(), "brief", "token").values();
 
 		// Then: the sheet is never read and no values are produced
 		assertThat(values).isEmpty();
@@ -203,7 +232,7 @@ class CreativeBreakdownHelperImplTest {
 		// When:
 		Map<String, String> values = helper.buildCreativeValues(
 				"sheet-url", selections,
-				Map.of("{{tactic 1}}", "CTV", "{{tactic 1 KPI type}}", "VCR"), "brief", "token");
+				Map.of("{{tactic 1}}", "CTV", "{{tactic 1 KPI type}}", "VCR"), "brief", "token").values();
 
 		// Then: both are re-issued for the copy, which the deck's own placeholder pass can no longer reach
 		assertThat(values.get("{{tactic 1}}")).isEqualTo("CTV");

@@ -297,7 +297,7 @@ class RealSlidesProviderTest {
 				.thenReturn(Map.of(1, List.of("t1", "t2", "t3", "t4")));
 		Map<String, String> values = helper.buildCreativeValues(
 				"sheet", selections, Map.of("{{tactic 1}}", "Display", "{{tactic 1 KPI type}}", "CTR"),
-				"brief", "token");
+				"brief", "token").values();
 
 		// When: every master token is renumbered exactly as buildBreakdownRequests renumbers it
 		List<String> masterTokens = List.of(

@@ -1,6 +1,7 @@
 package com.aidigital.reportconstructor.service.reports.helpers;
 
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownSelection;
+import com.aidigital.reportconstructor.service.reports.dto.BreakdownValues;
 
 import java.util.List;
 import java.util.Map;
@@ -31,10 +32,10 @@ public interface CreativeBreakdownHelper {
 	 * @param flatReplacements the deck's resolved placeholder map, source of each tactic's name and KPI type
 	 * @param brief            free-text campaign brief passed to Claude for industry context
 	 * @param userGoogleToken  OAuth token for Google Sheets API, or null when unavailable
-	 * @return renumbered token (e.g. {@code {{cr_live_3}}}) → value; empty when no tactic enabled the
-	 *         Creative analysis breakdown
+	 * @return the section's token values, plus a warning per tactic whose takeaways Claude failed to write;
+	 *         empty when no tactic enabled the Creative analysis breakdown
 	 */
-	Map<String, String> buildCreativeValues(
+	BreakdownValues buildCreativeValues(
 			String sheetUrl, List<BreakdownSelection> selections,
 			Map<String, String> flatReplacements, String brief, String userGoogleToken);
 }

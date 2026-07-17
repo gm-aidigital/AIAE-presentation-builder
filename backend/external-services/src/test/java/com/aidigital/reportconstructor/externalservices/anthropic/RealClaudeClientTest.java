@@ -7,6 +7,8 @@ import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeRow;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTable;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTakeawayInput;
+import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationInput;
+import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
 import com.aidigital.reportconstructor.service.reports.dto.Recommendation;
 import com.aidigital.reportconstructor.service.reports.dto.StrategicInsight;
 import com.aidigital.reportconstructor.service.reports.dto.Totals;
@@ -26,6 +28,8 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -232,7 +236,7 @@ class RealClaudeClientTest {
 				+ "rate at 82.9% overall now.";
 		JsonNode response = json.readTree(json.writeValueAsString(Map.of(
 				"tactic_1", List.of(long120, long120, long120, long120))));
-		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(1500), eq(60), eq("BatchCreatives"), eq(false)))
+		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(4000), eq(60), eq("BatchCreatives"), eq(true)))
 				.thenReturn(response);
 		when(compressionService.compress(any(), eq("BatchD-Creatives")))
 				.thenAnswer(call -> {
@@ -265,7 +269,7 @@ class RealClaudeClientTest {
 				messagesClient, promptBuilder, normalizer, compressionService, new ReportClaudeDefaults());
 		CreativeTakeawayInput input = new CreativeTakeawayInput(1, "CTV", "VCR",
 				new CreativeTable("12", "0.58", "0.42", "Hero 15s", List.of()));
-		when(messagesClient.callJsonObject(any(), eq(1500), eq(60), eq("BatchCreatives"), eq(false)))
+		when(messagesClient.callJsonObject(any(), eq(4000), eq(60), eq("BatchCreatives"), eq(true)))
 				.thenReturn(null);
 
 		// When:
@@ -273,6 +277,95 @@ class RealClaudeClientTest {
 
 		// Then: the tactic is absent rather than carrying invented copy — the caller blanks its bullets
 		assertThat(takeaways).isEmpty();
+
+		// Then: it was not given up on after the first failure — these failures are usually transient
+		verify(messagesClient, times(2))
+				.callJsonObject(any(), eq(4000), eq(60), eq("BatchCreatives"), eq(true));
+	}
+
+	@Test
+	void batchCreativeTakeawaysRetriesAFailedChunkOneTacticAtATimeTest() throws Exception {
+		// Given: a two-tactic chunk whose combined call comes back unusable, while each tactic answers fine
+		// on its own — one bad reply used to blank every slide in the chunk
+		ClaudeResponseNormalizer normalizer = new ClaudeResponseNormalizer();
+		ClaudeBatchPromptBuilder promptBuilder = new ClaudeBatchPromptBuilder(normalizer, new Fmt());
+		RealClaudeClient client = new RealClaudeClient(
+				messagesClient, promptBuilder, normalizer, compressionService, new ReportClaudeDefaults());
+
+		CreativeTakeawayInput display = new CreativeTakeawayInput(1, "Display", "CTR",
+				new CreativeTable("6", "11.04", "2.09", "CH-Ad-320-50-1B", List.of(
+						new CreativeRow("CH-Ad-320-50-1B", "144,070", "1.77%", "", "$861.81"))));
+		CreativeTakeawayInput video = new CreativeTakeawayInput(2, "Video", "VCR",
+				new CreativeTable("4", "0.9", "0.5", "Hero 15s", List.of(
+						new CreativeRow("Hero 15s", "600,000", "0.9%", "82.9%", "$2,100"))));
+		String chunkPrompt = promptBuilder
+				.buildCreativeTakeawaysPrompt(List.of(display, video), "brief", 100, 140).orElseThrow();
+		String displayPrompt = promptBuilder
+				.buildCreativeTakeawaysPrompt(List.of(display), "brief", 100, 140).orElseThrow();
+		String videoPrompt = promptBuilder
+				.buildCreativeTakeawaysPrompt(List.of(video), "brief", 100, 140).orElseThrow();
+		when(messagesClient.callJsonObject(eq(chunkPrompt), eq(4000), eq(60), eq("BatchCreatives"), eq(true)))
+				.thenReturn(null);
+		when(messagesClient.callJsonObject(eq(displayPrompt), eq(4000), eq(60), eq("BatchCreatives"), eq(true)))
+				.thenReturn(json.readTree(json.writeValueAsString(Map.of("tactic_1", List.of("d1", "d2", "d3", "d4")))));
+		when(messagesClient.callJsonObject(eq(videoPrompt), eq(4000), eq(60), eq("BatchCreatives"), eq(true)))
+				.thenReturn(json.readTree(json.writeValueAsString(Map.of("tactic_2", List.of("v1", "v2", "v3", "v4")))));
+		when(compressionService.compress(any(), eq("BatchD-Creatives")))
+				.thenAnswer(call -> {
+					Map<String, String> out = new LinkedHashMap<>();
+					for (ClaudeCompressionField field : call.<List<ClaudeCompressionField>>getArgument(0)) {
+						out.put(field.key(), field.text());
+					}
+					return out;
+				});
+
+		// When:
+		Map<Integer, List<String>> takeaways = client.batchCreativeTakeaways(List.of(display, video), "brief");
+
+		// Then: both tactics are recovered by the per-tactic retry rather than shipping blank
+		assertThat(takeaways.get(1)).containsExactly("d1", "d2", "d3", "d4");
+		assertThat(takeaways.get(2)).containsExactly("v1", "v2", "v3", "v4");
+	}
+
+	@Test
+	void batchPublisherObservationsRetriesAFailedChunkOneTacticAtATimeTest() throws Exception {
+		// Given: a two-tactic chunk whose combined call fails while the single-tactic calls succeed
+		ClaudeResponseNormalizer normalizer = new ClaudeResponseNormalizer();
+		ClaudeBatchPromptBuilder promptBuilder = new ClaudeBatchPromptBuilder(normalizer, new Fmt());
+		RealClaudeClient client = new RealClaudeClient(
+				messagesClient, promptBuilder, normalizer, compressionService, new ReportClaudeDefaults());
+
+		PublisherObservationInput ctv = new PublisherObservationInput(1, "CTV",
+				List.of(new PublisherRow("hulu.com", "1,200,000", "42.1%")));
+		PublisherObservationInput video = new PublisherObservationInput(2, "Video",
+				List.of(new PublisherRow("modrinth.com", "19,674", "15.71%")));
+		String chunkPrompt = promptBuilder
+				.buildPublisherObservationsPrompt(List.of(ctv, video), "brief", 155).orElseThrow();
+		String ctvPrompt = promptBuilder
+				.buildPublisherObservationsPrompt(List.of(ctv), "brief", 155).orElseThrow();
+		String videoPrompt = promptBuilder
+				.buildPublisherObservationsPrompt(List.of(video), "brief", 155).orElseThrow();
+		when(messagesClient.callJsonObject(eq(chunkPrompt), eq(4000), eq(60), eq("BatchPublishers"), eq(true)))
+				.thenReturn(null);
+		when(messagesClient.callJsonObject(eq(ctvPrompt), eq(4000), eq(60), eq("BatchPublishers"), eq(true)))
+				.thenReturn(json.readTree(json.writeValueAsString(Map.of("tactic_1", List.of("c1", "c2", "c3", "c4")))));
+		when(messagesClient.callJsonObject(eq(videoPrompt), eq(4000), eq(60), eq("BatchPublishers"), eq(true)))
+				.thenReturn(json.readTree(json.writeValueAsString(Map.of("tactic_2", List.of("p1", "p2", "p3", "p4")))));
+		when(compressionService.compress(any(), eq("BatchD-Publishers")))
+				.thenAnswer(call -> {
+					Map<String, String> out = new LinkedHashMap<>();
+					for (ClaudeCompressionField field : call.<List<ClaudeCompressionField>>getArgument(0)) {
+						out.put(field.key(), field.text());
+					}
+					return out;
+				});
+
+		// When:
+		Map<Integer, List<String>> observations = client.batchPublisherObservations(List.of(ctv, video), "brief");
+
+		// Then: both tactics keep their KEY OBSERVATIONS
+		assertThat(observations.get(1)).containsExactly("c1", "c2", "c3", "c4");
+		assertThat(observations.get(2)).containsExactly("p1", "p2", "p3", "p4");
 	}
 
 	@Test
@@ -298,7 +391,7 @@ class RealClaudeClientTest {
 				  "Tactic_2": ["v1", "v2", "v3", "v4"]
 				}
 				""");
-		when(messagesClient.callJsonObject(any(), eq(1500), eq(60), eq("BatchCreatives"), eq(false)))
+		when(messagesClient.callJsonObject(any(), eq(4000), eq(60), eq("BatchCreatives"), eq(true)))
 				.thenReturn(response);
 		when(compressionService.compress(any(), eq("BatchD-Creatives")))
 				.thenAnswer(call -> {

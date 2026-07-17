@@ -11,6 +11,8 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
@@ -86,9 +88,9 @@ public class AnthropicMessagesClient {
 		}
 		if (allowPartial) {
 			try {
-				String fixed = text.replaceAll("[,\\s]+$", "") + "}}";
-				JsonNode node = json.readTree(fixed);
+				JsonNode node = json.readTree(repairTruncatedJson(text));
 				if (node != null && node.isObject()) {
+					log.warn("[claude:{}] reply was truncated; recovered the complete part of the JSON", label);
 					return node;
 				}
 			} catch (Exception ignored) {
@@ -97,6 +99,78 @@ public class AnthropicMessagesClient {
 		}
 		log.warn("[claude:{}] JSON parse failed", label);
 		return null;
+	}
+
+	/**
+	 * Rebuilds a parseable JSON object out of a reply the model stopped writing mid-way: drops the trailing
+	 * incomplete value and closes every structure still open, so the entries that did arrive survive instead
+	 * of the whole reply being thrown away.
+	 *
+	 * <p>Walks the text once tracking string state (honouring backslash escapes, so a quote inside a value
+	 * does not read as the string's end) and the stack of open {@code {}/[]}. Only a structural boundary —
+	 * a comma or a closing bracket outside a string — counts as a cut point, because a closing quote alone
+	 * may well be a key still waiting for its value ({@code {"a":1,"b"}} does not parse). The bracket stack
+	 * is snapshotted at each cut point rather than read at the end of the text, since brackets opened after
+	 * the cut are about to be discarded and must not be closed.
+	 *
+	 * @param text the raw, unparseable reply text with its code fences already stripped
+	 * @return JSON text holding the reply's complete entries; empty when nothing survived the cut, which the
+	 * caller's parse then rejects
+	 */
+	String repairTruncatedJson(String text) {
+		Deque<Character> open = new ArrayDeque<>();
+		Deque<Character> openAtCut = new ArrayDeque<>();
+		boolean inString = false;
+		boolean escaped = false;
+		// Last index (exclusive) at which the document was structurally complete enough to close off.
+		int cut = 0;
+		for (int i = 0; i < text.length(); i++) {
+			char c = text.charAt(i);
+			if (inString) {
+				if (escaped) {
+					escaped = false;
+				} else if (c == '\\') {
+					escaped = true;
+				} else if (c == '"') {
+					inString = false;
+				}
+				continue;
+			}
+			switch (c) {
+				case '"' -> inString = true;
+				case '{', '[' -> open.push(c);
+				case '}', ']' -> {
+					if (!open.isEmpty()) {
+						open.pop();
+					}
+					cut = i + 1;
+					openAtCut = new ArrayDeque<>(open);
+				}
+				case ',' -> {
+					cut = i + 1;
+					openAtCut = new ArrayDeque<>(open);
+				}
+				default -> {
+					// ':', digits, literals and whitespace leave the cut point where it was.
+				}
+			}
+		}
+		StringBuilder repaired = new StringBuilder(text.substring(0, cut));
+		while (!repaired.isEmpty()) {
+			char last = repaired.charAt(repaired.length() - 1);
+			if (last == ',' || Character.isWhitespace(last)) {
+				repaired.setLength(repaired.length() - 1);
+			} else {
+				break;
+			}
+		}
+		if (repaired.isEmpty()) {
+			return "";
+		}
+		while (!openAtCut.isEmpty()) {
+			repaired.append(openAtCut.pop() == '{' ? '}' : ']');
+		}
+		return repaired.toString();
 	}
 
 	/**

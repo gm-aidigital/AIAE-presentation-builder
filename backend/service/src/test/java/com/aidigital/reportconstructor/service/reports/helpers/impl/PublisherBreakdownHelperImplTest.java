@@ -2,6 +2,7 @@ package com.aidigital.reportconstructor.service.reports.helpers.impl;
 
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownSelection;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
+import com.aidigital.reportconstructor.service.reports.dto.BreakdownValues;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationInput;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
 import com.aidigital.reportconstructor.service.reports.helpers.BreakdownSelectionResolver;
@@ -55,7 +56,7 @@ class PublisherBreakdownHelperImplTest {
 
 		// When:
 		Map<String, String> values = helper.buildPublisherValues(
-				"sheet-url", selections, Map.of("{{tactic 1}}", "CTV"), "brief", "token");
+				"sheet-url", selections, Map.of("{{tactic 1}}", "CTV"), "brief", "token").values();
 
 		// Then: the filled rows are carried across exactly as typed
 		assertThat(values.get("{{publisher_1.1}}")).isEqualTo("YouTube");
@@ -87,7 +88,7 @@ class PublisherBreakdownHelperImplTest {
 
 		// When:
 		Map<String, String> values = helper.buildPublisherValues(
-				"sheet-url", selections, Map.of("{{tactic 1}}", "Display"), "brief", "token");
+				"sheet-url", selections, Map.of("{{tactic 1}}", "Display"), "brief", "token").values();
 
 		// Then: the name is cut at the FIRST separator, dropping both the tail and the bundle id
 		assertThat(values.get("{{publisher_1.1}}")).isEqualTo("Chai");
@@ -118,7 +119,7 @@ class PublisherBreakdownHelperImplTest {
 
 		// When:
 		Map<String, String> values = helper.buildPublisherValues(
-				"sheet-url", selections, Map.of("{{tactic 1}}", "Display"), "brief", "token");
+				"sheet-url", selections, Map.of("{{tactic 1}}", "Display"), "brief", "token").values();
 
 		// Then: Claude was handed the rows verbatim, platform suffixes intact
 		ArgumentCaptor<List<PublisherObservationInput>> captor = ArgumentCaptor.captor();
@@ -128,6 +129,50 @@ class PublisherBreakdownHelperImplTest {
 		// Then: the slide still collapses both to the same short label
 		assertThat(values.get("{{publisher_1.1}}")).isEqualTo("Chai");
 		assertThat(values.get("{{publisher_1.2}}")).isEqualTo("Chai");
+	}
+
+	@Test
+	void shouldWarnWhenAFilledTableCameBackWithoutObservationsTest() {
+		// Given: a tactic whose table Claude was asked about, but that came back with nothing — on the slide
+		// the empty KEY OBSERVATIONS box is indistinguishable from a table the user never filled in
+		List<BreakdownSelection> selections = List.of(new BreakdownSelection(1, List.of("tp")));
+		when(breakdownResolver.resolve(selections))
+				.thenReturn(Map.of(1, EnumSet.of(BreakdownType.TOP_PUBLISHERS)));
+		List<PublisherRow> rows = List.of(new PublisherRow("modrinth.com", "19,674", "15.71%"));
+		when(sheetHelper.readPublisherTables("sheet-url", Set.of(1), "token")).thenReturn(Map.of(1, rows));
+		when(claude.batchPublisherObservations(
+				List.of(new PublisherObservationInput(1, "Video", rows)), "brief"))
+				.thenReturn(Map.of());
+
+		// When:
+		BreakdownValues result = helper.buildPublisherValues(
+				"sheet-url", selections, Map.of("{{tactic 1}}", "Video"), "brief", "token");
+
+		// Then: the failure is reported to the user by tactic name rather than only to the log
+		assertThat(result.warnings()).hasSize(1);
+		assertThat(result.warnings().getFirst()).contains("Top Publishers", "Video", "KEY OBSERVATIONS");
+
+		// Then: the table still ships, with blank bullets rather than raw tokens
+		assertThat(result.values().get("{{publisher_1.1}}")).isEqualTo("modrinth.com");
+		assertThat(result.values().get("{{publishers_observation_1_1}}")).isEmpty();
+	}
+
+	@Test
+	void shouldNotWarnWhenTheTableWasEmptyAndClaudeWasNeverAskedTest() {
+		// Given: a tactic that enabled the breakdown but left its table blank — blank bullets are the
+		// user's own doing here, so warning about them would be noise
+		List<BreakdownSelection> selections = List.of(new BreakdownSelection(1, List.of("tp")));
+		when(breakdownResolver.resolve(selections))
+				.thenReturn(Map.of(1, EnumSet.of(BreakdownType.TOP_PUBLISHERS)));
+		when(sheetHelper.readPublisherTables("sheet-url", Set.of(1), "token"))
+				.thenReturn(Map.of(1, List.of()));
+
+		// When:
+		BreakdownValues result = helper.buildPublisherValues(
+				"sheet-url", selections, Map.of("{{tactic 1}}", "Video"), "brief", "token");
+
+		// Then:
+		assertThat(result.warnings()).isEmpty();
 	}
 
 	@Test
@@ -141,7 +186,7 @@ class PublisherBreakdownHelperImplTest {
 
 		// When:
 		Map<String, String> values = helper.buildPublisherValues(
-				"sheet-url", selections, Map.of(), "brief", "token");
+				"sheet-url", selections, Map.of(), "brief", "token").values();
 
 		// Then: Claude is never asked — there is nothing to observe and any copy would be invented
 		verifyNoInteractions(claude);
@@ -170,7 +215,7 @@ class PublisherBreakdownHelperImplTest {
 
 		// When:
 		Map<String, String> values = helper.buildPublisherValues(
-				"sheet-url", selections, Map.of("{{tactic 1}}", "CTV", "{{tactic 2}}", "Display"), "brief", "token");
+				"sheet-url", selections, Map.of("{{tactic 1}}", "CTV", "{{tactic 2}}", "Display"), "brief", "token").values();
 
 		// Then: only tactic 1 is sent, carrying its deck name
 		ArgumentCaptor<List<PublisherObservationInput>> captor = ArgumentCaptor.captor();
@@ -192,7 +237,7 @@ class PublisherBreakdownHelperImplTest {
 
 		// When:
 		Map<String, String> values = helper.buildPublisherValues(
-				"sheet-url", selections, Map.of(), "brief", "token");
+				"sheet-url", selections, Map.of(), "brief", "token").values();
 
 		// Then: the sheet is never read and no values are produced
 		assertThat(values).isEmpty();
@@ -211,7 +256,7 @@ class PublisherBreakdownHelperImplTest {
 		// When:
 		Map<String, String> values = helper.buildPublisherValues(
 				"sheet-url", selections,
-				Map.of("{{tactic 1}}", "CTV", "{{tactic 1 imps}}", "4,600,000"), "brief", "token");
+				Map.of("{{tactic 1}}", "CTV", "{{tactic 1 imps}}", "4,600,000"), "brief", "token").values();
 
 		// Then: both are re-issued for the copy, which the deck's own placeholder pass can no longer reach
 		assertThat(values.get("{{tactic 1}}")).isEqualTo("CTV");

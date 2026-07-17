@@ -9,6 +9,7 @@ import com.aidigital.reportconstructor.service.reports.dto.GenerationTarget;
 import com.aidigital.reportconstructor.service.reports.dto.ProgressView;
 import com.aidigital.reportconstructor.service.reports.engine.Fmt;
 import com.aidigital.reportconstructor.service.reports.engine.ReportClaudeDefaults;
+import com.aidigital.reportconstructor.service.reports.dto.BreakdownValues;
 import com.aidigital.reportconstructor.service.reports.helpers.CreativeBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.PublisherBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportFileNamer;
@@ -212,6 +213,12 @@ class ReportGenerationServiceImplTest {
 				any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt())).thenReturn(narrative);
 		when(fileNamer.buildFileName(any(), any(), any())).thenReturn("deck-file");
 		when(slides.createDeck(eq("11"), eq("deck-file"), any(), isNull())).thenReturn("http://deck");
+		when(publisherBreakdown.buildPublisherValues(
+				eq("http://sheet"), isNull(), any(), eq("Campaign brief."), isNull()))
+				.thenReturn(BreakdownValues.empty());
+		when(creativeBreakdown.buildCreativeValues(
+				eq("http://sheet"), isNull(), any(), eq("Campaign brief."), isNull()))
+				.thenReturn(BreakdownValues.empty());
 		when(chartHelper.buildChartsFromSheet(eq("http://deck"), eq(grid), any(), eq(2), isNull()))
 				.thenReturn(List.of());
 		when(warnings.serializeWarnings(List.of())).thenReturn("[]");

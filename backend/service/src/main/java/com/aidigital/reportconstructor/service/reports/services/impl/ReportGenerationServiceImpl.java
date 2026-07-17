@@ -3,6 +3,7 @@ package com.aidigital.reportconstructor.service.reports.services.impl;
 import com.aidigital.reportconstructor.domain.reports.entities.ReportJobEntity;
 import com.aidigital.reportconstructor.service.common.error.AppException;
 import com.aidigital.reportconstructor.service.common.error.ErrorReason;
+import com.aidigital.reportconstructor.service.reports.dto.BreakdownValues;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
@@ -36,6 +37,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -285,18 +287,26 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		//
 		// One map across all breakdown sections: each helper only emits tokens for the tactics that enabled
 		// its own section, and the sections share no tokens, so the merge cannot collide.
-		Map<String, String> breakdownValues = new LinkedHashMap<>(publisherBreakdown.buildPublisherValues(
-				payload.sheetUrl(), payload.breakdownSelections(), flatReplacements, brief, userGoogleToken));
-		breakdownValues.putAll(creativeBreakdown.buildCreativeValues(
-				payload.sheetUrl(), payload.breakdownSelections(), flatReplacements, brief, userGoogleToken));
+		BreakdownValues publisherValues = publisherBreakdown.buildPublisherValues(
+				payload.sheetUrl(), payload.breakdownSelections(), flatReplacements, brief, userGoogleToken);
+		BreakdownValues creativeValues = creativeBreakdown.buildCreativeValues(
+				payload.sheetUrl(), payload.breakdownSelections(), flatReplacements, brief, userGoogleToken);
+		Map<String, String> breakdownValues = new LinkedHashMap<>(publisherValues.values());
+		breakdownValues.putAll(creativeValues.values());
 		chartHelper.addBreakdownSlides(slideUrl, payload, tacticCount, breakdownValues, userGoogleToken);
 
 		jobProgress.markJobRunningAtStep(jobId, 7, "Building charts");
 		List<String> chartWarnings = chartHelper.buildChartsFromSheet(
 				slideUrl, grid, flatReplacements, tacticCount, userGoogleToken);
 
+		// One list for the "Report ready" card: a breakdown slide that shipped without its Claude bullets is
+		// as much a partial result as a chart that could not be drawn, and is invisible on the slide itself.
+		List<String> jobWarnings = new ArrayList<>(publisherValues.warnings());
+		jobWarnings.addAll(creativeValues.warnings());
+		jobWarnings.addAll(chartWarnings);
+
 		jobProgress.recordArtifact(jobId, fileName, payload.sheetUrl());
-		jobProgress.markJobDone(jobId, slideUrl, warnings.serializeWarnings(chartWarnings));
+		jobProgress.markJobDone(jobId, slideUrl, warnings.serializeWarnings(jobWarnings));
 	}
 
 	/**
