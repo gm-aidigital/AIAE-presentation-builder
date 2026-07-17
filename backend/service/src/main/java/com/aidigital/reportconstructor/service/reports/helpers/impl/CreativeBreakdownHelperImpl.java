@@ -161,6 +161,14 @@ public class CreativeBreakdownHelperImpl implements CreativeBreakdownHelper {
 
 		for (Integer tacticNum : tacticNums) {
 			List<String> bullets = takeaways.getOrDefault(tacticNum, List.of());
+			// A tactic we did send that came back with nothing ships blank bullets, which on the slide is
+			// indistinguishable from "the user filled nothing in". Say so, or the next blank KEY TAKEAWAYS
+			// is a guessing game between an empty block, a failed call and an unparseable reply.
+			if (bullets.isEmpty() && inputs.stream().anyMatch(input -> input.tacticNum() == tacticNum)) {
+				log.warn("[creatives] tactic {} had creative data but Claude returned no takeaways — "
+						+ "slide ships with blank bullets (see the [claude:BatchCreatives] log line above "
+						+ "for the cause)", tacticNum);
+			}
 			for (int i = 1; i <= TAKEAWAY_COUNT; i++) {
 				String bullet = i <= bullets.size() ? bullets.get(i - 1) : null;
 				values.put("{{cr_takeaway_tactic " + tacticNum + "_" + i + "}}", bullet == null ? "" : bullet);

@@ -274,4 +274,70 @@ class RealClaudeClientTest {
 		// Then: the tactic is absent rather than carrying invented copy — the caller blanks its bullets
 		assertThat(takeaways).isEmpty();
 	}
+
+	@Test
+	void batchCreativeTakeawaysSurvivesClaudeSpellingTheTacticKeyDifferentlyTest() throws Exception {
+		// Given: a reply that answers the right tactics but spells the keys its own way — "tactic 1" with a
+		// space and a capitalised "Tactic_2" instead of the "tactic_<n>" the prompt asked for. Looked up by
+		// exact key, this blanks every bullet on both slides and looks exactly like an unfilled sheet.
+		ClaudeResponseNormalizer normalizer = new ClaudeResponseNormalizer();
+		ClaudeBatchPromptBuilder promptBuilder = new ClaudeBatchPromptBuilder(normalizer, new Fmt());
+		RealClaudeClient client = new RealClaudeClient(
+				messagesClient, promptBuilder, normalizer, compressionService, new ReportClaudeDefaults());
+
+		List<CreativeTakeawayInput> inputs = List.of(
+				new CreativeTakeawayInput(1, "Display", "CTR",
+						new CreativeTable("6", "11.04", "2.09", "CH-Ad-320-50-1B", List.of(
+								new CreativeRow("CH-Ad-320-50-1B", "144,070", "1.77%", "", "$861.81")))),
+				new CreativeTakeawayInput(2, "Video", "VCR",
+						new CreativeTable("4", "0.9", "0.5", "Hero 15s", List.of(
+								new CreativeRow("Hero 15s", "600,000", "0.9%", "82.9%", "$2,100")))));
+		JsonNode response = json.readTree("""
+				{
+				  "tactic 1": ["d1", "d2", "d3", "d4"],
+				  "Tactic_2": ["v1", "v2", "v3", "v4"]
+				}
+				""");
+		when(messagesClient.callJsonObject(any(), eq(1500), eq(60), eq("BatchCreatives"), eq(false)))
+				.thenReturn(response);
+		when(compressionService.compress(any(), eq("BatchD-Creatives")))
+				.thenAnswer(call -> {
+					Map<String, String> out = new LinkedHashMap<>();
+					for (ClaudeCompressionField field : call.<List<ClaudeCompressionField>>getArgument(0)) {
+						out.put(field.key(), field.text());
+					}
+					return out;
+				});
+
+		// When:
+		Map<Integer, List<String>> takeaways = client.batchCreativeTakeaways(inputs, "brief");
+
+		// Then: the tactic number is recovered from the key's digits, so both slides get their copy
+		assertThat(takeaways.get(1)).containsExactly("d1", "d2", "d3", "d4");
+		assertThat(takeaways.get(2)).containsExactly("v1", "v2", "v3", "v4");
+	}
+
+	@Test
+	void bulletsByTacticIgnoresKeysThatClaimNoTacticOrCarryNoBulletsTest() throws Exception {
+		// Given: a reply padded with the commentary keys Claude sometimes adds beside the real answers
+		ClaudeResponseNormalizer normalizer = new ClaudeResponseNormalizer();
+		RealClaudeClient client = new RealClaudeClient(
+				messagesClient, new ClaudeBatchPromptBuilder(normalizer, new Fmt()), normalizer,
+				compressionService, new ReportClaudeDefaults());
+		JsonNode parsed = json.readTree("""
+				{
+				  "notes": "Here are the takeaways you asked for.",
+				  "tactic_3": ["a", "b", "c", "d"],
+				  "tactic_4": "not an array"
+				}
+				""");
+
+		// When:
+		Map<Integer, JsonNode> byTactic = client.bulletsByTactic(parsed, "BatchCreatives");
+
+		// Then: only the key that names a tactic AND carries an array is kept — a prose key must never be
+		// read as tactic copy, and a non-array must not blow up the chunk
+		assertThat(byTactic).containsOnlyKeys(3);
+		assertThat(byTactic.get(3).size()).isEqualTo(4);
+	}
 }

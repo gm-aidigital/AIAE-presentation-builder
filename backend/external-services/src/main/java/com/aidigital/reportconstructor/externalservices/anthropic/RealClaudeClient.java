@@ -14,6 +14,7 @@ import com.aidigital.reportconstructor.service.reports.dto.TacticInsight;
 import com.aidigital.reportconstructor.service.reports.engine.ReportClaudeDefaults;
 import com.aidigital.reportconstructor.service.reports.ports.ClaudeClient;
 import com.fasterxml.jackson.databind.JsonNode;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
@@ -37,6 +38,7 @@ import java.util.regex.Pattern;
  * exactly like the PHP functions return {@code []} — the resolvers then fall
  * back to manual/sheet values or {@code "—"}.
  */
+@Slf4j
 @Component
 @Primary
 @ConditionalOnExpression("'${external.anthropic.api-key:}' != ''")
@@ -55,6 +57,15 @@ public class RealClaudeClient implements ClaudeClient {
 
 	/** First run of digits in a Batch C map key, used to recover the slot number from a drifted key. */
 	private static final Pattern KEY_NUMBER = Pattern.compile("\\d+");
+
+	/**
+	 * Per-tactic bullet batches ask for a {@code "tactic_<n>"} key and Claude does not always spell it back
+	 * that way ({@code "tactic 1"}, {@code "Tactic_1"}, plain {@code "1"} all show up) — the same drift
+	 * Batch C already defends against with {@link #KEY_NUMBER}. Looking the reply up by exact key means one
+	 * spelling change silently blanks every bullet on the slide, which is indistinguishable from the user
+	 * having filled nothing in, so the tactic number is recovered from the key's digits instead.
+	 */
+	private static final Pattern TACTIC_KEY = Pattern.compile("^\\D*(\\d+)\\D*$");
 
 	/** Character budget of one {@code {{publishers_observation_N_x}}} bullet on the slide. */
 	private static final int PUBLISHER_OBSERVATION_LIMIT = 155;
@@ -467,10 +478,13 @@ public class RealClaudeClient implements ClaudeClient {
 
 		// Collect every bullet across the chunk's tactics first, so the whole chunk's over-budget text is
 		// compressed in one Batch D call rather than one per tactic.
+		Map<Integer, JsonNode> byTactic = bulletsByTactic(parsed, "BatchPublishers");
 		List<ClaudeCompressionField> compressionFields = new ArrayList<>();
 		for (PublisherObservationInput input : chunk) {
-			JsonNode arr = parsed.get("tactic_" + input.tacticNum());
-			if (arr == null || !arr.isArray()) {
+			JsonNode arr = byTactic.get(input.tacticNum());
+			if (arr == null) {
+				log.warn("[claude:BatchPublishers] reply carries no bullets for tactic {} (keys: {})",
+						input.tacticNum(), byTactic.keySet());
 				continue;
 			}
 			for (int i = 0; i < PUBLISHER_OBSERVATION_COUNT; i++) {
@@ -485,7 +499,7 @@ public class RealClaudeClient implements ClaudeClient {
 		Map<String, String> compressed = compressionService.compress(compressionFields, "BatchD-Publishers");
 
 		for (PublisherObservationInput input : chunk) {
-			if (parsed.get("tactic_" + input.tacticNum()) == null) {
+			if (byTactic.get(input.tacticNum()) == null) {
 				continue;
 			}
 			List<String> bullets = new ArrayList<>(PUBLISHER_OBSERVATION_COUNT);
@@ -536,10 +550,13 @@ public class RealClaudeClient implements ClaudeClient {
 
 		// Collect every bullet across the chunk's tactics first, so the whole chunk's over-budget text is
 		// compressed in one Batch D call rather than one per tactic.
+		Map<Integer, JsonNode> byTactic = bulletsByTactic(parsed, "BatchCreatives");
 		List<ClaudeCompressionField> compressionFields = new ArrayList<>();
 		for (CreativeTakeawayInput input : chunk) {
-			JsonNode arr = parsed.get("tactic_" + input.tacticNum());
-			if (arr == null || !arr.isArray()) {
+			JsonNode arr = byTactic.get(input.tacticNum());
+			if (arr == null) {
+				log.warn("[claude:BatchCreatives] reply carries no bullets for tactic {} (keys: {})",
+						input.tacticNum(), byTactic.keySet());
 				continue;
 			}
 			for (int i = 0; i < CREATIVE_TAKEAWAY_COUNT; i++) {
@@ -554,7 +571,7 @@ public class RealClaudeClient implements ClaudeClient {
 		Map<String, String> compressed = compressionService.compress(compressionFields, "BatchD-Creatives");
 
 		for (CreativeTakeawayInput input : chunk) {
-			if (parsed.get("tactic_" + input.tacticNum()) == null) {
+			if (byTactic.get(input.tacticNum()) == null) {
 				continue;
 			}
 			List<String> bullets = new ArrayList<>(CREATIVE_TAKEAWAY_COUNT);
@@ -576,6 +593,32 @@ public class RealClaudeClient implements ClaudeClient {
 	 */
 	int creativeTakeawayLimit(int index) {
 		return index == CREATIVE_TAKEAWAY_COUNT - 1 ? CREATIVE_RECO_LIMIT : CREATIVE_TAKEAWAY_LIMIT;
+	}
+
+	/**
+	 * Indexes a per-tactic bullet reply by tactic number, recovering the number from each key's digits
+	 * rather than demanding the exact {@code "tactic_<n>"} spelling that was asked for. Keys carrying no
+	 * digits, or no bullet array, are dropped; the first key claiming a tactic wins, so a duplicate cannot
+	 * silently replace a good answer.
+	 *
+	 * @param parsed the reply object, keyed by whatever Claude called each tactic
+	 * @param label  short tag identifying the batch in log messages
+	 * @return tactic number → its bullet array (empty when the reply carried no usable key)
+	 */
+	Map<Integer, JsonNode> bulletsByTactic(JsonNode parsed, String label) {
+		Map<Integer, JsonNode> byTactic = new LinkedHashMap<>();
+		var fields = parsed.fields();
+		while (fields.hasNext()) {
+			var entry = fields.next();
+			Matcher matcher = TACTIC_KEY.matcher(entry.getKey().trim());
+			if (!matcher.matches() || !entry.getValue().isArray()) {
+				log.warn("[claude:{}] reply key '{}' carries no tactic number or no bullet array — ignoring",
+						label, entry.getKey());
+				continue;
+			}
+			byTactic.putIfAbsent(Integer.parseInt(matcher.group(1)), entry.getValue());
+		}
+		return byTactic;
 	}
 
 	@Override
