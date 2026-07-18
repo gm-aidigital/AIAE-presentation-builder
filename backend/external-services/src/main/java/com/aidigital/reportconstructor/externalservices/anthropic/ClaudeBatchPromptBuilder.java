@@ -9,6 +9,8 @@ import com.aidigital.reportconstructor.service.reports.dto.DeviceRow;
 import com.aidigital.reportconstructor.service.reports.dto.DeviceTable;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
+import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
+import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeRow;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTable;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTakeawayInput;
@@ -17,6 +19,7 @@ import com.aidigital.reportconstructor.service.reports.dto.GeoRow;
 import com.aidigital.reportconstructor.service.reports.dto.GeoTable;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationInput;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
+import com.aidigital.reportconstructor.service.reports.dto.StrategicInsight;
 import com.aidigital.reportconstructor.service.reports.dto.Tactic;
 import com.aidigital.reportconstructor.service.reports.dto.Totals;
 import com.aidigital.reportconstructor.service.reports.engine.Fmt;
@@ -1540,6 +1543,158 @@ public class ClaudeBatchPromptBuilder {
 						+ "- Examples: \"Imps, CTR, R&F\" (display only), \"Imps, VCR, R&F\" (video only), "
 						+ "\"Imps, CTR, VCR, R&F\" (mixed).\n\n"
 						+ "Tactics:\n" + String.join("\n", tacticLines);
+		return Optional.of(prompt);
+	}
+
+	/**
+	 * Builds the Batch D (narrative alignment) prompt, or empty when there is nothing to align.
+	 *
+	 * <p>Unlike Batches A–C, this prompt sends Claude no raw plan or metric grid: it sends the copy those
+	 * batches already wrote — the proposal overview, the four strategic insights, the per-group results
+	 * overviews, the performance thoughts, and the frequency narrative — as a {@code === CURRENT DRAFT ===}
+	 * block, plus a read-only {@code === BREAKDOWN SIGNALS ===} digest of the per-tactic slide conclusions.
+	 * Claude's job is editorial, not analytical: reconcile these independently written fields into one
+	 * storyline that stays faithful to the brief, tightening or re-pointing copy without inventing facts that
+	 * are not already present in the draft or digest.
+	 *
+	 * <p>The reply mirrors the source schema exactly ({@code proposal_overview}, {@code strategic_insights},
+	 * {@code results_overviews}, {@code thoughts_on_performance}, {@code f_opportunity}/{@code f_fact}/
+	 * {@code f_storytelling}) so {@link RealClaudeClient} can parse and re-limit it with the same helpers that
+	 * handled the originals. Fields absent from the draft are omitted from both the request and the schema, so
+	 * the model is never asked to fabricate a field that was empty to begin with.
+	 *
+	 * @param strategic       the Batch A output whose {@code proposalOverview}/{@code strategicInsights} feed the draft
+	 * @param results         the Batch C output whose results overviews, thoughts and frequency narrative feed the draft
+	 * @param breakdownDigest one short line per breakdown conclusion; rendered as read-only alignment context
+	 * @param brief           free-text campaign brief the aligned narrative must stay faithful to
+	 * @return the Batch D alignment prompt, or empty when the draft carries no alignable campaign-level copy
+	 */
+	public Optional<String> buildBatchDPrompt(
+			ClaudeStrategic strategic, ClaudeResults results, List<String> breakdownDigest, String brief) {
+		List<String> draft = new ArrayList<>();
+		List<String> schema = new ArrayList<>();
+
+		String proposal = strategic == null ? null : strategic.proposalOverview();
+		if (proposal != null && !proposal.isBlank()) {
+			draft.add("proposal_overview: " + proposal.trim());
+			schema.add("  \"proposal_overview\": string,   // Exactly 2 sentences, past tense, no line breaks. "
+					+ "≤400 chars. Keep every named tactic/audience/geo from the draft; only sharpen wording.\n");
+		}
+
+		List<StrategicInsight> insights = strategic == null ? null : strategic.strategicInsights();
+		int insightCount = 0;
+		if (insights != null) {
+			for (StrategicInsight si : insights) {
+				if (si == null) {
+					continue;
+				}
+				String point = si.point() == null ? "" : si.point().trim();
+				String overview = si.overview() == null ? "" : si.overview().trim();
+				if (point.isEmpty() && overview.isEmpty()) {
+					continue;
+				}
+				draft.add("strategic_insight[" + insightCount + "]: point=\"" + point + "\" overview=\"" + overview + "\"");
+				insightCount++;
+			}
+		}
+		if (insightCount > 0) {
+			schema.add("  \"strategic_insights\": array,     // EXACTLY " + insightCount
+					+ " objects {\"point\": string (≤20 chars), \"overview\": string (≤230 chars)}, in the same "
+					+ "order as the draft. Each must stay a distinct facet of the ONE campaign storyline.\n");
+		}
+
+		Map<Integer, String> overviews = results == null ? null : results.resultsOverviews();
+		if (overviews != null && !overviews.isEmpty()) {
+			List<String> groupKeys = new ArrayList<>();
+			for (Map.Entry<Integer, String> e : overviews.entrySet()) {
+				if (e.getValue() == null || e.getValue().isBlank()) {
+					continue;
+				}
+				draft.add("results_overview[" + e.getKey() + "]: " + e.getValue().trim());
+				groupKeys.add(String.valueOf(e.getKey()));
+			}
+			if (!groupKeys.isEmpty()) {
+				schema.add("  \"results_overviews\": object,     // Keyed by group number as strings ("
+						+ String.join(", ", groupKeys) + "). One entry per key listed, no more, no fewer. Each: EXACTLY "
+						+ "2 sentences, past tense, ≤380 chars. Must pay off the same storyline with its own group's "
+						+ "numbers.\n");
+			}
+		}
+
+		List<String> thoughts = results == null ? null : results.thoughtsOnPerformance();
+		int thoughtCount = 0;
+		if (thoughts != null) {
+			for (String t : thoughts) {
+				if (t != null && !t.isBlank()) {
+					draft.add("thought[" + thoughtCount + "]: " + t.trim());
+					thoughtCount++;
+				}
+			}
+		}
+		if (thoughtCount > 0) {
+			schema.add("  \"thoughts_on_performance\": array, // EXACTLY " + thoughtCount
+					+ " strings (≤220 chars each), same order as the draft. Together they must read as the campaign "
+					+ "headline expanded — no contradictions with the overviews above.\n");
+		}
+
+		String fOpportunity = results == null ? null : results.fOpportunity();
+		if (fOpportunity != null && !fOpportunity.isBlank()) {
+			draft.add("f_opportunity: " + fOpportunity.trim());
+			schema.add("  \"f_opportunity\": string,         // ≤180 chars. Same frequency point, aligned wording.\n");
+		}
+		String fFact = results == null ? null : results.fFact();
+		if (fFact != null && !fFact.isBlank()) {
+			draft.add("f_fact: " + fFact.trim());
+			schema.add("  \"f_fact\": string,                // ≤140 chars.\n");
+		}
+		String fStorytelling = results == null ? null : results.fStorytelling();
+		if (fStorytelling != null && !fStorytelling.isBlank()) {
+			draft.add("f_storytelling: " + fStorytelling.trim());
+			schema.add("  \"f_storytelling\": string,        // ≤320 chars.\n");
+		}
+
+		if (draft.isEmpty() || schema.isEmpty()) {
+			return Optional.empty();
+		}
+
+		StringBuilder context = new StringBuilder();
+		String brf = brief == null ? "" : brief.trim();
+		if (!brf.isEmpty()) {
+			context.append("=== CAMPAIGN BRIEF ===\n").append(brf).append("\n\n");
+		}
+		context.append("=== CURRENT DRAFT (independently written — your job is to align it) ===\n")
+				.append(String.join("\n", draft)).append("\n");
+		if (breakdownDigest != null && !breakdownDigest.isEmpty()) {
+			context.append("\n=== BREAKDOWN SIGNALS (read-only — reflect, do not restate or rewrite) ===\n")
+					.append(String.join("\n", breakdownDigest)).append("\n");
+		}
+
+		String prompt =
+				"You are the lead editor on a client-facing digital-media campaign report. Several sections were "
+						+ "drafted independently by different analysts, so they repeat, drift, and sometimes explain the "
+						+ "same result with different causes.\n\n"
+						+ "YOUR JOB — editorial alignment, NOT reanalysis:\n"
+						+ "1. ONE STORYLINE. Decide the single most important story of this campaign from the draft, then "
+						+ "make every field a consistent facet of it. The proposal sets it up; the results overviews and "
+						+ "thoughts pay it off; the strategic insights and frequency copy reinforce it.\n"
+						+ "2. NO CONTRADICTIONS. If two fields explain the same outcome with different causes, pick the "
+						+ "best-supported cause and use it consistently. Name the hero tactic, the laggard, and the "
+						+ "audience the SAME way everywhere.\n"
+						+ "3. STAY FAITHFUL TO THE BRIEF. Every claim must be consistent with the campaign brief above. "
+						+ "Drop or correct anything the draft says that the brief contradicts.\n"
+						+ "4. DO NOT INVENT. Use only facts already present in the draft or the read-only breakdown "
+						+ "signals. You are tightening and reconciling existing copy, not adding new data. If a field is "
+						+ "already good and consistent, return it essentially unchanged.\n"
+						+ "5. KEEP THE SHAPE. Return the SAME fields with the SAME counts and character limits as below. "
+						+ "Past tense, Business English, no filler, no labels inside the copy.\n\n"
+						+ "Return ONLY a JSON object with EXACTLY these keys (omit none, add none):\n\n"
+						+ "{\n"
+						+ String.join("", schema)
+						+ "}\n\n"
+						+ "Rules:\n"
+						+ "- Return ONLY the JSON object — no markdown, no backticks, no explanation.\n"
+						+ "- Output in English regardless of input language.\n\n"
+						+ context;
 		return Optional.of(prompt);
 	}
 }

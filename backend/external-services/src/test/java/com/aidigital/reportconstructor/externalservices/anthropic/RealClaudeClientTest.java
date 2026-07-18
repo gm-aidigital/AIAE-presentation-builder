@@ -2,6 +2,7 @@ package com.aidigital.reportconstructor.externalservices.anthropic;
 
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
+import com.aidigital.reportconstructor.service.reports.dto.ClaudeNarrative;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeRow;
@@ -432,5 +433,100 @@ class RealClaudeClientTest {
 		// read as tactic copy, and a non-array must not blow up the chunk
 		assertThat(byTactic).containsOnlyKeys(3);
 		assertThat(byTactic.get(3).size()).isEqualTo(4);
+	}
+
+	@Test
+	void batchAlignNarrativeRewritesCampaignCopyAndCarriesUntouchedFieldsThroughTest() throws Exception {
+		// Given: a real prompt builder/normalizer, an identity compression pass, and independently-written
+		// Batch A/C copy whose audience, tactic overviews and recommendations must survive the alignment
+		ClaudeResponseNormalizer normalizer = new ClaudeResponseNormalizer();
+		ClaudeBatchPromptBuilder promptBuilder = new ClaudeBatchPromptBuilder(normalizer, new Fmt());
+		ReportClaudeDefaults defaults = new ReportClaudeDefaults();
+		RealClaudeClient client = new RealClaudeClient(
+				messagesClient, promptBuilder, normalizer, compressionService, defaults);
+
+		ClaudeStrategic strategic = new ClaudeStrategic(
+				"25-44", "Auto intenders", "Old proposal.",
+				List.of(new StrategicInsight("OldPoint", "Old overview.")));
+		Map<Integer, String> origOverviews = new LinkedHashMap<>();
+		origOverviews.put(1, "Old results overview.");
+		Map<Integer, String> origTacticOverviews = new LinkedHashMap<>();
+		origTacticOverviews.put(1, "Tactic 1 stays untouched.");
+		ClaudeResults results = new ClaudeResults(
+				origOverviews, List.of("Old thought."), origTacticOverviews,
+				List.of(new Recommendation("Rec", "Rec text stays untouched.")), null, null, null);
+		String brief = "Drive awareness for the Spring Launch.";
+		String expectedPrompt = promptBuilder.buildBatchDPrompt(strategic, results, List.of(), brief).orElseThrow();
+
+		JsonNode response = json.readTree("""
+				{
+				  "proposal_overview": "Aligned proposal copy.",
+				  "strategic_insights": [{"point": "NewPoint", "overview": "New overview copy."}],
+				  "results_overviews": {"1": "Aligned results overview."},
+				  "thoughts_on_performance": ["Aligned thought."]
+				}
+				""");
+		List<ClaudeCompressionField> expectedFields = List.of(
+				new ClaudeCompressionField("point_0", "NewPoint", 22),
+				new ClaudeCompressionField("overview_0", "New overview copy.", 240),
+				new ClaudeCompressionField("results_overview_1", "Aligned results overview.", 380),
+				new ClaudeCompressionField("thought_0", "Aligned thought.", 220),
+				new ClaudeCompressionField("proposal_overview", "Aligned proposal copy.", 400));
+		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(3000), eq(90), eq("AlignNarrative"), eq(true)))
+				.thenReturn(response);
+		when(compressionService.compress(eq(expectedFields), eq("BatchE-Align")))
+				.thenAnswer(invocation -> {
+					List<ClaudeCompressionField> fields = invocation.getArgument(0);
+					Map<String, String> out = new LinkedHashMap<>();
+					for (ClaudeCompressionField field : fields) {
+						out.put(field.key(), field.text());
+					}
+					return out;
+				});
+
+		// When:
+		ClaudeNarrative aligned = client.batchAlignNarrative(strategic, results, List.of(), brief);
+
+		// Then: the cross-cutting story fields are rewritten from the reply
+		assertThat(aligned.strategic().proposalOverview()).contains("Aligned proposal");
+		assertThat(aligned.strategic().strategicInsights()).hasSize(1);
+		assertThat(aligned.strategic().strategicInsights().get(0).point()).isEqualTo("NewPoint");
+		assertThat(aligned.results().resultsOverviews()).containsEntry(1, "Aligned results overview.");
+		assertThat(aligned.results().thoughtsOnPerformance()).containsExactly("Aligned thought.");
+		// And: the fields the pass must never touch are carried through unchanged
+		assertThat(aligned.strategic().audienceAge()).isEqualTo("25-44");
+		assertThat(aligned.strategic().audienceSegments()).isEqualTo("Auto intenders");
+		assertThat(aligned.results().tacticOverviews()).containsEntry(1, "Tactic 1 stays untouched.");
+		assertThat(aligned.results().recommendations()).hasSize(1);
+		assertThat(aligned.results().recommendations().get(0).text()).isEqualTo("Rec text stays untouched.");
+	}
+
+	@Test
+	void batchAlignNarrativeReturnsTheOriginalsVerbatimWhenTheCallFailsTest() throws Exception {
+		// Given: a real prompt builder/normalizer and a Batch D call that fails (null reply)
+		ClaudeResponseNormalizer normalizer = new ClaudeResponseNormalizer();
+		ClaudeBatchPromptBuilder promptBuilder = new ClaudeBatchPromptBuilder(normalizer, new Fmt());
+		ReportClaudeDefaults defaults = new ReportClaudeDefaults();
+		RealClaudeClient client = new RealClaudeClient(
+				messagesClient, promptBuilder, normalizer, compressionService, defaults);
+
+		ClaudeStrategic strategic = new ClaudeStrategic(
+				"25-44", "Auto intenders", "Original proposal.",
+				List.of(new StrategicInsight("Point", "Overview.")));
+		Map<Integer, String> origOverviews = new LinkedHashMap<>();
+		origOverviews.put(1, "Original results overview.");
+		ClaudeResults results = new ClaudeResults(
+				origOverviews, List.of("Original thought."), Map.of(), List.of(), null, null, null);
+		String brief = "Drive awareness.";
+		String expectedPrompt = promptBuilder.buildBatchDPrompt(strategic, results, List.of(), brief).orElseThrow();
+		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(3000), eq(90), eq("AlignNarrative"), eq(true)))
+				.thenReturn(null);
+
+		// When:
+		ClaudeNarrative aligned = client.batchAlignNarrative(strategic, results, List.of(), brief);
+
+		// Then: the un-aligned originals are returned unchanged — alignment can never blank the deck
+		assertThat(aligned.strategic()).isSameAs(strategic);
+		assertThat(aligned.results()).isSameAs(results);
 	}
 }

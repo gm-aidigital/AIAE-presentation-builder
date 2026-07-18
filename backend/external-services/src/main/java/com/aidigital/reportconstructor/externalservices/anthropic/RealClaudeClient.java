@@ -2,6 +2,7 @@ package com.aidigital.reportconstructor.externalservices.anthropic;
 
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
+import com.aidigital.reportconstructor.service.reports.dto.ClaudeNarrative;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeSheetBatch;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
@@ -47,6 +48,7 @@ import java.util.regex.Pattern;
 @ConditionalOnExpression("'${external.anthropic.api-key:}' != ''")
 public class RealClaudeClient implements ClaudeClient {
 
+	private static final int PROPOSAL_LIMIT = 400;
 	private static final int STRATEGIC_POINT_LIMIT = 22;
 	private static final int STRATEGIC_OVERVIEW_LIMIT = 240;
 	private static final int RESULTS_OVERVIEW_LIMIT = 380;
@@ -199,6 +201,13 @@ public class RealClaudeClient implements ClaudeClient {
 	private static final int BATCH_C_TOKENS_PER_TACTIC = 170;
 	private static final int BATCH_C_MAX_TOKENS_CAP = 8000;
 
+	// Batch D (narrative alignment) only ever rewrites the bounded campaign-level copy — the proposal, four
+	// strategic insights, up to four group results overviews, up to four thoughts and three frequency strings —
+	// never the per-tactic overviews or breakdown bullets. Its output therefore does not scale with tactic
+	// count, so a fixed budget is safe and cannot hit Batch C's truncation-at-scale failure mode.
+	private static final int ALIGN_MAX_TOKENS = 3000;
+	private static final int ALIGN_TIMEOUT_SEC = 90;
+
 	private final AnthropicMessagesClient messagesClient;
 	private final ClaudeBatchPromptBuilder promptBuilder;
 	private final ClaudeResponseNormalizer normalizer;
@@ -243,7 +252,8 @@ public class RealClaudeClient implements ClaudeClient {
 		}
 
 		String seg = normalizer.limitAudienceSegments(normalizer.textOrNull(parsed.get("audience_segments")));
-		String overview = normalizer.normalizeProposal(normalizer.textOrNull(parsed.get("proposal_overview")), 400);
+		String overview = normalizer.normalizeProposal(
+				normalizer.textOrNull(parsed.get("proposal_overview")), PROPOSAL_LIMIT);
 
 		JsonNode arr = parsed.get("strategic_insights");
 		List<ClaudeCompressionField> compressionFields = new ArrayList<>();
@@ -277,7 +287,8 @@ public class RealClaudeClient implements ClaudeClient {
 			return claudeDefaults.emptyStrategic();
 		}
 
-		String overview = normalizer.normalizeProposal(normalizer.textOrNull(parsed.get("proposal_overview")), 400);
+		String overview = normalizer.normalizeProposal(
+				normalizer.textOrNull(parsed.get("proposal_overview")), PROPOSAL_LIMIT);
 
 		JsonNode arr = parsed.get("strategic_insights");
 		List<ClaudeCompressionField> compressionFields = new ArrayList<>();
@@ -497,6 +508,140 @@ public class RealClaudeClient implements ClaudeClient {
 
 		return new ClaudeResults(resultsOverviews, thoughts, tacticOverviews, recommendations,
 				fOpportunity, fFact, fStorytelling);
+	}
+
+	@Override
+	public ClaudeNarrative batchAlignNarrative(
+			ClaudeStrategic strategic, ClaudeResults results, List<String> breakdownDigest, String brief) {
+		// Never blank a field on failure: the whole pass falls back to the un-aligned originals.
+		ClaudeNarrative original = new ClaudeNarrative(strategic, results);
+		if (strategic == null || results == null) {
+			return original;
+		}
+		var prompt = promptBuilder.buildBatchDPrompt(strategic, results, breakdownDigest, brief);
+		if (prompt.isEmpty()) {
+			return original;
+		}
+		JsonNode parsed =
+				messagesClient.callJsonObject(prompt.get(), ALIGN_MAX_TOKENS, ALIGN_TIMEOUT_SEC, "AlignNarrative", true);
+		if (parsed == null) {
+			return original;
+		}
+
+		// Collect the raw aligned strings, then compress+limit them exactly as the source batches did. Any field
+		// the reply omits or blanks falls back per-field to the original, so alignment only ever tightens copy.
+		List<ClaudeCompressionField> compressionFields = new ArrayList<>();
+
+		String rawProposal = normalizer.textOrNull(parsed.get("proposal_overview"));
+
+		JsonNode insightArr = parsed.get("strategic_insights");
+		List<StrategicInsight> origInsights =
+				strategic.strategicInsights() == null ? List.of() : strategic.strategicInsights();
+		for (int i = 0; i < origInsights.size(); i++) {
+			JsonNode item = (insightArr != null && insightArr.isArray() && i < insightArr.size())
+					? insightArr.get(i) : null;
+			String rawPoint = item == null ? "" : item.path("point").asText("").trim();
+			String rawOverview = item == null ? "" : item.path("overview").asText("").trim();
+			compressionFields.add(new ClaudeCompressionField("point_" + i, rawPoint, STRATEGIC_POINT_LIMIT));
+			compressionFields.add(new ClaudeCompressionField("overview_" + i, rawOverview, STRATEGIC_OVERVIEW_LIMIT));
+		}
+
+		Map<Integer, String> rawOverviews = parseNumberedTextMap(parsed.get("results_overviews"));
+		for (Map.Entry<Integer, String> e : rawOverviews.entrySet()) {
+			compressionFields.add(new ClaudeCompressionField(
+					"results_overview_" + e.getKey(), e.getValue(), RESULTS_OVERVIEW_LIMIT));
+		}
+
+		JsonNode thoughtArr = parsed.get("thoughts_on_performance");
+		List<String> origThoughts =
+				results.thoughtsOnPerformance() == null ? List.of() : results.thoughtsOnPerformance();
+		for (int i = 0; i < origThoughts.size(); i++) {
+			JsonNode item = (thoughtArr != null && thoughtArr.isArray() && i < thoughtArr.size())
+					? thoughtArr.get(i) : null;
+			String rawThought = item == null ? "" : item.asText("").trim();
+			compressionFields.add(new ClaudeCompressionField("thought_" + i, rawThought, THOUGHT_LIMIT));
+		}
+
+		String rawFOpportunity = normalizer.textOrNull(parsed.get("f_opportunity"));
+		String rawFFact = normalizer.textOrNull(parsed.get("f_fact"));
+		String rawFStorytelling = normalizer.textOrNull(parsed.get("f_storytelling"));
+		if (rawProposal != null) {
+			compressionFields.add(new ClaudeCompressionField("proposal_overview", rawProposal, PROPOSAL_LIMIT));
+		}
+		if (rawFOpportunity != null) {
+			compressionFields.add(new ClaudeCompressionField("f_opportunity", rawFOpportunity, F_OPPORTUNITY_LIMIT));
+		}
+		if (rawFFact != null) {
+			compressionFields.add(new ClaudeCompressionField("f_fact", rawFFact, F_FACT_LIMIT));
+		}
+		if (rawFStorytelling != null) {
+			compressionFields.add(new ClaudeCompressionField("f_storytelling", rawFStorytelling, F_STORYTELLING_LIMIT));
+		}
+		Map<String, String> compressed = compressionService.compress(compressionFields, "BatchE-Align");
+
+		String alignedProposal = rawProposal == null
+				? strategic.proposalOverview()
+				: firstNonBlank(normalizer.normalizeProposal(compressed.get("proposal_overview"), PROPOSAL_LIMIT),
+						strategic.proposalOverview());
+
+		List<StrategicInsight> alignedInsights = new ArrayList<>();
+		for (int i = 0; i < origInsights.size(); i++) {
+			StrategicInsight fallback = origInsights.get(i);
+			String point = firstNonBlank(
+					normalizer.limitStrategicPoint(compressed.get("point_" + i)), fallback.point());
+			String overview = firstNonBlank(
+					normalizer.limitStrategicOverview(compressed.get("overview_" + i)), fallback.overview());
+			alignedInsights.add(new StrategicInsight(point, overview));
+		}
+		if (alignedInsights.isEmpty()) {
+			alignedInsights = origInsights.isEmpty() ? strategic.strategicInsights() : alignedInsights;
+		}
+
+		Map<Integer, String> alignedOverviews = new LinkedHashMap<>();
+		Map<Integer, String> origOverviews =
+				results.resultsOverviews() == null ? Map.of() : results.resultsOverviews();
+		for (Map.Entry<Integer, String> e : origOverviews.entrySet()) {
+			String aligned = rawOverviews.containsKey(e.getKey())
+					? normalizer.limitResultsOverview(compressed.get("results_overview_" + e.getKey())) : null;
+			alignedOverviews.put(e.getKey(), firstNonBlank(aligned, e.getValue()));
+		}
+
+		List<String> alignedThoughts = new ArrayList<>();
+		for (int i = 0; i < origThoughts.size(); i++) {
+			String fallback = origThoughts.get(i);
+			String aligned = normalizer.normalizeC(compressed.get("thought_" + i), THOUGHT_LIMIT);
+			alignedThoughts.add(firstNonBlank(aligned, fallback));
+		}
+
+		String fOpportunity = rawFOpportunity == null
+				? results.fOpportunity()
+				: firstNonBlank(normalizer.limitFOpportunity(compressed.get("f_opportunity")), results.fOpportunity());
+		String fFact = rawFFact == null
+				? results.fFact()
+				: firstNonBlank(normalizer.limitFFact(compressed.get("f_fact")), results.fFact());
+		String fStorytelling = rawFStorytelling == null
+				? results.fStorytelling()
+				: firstNonBlank(normalizer.limitFStorytelling(compressed.get("f_storytelling")), results.fStorytelling());
+
+		ClaudeStrategic alignedStrategic = new ClaudeStrategic(
+				strategic.audienceAge(), strategic.audienceSegments(), alignedProposal, alignedInsights);
+		ClaudeResults alignedResults = new ClaudeResults(
+				alignedOverviews, alignedThoughts, results.tacticOverviews(), results.recommendations(),
+				fOpportunity, fFact, fStorytelling);
+		return new ClaudeNarrative(alignedStrategic, alignedResults);
+	}
+
+	/**
+	 * Returns {@code value} when it is non-null and not blank, otherwise {@code fallback}. Used by the Batch D
+	 * alignment merge so any field the model dropped or returned empty keeps its original, un-aligned copy
+	 * rather than blanking on the slide.
+	 *
+	 * @param value    the aligned candidate string (may be {@code null} or blank)
+	 * @param fallback the original value to keep when {@code value} carries nothing usable
+	 * @return {@code value} when usable, otherwise {@code fallback}
+	 */
+	String firstNonBlank(String value, String fallback) {
+		return (value == null || value.isBlank()) ? fallback : value;
 	}
 
 	/**

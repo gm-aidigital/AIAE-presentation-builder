@@ -2,6 +2,7 @@ package com.aidigital.reportconstructor.service.reports.ports;
 
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
+import com.aidigital.reportconstructor.service.reports.dto.ClaudeNarrative;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeSheetBatch;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
@@ -76,6 +77,31 @@ public interface ClaudeClient {
 	 * @return the parsed, length-capped Batch C copy
 	 */
 	ClaudeResults batchResults(CampaignData data, String brief, CampaignFrequencies frequencies);
+
+	/**
+	 * Batch D — narrative alignment. A final harmonisation pass run after Batches A and C and after every
+	 * per-tactic breakdown batch has produced its copy. It reads the already-generated campaign-level
+	 * conclusions plus a read-only digest of the breakdown conclusions and rewrites only the cross-cutting
+	 * story fields — the proposal overview, the four strategic insights, the per-group results overviews, the
+	 * performance thoughts, and the three frequency-narrative strings — so the deck reads as one storyline
+	 * that stays faithful to the brief. The audience fields, per-tactic overviews, and optimisation
+	 * recommendations are carried through unchanged.
+	 *
+	 * <p>The pass is purely additive: on any failure, timeout, empty reply, or a client that is not live, the
+	 * originals are returned verbatim, so alignment can only improve the deck, never blank it.
+	 *
+	 * @param strategic       the Batch A output to align ({@code proposalOverview} + {@code strategicInsights});
+	 *                        its audience fields are passed through untouched
+	 * @param results         the Batch C output to align ({@code resultsOverviews} + {@code thoughtsOnPerformance}
+	 *                        + frequency narrative); its tactic overviews and recommendations pass through untouched
+	 * @param breakdownDigest one short line per per-tactic breakdown conclusion (geo/audience/device/creative/
+	 *                        publisher), used as read-only context so the aligned narrative reflects and does not
+	 *                        contradict the deeper slides; empty when no breakdown sections were selected
+	 * @param brief           free-text campaign brief the aligned narrative must stay faithful to
+	 * @return the aligned strategic + results records, or the originals verbatim when nothing could be aligned
+	 */
+	ClaudeNarrative batchAlignNarrative(
+			ClaudeStrategic strategic, ClaudeResults results, List<String> breakdownDigest, String brief);
 
 	/**
 	 * Publisher-observations batch — the four {@code {{publishers_observation_N_1..4}}} bullets on each
