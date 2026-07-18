@@ -281,6 +281,70 @@ public class ChartSheetWriter {
 	}
 
 	/**
+	 * Writes a per-tactic breakdown chart's impressions into a copied source workbook: for each category
+	 * row (device or age bucket) whose column-A label matches a supplied slice, writes the impressions
+	 * into column B. Column C ("share of voice") is left untouched — it is a live formula in the template
+	 * that recomputes from column B — so only impressions are pushed.
+	 *
+	 * <p>Rows are matched by normalised label rather than position, so a template row order change does not
+	 * misplace values, and the {@code CTV} &harr; {@code Connected TV} spelling difference between the
+	 * "Breakdowns" tab and the chart source is absorbed. A category with no matching slice is left as the
+	 * template shipped it.
+	 *
+	 * @param sheets        authenticated Sheets client
+	 * @param spreadsheetId id of the copied source workbook
+	 * @param tabName       data tab holding the category / impressions / share-of-voice columns
+	 * @param impsByLabel   normalised category label &rarr; impressions to write; build via
+	 *                      {@link #normalizeBreakdownLabel(String)}
+	 * @return the number of rows written (matched categories)
+	 * @throws IOException when a Sheets API call fails
+	 */
+	public int writeBreakdownImpressions(
+			Sheets sheets, String spreadsheetId, String tabName, java.util.Map<String, Long> impsByLabel)
+			throws IOException {
+		if (impsByLabel.isEmpty()) {
+			return 0;
+		}
+		List<List<Object>> rows = readValues(sheets, spreadsheetId, tabName + "!A1:A50");
+		List<ValueRange> data = new ArrayList<>();
+		for (int ri = 0; ri < rows.size(); ri++) {
+			String label = rows.get(ri).isEmpty() ? "" : str(rows.get(ri).get(0));
+			if (label.isBlank()) {
+				continue;
+			}
+			Long imps = impsByLabel.get(normalizeBreakdownLabel(label));
+			if (imps == null) {
+				continue;
+			}
+			data.add(new ValueRange()
+					.setRange(tabName + "!B" + (ri + 1))
+					.setValues(List.of(List.of(imps))));
+		}
+		if (data.isEmpty()) {
+			return 0;
+		}
+		sheets.spreadsheets().values().batchUpdate(spreadsheetId,
+				new BatchUpdateValuesRequest().setValueInputOption("RAW").setData(data)).execute();
+		return data.size();
+	}
+
+	/**
+	 * Normalises a breakdown category label for matching: lower-cased, whitespace removed, and the two
+	 * spellings of Connected TV ({@code CTV} / {@code Connected TV}) folded to one key. Age buckets (e.g.
+	 * {@code 25-34}) are unaffected.
+	 *
+	 * @param label the raw category label from either the "Breakdowns" tab or the chart source sheet
+	 * @return the normalised match key
+	 */
+	public String normalizeBreakdownLabel(String label) {
+		if (label == null) {
+			return "";
+		}
+		String key = label.trim().toLowerCase(Locale.ROOT).replaceAll("\\s+", "");
+		return key.equals("ctv") ? "connectedtv" : key;
+	}
+
+	/**
 	 * Converts a 0-based column index to an A1 column letter (e.g. {@code 0 → A}, {@code 26 → AA}).
 	 *
 	 * @param col 0-based column index

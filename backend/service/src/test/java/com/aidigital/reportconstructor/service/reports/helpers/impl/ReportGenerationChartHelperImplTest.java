@@ -1,8 +1,12 @@
 package com.aidigital.reportconstructor.service.reports.helpers.impl;
 
+import com.aidigital.reportconstructor.service.reports.dto.AudienceAgeRow;
+import com.aidigital.reportconstructor.service.reports.dto.AudienceTable;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownSelection;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
+import com.aidigital.reportconstructor.service.reports.dto.DeviceRow;
+import com.aidigital.reportconstructor.service.reports.dto.DeviceTable;
 import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
 import com.aidigital.reportconstructor.service.reports.dto.LineItemMapping;
@@ -11,8 +15,11 @@ import com.aidigital.reportconstructor.service.reports.dto.Totals;
 import com.aidigital.reportconstructor.service.reports.engine.Pivot;
 import com.aidigital.reportconstructor.service.reports.helpers.BreakdownSelectionResolver;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportNumberParser;
+import com.aidigital.reportconstructor.service.reports.helpers.ReportSheetHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.SheetChartDataReader;
 import com.aidigital.reportconstructor.service.reports.helpers.TacticExtractionHelper;
+import com.aidigital.reportconstructor.service.reports.ports.BreakdownChartJob;
+import com.aidigital.reportconstructor.service.reports.ports.BreakdownChartRequest;
 import com.aidigital.reportconstructor.service.reports.ports.ChartProvider;
 import com.aidigital.reportconstructor.service.reports.ports.ChartRequest;
 import com.aidigital.reportconstructor.service.reports.ports.SlidesProvider;
@@ -52,6 +59,8 @@ class ReportGenerationChartHelperImplTest {
 	SheetChartDataReader sheetChartData;
 	@Mock
 	BreakdownSelectionResolver breakdownResolver;
+	@Mock
+	ReportSheetHelper sheetHelper;
 
 	@InjectMocks
 	ReportGenerationChartHelperImpl helper;
@@ -117,6 +126,79 @@ class ReportGenerationChartHelperImplTest {
 
 		// Then: nothing is inserted
 		verify(slides, never()).addBreakdownSlides(any(), any(), any(), any());
+	}
+
+	@Test
+	void shouldBuildBreakdownChartJobsForAudienceAndDeviceTacticsTest() {
+		// Given: tactic 1 enabled Device, tactic 2 enabled Audience (both within the active count), and each
+		// sheet block carries one impressions row
+		List<BreakdownSelection> selections = List.of(
+				new BreakdownSelection(1, List.of("dev")),
+				new BreakdownSelection(2, List.of("aud")));
+		GeneratePayload payload = new GeneratePayload(
+				"brief", "standard", "", List.of(), List.of(), List.of(), List.of(), List.of(),
+				List.of(), selections, "", null, "https://docs.google.com/spreadsheets/d/sheet-1/edit", null);
+		Map<Integer, Set<BreakdownType>> resolved = new LinkedHashMap<>();
+		resolved.put(1, EnumSet.of(BreakdownType.DEVICE));
+		resolved.put(2, EnumSet.of(BreakdownType.AUDIENCE));
+		when(breakdownResolver.resolve(selections)).thenReturn(resolved);
+		when(sheetHelper.readDeviceTables(eq("https://docs.google.com/spreadsheets/d/sheet-1/edit"), eq(Set.of(1)),
+				eq("token"))).thenReturn(Map.of(1, new DeviceTable("", "", "", "", "",
+				List.of(new DeviceRow("Mobile", "1,000", "", "", "")))));
+		when(sheetHelper.readAudienceTables(eq("https://docs.google.com/spreadsheets/d/sheet-1/edit"), eq(Set.of(2)),
+				eq("token"))).thenReturn(Map.of(2, new AudienceTable("", "",
+				List.of(new AudienceAgeRow("25-34", "2,000")), List.of())));
+		when(reportNumbers.parseReportNumber("1,000")).thenReturn(1000.0);
+		when(reportNumbers.parseReportNumber("2,000")).thenReturn(2000.0);
+
+		// When:
+		helper.buildBreakdownCharts(
+				"https://docs.google.com/presentation/d/pres-1/edit", payload, 2, Map.of(), "token");
+
+		// Then: one audience job and one device job are sent, each carrying its tactic's slice
+		ArgumentCaptor<BreakdownChartRequest> captor = ArgumentCaptor.forClass(BreakdownChartRequest.class);
+		verify(charts).buildBreakdownCharts(captor.capture());
+		List<BreakdownChartJob> jobs = captor.getValue().jobs();
+		assertThat(captor.getValue().presentationId()).isEqualTo("pres-1");
+		assertThat(jobs).hasSize(2);
+		assertThat(jobs).anySatisfy(job -> {
+			assertThat(job.breakdownCode()).isEqualTo("aud");
+			assertThat(job.tacticNum()).isEqualTo(2);
+			assertThat(job.slices()).singleElement().satisfies(slice -> {
+				assertThat(slice.label()).isEqualTo("25-34");
+				assertThat(slice.impressions()).isEqualTo(2000.0);
+			});
+		});
+		assertThat(jobs).anySatisfy(job -> {
+			assertThat(job.breakdownCode()).isEqualTo("dev");
+			assertThat(job.tacticNum()).isEqualTo(1);
+			assertThat(job.slices()).singleElement().satisfies(slice -> {
+				assertThat(slice.label()).isEqualTo("Mobile");
+				assertThat(slice.impressions()).isEqualTo(1000.0);
+			});
+		});
+	}
+
+	@Test
+	void shouldSkipBreakdownChartsWhenNoAudienceOrDeviceEnabledTest() {
+		// Given: only Top Publishers is enabled — a section with no chart
+		List<BreakdownSelection> selections = List.of(new BreakdownSelection(1, List.of("tp")));
+		GeneratePayload payload = new GeneratePayload(
+				"brief", "standard", "", List.of(), List.of(), List.of(), List.of(), List.of(),
+				List.of(), selections, "", null, "https://docs.google.com/spreadsheets/d/sheet-1/edit", null);
+		Map<Integer, Set<BreakdownType>> resolved = new LinkedHashMap<>();
+		resolved.put(1, EnumSet.of(BreakdownType.TOP_PUBLISHERS));
+		when(breakdownResolver.resolve(selections)).thenReturn(resolved);
+
+		// When:
+		List<String> warnings = helper.buildBreakdownCharts(
+				"https://docs.google.com/presentation/d/pres-1/edit", payload, 2, Map.of(), "token");
+
+		// Then: no chart request is built and the sheet is never read for chart data
+		assertThat(warnings).isEmpty();
+		verify(charts, never()).buildBreakdownCharts(any());
+		verify(sheetHelper, never()).readDeviceTables(any(), any(), any());
+		verify(sheetHelper, never()).readAudienceTables(any(), any(), any());
 	}
 
 	@Test

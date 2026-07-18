@@ -6,6 +6,7 @@ import com.aidigital.reportconstructor.service.common.error.ErrorReason;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownValues;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
+import com.aidigital.reportconstructor.service.reports.dto.ClaudeNarrative;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeSheetBatch;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
@@ -60,6 +61,11 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 
 	/** Max tactics the report template carries; the derived tactic count is clamped to this. */
 	private static final int MAX_TACTICS = 28;
+
+	/** Max breakdown-conclusion lines fed to Batch D as read-only alignment context, bounding its input size. */
+	private static final int BREAKDOWN_DIGEST_MAX_LINES = 80;
+	/** Per-line character cap for the Batch D breakdown digest; long slide copy is truncated for context only. */
+	private static final int BREAKDOWN_DIGEST_LINE_MAX = 160;
 
 	private final ReportJobProgressHelper jobProgress;
 	private final ReportGenerationWarningsHelper warnings;
@@ -267,16 +273,42 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		ClaudeStrategic ccA = live ? claude.batchStrategicNarrative(data, brief) : claudeDefaults.emptyStrategic();
 		ClaudeResults ccC = live ? claude.batchResults(data, brief, frequencies) : claudeDefaults.emptyResults();
 
-		// Build the narrative map from a payload stripped of every raw grid: the Claude-authored copy still
-		// flows through, but each numeric placeholder is forced to come solely from the sheet overlay below.
-		// A missing sheet anchor then renders as a blank (visible) rather than a stale raw value (silent).
-		GeneratePayload narrativePayload = narrativeOnly(payload);
-		Map<String, String> narrative = placeholders.buildFlatReplacements(
-				narrativePayload, data, ccA, claudeDefaults.emptyTactical(), ccC, null, null, null, frequencies,
-				tacticCount);
-		Map<String, String> flatReplacements = new LinkedHashMap<>(narrative);
-		flatReplacements.putAll(sheetValues);
-		aliasSheetTokens(flatReplacements, tacticCount);
+		// Breakdown copy is generated BEFORE the deck is built so the Batch D alignment pass can reconcile the
+		// campaign-level narrative against the deeper per-tactic conclusions. The values do not need the deck —
+		// only their later insertion does — and the helpers read only sheet-derived tokens (tactic names, gender
+		// splits) that Batch D never rewrites, so seeding them from the pre-alignment map is safe. A preliminary
+		// map is used here; the map that actually fills the deck is rebuilt below from the aligned narrative.
+		Map<String, String> prelim = buildSheetFlatReplacements(
+				payload, data, ccA, ccC, frequencies, tacticCount, sheetValues);
+		BreakdownValues publisherValues = publisherBreakdown.buildPublisherValues(
+				payload.sheetUrl(), payload.breakdownSelections(), prelim, brief, userGoogleToken);
+		BreakdownValues creativeValues = creativeBreakdown.buildCreativeValues(
+				payload.sheetUrl(), payload.breakdownSelections(), prelim, brief, userGoogleToken);
+		BreakdownValues geoValues = geoBreakdown.buildGeoValues(
+				payload.sheetUrl(), payload.breakdownSelections(), prelim, brief, userGoogleToken);
+		BreakdownValues audienceValues = audienceBreakdown.buildAudienceValues(
+				payload.sheetUrl(), payload.breakdownSelections(), prelim, brief, userGoogleToken);
+		BreakdownValues deviceValues = deviceBreakdown.buildDeviceValues(
+				payload.sheetUrl(), payload.breakdownSelections(), prelim, brief, userGoogleToken);
+
+		// Batch D — final narrative alignment. Reconcile the independently written proposal, strategic insights,
+		// results overviews, thoughts and frequency copy into one storyline faithful to the brief, informed by a
+		// read-only digest of the breakdown conclusions. Purely additive: on any failure the originals are
+		// returned, so the deck is never worse than before this pass ran.
+		if (live) {
+			List<String> breakdownDigest = buildBreakdownDigest(
+					List.of(publisherValues, creativeValues, geoValues, audienceValues, deviceValues));
+			ClaudeNarrative aligned = claude.batchAlignNarrative(ccA, ccC, breakdownDigest, brief);
+			if (aligned != null) {
+				ccA = aligned.strategic();
+				ccC = aligned.results();
+			}
+		}
+
+		// Rebuild the narrative map from the aligned copy. The sheet overlay still wins for every numeric anchor,
+		// so a missing sheet value renders blank (visible) rather than a stale raw value (silent).
+		Map<String, String> flatReplacements = buildSheetFlatReplacements(
+				payload, data, ccA, ccC, frequencies, tacticCount, sheetValues);
 
 		jobProgress.markJobRunningAtStep(jobId, 6, "Building slide deck");
 		String fileName = fileNamer.buildFileName(
@@ -287,28 +319,23 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		// each tactic, and place them after the tactic's main slide. Non-fatal — the deck still ships
 		// without them on failure.
 		//
-		// The values are assembled here rather than folded into flatReplacements because these slides do
-		// not exist yet when createDeck runs its placeholder pass: they are duplicated from the masters
-		// afterwards, so their tokens have to be filled as part of that same insertion.
+		// The values were assembled above (before the deck existed) because these slides do not exist yet when
+		// createDeck runs its placeholder pass: they are duplicated from the masters afterwards, so their tokens
+		// have to be filled as part of that same insertion.
 		//
 		// One map across all breakdown sections: each helper only emits tokens for the tactics that enabled
 		// its own section, and the sections share no tokens, so the merge cannot collide.
-		BreakdownValues publisherValues = publisherBreakdown.buildPublisherValues(
-				payload.sheetUrl(), payload.breakdownSelections(), flatReplacements, brief, userGoogleToken);
-		BreakdownValues creativeValues = creativeBreakdown.buildCreativeValues(
-				payload.sheetUrl(), payload.breakdownSelections(), flatReplacements, brief, userGoogleToken);
-		BreakdownValues geoValues = geoBreakdown.buildGeoValues(
-				payload.sheetUrl(), payload.breakdownSelections(), flatReplacements, brief, userGoogleToken);
-		BreakdownValues audienceValues = audienceBreakdown.buildAudienceValues(
-				payload.sheetUrl(), payload.breakdownSelections(), flatReplacements, brief, userGoogleToken);
-		BreakdownValues deviceValues = deviceBreakdown.buildDeviceValues(
-				payload.sheetUrl(), payload.breakdownSelections(), flatReplacements, brief, userGoogleToken);
 		Map<String, String> breakdownValues = new LinkedHashMap<>(publisherValues.values());
 		breakdownValues.putAll(creativeValues.values());
 		breakdownValues.putAll(geoValues.values());
 		breakdownValues.putAll(audienceValues.values());
 		breakdownValues.putAll(deviceValues.values());
 		chartHelper.addBreakdownSlides(slideUrl, payload, tacticCount, breakdownValues, userGoogleToken);
+		// Give each audience/device breakdown slide its own live chart: the master's embedded chart is
+		// duplicated pointing at a shared, empty source workbook, so this relinks every copy to a per-tactic
+		// copy of that workbook filled with the tactic's impressions. Runs after the slides exist; non-fatal.
+		List<String> breakdownChartWarnings = chartHelper.buildBreakdownCharts(
+				slideUrl, payload, tacticCount, flatReplacements, userGoogleToken);
 
 		jobProgress.markJobRunningAtStep(jobId, 7, "Building charts");
 		List<String> chartWarnings = chartHelper.buildChartsFromSheet(
@@ -321,6 +348,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		jobWarnings.addAll(geoValues.warnings());
 		jobWarnings.addAll(audienceValues.warnings());
 		jobWarnings.addAll(deviceValues.warnings());
+		jobWarnings.addAll(breakdownChartWarnings);
 		jobWarnings.addAll(chartWarnings);
 
 		jobProgress.recordArtifact(jobId, fileName, payload.sheetUrl());
@@ -381,6 +409,69 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 				payload.brief(), payload.reportType(), null,
 				List.of(), List.of(), List.of(), List.of(), List.of(),
 				null, null, null, payload.dateFilter(), payload.sheetUrl(), payload.changeLog());
+	}
+
+	/**
+	 * Assembles the slides-from-sheet placeholder map: the Claude-authored narrative first (resolved from a
+	 * grid-stripped payload so numbers cannot come from the raw plan), then the reviewed-sheet overlay — which
+	 * wins for every numeric anchor — then the sheet-token aliases. Extracted because the flow builds this map
+	 * twice: once to seed the breakdown batches, then again from the Batch D-aligned narrative.
+	 *
+	 * @param payload     the inbound generation payload
+	 * @param data        the campaign data read back from the reviewed sheet
+	 * @param ccA         the (possibly aligned) Batch A strategic narrative
+	 * @param ccC         the (possibly aligned) Batch C results copy
+	 * @param frequencies the frequencies reconstructed from the reviewed sheet
+	 * @param tacticCount the active tactic count
+	 * @param sheetValues the reviewed-sheet placeholder values overlaid on top of the narrative
+	 * @return the merged placeholder map, sheet values winning over narrative, with aliases applied
+	 */
+	Map<String, String> buildSheetFlatReplacements(
+			GeneratePayload payload, CampaignData data, ClaudeStrategic ccA, ClaudeResults ccC,
+			CampaignFrequencies frequencies, int tacticCount, Map<String, String> sheetValues) {
+		GeneratePayload narrativePayload = narrativeOnly(payload);
+		Map<String, String> narrative = placeholders.buildFlatReplacements(
+				narrativePayload, data, ccA, claudeDefaults.emptyTactical(), ccC, null, null, null, frequencies,
+				tacticCount);
+		Map<String, String> flat = new LinkedHashMap<>(narrative);
+		flat.putAll(sheetValues);
+		aliasSheetTokens(flat, tacticCount);
+		return flat;
+	}
+
+	/**
+	 * Flattens the per-tactic breakdown conclusions into a compact, bounded list of {@code token: text} lines
+	 * for Batch D to read as read-only alignment context. Blank values are skipped, each line is capped at
+	 * {@link #BREAKDOWN_DIGEST_LINE_MAX} characters, and the whole digest is capped at
+	 * {@link #BREAKDOWN_DIGEST_MAX_LINES} lines so a large, many-tactic deck cannot bloat the alignment prompt.
+	 *
+	 * @param sections the built breakdown-value bundles (publisher/creative/geo/audience/device), any of which
+	 *                 may be empty when its section was not selected
+	 * @return one short line per non-blank breakdown conclusion, bounded in both line length and count
+	 */
+	List<String> buildBreakdownDigest(List<BreakdownValues> sections) {
+		List<String> digest = new ArrayList<>();
+		for (BreakdownValues section : sections) {
+			if (section == null || section.values() == null) {
+				continue;
+			}
+			for (Map.Entry<String, String> entry : section.values().entrySet()) {
+				String value = entry.getValue();
+				if (value == null || value.isBlank()) {
+					continue;
+				}
+				String tag = entry.getKey().replace("{{", "").replace("}}", "").trim();
+				String line = tag + ": " + value.trim();
+				if (line.length() > BREAKDOWN_DIGEST_LINE_MAX) {
+					line = line.substring(0, BREAKDOWN_DIGEST_LINE_MAX);
+				}
+				digest.add(line);
+				if (digest.size() >= BREAKDOWN_DIGEST_MAX_LINES) {
+					return digest;
+				}
+			}
+		}
+		return digest;
 	}
 
 	/**

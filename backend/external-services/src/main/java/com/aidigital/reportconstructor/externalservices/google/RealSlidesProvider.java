@@ -115,10 +115,11 @@ public class RealSlidesProvider implements SlidesProvider {
 	private final Map<Integer, String> resultsSlideObjectIds;
 	private final Map<Integer, String> tacticSlideObjectIds;
 	private final Map<BreakdownType, String> breakdownMasterIds;
+	private final BreakdownSlideNaming breakdownSlideNaming;
 
 	public RealSlidesProvider(
 			GoogleCredentialsFactory creds, GoogleProperties props, DriveSharer driveSharer,
-			GoogleRequestRetrier retrier) {
+			GoogleRequestRetrier retrier, BreakdownSlideNaming breakdownSlideNaming) {
 		String templateId = props.getSlidesTemplateId();
 		String targetFolderId = props.getSlidesTargetFolderId();
 		this.summaryTableObjectIds = props.getSummaryTableObjectIds();
@@ -126,6 +127,7 @@ public class RealSlidesProvider implements SlidesProvider {
 		this.resultsSlideObjectIds = props.getResultsSlideObjectIds();
 		this.tacticSlideObjectIds = props.getTacticSlideObjectIds();
 		this.breakdownMasterIds = resolveBreakdownMasterIds(props.getBreakdownMasterSlideObjectIds());
+		this.breakdownSlideNaming = breakdownSlideNaming;
 		this.driveSharer = driveSharer;
 		this.retrier = retrier;
 		this.shareWithEmails = props.getShareWithEmails();
@@ -533,7 +535,7 @@ public class RealSlidesProvider implements SlidesProvider {
 	 * @return the copy's slide object id
 	 */
 	String breakdownSlideId(BreakdownType type, int tacticNum) {
-		return "bd_" + type.code() + "_" + tacticNum;
+		return breakdownSlideNaming.slideId(type, tacticNum);
 	}
 
 	/**

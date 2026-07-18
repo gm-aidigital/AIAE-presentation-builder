@@ -1,5 +1,6 @@
 package com.aidigital.reportconstructor.externalservices.google;
 
+import com.aidigital.reportconstructor.service.reports.ports.BreakdownChartRequest;
 import com.aidigital.reportconstructor.service.reports.ports.ChartProvider;
 import com.aidigital.reportconstructor.service.reports.ports.ChartRequest;
 import com.google.api.client.http.HttpRequestInitializer;
@@ -21,10 +22,14 @@ public class RealChartProvider implements ChartProvider {
 
 	private final GoogleClientsFactory clients;
 	private final TacticChartBuilder chartBuilder;
+	private final BreakdownChartBuilder breakdownChartBuilder;
 
-	public RealChartProvider(GoogleClientsFactory clients, TacticChartBuilder chartBuilder) {
+	public RealChartProvider(
+			GoogleClientsFactory clients, TacticChartBuilder chartBuilder,
+			BreakdownChartBuilder breakdownChartBuilder) {
 		this.clients = clients;
 		this.chartBuilder = chartBuilder;
+		this.breakdownChartBuilder = breakdownChartBuilder;
 	}
 
 	@Override
@@ -34,12 +39,27 @@ public class RealChartProvider implements ChartProvider {
 
 	@Override
 	public List<String> buildCharts(ChartRequest req) {
-		boolean asUser = req.userGoogleAccessToken() != null && !req.userGoogleAccessToken().isBlank();
+		return chartBuilder.buildAllCharts(chartClients(req.userGoogleAccessToken()), req);
+	}
+
+	@Override
+	public List<String> buildBreakdownCharts(BreakdownChartRequest req) {
+		return breakdownChartBuilder.buildBreakdownCharts(chartClients(req.userGoogleAccessToken()), req);
+	}
+
+	/**
+	 * Builds the Drive/Sheets/Slides client bundle for one request, authenticated as the signed-in user
+	 * when a token is supplied (so copies land in that user's Drive, matching where the deck was created)
+	 * or as the service account otherwise.
+	 *
+	 * @param userGoogleAccessToken the signed-in user's Google token, or {@code null}/blank for the service account
+	 * @return the three clients bundled for this request
+	 */
+	ChartClients chartClients(String userGoogleAccessToken) {
+		boolean asUser = userGoogleAccessToken != null && !userGoogleAccessToken.isBlank();
 		HttpRequestInitializer init = asUser
-				? clients.userInitializer(req.userGoogleAccessToken())
+				? clients.userInitializer(userGoogleAccessToken)
 				: clients.serviceAccountInitializer();
-		ChartClients chartClients = new ChartClients(
-				clients.drive(init), clients.sheets(init), clients.slides(init));
-		return chartBuilder.buildAllCharts(chartClients, req);
+		return new ChartClients(clients.drive(init), clients.sheets(init), clients.slides(init));
 	}
 }

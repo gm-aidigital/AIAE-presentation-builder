@@ -81,12 +81,38 @@ public class SlideChartSwapper {
 			String oldObjectId,
 			String newSpreadsheetId,
 			ElementTransform xform) throws IOException {
+		replaceChartOnSlide(slides, presentationId, oldObjectId, newSpreadsheetId, xform,
+				templates.getChartIdInSheet());
+	}
+
+	/**
+	 * Deletes the placeholder chart and inserts a LINKED Sheets chart from the new spreadsheet at the
+	 * captured element position, using an explicit in-sheet chart id. The breakdown charts each carry
+	 * their own embedded chart id (unlike the main-deck templates, which share one), so the id cannot be
+	 * taken from the catalog and is passed in instead.
+	 *
+	 * @param slides           the authenticated Slides API client used to issue the batch update
+	 * @param presentationId   the ID of the Google Slides presentation being edited
+	 * @param oldObjectId      the object ID of the existing placeholder chart element to delete
+	 * @param newSpreadsheetId the ID of the Sheets spreadsheet whose chart is linked into the slide
+	 * @param xform            the previously captured size/transform/slide of the old chart; when complete,
+	 *                         positions the new chart identically, otherwise the API places it at a default location
+	 * @param chartIdInSheet   the embedded chart's id within {@code newSpreadsheetId}
+	 * @throws IOException if the batch update request to the Slides API fails
+	 */
+	public void replaceChartOnSlide(
+			Slides slides,
+			String presentationId,
+			String oldObjectId,
+			String newSpreadsheetId,
+			ElementTransform xform,
+			int chartIdInSheet) throws IOException {
 		String newObjectId = "ch_" + UUID.randomUUID().toString().replace("-", "").substring(0, 20);
 
 		CreateSheetsChartRequest create = new CreateSheetsChartRequest()
 				.setObjectId(newObjectId)
 				.setSpreadsheetId(newSpreadsheetId)
-				.setChartId(templates.getChartIdInSheet())
+				.setChartId(chartIdInSheet)
 				.setLinkingMode("LINKED");
 
 		if (xform != null && xform.size() != null && xform.transform() != null) {

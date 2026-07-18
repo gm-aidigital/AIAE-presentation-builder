@@ -194,6 +194,24 @@ external:
       geo: "g3f0a39e9ae9_0_2436"   # Geo performance
       aud: "g3f0a39e9ae9_0_2534"   # Audience analysis
       dev: "g3f0a39e9ae9_0_2623"   # Device breakdown
+    # Per-tactic breakdown charts (SLIDES_FROM_SHEET flow). The audience and device master slides
+    # each embed a chart linked to a shared source workbook; after a master is duplicated per tactic
+    # its chart still points at that shared (empty) workbook, so we copy the workbook per tactic, write
+    # the tactic's impressions into column B (share of voice stays a live formula in column C) and
+    # relink the copy's chart. Keyed by BreakdownType wire code. source-sheet-ids = the template
+    # workbook (with its embedded chart) to copy; chart-id-in-sheet = that workbook's embedded chart id
+    # (from spreadsheets.get → sheets.charts.chartId). Empty = feature disabled (safe no-op).
+    # Ids read from the live template (11qzOC7…) via presentations.get: the aud/dev master slides
+    # (g3f0a39e9ae9_0_2534 / _2623) each embed a LINKED sheetsChart whose spreadsheetId + chartId are
+    # below. source-sheet-ids are copied per tactic (the originals stay as templates); chart-id-in-sheet
+    # is the chart inside each source workbook (both happen to share 1497669750).
+    breakdown-charts:
+      source-sheet-ids:
+        aud: ${BREAKDOWN_AUD_SOURCE_SHEET_ID:1543w_xteLATFepVy3ynnaBn5gdGZp_8IolA0tRBqvkM}   # "EOC - age distribution"
+        dev: ${BREAKDOWN_DEV_SOURCE_SHEET_ID:1X5QhoIHIyTH7vhhFSHZmkzzxjDjB0Y4c6xw_ENVB1cs}   # "EOC - device distribution"
+      chart-id-in-sheet:
+        aud: ${BREAKDOWN_AUD_CHART_ID:1497669750}
+        dev: ${BREAKDOWN_DEV_CHART_ID:1497669750}
     # "Generate Sheet" flow: template workbook cloned + filled per placeholder.
     # Unused tactic slots (summary-table rows + "Main slide N" detail blocks) are
     # located by content (header labels / anchor cells) at trim time — see

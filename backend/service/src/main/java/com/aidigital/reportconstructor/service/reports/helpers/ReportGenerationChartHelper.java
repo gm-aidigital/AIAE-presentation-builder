@@ -85,4 +85,23 @@ public interface ReportGenerationChartHelper {
 	void addBreakdownSlides(
 			String slideUrl, GeneratePayload payload, int tacticCount, Map<String, String> breakdownValues,
 			String userGoogleToken);
+
+	/**
+	 * Links the per-tactic audience/device breakdown charts onto the breakdown slides inserted by
+	 * {@link #addBreakdownSlides}. Reads each enabled tactic's device/age impressions back from the
+	 * reviewed sheet, gives every chart its own copy of the section's source workbook filled with those
+	 * impressions, and relinks the duplicated slide chart to it. Must run after {@code addBreakdownSlides}
+	 * (the slides and their charts must already exist) and is non-fatal: a failure is logged and the deck
+	 * is delivered with the breakdown slides' charts left as duplicated (empty) placeholders.
+	 *
+	 * @param slideUrl        URL of the generated Google Slides deck
+	 * @param payload         generation request carrying the Step-3 breakdown selections and sheet URL
+	 * @param tacticCount     number of active tactics (clamped 1..28); selections above this are ignored
+	 * @param flatReplacements resolved placeholder values, source of the campaign title used for copy names
+	 * @param userGoogleToken OAuth token for Google APIs, or null when unavailable
+	 * @return chart warnings collected during rendering (empty when every chart drew cleanly)
+	 */
+	List<String> buildBreakdownCharts(
+			String slideUrl, GeneratePayload payload, int tacticCount, Map<String, String> flatReplacements,
+			String userGoogleToken);
 }

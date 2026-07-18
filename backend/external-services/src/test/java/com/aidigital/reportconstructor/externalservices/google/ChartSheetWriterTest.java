@@ -26,6 +26,17 @@ class ChartSheetWriterTest {
 	}
 
 	@Test
+	void normalizeBreakdownLabel_foldsCtvSpellingsAndStripsCaseAndSpaceTest() {
+		// Given-Then: the "Breakdowns" tab writes "CTV" while the chart source uses "Connected TV" — both
+		// must resolve to the same key, and age buckets pass through unchanged
+		assertThat(writer.normalizeBreakdownLabel("CTV")).isEqualTo("connectedtv");
+		assertThat(writer.normalizeBreakdownLabel("Connected TV")).isEqualTo("connectedtv");
+		assertThat(writer.normalizeBreakdownLabel("Mobile")).isEqualTo("mobile");
+		assertThat(writer.normalizeBreakdownLabel(" 25-34 ")).isEqualTo("25-34");
+		assertThat(writer.normalizeBreakdownLabel(null)).isEmpty();
+	}
+
+	@Test
 	void rateColumnValuesForPivot_emptyWhenTemplateOwnsFormula() {
 		Pivot pivot = pivotRow(1000, 25, 0);
 		assertThat(writer.rateColumnValuesForPivot(pivot, true)).isEmpty();

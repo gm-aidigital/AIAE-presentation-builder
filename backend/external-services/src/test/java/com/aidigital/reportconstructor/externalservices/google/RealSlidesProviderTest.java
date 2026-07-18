@@ -46,7 +46,7 @@ class RealSlidesProviderTest {
 		when(props.getTacticSlideObjectIds()).thenReturn(tacticSlideObjectIds);
 		DriveSharer driveSharer = Mockito.mock(DriveSharer.class);
 		GoogleRequestRetrier retrier = Mockito.mock(GoogleRequestRetrier.class);
-		return new RealSlidesProvider(creds, props, driveSharer, retrier);
+		return new RealSlidesProvider(creds, props, driveSharer, retrier, new BreakdownSlideNaming());
 	}
 
 	private Page slide(String objectId) {

@@ -1,15 +1,23 @@
 package com.aidigital.reportconstructor.service.reports.helpers.impl;
 
+import com.aidigital.reportconstructor.service.reports.dto.AudienceAgeRow;
+import com.aidigital.reportconstructor.service.reports.dto.AudienceTable;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
+import com.aidigital.reportconstructor.service.reports.dto.DeviceRow;
+import com.aidigital.reportconstructor.service.reports.dto.DeviceTable;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
 import com.aidigital.reportconstructor.service.reports.dto.SheetChartData;
 import com.aidigital.reportconstructor.service.reports.engine.Pivot;
 import com.aidigital.reportconstructor.service.reports.helpers.BreakdownSelectionResolver;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportGenerationChartHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportNumberParser;
+import com.aidigital.reportconstructor.service.reports.helpers.ReportSheetHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.SheetChartDataReader;
 import com.aidigital.reportconstructor.service.reports.helpers.TacticExtractionHelper;
+import com.aidigital.reportconstructor.service.reports.ports.BreakdownChartJob;
+import com.aidigital.reportconstructor.service.reports.ports.BreakdownChartRequest;
+import com.aidigital.reportconstructor.service.reports.ports.BreakdownChartSlice;
 import com.aidigital.reportconstructor.service.reports.ports.ChartProvider;
 import com.aidigital.reportconstructor.service.reports.ports.ChartRequest;
 import com.aidigital.reportconstructor.service.reports.ports.SlidesProvider;
@@ -17,10 +25,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -43,6 +53,7 @@ public class ReportGenerationChartHelperImpl implements ReportGenerationChartHel
 	private final ReportNumberParser reportNumbers;
 	private final SheetChartDataReader sheetChartData;
 	private final BreakdownSelectionResolver breakdownResolver;
+	private final ReportSheetHelper sheetHelper;
 
 	@Override
 	public List<String> buildCharts(
@@ -239,6 +250,118 @@ public class ReportGenerationChartHelperImpl implements ReportGenerationChartHel
 		} catch (RuntimeException ex) {
 			log.warn("[slides] addBreakdownSlides failed for {} (non-fatal): {}", presentationId, ex.getMessage());
 		}
+	}
+
+	@Override
+	public List<String> buildBreakdownCharts(
+			String slideUrl, GeneratePayload payload, int tacticCount, Map<String, String> flatReplacements,
+			String userGoogleToken) {
+		if (payload.breakdownSelections() == null || payload.breakdownSelections().isEmpty()) {
+			return List.of();
+		}
+		String presentationId = extractPresentationId(slideUrl);
+		if (presentationId == null) {
+			return List.of("Breakdown charts skipped — could not determine presentation id from " + slideUrl);
+		}
+		int clamped = Math.clamp(tacticCount, 1, MAX_TACTICS);
+		Map<Integer, Set<BreakdownType>> enabledByTactic = breakdownResolver.resolve(payload.breakdownSelections());
+
+		Set<Integer> audTactics = tacticsWith(enabledByTactic, BreakdownType.AUDIENCE, clamped);
+		Set<Integer> devTactics = tacticsWith(enabledByTactic, BreakdownType.DEVICE, clamped);
+		if (audTactics.isEmpty() && devTactics.isEmpty()) {
+			return List.of();
+		}
+
+		List<BreakdownChartJob> jobs = new ArrayList<>();
+		jobs.addAll(audienceJobs(payload.sheetUrl(), audTactics, userGoogleToken));
+		jobs.addAll(deviceJobs(payload.sheetUrl(), devTactics, userGoogleToken));
+		if (jobs.isEmpty()) {
+			return List.of();
+		}
+
+		try {
+			return charts.buildBreakdownCharts(new BreakdownChartRequest(
+					presentationId, campaignTitle(flatReplacements), jobs, userGoogleToken));
+		} catch (RuntimeException ex) {
+			log.warn("[charts] breakdown chart step failed for {} (non-fatal): {}",
+					presentationId, ex.getMessage());
+			return List.of("Breakdown charts failed: " + ex.getMessage());
+		}
+	}
+
+	/**
+	 * Selects the tactics that enabled a given breakdown section and fall within the active tactic count.
+	 *
+	 * @param enabledByTactic 1-based tactic number &rarr; the breakdown sections that tactic enabled
+	 * @param type            the breakdown section to filter on
+	 * @param tacticCount     the active tactic count; tactics above it are dropped
+	 * @return the qualifying tactic numbers, ascending
+	 */
+	Set<Integer> tacticsWith(Map<Integer, Set<BreakdownType>> enabledByTactic, BreakdownType type, int tacticCount) {
+		Set<Integer> out = new TreeSet<>();
+		enabledByTactic.forEach((tacticNum, enabled) -> {
+			if (tacticNum != null && tacticNum >= 1 && tacticNum <= tacticCount
+					&& enabled != null && enabled.contains(type)) {
+				out.add(tacticNum);
+			}
+		});
+		return out;
+	}
+
+	/**
+	 * Builds the audience (age-distribution) chart jobs by reading each tactic's age rows back from the
+	 * sheet, one slice per age bucket keyed by impressions.
+	 *
+	 * @param sheetUrl        URL of the reviewed workbook
+	 * @param tacticNums      tactics that enabled the Audience breakdown
+	 * @param userGoogleToken OAuth token for Google Sheets, or null
+	 * @return one job per tactic whose age table carried a positive impressions slice
+	 */
+	List<BreakdownChartJob> audienceJobs(String sheetUrl, Set<Integer> tacticNums, String userGoogleToken) {
+		if (tacticNums.isEmpty()) {
+			return List.of();
+		}
+		Map<Integer, AudienceTable> tables = sheetHelper.readAudienceTables(sheetUrl, tacticNums, userGoogleToken);
+		List<BreakdownChartJob> jobs = new ArrayList<>();
+		for (Integer tacticNum : tacticNums) {
+			AudienceTable table = tables.getOrDefault(tacticNum, AudienceTable.empty());
+			List<BreakdownChartSlice> slices = new ArrayList<>();
+			for (AudienceAgeRow row : table.ageRows()) {
+				slices.add(new BreakdownChartSlice(row.ageGroup(), reportNumbers.parseReportNumber(row.impressions())));
+			}
+			if (!slices.isEmpty()) {
+				jobs.add(new BreakdownChartJob(BreakdownType.AUDIENCE.code(), tacticNum, slices));
+			}
+		}
+		return jobs;
+	}
+
+	/**
+	 * Builds the device chart jobs by reading each tactic's device rows back from the sheet, one slice per
+	 * device keyed by impressions.
+	 *
+	 * @param sheetUrl        URL of the reviewed workbook
+	 * @param tacticNums      tactics that enabled the Device breakdown
+	 * @param userGoogleToken OAuth token for Google Sheets, or null
+	 * @return one job per tactic whose device table carried a positive impressions slice
+	 */
+	List<BreakdownChartJob> deviceJobs(String sheetUrl, Set<Integer> tacticNums, String userGoogleToken) {
+		if (tacticNums.isEmpty()) {
+			return List.of();
+		}
+		Map<Integer, DeviceTable> tables = sheetHelper.readDeviceTables(sheetUrl, tacticNums, userGoogleToken);
+		List<BreakdownChartJob> jobs = new ArrayList<>();
+		for (Integer tacticNum : tacticNums) {
+			DeviceTable table = tables.getOrDefault(tacticNum, DeviceTable.empty());
+			List<BreakdownChartSlice> slices = new ArrayList<>();
+			for (DeviceRow row : table.rows()) {
+				slices.add(new BreakdownChartSlice(row.device(), reportNumbers.parseReportNumber(row.impressions())));
+			}
+			if (!slices.isEmpty()) {
+				jobs.add(new BreakdownChartJob(BreakdownType.DEVICE.code(), tacticNum, slices));
+			}
+		}
+		return jobs;
 	}
 
 	String extractPresentationId(String slideUrl) {

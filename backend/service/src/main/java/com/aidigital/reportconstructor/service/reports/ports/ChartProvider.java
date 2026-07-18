@@ -28,4 +28,16 @@ public interface ChartProvider {
 	 * @return human-readable error strings (empty when everything succeeded)
 	 */
 	List<String> buildCharts(ChartRequest request);
+
+	/**
+	 * Renders the per-tactic audience/device breakdown charts and links them onto the already-duplicated
+	 * breakdown slides. For each job: copies the section's chart-source template spreadsheet, writes the
+	 * tactic's impression slices into it (share of voice stays a live formula), then swaps the breakdown
+	 * slide's duplicated placeholder chart for a fresh chart linked to that copy. Per-chart failures are
+	 * collected and returned without aborting the rest.
+	 *
+	 * @param request the breakdown chart-generation inputs
+	 * @return human-readable error strings (empty when everything succeeded)
+	 */
+	List<String> buildBreakdownCharts(BreakdownChartRequest request);
 }
