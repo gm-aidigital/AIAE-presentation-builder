@@ -496,7 +496,7 @@ class RealSheetDeckProviderTest {
 	void audienceTables_returnsEmptyTableForATacticWhoseBlockWasNeverFilledTest() {
 		// Given: a tab carrying no audience anchor for the requested tactic
 		RealSheetDeckProvider provider = newProvider();
-		List<List<String>> grid = audienceGrid(Map.of(1, AudienceTable.empty()));
+		List<List<String>> grid = audienceGrid(Map.of(1, AudienceTable.EMPTY));
 
 		// When:
 		Map<Integer, AudienceTable> tables = provider.audienceTables(grid, Set.of(2));
@@ -592,7 +592,7 @@ class RealSheetDeckProviderTest {
 	void deviceTables_returnsEmptyTableForATacticWhoseBlockWasNeverFilledTest() {
 		// Given: a tab carrying no device anchor for the requested tactic
 		RealSheetDeckProvider provider = newProvider();
-		List<List<String>> grid = deviceGrid(Map.of(1, DeviceTable.empty()));
+		List<List<String>> grid = deviceGrid(Map.of(1, DeviceTable.EMPTY));
 
 		// When:
 		Map<Integer, DeviceTable> tables = provider.deviceTables(grid, Set.of(2));

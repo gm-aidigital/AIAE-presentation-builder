@@ -600,7 +600,7 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 			tables.put(anchor[1], geoBlock(grid, row, endRow, col, endCol, anchor[1]));
 		}
 		for (Integer tacticNum : tacticNums) {
-			tables.putIfAbsent(tacticNum, GeoTable.empty());
+			tables.putIfAbsent(tacticNum, GeoTable.EMPTY);
 		}
 		return tables;
 	}
@@ -801,7 +801,7 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 			tables.put(anchor[1], audienceBlock(grid, row, endRow, col, endCol, anchor[1]));
 		}
 		for (Integer tacticNum : tacticNums) {
-			tables.putIfAbsent(tacticNum, AudienceTable.empty());
+			tables.putIfAbsent(tacticNum, AudienceTable.EMPTY);
 		}
 		return tables;
 	}
@@ -972,7 +972,7 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 			tables.put(anchor[1], deviceBlock(grid, row, endRow, col, endCol, anchor[1]));
 		}
 		for (Integer tacticNum : tacticNums) {
-			tables.putIfAbsent(tacticNum, DeviceTable.empty());
+			tables.putIfAbsent(tacticNum, DeviceTable.EMPTY);
 		}
 		return tables;
 	}
@@ -1101,7 +1101,7 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 			tables.put(anchor[1], creativeBlock(grid, row, endRow, col, endCol, anchor[1]));
 		}
 		for (Integer tacticNum : tacticNums) {
-			tables.putIfAbsent(tacticNum, CreativeTable.empty());
+			tables.putIfAbsent(tacticNum, CreativeTable.EMPTY);
 		}
 		return tables;
 	}

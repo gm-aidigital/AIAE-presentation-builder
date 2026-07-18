@@ -66,7 +66,7 @@ public class AudienceBreakdownHelperImpl implements AudienceBreakdownHelper {
 			Map<String, String> flatReplacements, String brief, String userGoogleToken) {
 		Set<Integer> tacticNums = audienceTactics(breakdownResolver.resolve(selections));
 		if (tacticNums.isEmpty()) {
-			return BreakdownValues.empty();
+			return BreakdownValues.EMPTY;
 		}
 		Map<Integer, AudienceTable> tables =
 				sheetHelper.readAudienceTables(sheetUrl, tacticNums, userGoogleToken);
@@ -74,7 +74,7 @@ public class AudienceBreakdownHelperImpl implements AudienceBreakdownHelper {
 		Map<String, String> values = new LinkedHashMap<>();
 		for (Integer tacticNum : tacticNums) {
 			putTableValues(
-					values, tacticNum, tables.getOrDefault(tacticNum, AudienceTable.empty()), flatReplacements);
+					values, tacticNum, tables.getOrDefault(tacticNum, AudienceTable.EMPTY), flatReplacements);
 		}
 		List<String> warnings = putInsights(values, tacticNums, tables, flatReplacements, brief);
 		return new BreakdownValues(values, warnings);
@@ -152,7 +152,7 @@ public class AudienceBreakdownHelperImpl implements AudienceBreakdownHelper {
 			Map<String, String> flatReplacements, String brief) {
 		List<AudienceInsightInput> inputs = new ArrayList<>();
 		for (Integer tacticNum : tacticNums) {
-			AudienceTable table = sanitized(tables.getOrDefault(tacticNum, AudienceTable.empty()));
+			AudienceTable table = sanitized(tables.getOrDefault(tacticNum, AudienceTable.EMPTY));
 			if (table.isEmpty()) {
 				log.info("[audience] tactic {} enabled Audience analysis but its block is empty — "
 						+ "slide ships without copy", tacticNum);

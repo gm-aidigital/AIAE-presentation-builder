@@ -27,14 +27,10 @@ public record AudienceTable(
 		List<AudienceAgeRow> ageRows, List<AudienceSegmentRow> segmentRows) {
 
 	/**
-	 * Returns the empty table, used for a tactic whose block is missing from the sheet or was left
-	 * entirely blank, so callers never have to null-check the block itself.
-	 *
-	 * @return a table with blank stat tiles and no rows
+	 * The empty table, used for a tactic whose block is missing from the sheet or was left entirely
+	 * blank, so callers never have to null-check the block itself. Immutable and safely shared.
 	 */
-	public static AudienceTable empty() {
-		return new AudienceTable("", "", List.of(), List.of());
-	}
+	public static final AudienceTable EMPTY = new AudienceTable("", "", List.of(), List.of());
 
 	/**
 	 * Reports whether the user filled in nothing at all for this tactic. Such a tactic still gets its
@@ -44,16 +40,7 @@ public record AudienceTable(
 	 */
 	public boolean isEmpty() {
 		return ageRows.isEmpty() && segmentRows.isEmpty()
-				&& isBlank(ageDistribution) && isBlank(genderDemographics);
-	}
-
-	/**
-	 * Null-tolerant blank check for one stat-tile cell.
-	 *
-	 * @param value the cell value, possibly {@code null}
-	 * @return true when the cell is null or holds only whitespace
-	 */
-	static boolean isBlank(String value) {
-		return value == null || value.isBlank();
+				&& (ageDistribution == null || ageDistribution.isBlank())
+				&& (genderDemographics == null || genderDemographics.isBlank());
 	}
 }

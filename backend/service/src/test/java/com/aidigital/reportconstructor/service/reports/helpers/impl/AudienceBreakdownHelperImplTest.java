@@ -174,7 +174,7 @@ class AudienceBreakdownHelperImplTest {
 				List.of(new AudienceSegmentRow("Auto Intenders", "142")));
 		when(sheetHelper.readAudienceTables("sheet-url", Set.of(1, 2), "token")).thenReturn(Map.of(
 				1, filled,
-				2, AudienceTable.empty()));
+				2, AudienceTable.EMPTY));
 		when(claude.batchAudienceInsights(any(), eq("brief")))
 				.thenReturn(Map.of(1, List.of("t", "w", "f", "r")));
 
@@ -210,7 +210,7 @@ class AudienceBreakdownHelperImplTest {
 				List.of(new AudienceSegmentRow("Auto Intenders", "142")));
 		when(sheetHelper.readAudienceTables("sheet-url", Set.of(1, 2), "token")).thenReturn(Map.of(
 				1, filled,
-				2, AudienceTable.empty()));
+				2, AudienceTable.EMPTY));
 		when(claude.batchAudienceInsights(any(), eq("brief"))).thenReturn(Map.of());
 
 		// When:
@@ -247,7 +247,7 @@ class AudienceBreakdownHelperImplTest {
 		List<BreakdownSelection> selections = List.of(new BreakdownSelection(1, List.of("aud")));
 		when(breakdownResolver.resolve(selections)).thenReturn(Map.of(1, EnumSet.of(BreakdownType.AUDIENCE)));
 		when(sheetHelper.readAudienceTables("sheet-url", Set.of(1), "token"))
-				.thenReturn(Map.of(1, AudienceTable.empty()));
+				.thenReturn(Map.of(1, AudienceTable.EMPTY));
 
 		// When:
 		Map<String, String> values = helper.buildAudienceValues(

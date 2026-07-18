@@ -208,7 +208,7 @@ class DeviceBreakdownHelperImplTest {
 				List.of(new DeviceRow("Mobile", "1,200,000", "1.20%", "78%", "$4,000")));
 		when(sheetHelper.readDeviceTables("sheet-url", Set.of(1, 2), "token")).thenReturn(Map.of(
 				1, filled,
-				2, DeviceTable.empty()));
+				2, DeviceTable.EMPTY));
 		when(claude.batchDeviceInsights(any(), eq("brief"))).thenReturn(Map.of(1, List.of("t", "w", "f", "r")));
 
 		// When:
@@ -243,7 +243,7 @@ class DeviceBreakdownHelperImplTest {
 				List.of(new DeviceRow("Mobile", "1,200,000", "1.20%", "78%", "$4,000")));
 		when(sheetHelper.readDeviceTables("sheet-url", Set.of(1, 2), "token")).thenReturn(Map.of(
 				1, filled,
-				2, DeviceTable.empty()));
+				2, DeviceTable.EMPTY));
 		when(claude.batchDeviceInsights(any(), eq("brief"))).thenReturn(Map.of());
 
 		// When:
@@ -280,7 +280,7 @@ class DeviceBreakdownHelperImplTest {
 		List<BreakdownSelection> selections = List.of(new BreakdownSelection(1, List.of("dev")));
 		when(breakdownResolver.resolve(selections)).thenReturn(Map.of(1, EnumSet.of(BreakdownType.DEVICE)));
 		when(sheetHelper.readDeviceTables("sheet-url", Set.of(1), "token"))
-				.thenReturn(Map.of(1, DeviceTable.empty()));
+				.thenReturn(Map.of(1, DeviceTable.EMPTY));
 
 		// When:
 		Map<String, String> values = helper.buildDeviceValues(

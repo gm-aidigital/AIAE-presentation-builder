@@ -171,7 +171,7 @@ class GeoBreakdownHelperImplTest {
 		GeoTable filled = new GeoTable("42", "Miami", "0.48%", List.of(new GeoRow("Miami", "1,200,000", "0.48%")));
 		when(sheetHelper.readGeoTables("sheet-url", Set.of(1, 2), "token")).thenReturn(Map.of(
 				1, filled,
-				2, GeoTable.empty()));
+				2, GeoTable.EMPTY));
 		when(claude.batchGeoInsights(any(), eq("brief")))
 				.thenReturn(Map.of(1, List.of("i1", "i2", "i3", "i4", "reco")));
 
@@ -208,7 +208,7 @@ class GeoBreakdownHelperImplTest {
 		GeoTable filled = new GeoTable("42", "Miami", "0.48%", List.of(new GeoRow("Miami", "1,200,000", "0.48%")));
 		when(sheetHelper.readGeoTables("sheet-url", Set.of(1, 2), "token")).thenReturn(Map.of(
 				1, filled,
-				2, GeoTable.empty()));
+				2, GeoTable.EMPTY));
 		when(claude.batchGeoInsights(any(), eq("brief"))).thenReturn(Map.of());
 
 		// When:
@@ -244,7 +244,7 @@ class GeoBreakdownHelperImplTest {
 		// Given: the deck's placeholder map already resolved tactic 1's heading and KPI type
 		List<BreakdownSelection> selections = List.of(new BreakdownSelection(1, List.of("geo")));
 		when(breakdownResolver.resolve(selections)).thenReturn(Map.of(1, EnumSet.of(BreakdownType.GEO)));
-		when(sheetHelper.readGeoTables("sheet-url", Set.of(1), "token")).thenReturn(Map.of(1, GeoTable.empty()));
+		when(sheetHelper.readGeoTables("sheet-url", Set.of(1), "token")).thenReturn(Map.of(1, GeoTable.EMPTY));
 
 		// When:
 		Map<String, String> values = helper.buildGeoValues(

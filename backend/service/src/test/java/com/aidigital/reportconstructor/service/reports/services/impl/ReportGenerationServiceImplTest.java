@@ -224,19 +224,19 @@ class ReportGenerationServiceImplTest {
 		when(slides.createDeck(eq("11"), eq("deck-file"), any(), isNull())).thenReturn("http://deck");
 		when(publisherBreakdown.buildPublisherValues(
 				eq("http://sheet"), isNull(), any(), eq("Campaign brief."), isNull()))
-				.thenReturn(BreakdownValues.empty());
+				.thenReturn(BreakdownValues.EMPTY);
 		when(creativeBreakdown.buildCreativeValues(
 				eq("http://sheet"), isNull(), any(), eq("Campaign brief."), isNull()))
-				.thenReturn(BreakdownValues.empty());
+				.thenReturn(BreakdownValues.EMPTY);
 		when(geoBreakdown.buildGeoValues(
 				eq("http://sheet"), isNull(), any(), eq("Campaign brief."), isNull()))
-				.thenReturn(BreakdownValues.empty());
+				.thenReturn(BreakdownValues.EMPTY);
 		when(audienceBreakdown.buildAudienceValues(
 				eq("http://sheet"), isNull(), any(), eq("Campaign brief."), isNull()))
-				.thenReturn(BreakdownValues.empty());
+				.thenReturn(BreakdownValues.EMPTY);
 		when(deviceBreakdown.buildDeviceValues(
 				eq("http://sheet"), isNull(), any(), eq("Campaign brief."), isNull()))
-				.thenReturn(BreakdownValues.empty());
+				.thenReturn(BreakdownValues.EMPTY);
 		when(chartHelper.buildChartsFromSheet(eq("http://deck"), eq(grid), any(), eq(2), isNull()))
 				.thenReturn(List.of());
 		when(warnings.serializeWarnings(List.of())).thenReturn("[]");

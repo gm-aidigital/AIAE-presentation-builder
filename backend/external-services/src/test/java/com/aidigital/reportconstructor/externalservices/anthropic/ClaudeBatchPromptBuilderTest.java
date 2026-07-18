@@ -163,7 +163,7 @@ class ClaudeBatchPromptBuilderTest {
 	@Test
 	void buildCreativeTakeawaysPrompt_emptyWhenNoTacticInTheChunkHasDataTest() {
 		// Given: a chunk whose only tactic left its block blank
-		CreativeTakeawayInput input = new CreativeTakeawayInput(1, "CTV", "VCR", CreativeTable.empty());
+		CreativeTakeawayInput input = new CreativeTakeawayInput(1, "CTV", "VCR", CreativeTable.EMPTY);
 
 		// When:
 		Optional<String> prompt = builder.buildCreativeTakeawaysPrompt(List.of(input), "brief", 100, 140);
@@ -211,7 +211,7 @@ class ClaudeBatchPromptBuilderTest {
 	@Test
 	void buildGeoInsightsPrompt_emptyWhenNoTacticInTheChunkHasDataTest() {
 		// Given: a chunk whose only tactic left its block blank
-		GeoInsightInput input = new GeoInsightInput(1, "CTV", "VCR", GeoTable.empty());
+		GeoInsightInput input = new GeoInsightInput(1, "CTV", "VCR", GeoTable.EMPTY);
 
 		// When:
 		Optional<String> prompt = builder.buildGeoInsightsPrompt(List.of(input), "brief", 140);
@@ -262,7 +262,7 @@ class ClaudeBatchPromptBuilderTest {
 	@Test
 	void buildAudienceInsightsPrompt_emptyWhenNoTacticInTheChunkHasDataTest() {
 		// Given: a chunk whose only tactic left its block blank
-		AudienceInsightInput input = new AudienceInsightInput(1, "CTV", AudienceTable.empty());
+		AudienceInsightInput input = new AudienceInsightInput(1, "CTV", AudienceTable.EMPTY);
 
 		// When:
 		Optional<String> prompt = builder.buildAudienceInsightsPrompt(List.of(input), "brief", 256, 120);
@@ -314,7 +314,7 @@ class ClaudeBatchPromptBuilderTest {
 	@Test
 	void buildDeviceInsightsPrompt_emptyWhenNoTacticInTheChunkHasDataTest() {
 		// Given: a chunk whose only tactic left its block blank
-		DeviceInsightInput input = new DeviceInsightInput(1, "CTV", DeviceTable.empty());
+		DeviceInsightInput input = new DeviceInsightInput(1, "CTV", DeviceTable.EMPTY);
 
 		// When:
 		Optional<String> prompt = builder.buildDeviceInsightsPrompt(List.of(input), "brief", 256, 120);

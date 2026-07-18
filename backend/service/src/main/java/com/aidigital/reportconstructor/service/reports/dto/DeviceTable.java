@@ -24,14 +24,10 @@ public record DeviceTable(
 		String topDeviceImpressionsPct, List<DeviceRow> rows) {
 
 	/**
-	 * Returns the empty table, used for a tactic whose block is missing from the sheet or was left
-	 * entirely blank, so callers never have to null-check the block itself.
-	 *
-	 * @return a table with blank stat tiles and no rows
+	 * The empty table, used for a tactic whose block is missing from the sheet or was left entirely
+	 * blank, so callers never have to null-check the block itself. Immutable and safely shared.
 	 */
-	public static DeviceTable empty() {
-		return new DeviceTable("", "", "", "", "", List.of());
-	}
+	public static final DeviceTable EMPTY = new DeviceTable("", "", "", "", "", List.of());
 
 	/**
 	 * Reports whether the user filled in nothing at all for this tactic. Such a tactic still gets its
@@ -40,17 +36,11 @@ public record DeviceTable(
 	 * @return true when every stat tile is blank and the table carries no rows
 	 */
 	public boolean isEmpty() {
-		return rows.isEmpty() && isBlank(highestCtr) && isBlank(bestCompletion) && isBlank(devicesTracked)
-				&& isBlank(topDevice) && isBlank(topDeviceImpressionsPct);
-	}
-
-	/**
-	 * Null-tolerant blank check for one stat-tile cell.
-	 *
-	 * @param value the cell value, possibly {@code null}
-	 * @return true when the cell is null or holds only whitespace
-	 */
-	static boolean isBlank(String value) {
-		return value == null || value.isBlank();
+		return rows.isEmpty()
+				&& (highestCtr == null || highestCtr.isBlank())
+				&& (bestCompletion == null || bestCompletion.isBlank())
+				&& (devicesTracked == null || devicesTracked.isBlank())
+				&& (topDevice == null || topDevice.isBlank())
+				&& (topDeviceImpressionsPct == null || topDeviceImpressionsPct.isBlank());
 	}
 }

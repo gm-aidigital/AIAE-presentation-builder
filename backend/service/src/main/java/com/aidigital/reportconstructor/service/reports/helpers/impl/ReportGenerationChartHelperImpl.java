@@ -324,7 +324,7 @@ public class ReportGenerationChartHelperImpl implements ReportGenerationChartHel
 		Map<Integer, AudienceTable> tables = sheetHelper.readAudienceTables(sheetUrl, tacticNums, userGoogleToken);
 		List<BreakdownChartJob> jobs = new ArrayList<>();
 		for (Integer tacticNum : tacticNums) {
-			AudienceTable table = tables.getOrDefault(tacticNum, AudienceTable.empty());
+			AudienceTable table = tables.getOrDefault(tacticNum, AudienceTable.EMPTY);
 			List<BreakdownChartSlice> slices = new ArrayList<>();
 			for (AudienceAgeRow row : table.ageRows()) {
 				slices.add(new BreakdownChartSlice(row.ageGroup(), reportNumbers.parseReportNumber(row.impressions())));
@@ -352,7 +352,7 @@ public class ReportGenerationChartHelperImpl implements ReportGenerationChartHel
 		Map<Integer, DeviceTable> tables = sheetHelper.readDeviceTables(sheetUrl, tacticNums, userGoogleToken);
 		List<BreakdownChartJob> jobs = new ArrayList<>();
 		for (Integer tacticNum : tacticNums) {
-			DeviceTable table = tables.getOrDefault(tacticNum, DeviceTable.empty());
+			DeviceTable table = tables.getOrDefault(tacticNum, DeviceTable.EMPTY);
 			List<BreakdownChartSlice> slices = new ArrayList<>();
 			for (DeviceRow row : table.rows()) {
 				slices.add(new BreakdownChartSlice(row.device(), reportNumbers.parseReportNumber(row.impressions())));

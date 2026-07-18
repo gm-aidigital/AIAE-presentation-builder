@@ -69,14 +69,14 @@ public class GeoBreakdownHelperImpl implements GeoBreakdownHelper {
 			Map<String, String> flatReplacements, String brief, String userGoogleToken) {
 		Set<Integer> tacticNums = geoTactics(breakdownResolver.resolve(selections));
 		if (tacticNums.isEmpty()) {
-			return BreakdownValues.empty();
+			return BreakdownValues.EMPTY;
 		}
 		Map<Integer, GeoTable> tables =
 				sheetHelper.readGeoTables(sheetUrl, tacticNums, userGoogleToken);
 
 		Map<String, String> values = new LinkedHashMap<>();
 		for (Integer tacticNum : tacticNums) {
-			putTableValues(values, tacticNum, tables.getOrDefault(tacticNum, GeoTable.empty()), flatReplacements);
+			putTableValues(values, tacticNum, tables.getOrDefault(tacticNum, GeoTable.EMPTY), flatReplacements);
 		}
 		List<String> warnings = putInsights(values, tacticNums, tables, flatReplacements, brief);
 		return new BreakdownValues(values, warnings);
@@ -150,7 +150,7 @@ public class GeoBreakdownHelperImpl implements GeoBreakdownHelper {
 			Map<String, String> flatReplacements, String brief) {
 		List<GeoInsightInput> inputs = new ArrayList<>();
 		for (Integer tacticNum : tacticNums) {
-			GeoTable table = sanitized(tables.getOrDefault(tacticNum, GeoTable.empty()));
+			GeoTable table = sanitized(tables.getOrDefault(tacticNum, GeoTable.EMPTY));
 			if (table.isEmpty()) {
 				log.info("[geo] tactic {} enabled Geo analysis but its block is empty — "
 						+ "slide ships without insights", tacticNum);

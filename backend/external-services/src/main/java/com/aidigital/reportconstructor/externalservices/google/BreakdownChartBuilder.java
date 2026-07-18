@@ -107,7 +107,9 @@ public class BreakdownChartBuilder {
 	void renderBreakdownChart(
 			ChartClients clients, BreakdownChartRequest req, BreakdownChartJob job,
 			Map<String, ChartElementRef> chartsBySlide, String folderId, List<String> errors) throws IOException {
-		BreakdownType type = BreakdownType.fromCode(job.breakdownCode()).orElse(null);
+		String breakdownCode = job.breakdownCode();
+		BreakdownType type = breakdownCode == null || breakdownCode.isBlank()
+				? null : BreakdownType.BY_CODE.get(breakdownCode.trim().toLowerCase());
 		if (type == null) {
 			return;
 		}

@@ -552,8 +552,11 @@ public class RealSlidesProvider implements SlidesProvider {
 			return resolved;
 		}
 		configured.forEach((code, id) -> {
-			if (id != null && !id.isBlank()) {
-				BreakdownType.fromCode(code).ifPresent(type -> resolved.put(type, id.trim()));
+			if (id != null && !id.isBlank() && code != null && !code.isBlank()) {
+				BreakdownType type = BreakdownType.BY_CODE.get(code.trim().toLowerCase());
+				if (type != null) {
+					resolved.put(type, id.trim());
+				}
 			}
 		});
 		return resolved;

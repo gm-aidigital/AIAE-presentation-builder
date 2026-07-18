@@ -154,7 +154,7 @@ class CreativeBreakdownHelperImplTest {
 				List.of(new CreativeRow("Hero 15s", "1,200,000", "0.58%", "82.9%", "$4,800")));
 		when(sheetHelper.readCreativeTables("sheet-url", Set.of(1, 2), "token")).thenReturn(Map.of(
 				1, filled,
-				2, CreativeTable.empty()));
+				2, CreativeTable.EMPTY));
 		when(claude.batchCreativeTakeaways(any(), eq("brief")))
 				.thenReturn(Map.of(1, List.of("one", "two", "three", "four")));
 
@@ -191,7 +191,7 @@ class CreativeBreakdownHelperImplTest {
 				List.of(new CreativeRow("Hero 15s", "1,200,000", "0.58%", "82.9%", "$4,800")));
 		when(sheetHelper.readCreativeTables("sheet-url", Set.of(1, 2), "token")).thenReturn(Map.of(
 				1, filled,
-				2, CreativeTable.empty()));
+				2, CreativeTable.EMPTY));
 		when(claude.batchCreativeTakeaways(any(), eq("brief"))).thenReturn(Map.of());
 
 		// When:
@@ -227,7 +227,7 @@ class CreativeBreakdownHelperImplTest {
 		List<BreakdownSelection> selections = List.of(new BreakdownSelection(1, List.of("ca")));
 		when(breakdownResolver.resolve(selections)).thenReturn(Map.of(1, EnumSet.of(BreakdownType.CREATIVE)));
 		when(sheetHelper.readCreativeTables("sheet-url", Set.of(1), "token"))
-				.thenReturn(Map.of(1, CreativeTable.empty()));
+				.thenReturn(Map.of(1, CreativeTable.EMPTY));
 
 		// When:
 		Map<String, String> values = helper.buildCreativeValues(

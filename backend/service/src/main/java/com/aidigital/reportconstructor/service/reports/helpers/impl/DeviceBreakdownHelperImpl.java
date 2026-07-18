@@ -76,7 +76,7 @@ public class DeviceBreakdownHelperImpl implements DeviceBreakdownHelper {
 			Map<String, String> flatReplacements, String brief, String userGoogleToken) {
 		Set<Integer> tacticNums = deviceTactics(breakdownResolver.resolve(selections));
 		if (tacticNums.isEmpty()) {
-			return BreakdownValues.empty();
+			return BreakdownValues.EMPTY;
 		}
 		Map<Integer, DeviceTable> tables =
 				sheetHelper.readDeviceTables(sheetUrl, tacticNums, userGoogleToken);
@@ -84,7 +84,7 @@ public class DeviceBreakdownHelperImpl implements DeviceBreakdownHelper {
 		Map<String, String> values = new LinkedHashMap<>();
 		for (Integer tacticNum : tacticNums) {
 			putTableValues(
-					values, tacticNum, tables.getOrDefault(tacticNum, DeviceTable.empty()), flatReplacements);
+					values, tacticNum, tables.getOrDefault(tacticNum, DeviceTable.EMPTY), flatReplacements);
 		}
 		List<String> warnings = putInsights(values, tacticNums, tables, flatReplacements, brief);
 		return new BreakdownValues(values, warnings);
@@ -199,7 +199,7 @@ public class DeviceBreakdownHelperImpl implements DeviceBreakdownHelper {
 			Map<String, String> flatReplacements, String brief) {
 		List<DeviceInsightInput> inputs = new ArrayList<>();
 		for (Integer tacticNum : tacticNums) {
-			DeviceTable table = sanitized(tables.getOrDefault(tacticNum, DeviceTable.empty()));
+			DeviceTable table = sanitized(tables.getOrDefault(tacticNum, DeviceTable.EMPTY));
 			if (table.isEmpty()) {
 				log.info("[device] tactic {} enabled Device breakdown but its block is empty — "
 						+ "slide ships without copy", tacticNum);

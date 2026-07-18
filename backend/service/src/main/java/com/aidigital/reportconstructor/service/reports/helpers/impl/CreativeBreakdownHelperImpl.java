@@ -63,14 +63,14 @@ public class CreativeBreakdownHelperImpl implements CreativeBreakdownHelper {
 			Map<String, String> flatReplacements, String brief, String userGoogleToken) {
 		Set<Integer> tacticNums = creativeTactics(breakdownResolver.resolve(selections));
 		if (tacticNums.isEmpty()) {
-			return BreakdownValues.empty();
+			return BreakdownValues.EMPTY;
 		}
 		Map<Integer, CreativeTable> tables =
 				sheetHelper.readCreativeTables(sheetUrl, tacticNums, userGoogleToken);
 
 		Map<String, String> values = new LinkedHashMap<>();
 		for (Integer tacticNum : tacticNums) {
-			putTableValues(values, tacticNum, tables.getOrDefault(tacticNum, CreativeTable.empty()), flatReplacements);
+			putTableValues(values, tacticNum, tables.getOrDefault(tacticNum, CreativeTable.EMPTY), flatReplacements);
 		}
 		List<String> warnings = putTakeaways(values, tacticNums, tables, flatReplacements, brief);
 		return new BreakdownValues(values, warnings);
@@ -149,7 +149,7 @@ public class CreativeBreakdownHelperImpl implements CreativeBreakdownHelper {
 			Map<String, String> flatReplacements, String brief) {
 		List<CreativeTakeawayInput> inputs = new ArrayList<>();
 		for (Integer tacticNum : tacticNums) {
-			CreativeTable table = sanitized(tables.getOrDefault(tacticNum, CreativeTable.empty()));
+			CreativeTable table = sanitized(tables.getOrDefault(tacticNum, CreativeTable.EMPTY));
 			if (table.isEmpty()) {
 				log.info("[creatives] tactic {} enabled Creative analysis but its block is empty — "
 						+ "slide ships without takeaways", tacticNum);

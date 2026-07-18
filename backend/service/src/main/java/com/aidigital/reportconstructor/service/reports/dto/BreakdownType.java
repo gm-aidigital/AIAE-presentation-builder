@@ -1,6 +1,8 @@
 package com.aidigital.reportconstructor.service.reports.dto;
 
-import java.util.Optional;
+import java.util.Arrays;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * The five per-tactic breakdown sections the user can toggle on Step 3 ("Breakdowns
@@ -29,6 +31,16 @@ public enum BreakdownType {
 	/** Device breakdown section (rightmost section of each tactic block). */
 	DEVICE("dev", "Device breakdown");
 
+	/**
+	 * Lookup from each type's lowercase wire {@code code} to the type, for resolving codes sent by the
+	 * frontend. Exposed as a shared {@code static final} constant (rather than a static factory method,
+	 * which the structure rules forbid) so both modules can resolve a code without a static utility;
+	 * callers normalise their input to lowercase before the lookup and treat a {@code null} result as
+	 * "unrecognised". Unmodifiable and keyed on the same codes returned by {@link #code()}.
+	 */
+	public static final Map<String, BreakdownType> BY_CODE =
+			Arrays.stream(values()).collect(Collectors.toUnmodifiableMap(BreakdownType::code, type -> type));
+
 	private final String code;
 	private final String anchorLabel;
 
@@ -54,25 +66,5 @@ public enum BreakdownType {
 	 */
 	public String anchorLabel() {
 		return anchorLabel;
-	}
-
-	/**
-	 * Resolves a breakdown type from its wire {@code code}, tolerant of surrounding
-	 * whitespace and case, so unknown ids sent by the client are ignored rather than fatal.
-	 *
-	 * @param code the wire toggle id, possibly {@code null}
-	 * @return the matching type, or empty when {@code code} is null/blank or unrecognised
-	 */
-	public static Optional<BreakdownType> fromCode(String code) {
-		if (code == null || code.isBlank()) {
-			return Optional.empty();
-		}
-		String normalized = code.trim().toLowerCase();
-		for (BreakdownType type : values()) {
-			if (type.code.equals(normalized)) {
-				return Optional.of(type);
-			}
-		}
-		return Optional.empty();
 	}
 }

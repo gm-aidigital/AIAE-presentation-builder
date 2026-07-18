@@ -60,7 +60,7 @@ public class PublisherBreakdownHelperImpl implements PublisherBreakdownHelper {
 			Map<String, String> flatReplacements, String brief, String userGoogleToken) {
 		Set<Integer> tacticNums = publisherTactics(breakdownResolver.resolve(selections));
 		if (tacticNums.isEmpty()) {
-			return BreakdownValues.empty();
+			return BreakdownValues.EMPTY;
 		}
 		Map<Integer, List<PublisherRow>> tables =
 				sheetHelper.readPublisherTables(sheetUrl, tacticNums, userGoogleToken);

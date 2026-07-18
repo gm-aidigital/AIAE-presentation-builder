@@ -30,7 +30,13 @@ public class BreakdownSelectionResolverImpl implements BreakdownSelectionResolve
 			Set<BreakdownType> enabled = EnumSet.noneOf(BreakdownType.class);
 			if (selection.breakdowns() != null) {
 				for (String code : selection.breakdowns()) {
-					BreakdownType.fromCode(code).ifPresent(enabled::add);
+					if (code == null || code.isBlank()) {
+						continue;
+					}
+					BreakdownType type = BreakdownType.BY_CODE.get(code.trim().toLowerCase());
+					if (type != null) {
+						enabled.add(type);
+					}
 				}
 			}
 			enabledByTactic.put(selection.tacticNum(), enabled);
