@@ -19,7 +19,7 @@ if [ -f scripts/structure-lint.sh ]; then
   bash scripts/structure-lint.sh
 fi
 
-mvn -f backend/pom.xml -B -DskipTests package
+mvn -f backend/pom.xml -B -Dmaven.test.skip=true package
 
 # Extract the Spring Boot fat jar into an exploded layout (thin launcher jar
 # + lib/). On Replit's Reserved VM the CPU is heavily throttled during the
