@@ -1005,7 +1005,7 @@ public class ClaudeBatchPromptBuilder {
 				+ "Return ONLY a JSON object keyed by tactic, each key mapping to an array of exactly 4 strings:\n"
 				+ "{\"tactic_1\": [\"...\", \"...\", \"...\", \"...\"]}\n\n"
 				+ "=== CAMPAIGN BRIEF ===\n" + (brief == null ? "" : brief) + "\n\n"
-				+ "=== PUBLISHER DATA ===\n" + String.join("\n", blocks);
+				+ AnthropicMessagesClient.CACHE_BREAKPOINT + "=== PUBLISHER DATA ===\n" + String.join("\n", blocks);
 		return Optional.of(prompt);
 	}
 
@@ -1064,7 +1064,7 @@ public class ClaudeBatchPromptBuilder {
 				+ "Return ONLY a JSON object keyed by tactic, each key mapping to an array of exactly 4 strings:\n"
 				+ "{\"tactic_1\": [\"...\", \"...\", \"...\", \"...\"]}\n\n"
 				+ "=== CAMPAIGN BRIEF ===\n" + (brief == null ? "" : brief) + "\n\n"
-				+ "=== CREATIVE DATA ===\n" + String.join("\n", blocks);
+				+ AnthropicMessagesClient.CACHE_BREAKPOINT + "=== CREATIVE DATA ===\n" + String.join("\n", blocks);
 		return Optional.of(prompt);
 	}
 
@@ -1172,7 +1172,7 @@ public class ClaudeBatchPromptBuilder {
 				+ "Return ONLY a JSON object keyed by tactic, each key mapping to an array of exactly 5 strings:\n"
 				+ "{\"tactic_1\": [\"...\", \"...\", \"...\", \"...\", \"...\"]}\n\n"
 				+ "=== CAMPAIGN BRIEF ===\n" + (brief == null ? "" : brief) + "\n\n"
-				+ "=== GEO DATA ===\n" + String.join("\n", blocks);
+				+ AnthropicMessagesClient.CACHE_BREAKPOINT + "=== GEO DATA ===\n" + String.join("\n", blocks);
 		return Optional.of(prompt);
 	}
 
@@ -1275,7 +1275,7 @@ public class ClaudeBatchPromptBuilder {
 				+ "Return ONLY a JSON object keyed by tactic, each key mapping to an array of exactly 4 strings:\n"
 				+ "{\"tactic_1\": [\"...\", \"...\", \"...\", \"...\"]}\n\n"
 				+ "=== CAMPAIGN BRIEF ===\n" + (brief == null ? "" : brief) + "\n\n"
-				+ "=== AUDIENCE DATA ===\n" + String.join("\n", blocks);
+				+ AnthropicMessagesClient.CACHE_BREAKPOINT + "=== AUDIENCE DATA ===\n" + String.join("\n", blocks);
 		return Optional.of(prompt);
 	}
 
@@ -1370,7 +1370,7 @@ public class ClaudeBatchPromptBuilder {
 				+ "Return ONLY a JSON object keyed by tactic, each key mapping to an array of exactly 4 strings:\n"
 				+ "{\"tactic_1\": [\"...\", \"...\", \"...\", \"...\"]}\n\n"
 				+ "=== CAMPAIGN BRIEF ===\n" + (brief == null ? "" : brief) + "\n\n"
-				+ "=== DEVICE DATA ===\n" + String.join("\n", blocks);
+				+ AnthropicMessagesClient.CACHE_BREAKPOINT + "=== DEVICE DATA ===\n" + String.join("\n", blocks);
 		return Optional.of(prompt);
 	}
 

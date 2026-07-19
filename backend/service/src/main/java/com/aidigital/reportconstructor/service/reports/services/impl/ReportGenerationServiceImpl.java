@@ -37,6 +37,7 @@ import com.aidigital.reportconstructor.service.reports.services.ReportGeneration
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -45,6 +46,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Orchestrates the end-to-end marketing report build: persists a {@link ReportJobEntity},
@@ -87,6 +89,12 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	private final ReportFileNamer fileNamer;
 	private final ReportNumberParser reportNumbers;
 	private final Fmt fmt;
+	/**
+	 * Shared virtual-thread executor (the {@code applicationTaskExecutor} bean) used to run the five
+	 * independent breakdown sections concurrently in {@link #runSlidesFromSheet}. Field name matches the
+	 * bean name so injection resolves it by name.
+	 */
+	private final AsyncTaskExecutor applicationTaskExecutor;
 
 	/**
 	 * Validates the brief, then enqueues the job and launches the build through the
@@ -280,16 +288,37 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		// map is used here; the map that actually fills the deck is rebuilt below from the aligned narrative.
 		Map<String, String> prelim = buildSheetFlatReplacements(
 				payload, data, ccA, ccC, frequencies, tacticCount, sheetValues);
-		BreakdownValues publisherValues = publisherBreakdown.buildPublisherValues(
-				payload.sheetUrl(), payload.breakdownSelections(), prelim, brief, userGoogleToken);
-		BreakdownValues creativeValues = creativeBreakdown.buildCreativeValues(
-				payload.sheetUrl(), payload.breakdownSelections(), prelim, brief, userGoogleToken);
-		BreakdownValues geoValues = geoBreakdown.buildGeoValues(
-				payload.sheetUrl(), payload.breakdownSelections(), prelim, brief, userGoogleToken);
-		BreakdownValues audienceValues = audienceBreakdown.buildAudienceValues(
-				payload.sheetUrl(), payload.breakdownSelections(), prelim, brief, userGoogleToken);
-		BreakdownValues deviceValues = deviceBreakdown.buildDeviceValues(
-				payload.sheetUrl(), payload.breakdownSelections(), prelim, brief, userGoogleToken);
+		// The five breakdown sections are independent — each reads its own sheet ranges and runs its own Claude
+		// batches — so they run concurrently on the shared virtual-thread executor rather than back to back.
+		// This is the slowest part of the sheet flow, and overlapping the five cuts its wall-clock sharply.
+		// Claude sees at most five concurrent breakdown requests at once, far inside the account rate limit;
+		// prelim/brief/token are read-only, so the shared inputs are safe. Each helper already catches its own
+		// failures and returns a value with warnings, so a section failing cannot abort the others.
+		CompletableFuture<BreakdownValues> publisherFuture = CompletableFuture.supplyAsync(
+				() -> publisherBreakdown.buildPublisherValues(
+						payload.sheetUrl(), payload.breakdownSelections(), prelim, brief, userGoogleToken),
+				applicationTaskExecutor);
+		CompletableFuture<BreakdownValues> creativeFuture = CompletableFuture.supplyAsync(
+				() -> creativeBreakdown.buildCreativeValues(
+						payload.sheetUrl(), payload.breakdownSelections(), prelim, brief, userGoogleToken),
+				applicationTaskExecutor);
+		CompletableFuture<BreakdownValues> geoFuture = CompletableFuture.supplyAsync(
+				() -> geoBreakdown.buildGeoValues(
+						payload.sheetUrl(), payload.breakdownSelections(), prelim, brief, userGoogleToken),
+				applicationTaskExecutor);
+		CompletableFuture<BreakdownValues> audienceFuture = CompletableFuture.supplyAsync(
+				() -> audienceBreakdown.buildAudienceValues(
+						payload.sheetUrl(), payload.breakdownSelections(), prelim, brief, userGoogleToken),
+				applicationTaskExecutor);
+		CompletableFuture<BreakdownValues> deviceFuture = CompletableFuture.supplyAsync(
+				() -> deviceBreakdown.buildDeviceValues(
+						payload.sheetUrl(), payload.breakdownSelections(), prelim, brief, userGoogleToken),
+				applicationTaskExecutor);
+		BreakdownValues publisherValues = publisherFuture.join();
+		BreakdownValues creativeValues = creativeFuture.join();
+		BreakdownValues geoValues = geoFuture.join();
+		BreakdownValues audienceValues = audienceFuture.join();
+		BreakdownValues deviceValues = deviceFuture.join();
 
 		// Batch D — final narrative alignment. Reconcile the independently written proposal, strategic insights,
 		// results overviews, thoughts and frequency copy into one storyline faithful to the brief, informed by a

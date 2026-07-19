@@ -12,6 +12,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +30,18 @@ public class AnthropicMessagesClient {
 	private static final String VERSION = "2023-06-01";
 	private static final Pattern FENCE_OPEN = Pattern.compile("^```(?:json)?\\s*", Pattern.CASE_INSENSITIVE);
 	private static final Pattern FENCE_CLOSE = Pattern.compile("\\s*```$");
+
+	/**
+	 * Marker a prompt builder may embed to split the prompt into a cacheable prefix — everything before the
+	 * marker — and a variable body — everything after. {@link #callRaw} turns the two sides into separate
+	 * content blocks and puts an ephemeral {@code cache_control} breakpoint on the prefix, so a large
+	 * instruction preamble that repeats across chunked per-tactic calls is billed once at cache-write rates
+	 * and re-read at roughly a tenth of the price on the following calls (Anthropic prompt caching is a
+	 * prefix match, so only byte-identical prefixes hit). A NUL-delimited token keeps the marker from ever
+	 * colliding with real prompt text, and it is stripped before the request is sent so the model never sees
+	 * it. When a prompt carries no marker it is sent as one uncached block, exactly as before.
+	 */
+	public static final String CACHE_BREAKPOINT = "\u0000CACHE_BREAKPOINT\u0000";
 
 	private final String apiKey;
 	private final String model;
@@ -174,6 +187,37 @@ public class AnthropicMessagesClient {
 	}
 
 	/**
+	 * Turns a prompt into the {@code content} value of the single user message, honouring an optional
+	 * {@link #CACHE_BREAKPOINT}. Without the marker the whole prompt is one plain text block, identical to the
+	 * previous behaviour. With it, the text before the marker becomes a cached block carrying an ephemeral
+	 * {@code cache_control} breakpoint (so a preamble repeated across chunked calls is billed once and re-read
+	 * cheaply) and the text after it becomes a second, uncached block. The marker itself is never sent to the
+	 * model. A marker at position zero, or one whose prefix is blank, is treated as no marker so an all-cache
+	 * or empty-prefix block is never requested.
+	 *
+	 * @param prompt the assembled prompt, optionally carrying one {@link #CACHE_BREAKPOINT}
+	 * @return either the plain prompt string, or a two-element list of content blocks with a cache breakpoint
+	 * on the first
+	 */
+	Object buildUserContent(String prompt) {
+		int marker = prompt.indexOf(CACHE_BREAKPOINT);
+		String cachedPrefix = marker > 0 ? prompt.substring(0, marker) : "";
+		if (marker <= 0 || cachedPrefix.isBlank()) {
+			return prompt.replace(CACHE_BREAKPOINT, "");
+		}
+		String variableBody = prompt.substring(marker + CACHE_BREAKPOINT.length()).replace(CACHE_BREAKPOINT, "");
+		List<Map<String, Object>> blocks = new ArrayList<>(2);
+		blocks.add(Map.of(
+				"type", "text",
+				"text", cachedPrefix,
+				"cache_control", Map.of("type", "ephemeral")));
+		if (!variableBody.isEmpty()) {
+			blocks.add(Map.of("type", "text", "text", variableBody));
+		}
+		return blocks;
+	}
+
+	/**
 	 * Sends a prompt as a single user message to the Anthropic Messages API and returns the raw
 	 * parsed JSON response body, or {@code null} on a non-200 status or transport failure.
 	 *
@@ -188,7 +232,7 @@ public class AnthropicMessagesClient {
 			Map<String, Object> body = Map.of(
 					"model", model,
 					"max_tokens", maxTokens,
-					"messages", List.of(Map.of("role", "user", "content", prompt))
+					"messages", List.of(Map.of("role", "user", "content", buildUserContent(prompt)))
 			);
 			HttpRequest req = HttpRequest.newBuilder()
 					.uri(URI.create(ENDPOINT))

@@ -208,6 +208,15 @@ public class RealClaudeClient implements ClaudeClient {
 	private static final int ALIGN_MAX_TOKENS = 3000;
 	private static final int ALIGN_TIMEOUT_SEC = 90;
 
+	/**
+	 * Per-request HTTP timeout for every per-tactic breakdown chunk (publishers, creatives, geo, audience,
+	 * device). Raised from the earlier 60s because a chunk that streamed slowly occasionally timed out,
+	 * came back empty, and left a slide's bullets blank; 90s gives the same head-room the {@link
+	 * #ALIGN_TIMEOUT_SEC align pass} already uses. A timeout still costs only its own chunk — the resilient
+	 * retry re-runs it one tactic at a time.
+	 */
+	private static final int BREAKDOWN_TIMEOUT_SEC = 90;
+
 	private final AnthropicMessagesClient messagesClient;
 	private final ClaudeBatchPromptBuilder promptBuilder;
 	private final ClaudeResponseNormalizer normalizer;
@@ -741,7 +750,7 @@ public class RealClaudeClient implements ClaudeClient {
 		// allowPartial: a reply that ran past the budget still carries whole bullets for the tactics it did
 		// answer, and salvaging those beats blanking the chunk over its unfinished tail.
 		JsonNode parsed = messagesClient.callJsonObject(
-				prompt.get(), PUBLISHER_OBSERVATION_MAX_TOKENS, 60, "BatchPublishers", true);
+				prompt.get(), PUBLISHER_OBSERVATION_MAX_TOKENS, BREAKDOWN_TIMEOUT_SEC, "BatchPublishers", true);
 		if (parsed == null) {
 			return observations;
 		}
@@ -842,7 +851,7 @@ public class RealClaudeClient implements ClaudeClient {
 		}
 		// allowPartial for the same reason publisher observations use it.
 		JsonNode parsed = messagesClient.callJsonObject(
-				prompt.get(), CREATIVE_TAKEAWAY_MAX_TOKENS, 60, "BatchCreatives", true);
+				prompt.get(), CREATIVE_TAKEAWAY_MAX_TOKENS, BREAKDOWN_TIMEOUT_SEC, "BatchCreatives", true);
 		if (parsed == null) {
 			return takeaways;
 		}
@@ -954,7 +963,7 @@ public class RealClaudeClient implements ClaudeClient {
 		}
 		// allowPartial for the same reason publisher observations use it.
 		JsonNode parsed = messagesClient.callJsonObject(
-				prompt.get(), GEO_INSIGHT_MAX_TOKENS, 60, "BatchGeo", true);
+				prompt.get(), GEO_INSIGHT_MAX_TOKENS, BREAKDOWN_TIMEOUT_SEC, "BatchGeo", true);
 		if (parsed == null) {
 			return insights;
 		}
@@ -1082,7 +1091,7 @@ public class RealClaudeClient implements ClaudeClient {
 		}
 		// allowPartial for the same reason publisher observations use it.
 		JsonNode parsed = messagesClient.callJsonObject(
-				prompt.get(), AUDIENCE_INSIGHT_MAX_TOKENS, 60, "BatchAudience", true);
+				prompt.get(), AUDIENCE_INSIGHT_MAX_TOKENS, BREAKDOWN_TIMEOUT_SEC, "BatchAudience", true);
 		if (parsed == null) {
 			return insights;
 		}
@@ -1195,7 +1204,7 @@ public class RealClaudeClient implements ClaudeClient {
 		}
 		// allowPartial for the same reason publisher observations use it.
 		JsonNode parsed = messagesClient.callJsonObject(
-				prompt.get(), DEVICE_INSIGHT_MAX_TOKENS, 60, "BatchDevice", true);
+				prompt.get(), DEVICE_INSIGHT_MAX_TOKENS, BREAKDOWN_TIMEOUT_SEC, "BatchDevice", true);
 		if (parsed == null) {
 			return insights;
 		}
