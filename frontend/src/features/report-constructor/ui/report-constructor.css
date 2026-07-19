@@ -348,6 +348,8 @@
 .rc-banner--warn .rc-banner__icon { background: var(--rc-amber); }
 /* Align the icon to the top when the banner body stacks several lines (breakdowns notice). */
 .rc-banner--warn { align-items: flex-start; }
+/* Keep the warning from hugging the sheet table above it. */
+.rc-sheet + .rc-banner--warn { margin-top: 20px; }
 .rc-banner__cta { display: inline-flex; align-items: center; gap: 6px; margin-top: 12px; }
 .rc-banner__ack {
   display: flex; align-items: center; gap: 8px; margin-top: 12px;

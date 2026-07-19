@@ -133,8 +133,8 @@ export function StepReviewSheet({
                         <div className="rc-banner__title">Breakdown slides need data filled in by hand</div>
                         <div className="rc-banner__sub">
                             The breakdown sections you enabled won't populate automatically. Open the sheet's{" "}
-                            <b>Breakdowns</b> tab and fill in the numbers for each tactic before generating — anything
-                            left blank will come out empty in the deck.
+                            <b>Breakdowns</b> tab and fill in every table highlighted in 🟩 lime for each tactic before
+                            generating — anything left blank will come out empty in the deck.
                         </div>
                         {sheetUrl && (
                             <a
