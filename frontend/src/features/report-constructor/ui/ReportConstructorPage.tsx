@@ -363,6 +363,13 @@ function PageInner() {
         [w.mapping, budgets, summaryRows]
     );
 
+    // True when any tactic has at least one breakdown section enabled — those slides need the user to
+    // fill the sheet's "Breakdowns" tab by hand, so Review Sheet warns and gates Confirm on it.
+    const breakdownsEnabled = useMemo(
+        () => Object.values(breakdowns).some((s) => BREAKDOWNS.some((b) => s[b.id])),
+        [breakdowns]
+    );
+
     function toggleBreakdown(tacticNum: number, id: BreakdownId) {
         setBreakdowns((prev) => {
             const cur = prev[tacticNum] ?? DEFAULT_BREAKDOWNS;
@@ -579,6 +586,7 @@ function PageInner() {
                     sheetUrl={sheetUrl}
                     rows={reviewRows}
                     refreshing={summaryLoading}
+                    breakdownsEnabled={breakdownsEnabled}
                     onRefresh={refreshSummary}
                     onConfirm={() => setStep(4)}
                     onBack={() => setStep(2)}

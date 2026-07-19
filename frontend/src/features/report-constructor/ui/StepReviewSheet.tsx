@@ -1,6 +1,14 @@
-import { Fragment } from "react";
+import { Fragment, useState } from "react";
 import type { ReportType } from "@/shared/api/types";
-import { IconArrowLeft, IconCheck, IconExternalLink, IconRefresh, IconSheet, IconSpinner } from "./icons";
+import {
+    IconArrowLeft,
+    IconCheck,
+    IconExternalLink,
+    IconInfo,
+    IconRefresh,
+    IconSheet,
+    IconSpinner,
+} from "./icons";
 
 export interface ReviewRow {
     tactic: string;
@@ -18,6 +26,8 @@ interface Props {
     rows: ReviewRow[];
     /** True while the summary figures are being re-read from the sheet. */
     refreshing: boolean;
+    /** True when at least one tactic has a breakdown section enabled, so its slides need manual data. */
+    breakdownsEnabled: boolean;
     onRefresh(): void;
     onConfirm(): void;
     onBack(): void;
@@ -33,7 +43,21 @@ function Cell({ value, addLabel }: { value: string | null; addLabel: string }) {
 }
 
 /** Screen 4 — review the assembled Google Sheet, fill gaps, confirm. */
-export function StepReviewSheet({ reportType, sheetUrl, rows, refreshing, onRefresh, onConfirm, onBack }: Props) {
+export function StepReviewSheet({
+    reportType,
+    sheetUrl,
+    rows,
+    refreshing,
+    breakdownsEnabled,
+    onRefresh,
+    onConfirm,
+    onBack,
+}: Props) {
+    // When breakdown slides are enabled, their data can only come from the sheet's "Breakdowns" tab,
+    // which the backend does not fill — the user must enter it by hand. Gate Confirm on an explicit ack.
+    const [breakdownsAck, setBreakdownsAck] = useState(false);
+    const confirmDisabled = breakdownsEnabled && !breakdownsAck;
+
     return (
         <div className="rc-content">
             <div className="rc-section-head">
@@ -100,6 +124,42 @@ export function StepReviewSheet({ reportType, sheetUrl, rows, refreshing, onRefr
                 </div>
             </div>
 
+            {breakdownsEnabled && (
+                <div className="rc-banner rc-banner--warn">
+                    <span className="rc-banner__icon">
+                        <IconInfo size={18} />
+                    </span>
+                    <div className="rc-banner__text">
+                        <div className="rc-banner__title">Breakdown slides need data filled in by hand</div>
+                        <div className="rc-banner__sub">
+                            The breakdown sections you enabled won't populate automatically. Open the sheet's{" "}
+                            <b>Breakdowns</b> tab and fill in the numbers for each tactic before generating — anything
+                            left blank will come out empty in the deck.
+                        </div>
+                        {sheetUrl && (
+                            <a
+                                className="rc-btn rc-btn--outline rc-btn--sm rc-banner__cta"
+                                href={sheetUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                            >
+                                <IconSheet size={14} />
+                                Fill breakdowns
+                                <IconExternalLink size={14} />
+                            </a>
+                        )}
+                        <label className="rc-banner__ack">
+                            <input
+                                type="checkbox"
+                                checked={breakdownsAck}
+                                onChange={(e) => setBreakdownsAck(e.target.checked)}
+                            />
+                            <span>I've filled in the breakdown data on the Breakdowns tab.</span>
+                        </label>
+                    </div>
+                </div>
+            )}
+
             <div className="rc-confirm-bar">
                 <div className="rc-confirm-bar__left">
                     <span className="rc-confirm-bar__check">
@@ -115,7 +175,12 @@ export function StepReviewSheet({ reportType, sheetUrl, rows, refreshing, onRefr
                         <IconArrowLeft size={16} />
                         Back
                     </button>
-                    <button type="button" className="rc-btn rc-btn--primary" onClick={onConfirm}>
+                    <button
+                        type="button"
+                        className="rc-btn rc-btn--primary"
+                        disabled={confirmDisabled}
+                        onClick={onConfirm}
+                    >
                         Confirm — it's correct
                     </button>
                 </div>

@@ -346,6 +346,14 @@
 /* Cautionary variant — e.g. media plan exceeds the 28-tactic cap. */
 .rc-banner--warn { background: var(--rc-amber-tint); border-color: var(--rc-amber-border); }
 .rc-banner--warn .rc-banner__icon { background: var(--rc-amber); }
+/* Align the icon to the top when the banner body stacks several lines (breakdowns notice). */
+.rc-banner--warn { align-items: flex-start; }
+.rc-banner__cta { display: inline-flex; align-items: center; gap: 6px; margin-top: 12px; }
+.rc-banner__ack {
+  display: flex; align-items: center; gap: 8px; margin-top: 12px;
+  font-size: 14px; font-weight: 600; color: var(--rc-ink); cursor: pointer;
+}
+.rc-banner__ack input { width: 16px; height: 16px; flex: none; cursor: pointer; accent-color: var(--rc-blue); }
 
 .rc-sheet { border: 1px solid var(--rc-input-border); border-radius: 12px; overflow: hidden; }
 .rc-sheet__grid { display: grid; grid-template-columns: 1.6fr 0.9fr 1fr 1fr 1.1fr 1.1fr; }
