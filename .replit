@@ -53,8 +53,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "mvn -f backend/pom.xml -B -DskipTests -Dcheckstyle.skip=true -Djacoco.skip=true -Dskip.frontend=true install && mvn -f backend/application/pom.xml -B -DskipTests -Dcheckstyle.skip=true -Djacoco.skip=true -Dskip.frontend=true spring-boot:run"
-waitForPort = 5000
+args = "mvn -f backend/pom.xml -B -Dmaven.test.skip=true -Dcheckstyle.skip=true -Djacoco.skip=true -Dskip.frontend=true install && mvn -f backend/application/pom.xml -B -Dmaven.test.skip=true -Dcheckstyle.skip=true -Djacoco.skip=true -Dskip.frontend=true spring-boot:run"
 
 [[workflows.workflow]]
 name = "Project"
