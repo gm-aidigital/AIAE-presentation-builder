@@ -92,6 +92,84 @@ class AnthropicMessagesClientTest {
 	}
 
 	@Test
+	void shouldRecoverAnObjectWrappedInProseTest() {
+		// Given: a reply that put a preamble and trailing commentary around the object — the BatchPublishers
+		// failure mode, where "Return ONLY a JSON object" was ignored and a plain parse rejected the whole
+		// reply, blanking the slide and triggering the retry storm.
+		AnthropicProperties props = new AnthropicProperties();
+		props.setApiKey("key");
+		AnthropicMessagesClient client = new AnthropicMessagesClient(
+				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator());
+		String wrapped = "Here are the observations:\n\n{\"tactic_1\": [\"First.\", \"Second.\"]}\n\nThese show the mix.";
+
+		// When:
+		JsonNode node = client.parseJsonObject(wrapped, true);
+
+		// Then: the object is salvaged from inside the prose.
+		assertThat(node).isNotNull();
+		assertThat(node.get("tactic_1").get(0).asText()).isEqualTo("First.");
+	}
+
+	@Test
+	void shouldRecoverAProseWrappedObjectWhoseTailWasTruncatedTest() {
+		// Given: a preamble, then an object the model stopped writing part-way through its last bullet.
+		AnthropicProperties props = new AnthropicProperties();
+		props.setApiKey("key");
+		AnthropicMessagesClient client = new AnthropicMessagesClient(
+				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator());
+		String wrapped = "Sure! {\"tactic_1\": [\"First.\", \"Second.\", \"Third.\", \"Fourth bul";
+
+		// When:
+		JsonNode node = client.parseJsonObject(wrapped, true);
+
+		// Then: the three finished bullets survive.
+		assertThat(node).isNotNull();
+		assertThat(node.get("tactic_1")).hasSize(3);
+	}
+
+	@Test
+	void shouldRejectABareArrayReplyTest() {
+		// Given: a reply that is a JSON array rather than the keyed object the caller needs.
+		AnthropicProperties props = new AnthropicProperties();
+		props.setApiKey("key");
+		AnthropicMessagesClient client = new AnthropicMessagesClient(
+				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator());
+
+		// When-Then: a non-object never masquerades as a usable reply.
+		assertThat(client.parseJsonObject("[\"a\", \"b\"]", true)).isNull();
+	}
+
+	@Test
+	void shouldReturnNullForFreeTextWithNoObjectTest() {
+		// Given: a reply with no JSON object at all — a refusal or a plain-prose answer.
+		AnthropicProperties props = new AnthropicProperties();
+		props.setApiKey("key");
+		AnthropicMessagesClient client = new AnthropicMessagesClient(
+				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator());
+
+		// When-Then:
+		assertThat(client.parseJsonObject("I can't help with that request.", true)).isNull();
+	}
+
+	@Test
+	void shouldFlattenAndCapTheReplySnippetTest() {
+		// Given: a multi-line reply longer than the snippet cap.
+		AnthropicProperties props = new AnthropicProperties();
+		props.setApiKey("key");
+		AnthropicMessagesClient client = new AnthropicMessagesClient(
+				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator());
+		String reply = "line one\n\n   line two".repeat(60);
+
+		// When:
+		String snippet = client.snippet(reply);
+
+		// Then: whitespace is collapsed to single spaces and the head is capped with an ellipsis.
+		assertThat(snippet).doesNotContain("\n");
+		assertThat(snippet).endsWith("…");
+		assertThat(snippet.length()).isEqualTo(401);
+	}
+
+	@Test
 	void shouldRecordTheUsageBlockOfAReplyAgainstTheRunTest() throws Exception {
 		// Given: a run's accounting scope, and a Messages API reply carrying a usage block
 		AnthropicProperties props = new AnthropicProperties();

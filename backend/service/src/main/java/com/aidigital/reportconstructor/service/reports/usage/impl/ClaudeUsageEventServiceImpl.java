@@ -29,4 +29,10 @@ public class ClaudeUsageEventServiceImpl implements ClaudeUsageEventService {
 	public List<ClaudeUsageEventEntity> listAll() {
 		return events.findAll();
 	}
+
+	@Transactional
+	@Override
+	public void deleteByJobId(Long jobId) {
+		events.deleteByJobId(jobId);
+	}
 }

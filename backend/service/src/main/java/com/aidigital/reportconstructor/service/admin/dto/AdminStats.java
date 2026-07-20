@@ -16,7 +16,7 @@ import java.util.List;
  * @param tokens      team-wide Claude token consumption and its estimated cost
  * @param tokenWeekly the last 7 days of token spend, oldest first
  * @param byLabel     measured token spend per pipeline stage, most expensive first
- * @param failures    the most recent failed jobs, newest first
+ * @param failures    the most recent job issues — hard failures and degraded reports — newest first
  */
 public record AdminStats(
 		LocalDateTime updatedAt,

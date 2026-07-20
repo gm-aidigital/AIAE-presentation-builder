@@ -32,6 +32,9 @@ public class AnthropicMessagesClient {
 	private static final Pattern FENCE_OPEN = Pattern.compile("^```(?:json)?\\s*", Pattern.CASE_INSENSITIVE);
 	private static final Pattern FENCE_CLOSE = Pattern.compile("\\s*```$");
 
+	/** Characters of a failed reply logged so a parse failure names its cause instead of being a dead end. */
+	private static final int REPLY_SNIPPET_LIMIT = 400;
+
 	/**
 	 * Marker a prompt builder may embed to split the prompt into a cacheable prefix — everything before the
 	 * marker — and a variable body — everything after. {@link #callRaw} turns the two sides into separate
@@ -102,27 +105,83 @@ public class AnthropicMessagesClient {
 		}
 		text = FENCE_OPEN.matcher(text.trim()).replaceFirst("");
 		text = FENCE_CLOSE.matcher(text).replaceFirst("").trim();
-		try {
-			JsonNode node = json.readTree(text);
-			if (node != null && node.isObject()) {
-				return node;
-			}
-		} catch (Exception ignored) {
-			// fall through to repair attempt
+		JsonNode node = parseJsonObject(text, allowPartial);
+		if (node != null) {
+			return node;
+		}
+		// The reply carried no object we can use — a prose preamble with no JSON, a refusal, or an essay
+		// that ran to max_tokens. Logging the head of it turns "JSON parse failed" from a dead end into a
+		// diagnosable line without dumping the whole (often large) reply.
+		log.warn("[claude:{}] JSON parse failed; reply began: {}", label, snippet(text));
+		return null;
+	}
+
+	/**
+	 * Parses the model's JSON object out of the reply text, tolerating the ways a reply can carry a complete
+	 * object that a plain parse still rejects: a tail truncated by {@code max_tokens} (repaired by
+	 * {@link #repairTruncatedJson}) and prose wrapped around the object — a preamble such as "Here are the
+	 * observations:" or trailing commentary — salvaged by parsing from the first <code>{</code>. A reply that
+	 * is not an object at all (a bare array, or free text with no object) yields {@code null}.
+	 *
+	 * @param text         the reply text, with any Markdown code fences already stripped
+	 * @param allowPartial whether to attempt truncation repair as well as a clean parse
+	 * @return the parsed object node, or {@code null} when no usable object could be recovered
+	 */
+	JsonNode parseJsonObject(String text, boolean allowPartial) {
+		JsonNode node = readObject(text);
+		if (node != null) {
+			return node;
 		}
 		if (allowPartial) {
-			try {
-				JsonNode node = json.readTree(repairTruncatedJson(text));
-				if (node != null && node.isObject()) {
-					log.warn("[claude:{}] reply was truncated; recovered the complete part of the JSON", label);
-					return node;
-				}
-			} catch (Exception ignored) {
-				// give up
+			node = readObject(repairTruncatedJson(text));
+			if (node != null) {
+				return node;
 			}
 		}
-		log.warn("[claude:{}] JSON parse failed", label);
-		return null;
+		int first = text.indexOf('{');
+		if (first < 0) {
+			return null;
+		}
+		String fromFirst = text.substring(first);
+		int last = fromFirst.lastIndexOf('}');
+		if (last >= 0) {
+			node = readObject(fromFirst.substring(0, last + 1));
+			if (node != null) {
+				return node;
+			}
+		}
+		return allowPartial ? readObject(repairTruncatedJson(fromFirst)) : null;
+	}
+
+	/**
+	 * Reads one JSON object from text, returning {@code null} rather than throwing when the text is blank,
+	 * unparseable, or parses to something that is not an object.
+	 *
+	 * @param text candidate JSON text
+	 * @return the object node, or {@code null}
+	 */
+	JsonNode readObject(String text) {
+		if (text == null || text.isBlank()) {
+			return null;
+		}
+		try {
+			JsonNode node = json.readTree(text);
+			return node != null && node.isObject() ? node : null;
+		} catch (Exception ignored) {
+			return null;
+		}
+	}
+
+	/**
+	 * Shortens reply text to a single-line head for a log line: whitespace collapsed, capped at
+	 * {@value #REPLY_SNIPPET_LIMIT} characters with an ellipsis when longer.
+	 *
+	 * @param text the reply text
+	 * @return the trimmed, length-capped snippet
+	 */
+	String snippet(String text) {
+		String flat = text.replaceAll("\\s+", " ").trim();
+		return flat.length() <= REPLY_SNIPPET_LIMIT ? flat : flat.substring(0, REPLY_SNIPPET_LIMIT) + "…";
 	}
 
 	/**

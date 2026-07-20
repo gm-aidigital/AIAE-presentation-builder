@@ -408,6 +408,57 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerErrorV1"
 
+  /api/v1/admin/failures:
+    delete:
+      tags: [ Admin ]
+      operationId: clearAdminFailures
+      summary: Clear every failure and warning (admin only)
+      description: |
+        Clears the whole failures list at once: every hard-failed job is deleted along with its
+        Claude usage rows, and every report that shipped with warnings keeps its report but loses
+        the warning flag. After this the failures list and the failed counter return to zero.
+        Admin allow-list gated.
+      security:
+        - bearerAuth: [ ]
+      responses:
+        "204":
+          description: Failures cleared.
+        "401":
+          $ref: "#/components/responses/UnauthorizedV1"
+        "403":
+          $ref: "#/components/responses/ForbiddenV1"
+        "500":
+          $ref: "#/components/responses/InternalServerErrorV1"
+
+  /api/v1/admin/failures/{jobId}:
+    delete:
+      tags: [ Admin ]
+      operationId: resolveAdminFailure
+      summary: Clear one failure or warning by job id (admin only)
+      description: |
+        Clears a single failures row. A hard-failed job is deleted with its Claude usage rows; a
+        report that shipped with warnings keeps its report and only loses the warning flag. Admin
+        allow-list gated.
+      security:
+        - bearerAuth: [ ]
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+          description: Report-job id behind the failures row.
+      responses:
+        "204":
+          description: Failure cleared.
+        "401":
+          $ref: "#/components/responses/UnauthorizedV1"
+        "403":
+          $ref: "#/components/responses/ForbiddenV1"
+        "404":
+          $ref: "#/components/responses/NotFoundV1"
+        "500":
+          $ref: "#/components/responses/InternalServerErrorV1"
+
   /api/v1/admin/reports:
     get:
       tags: [ Admin ]
@@ -1099,7 +1150,7 @@ components:
           items: { $ref: "#/components/schemas/AdminTokenLabelV1" }
         failures:
           type: array
-          description: "The most recent failed jobs, newest first, with the step each died on."
+          description: "The most recent job issues — hard failures and degraded (warning) reports — newest first."
           items: { $ref: "#/components/schemas/AdminFailedJobV1" }
 
     AdminTotalsV1:
@@ -1217,9 +1268,11 @@ components:
     AdminFailedJobV1:
       type: object
       description: |
-        One failed report job with the pipeline step it died on. `step`/`stepLabel` are the last
-        progress values the job reached before the failure, so they name the stage that threw.
-      required: [ jobId, title, step, total, errorMessage, totalTokens, costUsd ]
+        One report-job issue: either a hard failure (the run threw and produced no report) or a
+        degraded report (the run finished but a slide shipped without its Claude copy). `severity`
+        tells the two apart. `step`/`stepLabel` are the last progress values the job reached, so for
+        a hard failure they name the stage that threw and for a degraded report the final step.
+      required: [ jobId, title, step, total, severity, errorMessage, warnings, totalTokens, costUsd ]
       properties:
         jobId: { type: integer, format: int64 }
         type: { type: string, description: "Report type code, when known." }
@@ -1227,12 +1280,19 @@ components:
         ownerEmail: { type: string }
         ownerName: { type: string }
         createdAt: { type: string, format: date-time }
-        failedAt: { type: string, format: date-time, description: "When the job was last updated, i.e. when it failed." }
+        failedAt: { type: string, format: date-time, description: "When the job was last updated, i.e. when it failed or finished." }
         step: { type: integer, format: int32, description: "1-based pipeline step the job had reached." }
         total: { type: integer, format: int32, description: "Number of steps in the pipeline." }
         stepLabel: { type: string, description: "Name of that step, e.g. 'Claude — executive batch (C)'." }
-        errorMessage: { type: string, description: "Recorded failure message, or a placeholder when none was captured." }
-        totalTokens: { type: integer, format: int64, description: "Tokens the failed run had already consumed." }
+        severity:
+          type: string
+          description: "'error' for a hard failure that produced no report; 'warning' for a report that completed degraded."
+        errorMessage: { type: string, description: "Failure message (hard failure) or a short summary (degraded report)." }
+        warnings:
+          type: array
+          description: "Per-slide generation warnings for a degraded report; empty for a hard failure."
+          items: { type: string }
+        totalTokens: { type: integer, format: int64, description: "Tokens the run consumed." }
         costUsd: { type: number, format: double, description: "Estimated cost of those tokens in USD." }
 
     VersionV1:

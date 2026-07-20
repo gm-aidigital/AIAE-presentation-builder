@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Spring bean implementation of {@link ReportJobProgressHelper}.
@@ -140,5 +141,27 @@ public class ReportJobProgressHelperImpl implements ReportJobProgressHelper {
 		return jobs.findById(jobId)
 				.filter(j -> userId != null && userId.equals(j.getOwnerUserId()))
 				.orElseThrow(() -> new AppException(ErrorReason.C001, "Unknown job " + jobId));
+	}
+
+	@Transactional(readOnly = true)
+	@Override
+	public Optional<ReportJobEntity> findJob(Long jobId) {
+		return jobs.findById(jobId);
+	}
+
+	@Transactional
+	@Override
+	public void deleteJob(Long jobId) {
+		jobs.deleteById(jobId);
+	}
+
+	@Transactional
+	@Override
+	public void clearJobWarnings(Long jobId) {
+		jobs.findById(jobId).ifPresent(job -> {
+			job.setWarningsJson(null);
+			job.setUpdatedAt(OffsetDateTime.now());
+			jobs.save(job);
+		});
 	}
 }

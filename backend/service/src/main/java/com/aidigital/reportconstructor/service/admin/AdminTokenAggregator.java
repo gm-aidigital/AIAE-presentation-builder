@@ -74,11 +74,17 @@ public class AdminTokenAggregator {
 	/**
 	 * Sums the events into the token tab's headline figures.
 	 *
-	 * @param events every recorded usage event
-	 * @param now    reference time for the "this month" window
+	 * <p>The tokens an intermediate sheet job burned are real spend and stay in every total, but its
+	 * job id is kept out of the report count so one two-step slide-deck run averages as a single
+	 * report — its sheet-step and deck-step tokens over one report, not two.
+	 *
+	 * @param events           every recorded usage event
+	 * @param now              reference time for the "this month" window
+	 * @param nonReportJobIds  job ids that are intermediate sheet steps, excluded from the report count
 	 * @return the aggregated token totals, all-zero when nothing has been recorded yet
 	 */
-	public AdminTokenTotals totals(List<ClaudeUsageEventEntity> events, OffsetDateTime now) {
+	public AdminTokenTotals totals(
+			List<ClaudeUsageEventEntity> events, OffsetDateTime now, Set<Long> nonReportJobIds) {
 		Map<String, Long> meanOutput = meanOutputByLabel(events);
 		Set<Long> jobs = new HashSet<>();
 		long calls = 0;
@@ -127,7 +133,11 @@ public class AdminTokenAggregator {
 				unattributedTokens += totalTokens(event);
 				unattributedCost += eventCost;
 			} else {
-				jobs.add(event.getJobId());
+				// Its spend still counts toward the per-report numerators, but an intermediate sheet step
+				// is not a report, so its id does not swell the denominator.
+				if (!nonReportJobIds.contains(event.getJobId())) {
+					jobs.add(event.getJobId());
+				}
 				jobInput += event.getInputTokens() + event.getCacheWriteTokens() + event.getCacheReadTokens();
 				jobOutput += event.getOutputTokens();
 				jobTotal += totalTokens(event);

@@ -22,4 +22,11 @@ public interface ClaudeUsageEventService {
 	 * @return all usage events
 	 */
 	List<ClaudeUsageEventEntity> listAll();
+
+	/**
+	 * Deletes every usage event recorded for one report job.
+	 *
+	 * @param jobId the report job whose events are removed
+	 */
+	void deleteByJobId(Long jobId);
 }

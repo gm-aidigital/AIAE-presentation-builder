@@ -704,9 +704,59 @@
     overflow: hidden;
 }
 
+.ad-fails .ad-reports__head {
+    gap: 12px;
+}
+
+.ad-fails__clear {
+    margin-left: auto;
+    flex: none;
+    padding: 6px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--rc-card-border);
+    background: var(--rc-white);
+    color: var(--rc-slate);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.ad-fails__clear:hover:not(:disabled) {
+    border-color: var(--rc-orange);
+    color: var(--rc-orange);
+}
+
+.ad-fails__clear:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
 .ad-fails__row {
     padding: 18px 22px;
     background: var(--rc-white);
+}
+
+.ad-fails__dismiss {
+    flex: none;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    border: 1px solid var(--rc-card-border);
+    background: var(--rc-white);
+    color: var(--rc-mute);
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.ad-fails__dismiss:hover:not(:disabled) {
+    border-color: var(--rc-orange);
+    color: var(--rc-orange);
+}
+
+.ad-fails__dismiss:disabled {
+    opacity: 0.5;
+    cursor: default;
 }
 
 .ad-fails__row + .ad-fails__row {
@@ -738,6 +788,21 @@
     text-overflow: ellipsis;
 }
 
+.ad-fails__sev {
+    flex: none;
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.ad-fails__sev--warning {
+    background: var(--rc-amber-tint);
+    color: var(--rc-amber);
+    border: 1px solid var(--rc-amber-border);
+}
+
 .ad-fails__error {
     margin-top: 12px;
     padding: 12px 14px;
@@ -749,6 +814,33 @@
     line-height: 1.55;
     color: var(--rc-slate);
     white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.ad-fails__summary {
+    margin-top: 12px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--rc-slate);
+}
+
+.ad-fails__warnings {
+    margin: 8px 0 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.ad-fails__warning {
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--rc-amber-border);
+    background: var(--rc-amber-tint);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--rc-slate);
     overflow-wrap: anywhere;
 }
 

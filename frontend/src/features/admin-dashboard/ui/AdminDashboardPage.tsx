@@ -15,6 +15,7 @@ import { formatTokens, formatUsd } from "../lib/tokenFormat";
 import { useAdminStats } from "../api/useAdminStats";
 import { useAllReports } from "../api/useAllReports";
 import { useAddAdmin, useAdmins, useRemoveAdmin } from "../api/useAdmins";
+import { useClearFailures, useResolveFailure } from "../api/useFailures";
 import "./admin-dashboard.css";
 
 const dateFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -523,6 +524,9 @@ function TokensTab({ query }: { query: ReturnType<typeof useAdminStats> }) {
 /** Failed jobs — what broke, on which pipeline step, and what it had already cost. */
 function FailuresTab({ query }: { query: ReturnType<typeof useAdminStats> }) {
     const { data, isLoading, isError, error } = query;
+    const resolveFailure = useResolveFailure();
+    const clearFailures = useClearFailures();
+    const busy = resolveFailure.isPending || clearFailures.isPending;
 
     if (isLoading) return <LoadingBlock label="Loading failures…" />;
     if (isError || !data) {
@@ -530,41 +534,86 @@ function FailuresTab({ query }: { query: ReturnType<typeof useAdminStats> }) {
     }
 
     const failures = data.failures;
-    if (failures.length === 0) return <EmptyState message="No failed jobs. Every report finished." />;
+    if (failures.length === 0) {
+        return <EmptyState message="No failures or warnings. Every report finished clean." />;
+    }
+
+    const onClearAll = () => {
+        if (window.confirm(`Clear all ${failures.length} failures and warnings? This cannot be undone.`)) {
+            clearFailures.mutate();
+        }
+    };
 
     return (
         <div className="ad-fails">
             <div className="ad-reports__head">
-                <span className="ad-reports__title">Failed jobs</span>
+                <span className="ad-reports__title">Failures &amp; warnings</span>
                 <span className="ad-reports__count">{failures.length} shown</span>
+                <button type="button" className="ad-fails__clear" onClick={onClearAll} disabled={busy}>
+                    Clear all
+                </button>
             </div>
             <div className="ad-fails__list">
-                {failures.map((f: AdminFailedJob) => (
-                    <div key={f.jobId} className="ad-fails__row">
-                        <div className="ad-fails__head">
-                            <span className="ad-reports__badge" style={{ background: typeColor(f.type ?? "") }}>
-                                {(f.type ?? "REP").toUpperCase()}
-                            </span>
-                            <div className="ad-fails__meta">
-                                <div className="ad-reports__name">{f.title}</div>
-                                <div className="ad-reports__sub">
-                                    {f.ownerEmail ?? "—"} · job #{f.jobId} ·{" "}
-                                    {f.failedAt ? updatedFmt.format(new Date(f.failedAt)) : ""}
+                {failures.map((f: AdminFailedJob) => {
+                    const isWarning = f.severity === "warning";
+                    return (
+                        <div key={f.jobId} className="ad-fails__row">
+                            <div className="ad-fails__head">
+                                <span className="ad-reports__badge" style={{ background: typeColor(f.type ?? "") }}>
+                                    {(f.type ?? "REP").toUpperCase()}
+                                </span>
+                                <div className="ad-fails__meta">
+                                    <div className="ad-reports__name">{f.title}</div>
+                                    <div className="ad-reports__sub">
+                                        {f.ownerEmail ?? "—"} · job #{f.jobId} ·{" "}
+                                        {f.failedAt ? updatedFmt.format(new Date(f.failedAt)) : ""}
+                                    </div>
                                 </div>
+                                {isWarning ? (
+                                    <span className="ad-fails__sev ad-fails__sev--warning">Warning</span>
+                                ) : (
+                                    <span className="ad-fails__step">
+                                        Step {f.step}/{f.total}
+                                        {f.stepLabel ? ` · ${f.stepLabel}` : ""}
+                                    </span>
+                                )}
+                                <button
+                                    type="button"
+                                    className="ad-fails__dismiss"
+                                    onClick={() => resolveFailure.mutate(f.jobId)}
+                                    disabled={busy}
+                                    aria-label="Clear this issue"
+                                    title="Clear this issue"
+                                >
+                                    ✕
+                                </button>
                             </div>
-                            <span className="ad-fails__step">
-                                Step {f.step}/{f.total}
-                                {f.stepLabel ? ` · ${f.stepLabel}` : ""}
-                            </span>
+                            {isWarning ? (
+                                <>
+                                    <div className="ad-fails__summary">{f.errorMessage}</div>
+                                    <ul className="ad-fails__warnings">
+                                        {f.warnings.map((w, i) => (
+                                            <li key={i} className="ad-fails__warning">
+                                                {w}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </>
+                            ) : (
+                                <div className="ad-fails__error">{f.errorMessage}</div>
+                            )}
+                            {f.totalTokens > 0 && (
+                                <div className="ad-fails__spend">
+                                    {isWarning
+                                        ? `Cost ${formatTokens(f.totalTokens)} tokens (${formatUsd(f.costUsd)}).`
+                                        : `Burned ${formatTokens(f.totalTokens)} tokens (${formatUsd(
+                                              f.costUsd,
+                                          )}) before failing.`}
+                                </div>
+                            )}
                         </div>
-                        <div className="ad-fails__error">{f.errorMessage}</div>
-                        {f.totalTokens > 0 && (
-                            <div className="ad-fails__spend">
-                                Burned {formatTokens(f.totalTokens)} tokens ({formatUsd(f.costUsd)}) before failing.
-                            </div>
-                        )}
-                    </div>
-                ))}
+                    );
+                })}
             </div>
         </div>
     );

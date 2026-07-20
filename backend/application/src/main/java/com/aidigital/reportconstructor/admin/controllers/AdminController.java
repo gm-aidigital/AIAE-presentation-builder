@@ -10,6 +10,7 @@ import com.aidigital.reportconstructor.api.v1.model.ReportListV1;
 import com.aidigital.reportconstructor.api.v1.model.ReportSummaryV1;
 import com.aidigital.reportconstructor.reports.mappers.ReportsApiMapper;
 import com.aidigital.reportconstructor.security.AppUserFactory;
+import com.aidigital.reportconstructor.service.admin.services.AdminFailuresService;
 import com.aidigital.reportconstructor.service.admin.services.AdminManagementService;
 import com.aidigital.reportconstructor.service.admin.services.AdminReportsService;
 import com.aidigital.reportconstructor.service.admin.services.AdminStatsService;
@@ -33,6 +34,7 @@ public class AdminController implements AdminApi {
 	private final AdminStatsService adminStats;
 	private final AdminReportsService adminReports;
 	private final AdminManagementService adminManagement;
+	private final AdminFailuresService adminFailures;
 	private final AdminStatsApiMapper statsMapper;
 	private final AdminManagementApiMapper adminMapper;
 	private final ReportsApiMapper reportsMapper;
@@ -41,6 +43,18 @@ public class AdminController implements AdminApi {
 	@Override
 	public ResponseEntity<AdminStatsV1> getAdminStats() {
 		return ResponseEntity.ok(statsMapper.toStats(adminStats.statsFor(caller().email())));
+	}
+
+	@Override
+	public ResponseEntity<Void> clearAdminFailures() {
+		adminFailures.clearFailures(caller().email());
+		return ResponseEntity.noContent().build();
+	}
+
+	@Override
+	public ResponseEntity<Void> resolveAdminFailure(Long jobId) {
+		adminFailures.resolveFailure(caller().email(), jobId);
+		return ResponseEntity.noContent().build();
 	}
 
 	@Override

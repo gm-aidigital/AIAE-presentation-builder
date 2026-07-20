@@ -5,10 +5,12 @@ import com.aidigital.reportconstructor.service.admin.dto.AdminFailedJob;
 import com.aidigital.reportconstructor.service.common.text.DisplayNameHelper;
 import com.aidigital.reportconstructor.service.reports.dto.ReportSummary;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportSummaryAssembler;
+import com.aidigital.reportconstructor.service.reports.helpers.impl.ReportGenerationWarningsHelperImpl;
 import com.aidigital.reportconstructor.service.reports.usage.ClaudeCostCalculator;
 import com.aidigital.reportconstructor.service.reports.usage.JobTokenUsage;
 import com.aidigital.reportconstructor.service.reports.usage.config.ClaudeModelPrice;
 import com.aidigital.reportconstructor.service.reports.usage.config.ClaudePricingProperties;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -35,7 +37,8 @@ class AdminFailureAssemblerTest {
 		ClaudePricingProperties pricing = new ClaudePricingProperties();
 		pricing.setDefaultPrice(new ClaudeModelPrice());
 		return new AdminFailureAssembler(
-				new DisplayNameHelper(), summaryAssembler, new JobTokenUsage(new ClaudeCostCalculator(pricing)));
+				new DisplayNameHelper(), summaryAssembler, new JobTokenUsage(new ClaudeCostCalculator(pricing)),
+				new ReportGenerationWarningsHelperImpl(new ObjectMapper()));
 	}
 
 	/**
@@ -74,6 +77,50 @@ class AdminFailureAssemblerTest {
 		assertThat(failures.getFirst().errorMessage()).isEqualTo("Read timed out");
 		assertThat(failures.getFirst().title()).isEqualTo("Q3 EOC deck");
 		assertThat(failures.getFirst().ownerEmail()).isEqualTo("jane.doe@aidigital.com");
+		assertThat(failures.getFirst().severity()).isEqualTo("error");
+		assertThat(failures.getFirst().warnings()).isEmpty();
+	}
+
+	@Test
+	void shouldSurfaceACompletedReportThatShippedWithWarningsTest() {
+		// Given: a report that finished (status done) but recorded two generation warnings — a slide
+		// that shipped without its Claude copy is exactly the case the user saw missing from the list.
+		ReportJobEntity job = new ReportJobEntity();
+		job.setStatus("done");
+		job.setStep(9);
+		job.setTotal(9);
+		job.setWarningsJson("[\"Top Publishers – Meta: KEY OBSERVATIONS are empty\","
+				+ "\"Top Publishers – Display: KEY OBSERVATIONS are empty\"]");
+		job.setOwnerEmail("jane.doe@aidigital.com");
+		job.setCreatedAt(OffsetDateTime.now());
+		job.setUpdatedAt(OffsetDateTime.now());
+		stubTitle("Q3 EOC deck");
+
+		// When:
+		List<AdminFailedJob> failures = assembler().recentFailures(List.of(job), 10);
+
+		// Then: it appears as a warning-severity row carrying both warning lines.
+		assertThat(failures).hasSize(1);
+		assertThat(failures.getFirst().severity()).isEqualTo("warning");
+		assertThat(failures.getFirst().errorMessage()).isEqualTo("Completed with 2 warnings.");
+		assertThat(failures.getFirst().warnings())
+				.containsExactly(
+						"Top Publishers – Meta: KEY OBSERVATIONS are empty",
+						"Top Publishers – Display: KEY OBSERVATIONS are empty");
+	}
+
+	@Test
+	void shouldNotListACleanlyCompletedReportTest() {
+		// Given: a report that finished with no warnings recorded.
+		ReportJobEntity job = new ReportJobEntity();
+		job.setStatus("done");
+		job.setWarningsJson(null);
+
+		// When:
+		List<AdminFailedJob> failures = assembler().recentFailures(List.of(job), 10);
+
+		// Then: nothing to show — a clean run is not an issue.
+		assertThat(failures).isEmpty();
 	}
 
 	@Test

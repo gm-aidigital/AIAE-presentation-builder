@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
@@ -82,7 +83,7 @@ class AdminTokenAggregatorTest {
 				lost(1L, "BatchC", now, 4_000));
 
 		// When:
-		AdminTokenTotals totals = aggregator().totals(events, now);
+		AdminTokenTotals totals = aggregator().totals(events, now, Set.of());
 
 		// Then: the headline total is the measured 2,400 only — the lost call is reported beside it,
 		// its output predicted from what the two comparable calls actually returned.
@@ -101,7 +102,7 @@ class AdminTokenAggregatorTest {
 		List<ClaudeUsageEventEntity> events = List.of(lost(1L, "BatchGeo", now, 3_000));
 
 		// When:
-		AdminTokenTotals totals = aggregator().totals(events, now);
+		AdminTokenTotals totals = aggregator().totals(events, now, Set.of());
 
 		// Then:
 		assertThat(totals.estimatedTokens()).isEqualTo(3_000);
@@ -117,7 +118,7 @@ class AdminTokenAggregatorTest {
 				measured(null, "LineItemMatch", now, 500, 100));
 
 		// When:
-		AdminTokenTotals totals = aggregator().totals(events, now);
+		AdminTokenTotals totals = aggregator().totals(events, now, Set.of());
 
 		// Then: the unattributed call counts toward the team total but not toward "per report", which
 		// would otherwise report a per-report cost no report ever incurred.
@@ -138,7 +139,7 @@ class AdminTokenAggregatorTest {
 				measured(2L, "BatchA", now, 1_000, 0));
 
 		// When:
-		AdminTokenTotals totals = aggregator().totals(events, now);
+		AdminTokenTotals totals = aggregator().totals(events, now, Set.of());
 
 		// Then:
 		assertThat(totals.reportsWithUsage()).isEqualTo(2);
@@ -147,9 +148,27 @@ class AdminTokenAggregatorTest {
 	}
 
 	@Test
+	void shouldNotCountAnIntermediateSheetStepAsItsOwnReportTest() {
+		// Given: one slide-deck run's two steps — the intermediate sheet job (id 1) and the deck job it
+		// fed (id 2) — where the caller flags the sheet job's id as not a report.
+		OffsetDateTime now = OffsetDateTime.now();
+		List<ClaudeUsageEventEntity> events = List.of(
+				measured(1L, "BatchSheet", now, 800, 200),
+				measured(2L, "BatchC", now, 900, 100));
+
+		// When:
+		AdminTokenTotals totals = aggregator().totals(events, now, Set.of(1L));
+
+		// Then: the run averages as a single report carrying both steps' tokens, not two.
+		assertThat(totals.reportsWithUsage()).isEqualTo(1);
+		assertThat(totals.avgTokensPerReport()).isEqualTo(2_000);
+		assertThat(totals.totalTokens()).isEqualTo(2_000);
+	}
+
+	@Test
 	void shouldReturnZeroTotalsWhenNothingHasBeenRecordedTest() {
 		// Given / When:
-		AdminTokenTotals totals = aggregator().totals(List.of(), OffsetDateTime.now());
+		AdminTokenTotals totals = aggregator().totals(List.of(), OffsetDateTime.now(), Set.of());
 
 		// Then: no division by zero, and the tab renders an honest empty state.
 		assertThat(totals.reportsWithUsage()).isZero();
@@ -168,7 +187,7 @@ class AdminTokenAggregatorTest {
 				measured(2L, "BatchC", now.minusMonths(2), 5_000_000, 0));
 
 		// When:
-		AdminTokenTotals totals = aggregator().totals(events, now);
+		AdminTokenTotals totals = aggregator().totals(events, now, Set.of());
 
 		// Then:
 		assertThat(totals.tokensThisMonth()).isEqualTo(1_000_000);

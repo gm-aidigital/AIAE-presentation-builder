@@ -4,6 +4,7 @@ import com.aidigital.reportconstructor.domain.reports.entities.ReportJobEntity;
 import com.aidigital.reportconstructor.service.admin.AdminAccessPolicy;
 import com.aidigital.reportconstructor.service.admin.AdminFailureAssembler;
 import com.aidigital.reportconstructor.service.admin.AdminTokenAggregator;
+import com.aidigital.reportconstructor.service.admin.ReportCountPolicy;
 import com.aidigital.reportconstructor.service.admin.dto.AdminDayVolume;
 import com.aidigital.reportconstructor.service.admin.dto.AdminStats;
 import com.aidigital.reportconstructor.service.admin.dto.AdminTotals;
@@ -28,6 +29,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Default {@link AdminStatsService} — validates admin access, then aggregates every
@@ -54,6 +58,7 @@ public class AdminStatsServiceImpl implements AdminStatsService {
 	private final ClaudeUsageEventService usageEvents;
 	private final JobTokenUsage tokenUsage;
 	private final AdminFailureAssembler failureAssembler;
+	private final ReportCountPolicy reportCountPolicy;
 
 	@Override
 	public AdminStats statsFor(String callerEmail) {
@@ -63,13 +68,18 @@ public class AdminStatsServiceImpl implements AdminStatsService {
 		List<ReportJobEntity> all = jobs.listAllJobs();
 		var events = usageEvents.listAll();
 		OffsetDateTime now = OffsetDateTime.now();
+		Set<Long> intermediateSheetJobIds = all.stream()
+				.filter(reportCountPolicy::isIntermediateSheet)
+				.map(ReportJobEntity::getId)
+				.filter(Objects::nonNull)
+				.collect(Collectors.toSet());
 		return new AdminStats(
 				now.toLocalDateTime(),
 				totals(all, now),
 				byUser(all, now),
 				byType(all),
 				weekly(all, now),
-				tokenAggregator.totals(events, now),
+				tokenAggregator.totals(events, now, intermediateSheetJobIds),
 				tokenAggregator.weekly(events, now),
 				tokenAggregator.byLabel(events),
 				failureAssembler.recentFailures(all, FAILURE_LIMIT));
@@ -83,13 +93,19 @@ public class AdminStatsServiceImpl implements AdminStatsService {
 	 * @return the aggregated totals
 	 */
 	AdminTotals totals(List<ReportJobEntity> all, OffsetDateTime now) {
-		int thisMonth = (int) all.stream().filter(j -> isSameMonth(j.getCreatedAt(), now)).count();
+		// Report-volume counters exclude a slide-deck flow's intermediate sheet step so one two-step run
+		// is one report; the operational counters (running/failed) read every job so no in-flight or broken
+		// step is hidden.
+		int reportsTotal = (int) all.stream().filter(reportCountPolicy::isCountableReport).count();
+		int thisMonth = (int) all.stream()
+				.filter(reportCountPolicy::isCountableReport)
+				.filter(j -> isSameMonth(j.getCreatedAt(), now)).count();
 		int activeUsers = (int) all.stream().map(ReportJobEntity::getOwnerUserId).distinct().count();
 		int running = (int) all.stream()
 				.filter(j -> STATUS_QUEUED.equals(j.getStatus()) || STATUS_RUNNING.equals(j.getStatus()))
 				.count();
 		int failed = (int) all.stream().filter(j -> STATUS_ERROR.equals(j.getStatus())).count();
-		return new AdminTotals(all.size(), thisMonth, activeUsers, running, failed);
+		return new AdminTotals(reportsTotal, thisMonth, activeUsers, running, failed);
 	}
 
 	/**
@@ -112,17 +128,22 @@ public class AdminStatsServiceImpl implements AdminStatsService {
 					.map(ReportJobEntity::getOwnerEmail)
 					.filter(e -> e != null && !e.isBlank())
 					.findFirst().orElse(null);
-			int thisMonth = (int) owned.stream().filter(j -> isSameMonth(j.getCreatedAt(), now)).count();
+			// Report counts exclude the intermediate sheet step; token sums keep every job, so the user's
+			// real spend still shows even though the sheet step does not add to their report tally.
+			int reports = (int) owned.stream().filter(reportCountPolicy::isCountableReport).count();
+			int thisMonth = (int) owned.stream()
+					.filter(reportCountPolicy::isCountableReport)
+					.filter(j -> isSameMonth(j.getCreatedAt(), now)).count();
 			OffsetDateTime last = owned.stream()
 					.map(ReportJobEntity::getCreatedAt)
-					.filter(java.util.Objects::nonNull)
+					.filter(Objects::nonNull)
 					.max(Comparator.naturalOrder()).orElse(null);
 			long input = owned.stream().mapToLong(tokenUsage::inputTokens).sum();
 			long output = owned.stream().mapToLong(tokenUsage::outputTokens).sum();
 			long cache = owned.stream()
 					.mapToLong(job -> tokenUsage.cacheWriteTokens(job) + tokenUsage.cacheReadTokens(job)).sum();
 			double cost = owned.stream().mapToDouble(tokenUsage::costUsd).sum();
-			rows.add(new AdminUserStat(entry.getKey(), email, displayNameHelper.fromEmail(email), owned.size(),
+			rows.add(new AdminUserStat(entry.getKey(), email, displayNameHelper.fromEmail(email), reports,
 					thisMonth, last == null ? null : last.toLocalDateTime(),
 					input, output, cache, input + output + cache, cost));
 		}
@@ -139,6 +160,9 @@ public class AdminStatsServiceImpl implements AdminStatsService {
 	List<AdminTypeStat> byType(List<ReportJobEntity> all) {
 		Map<String, Integer> counts = new LinkedHashMap<>();
 		for (ReportJobEntity job : all) {
+			if (!reportCountPolicy.isCountableReport(job)) {
+				continue;
+			}
 			counts.merge(normalizeType(job.getReportTypeCode()), 1, Integer::sum);
 		}
 		return counts.entrySet().stream()
@@ -160,6 +184,7 @@ public class AdminStatsServiceImpl implements AdminStatsService {
 		for (int i = WEEK_DAYS - 1; i >= 0; i--) {
 			LocalDate day = today.minusDays(i);
 			int count = (int) all.stream()
+					.filter(reportCountPolicy::isCountableReport)
 					.filter(j -> j.getCreatedAt() != null && day.equals(j.getCreatedAt().toLocalDate()))
 					.count();
 			String label = day.getDayOfWeek().getDisplayName(TextStyle.SHORT, Locale.ENGLISH);

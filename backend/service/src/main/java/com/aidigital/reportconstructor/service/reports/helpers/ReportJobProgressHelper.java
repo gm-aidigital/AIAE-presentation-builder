@@ -4,6 +4,7 @@ import com.aidigital.reportconstructor.domain.reports.entities.ReportJobEntity;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeUsage;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Persists report-job lifecycle transitions and enforces ownership when loading jobs for progress polling.
@@ -110,4 +111,27 @@ public interface ReportJobProgressHelper {
 	 * @return the owned job entity
 	 */
 	ReportJobEntity loadJobForOwner(String userId, Long jobId);
+
+	/**
+	 * Loads a job by id when it exists, without throwing when it does not.
+	 *
+	 * @param jobId id of the job to load
+	 * @return the job, or empty when no such job exists
+	 */
+	Optional<ReportJobEntity> findJob(Long jobId);
+
+	/**
+	 * Deletes a job by id, doing nothing when it does not exist.
+	 *
+	 * @param jobId id of the job to delete
+	 */
+	void deleteJob(Long jobId);
+
+	/**
+	 * Clears a job's recorded generation warnings, so a report that shipped degraded stops being
+	 * flagged as an issue while the report itself is kept. No-op when the job does not exist.
+	 *
+	 * @param jobId id of the job whose warnings are cleared
+	 */
+	void clearJobWarnings(Long jobId);
 }

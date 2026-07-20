@@ -23,4 +23,9 @@ public class NoOpClaudeUsageEventService implements ClaudeUsageEventService {
 	public List<ClaudeUsageEventEntity> listAll() {
 		return List.copyOf(saved);
 	}
+
+	@Override
+	public void deleteByJobId(Long jobId) {
+		saved.removeIf(event -> jobId != null && jobId.equals(event.getJobId()));
+	}
 }

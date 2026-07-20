@@ -12,4 +12,13 @@ import org.springframework.data.jpa.repository.JpaRepository;
  * query here, not a silently narrowed date range.
  */
 public interface ClaudeUsageEventRepository extends JpaRepository<ClaudeUsageEventEntity, Long> {
+
+	/**
+	 * Deletes every usage event recorded for one report job, so an admin who clears a failed job
+	 * removes its spend rows along with it rather than leaving orphaned events behind.
+	 *
+	 * @param jobId the report job whose events are removed
+	 * @return the number of events deleted
+	 */
+	long deleteByJobId(Long jobId);
 }
