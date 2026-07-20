@@ -1074,7 +1074,7 @@ components:
     # ── Admin dashboard (team statistics + technical health) ────────────────────
     AdminStatsV1:
       type: object
-      required: [ updatedAt, totals, byUser, byType, weekly, tokens, tokenWeekly, failures ]
+      required: [ updatedAt, totals, byUser, byType, weekly, tokens, tokenWeekly, byLabel, failures ]
       properties:
         updatedAt: { type: string, format: date-time, description: "When the aggregation was computed." }
         totals: { $ref: "#/components/schemas/AdminTotalsV1" }
@@ -1093,6 +1093,10 @@ components:
           type: array
           description: "Claude token spend for each of the last 7 days, oldest first."
           items: { $ref: "#/components/schemas/AdminTokenDayV1" }
+        byLabel:
+          type: array
+          description: "Measured token spend per pipeline stage (batch tag), most expensive first."
+          items: { $ref: "#/components/schemas/AdminTokenLabelV1" }
         failures:
           type: array
           description: "The most recent failed jobs, newest first, with the step each died on."
@@ -1151,7 +1155,8 @@ components:
       required:
         [ reportsWithUsage, claudeCalls, inputTokens, outputTokens, cacheWriteTokens, cacheReadTokens,
           totalTokens, costUsd, tokensThisMonth, costThisMonthUsd, avgTokensPerReport, avgInputPerReport,
-          avgOutputPerReport, avgCostPerReportUsd ]
+          avgOutputPerReport, avgCostPerReportUsd, unknownCalls, estimatedTokens, estimatedCostUsd,
+          unattributedCalls, unattributedTokens, unattributedCostUsd ]
       properties:
         reportsWithUsage: { type: integer, format: int32, description: "Reports that carry recorded token counts." }
         claudeCalls: { type: integer, format: int64, description: "Anthropic API calls those reports made." }
@@ -1167,6 +1172,38 @@ components:
         avgInputPerReport: { type: integer, format: int64, description: "Mean input-side tokens (plain + cache) per report." }
         avgOutputPerReport: { type: integer, format: int64 }
         avgCostPerReportUsd: { type: number, format: double }
+        unknownCalls:
+          type: integer
+          format: int64
+          description: "Calls that were billed but whose reply never arrived (timeout/dropped connection)."
+        estimatedTokens:
+          type: integer
+          format: int64
+          description: |
+            Predicted tokens of those calls — prompt size measured locally before the request went out,
+            output side predicted from what calls with the same batch tag actually returned. Deliberately
+            NOT included in `totalTokens`, so the measured figure stays measured.
+        estimatedCostUsd: { type: number, format: double, description: "Estimated cost of `estimatedTokens`." }
+        unattributedCalls:
+          type: integer
+          format: int64
+          description: "Measured calls belonging to no report, e.g. the line-item match run from a web request."
+        unattributedTokens:
+          type: integer
+          format: int64
+          description: "Measured tokens of those calls. Already included in `totalTokens`, excluded from the per-report averages."
+        unattributedCostUsd: { type: number, format: double }
+
+    AdminTokenLabelV1:
+      type: object
+      description: "Measured Claude spend for one pipeline stage, keyed by the batch tag its calls are logged under."
+      required: [ label, calls, totalTokens, costUsd, unknownCalls ]
+      properties:
+        label: { type: string, description: "Batch tag, e.g. 'BatchC', 'BatchGeo', 'LineItemMatch'." }
+        calls: { type: integer, format: int64 }
+        totalTokens: { type: integer, format: int64 }
+        costUsd: { type: number, format: double }
+        unknownCalls: { type: integer, format: int64, description: "Calls of this stage whose reply never arrived." }
 
     AdminTokenDayV1:
       type: object

@@ -1,5 +1,7 @@
 package com.aidigital.reportconstructor.service.reports.services;
 
+import com.aidigital.reportconstructor.service.common.security.AppUser;
+
 import java.util.List;
 
 /**
@@ -14,7 +16,9 @@ public interface LineItemMatcherService {
 	 * @param bqRows   BigQuery export rows with the header on the first row; the "Level 1 Naming",
 	 *                 "Channel" and "Tactic" columns are located by header name (must be non-empty)
 	 * @param planRows Media Plan rows from which whitelisted tactic names are extracted (may be null/empty)
+	 * @param caller   the signed-in user, so the Claude spend this match incurs is attributed to them
+	 *                 rather than landing in the unattributed bucket; may be {@code null}
 	 * @return the tactic suggestions together with all distinct line item metadata and IDs
 	 */
-	MatchResult match(List<List<String>> bqRows, List<List<String>> planRows);
+	MatchResult match(List<List<String>> bqRows, List<List<String>> planRows, AppUser caller);
 }

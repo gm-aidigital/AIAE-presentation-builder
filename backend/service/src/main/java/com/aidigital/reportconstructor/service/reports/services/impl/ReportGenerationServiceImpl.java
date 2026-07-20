@@ -150,7 +150,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		// Opened before any Claude work and read back in the finally below, so a run that fails half-way
 		// still reports the tokens it burned — those are billed either way, and a failed expensive run is
 		// exactly what the admin token dashboard exists to make visible.
-		ClaudeUsageScope usageScope = usageTracker.begin();
+		ClaudeUsageScope usageScope = usageTracker.begin(jobId, null, userEmail);
 		try {
 			if (target == GenerationTarget.SLIDES_FROM_SHEET) {
 				// Step 2 of the sheet-as-source flow: the user-reviewed sheet is the only input, so

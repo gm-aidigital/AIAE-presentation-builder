@@ -2,6 +2,7 @@ package com.aidigital.reportconstructor.service.reports.services.impl;
 
 import com.aidigital.reportconstructor.service.common.error.AppException;
 import com.aidigital.reportconstructor.service.common.error.ErrorReason;
+import com.aidigital.reportconstructor.service.common.security.AppUser;
 import com.aidigital.reportconstructor.service.reports.dto.LineItemMatchOption;
 import com.aidigital.reportconstructor.service.reports.dto.LineItemMatchTactic;
 import com.aidigital.reportconstructor.service.reports.dto.PlanTactic;
@@ -12,6 +13,7 @@ import com.aidigital.reportconstructor.service.reports.services.LineItemMatcherS
 import com.aidigital.reportconstructor.service.reports.services.LineItemMeta;
 import com.aidigital.reportconstructor.service.reports.services.MatchResult;
 import com.aidigital.reportconstructor.service.reports.services.TacticSuggestion;
+import com.aidigital.reportconstructor.service.reports.usage.ClaudeUsageTracker;
 import org.springframework.stereotype.Service;
 
 import java.math.BigInteger;
@@ -41,14 +43,17 @@ public class LineItemMatcherServiceImpl implements LineItemMatcherService {
 	private final LineItemNamingHelper lineItemNaming;
 	private final LineItemMatchAssistant matchAssistant;
 	private final MediaPlanTacticExtractor tacticExtractor;
+	private final ClaudeUsageTracker usageTracker;
 
 	public LineItemMatcherServiceImpl(
 			LineItemNamingHelper lineItemNaming,
 			LineItemMatchAssistant matchAssistant,
-			MediaPlanTacticExtractor tacticExtractor) {
+			MediaPlanTacticExtractor tacticExtractor,
+			ClaudeUsageTracker usageTracker) {
 		this.lineItemNaming = lineItemNaming;
 		this.matchAssistant = matchAssistant;
 		this.tacticExtractor = tacticExtractor;
+		this.usageTracker = usageTracker;
 	}
 
 	/**
@@ -165,10 +170,30 @@ public class LineItemMatcherServiceImpl implements LineItemMatcherService {
 	}
 
 	@Override
-	public MatchResult match(List<List<String>> bqRows, List<List<String>> planRows) {
+	public MatchResult match(List<List<String>> bqRows, List<List<String>> planRows, AppUser caller) {
 		if (bqRows == null || bqRows.isEmpty()) {
 			throw new AppException(ErrorReason.C002, "BQ rows are required");
 		}
+		// This match may call Claude to break ties, and it runs in a web request rather than in a report
+		// job, so nothing else would attribute that spend. The scope carries no job id — by design, the
+		// tokens belong to the user, not to a report — and is cleared below so the request thread, which
+		// is pooled, does not carry it into the next caller's request.
+		usageTracker.begin(null, caller == null ? null : caller.userId(), caller == null ? null : caller.email());
+		try {
+			return matchInScope(bqRows, planRows);
+		} finally {
+			usageTracker.clear();
+		}
+	}
+
+	/**
+	 * Runs the match itself, with the caller's usage scope already bound.
+	 *
+	 * @param bqRows   BigQuery export rows with the header on the first row
+	 * @param planRows Media Plan rows from which whitelisted tactic names are extracted
+	 * @return the tactic suggestions together with all distinct line item metadata and IDs
+	 */
+	MatchResult matchInScope(List<List<String>> bqRows, List<List<String>> planRows) {
 
 		List<String> bqHeaders = bqRows.get(0);
 		int l1ColIdx = indexOfHeader(bqHeaders, h -> h.toLowerCase(Locale.ROOT).contains("level 1 naming"));

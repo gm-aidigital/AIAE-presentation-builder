@@ -6,6 +6,8 @@ import com.aidigital.reportconstructor.service.reports.helpers.impl.LineItemNami
 import com.aidigital.reportconstructor.service.reports.helpers.impl.MediaPlanTacticExtractorImpl;
 import com.aidigital.reportconstructor.service.reports.helpers.impl.SheetRowHelperImpl;
 import com.aidigital.reportconstructor.service.reports.ports.LineItemMatchAssistant;
+import com.aidigital.reportconstructor.service.reports.usage.impl.ClaudeUsageTrackerImpl;
+import com.aidigital.reportconstructor.service.reports.usage.impl.NoOpClaudeUsageEventService;
 import com.aidigital.reportconstructor.service.reports.services.MatchResult;
 import org.junit.jupiter.api.Test;
 
@@ -16,10 +18,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class LineItemMatcherServiceTest {
 
+	/**
+	 * Builds a tracker whose usage events go nowhere, so these tests stay pure unit tests.
+	 *
+	 * @return a tracker backed by a no-op event sink
+	 */
+	ClaudeUsageTrackerImpl tracker() {
+		return new ClaudeUsageTrackerImpl(new NoOpClaudeUsageEventService());
+	}
+
 	private final MediaPlanTacticExtractor extractor =
 			new MediaPlanTacticExtractorImpl(new TacticCatalog(), new SheetRowHelperImpl());
 	private final LineItemMatcherServiceImpl matcher =
-			new LineItemMatcherServiceImpl(new LineItemNamingHelperImpl(), (tactics, options) -> Map.of(), extractor);
+			new LineItemMatcherServiceImpl(new LineItemNamingHelperImpl(), (tactics, options) -> Map.of(), extractor, tracker());
 
 	@Test
 	void extractLineItemId_readsIndexEight() {
@@ -38,7 +49,7 @@ class LineItemMatcherServiceTest {
 				List.of("Media"),
 				List.of("Programmatic Display")
 		);
-		MatchResult result = matcher.match(bq, plan);
+		MatchResult result = matcher.match(bq, plan, null);
 		assertThat(result.tactics()).hasSize(1);
 		assertThat(result.tactics().getFirst().confidence()).isEqualTo("none");
 		assertThat(result.uniqueIds()).containsExactly("88", "99");
@@ -59,10 +70,10 @@ class LineItemMatcherServiceTest {
 				List.of("Programmatic Display", "Whitelist Strategy", "Curated List")
 		);
 		LineItemMatchAssistant assistant = (tactics, options) -> Map.of(1, "616641", 2, "616642");
-		var aiMatcher = new LineItemMatcherServiceImpl(new LineItemNamingHelperImpl(), assistant, extractor);
+		var aiMatcher = new LineItemMatcherServiceImpl(new LineItemNamingHelperImpl(), assistant, extractor, tracker());
 
 		// When
-		MatchResult result = aiMatcher.match(bq, plan);
+		MatchResult result = aiMatcher.match(bq, plan, null);
 
 		// Then: both tactics receive their AI-assigned id, marked auto-matched
 		assertThat(result.tactics()).hasSize(2);
@@ -86,10 +97,10 @@ class LineItemMatcherServiceTest {
 				List.of("Programmatic Display", "Whitelist Strategy")
 		);
 		LineItemMatchAssistant assistant = (tactics, options) -> Map.of(1, "999", 2, "616642");
-		var aiMatcher = new LineItemMatcherServiceImpl(new LineItemNamingHelperImpl(), assistant, extractor);
+		var aiMatcher = new LineItemMatcherServiceImpl(new LineItemNamingHelperImpl(), assistant, extractor, tracker());
 
 		// When
-		MatchResult result = aiMatcher.match(bq, plan);
+		MatchResult result = aiMatcher.match(bq, plan, null);
 
 		// Then: the unknown id is dropped, the valid one is applied
 		assertThat(result.tactics().get(0).lineItemId()).isEmpty();

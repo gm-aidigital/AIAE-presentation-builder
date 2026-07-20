@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+	One row per Anthropic Messages API call, which the per-job totals on `report_jobs` cannot
+	express: a call made outside any report (the line-item match runs in a web request, not in a
+	job) has no job to be counted against, and a call that timed out has no `usage` block to count
+	at all. Both were silently missing from the spend figures.
+
+	`status` separates the two cases. `recorded` rows carry the API's own usage block and are the
+	truth. `estimated` rows are calls that were billed but whose reply never arrived — the token
+	columns hold a local estimate of the prompt, and the output side is predicted at read time from
+	what comparable calls actually returned. Keeping them apart is the point: the dashboard shows
+	the known total as a fact and the estimate beside it, rather than one blurred number.
+
+	`label` is the batch tag already used in the Claude logs (BatchC, BatchGeo, LineItemMatch, …),
+	so spend can be attributed to the pipeline stage that caused it.
+-->
+<databaseChangeLog
+		xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+		xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+		xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+														https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+	<changeSet id="claude-usage-events-initial" author="agent">
+		<preConditions onFail="MARK_RAN">
+			<not>
+				<tableExists tableName="claude_usage_events"/>
+			</not>
+		</preConditions>
+
+		<createTable tableName="claude_usage_events">
+			<column name="id" type="BIGINT" autoIncrement="true">
+				<constraints primaryKey="true" nullable="false"/>
+			</column>
+			<!-- Null for calls made outside a report job, e.g. the line-item match. -->
+			<column name="job_id" type="BIGINT"/>
+			<column name="owner_user_id" type="TEXT"/>
+			<column name="owner_email" type="TEXT"/>
+			<column name="label" type="TEXT">
+				<constraints nullable="false"/>
+			</column>
+			<column name="model" type="TEXT"/>
+			<!-- 'recorded' (API usage block) or 'estimated' (billed call whose reply never arrived). -->
+			<column name="status" type="TEXT">
+				<constraints nullable="false"/>
+			</column>
+			<column name="input_tokens" type="BIGINT" defaultValueNumeric="0">
+				<constraints nullable="false"/>
+			</column>
+			<column name="output_tokens" type="BIGINT" defaultValueNumeric="0">
+				<constraints nullable="false"/>
+			</column>
+			<column name="cache_write_tokens" type="BIGINT" defaultValueNumeric="0">
+				<constraints nullable="false"/>
+			</column>
+			<column name="cache_read_tokens" type="BIGINT" defaultValueNumeric="0">
+				<constraints nullable="false"/>
+			</column>
+			<column name="created_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="CURRENT_TIMESTAMP">
+				<constraints nullable="false"/>
+			</column>
+		</createTable>
+
+		<createIndex tableName="claude_usage_events" indexName="idx_claude_usage_events_created_at">
+			<column name="created_at" descending="true"/>
+		</createIndex>
+		<createIndex tableName="claude_usage_events" indexName="idx_claude_usage_events_job_id">
+			<column name="job_id"/>
+		</createIndex>
+	</changeSet>
+
+</databaseChangeLog>

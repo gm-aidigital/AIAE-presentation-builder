@@ -32,6 +32,7 @@ export type AdminTypeStat = S["AdminTypeStatV1"];
 export type AdminDayVolume = S["AdminDayVolumeV1"];
 export type AdminTokenTotals = S["AdminTokenTotalsV1"];
 export type AdminTokenDay = S["AdminTokenDayV1"];
+export type AdminTokenLabel = S["AdminTokenLabelV1"];
 export type AdminFailedJob = S["AdminFailedJobV1"];
 export type AdminList = S["AdminListV1"];
 export type AdminEntry = S["AdminEntryV1"];

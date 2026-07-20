@@ -15,6 +15,7 @@ import java.util.List;
  * @param weekly      the last 7 days of volume, oldest first
  * @param tokens      team-wide Claude token consumption and its estimated cost
  * @param tokenWeekly the last 7 days of token spend, oldest first
+ * @param byLabel     measured token spend per pipeline stage, most expensive first
  * @param failures    the most recent failed jobs, newest first
  */
 public record AdminStats(
@@ -25,5 +26,6 @@ public record AdminStats(
 		List<AdminDayVolume> weekly,
 		AdminTokenTotals tokens,
 		List<AdminTokenDay> tokenWeekly,
+		List<AdminTokenLabel> byLabel,
 		List<AdminFailedJob> failures) {
 }

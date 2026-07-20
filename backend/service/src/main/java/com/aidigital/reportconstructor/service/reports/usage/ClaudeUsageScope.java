@@ -1,19 +1,32 @@
 package com.aidigital.reportconstructor.service.reports.usage;
 
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeUsage;
+import lombok.Getter;
 
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Mutable token counter shared by every thread working on one report-generation run.
+ * Who a stretch of Claude work belongs to, and the tokens it has run up so far.
  *
- * <p>One scope is created per job and handed to the worker threads the pipeline fans out to (the
- * five breakdown builders run concurrently), so all of them add into the same counters and the run
- * ends with a single total. Every field is atomic because those threads add concurrently.
+ * <p>One scope is created per unit of work and handed to the worker threads it fans out to (the
+ * five breakdown builders run concurrently), so all of them add into the same counters and the work
+ * ends with a single total. Every counter is atomic because those threads add concurrently.
+ *
+ * <p>{@link #getJobId()} is {@code null} for Claude work that belongs to no report — the line-item
+ * match runs inside a web request — which is exactly why the per-call event table exists alongside
+ * the per-job totals.
  */
+@Getter
 public class ClaudeUsageScope {
+
+	/** Report job this work belongs to, or {@code null} when it belongs to none. */
+	private final Long jobId;
+
+	private final String ownerUserId;
+
+	private final String ownerEmail;
 
 	private final AtomicLong inputTokens = new AtomicLong();
 	private final AtomicLong outputTokens = new AtomicLong();
@@ -23,7 +36,20 @@ public class ClaudeUsageScope {
 	private final AtomicReference<String> model = new AtomicReference<>();
 
 	/**
-	 * Adds one Messages API reply's usage block to the run's running totals.
+	 * Creates a scope for one unit of Claude work.
+	 *
+	 * @param jobId       report job the work belongs to, or {@code null}
+	 * @param ownerUserId internal id of the user the work is for, or {@code null}
+	 * @param ownerEmail  email of that user, or {@code null}
+	 */
+	public ClaudeUsageScope(Long jobId, String ownerUserId, String ownerEmail) {
+		this.jobId = jobId;
+		this.ownerUserId = ownerUserId;
+		this.ownerEmail = ownerEmail;
+	}
+
+	/**
+	 * Adds one Messages API reply's usage block to the running totals.
 	 *
 	 * @param input      plain input tokens the reply billed
 	 * @param output     output tokens the reply billed
@@ -43,7 +69,7 @@ public class ClaudeUsageScope {
 	}
 
 	/**
-	 * Takes the current totals as an immutable snapshot, for persisting at the end of the run.
+	 * Takes the current totals as an immutable snapshot, for persisting when the work ends.
 	 *
 	 * @return the accumulated usage
 	 */

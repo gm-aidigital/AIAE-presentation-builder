@@ -6,6 +6,7 @@ import { useVersionQuery } from "@/shared/api/useVersionQuery";
 import type {
     AdminEntry,
     AdminFailedJob,
+    AdminTokenLabel,
     AdminTypeStat,
     AdminUserStat,
     ReportSummary,
@@ -290,7 +291,7 @@ function TokensTab({ query }: { query: ReturnType<typeof useAdminStats> }) {
     const byUser = [...data.byUser].filter((u) => u.totalTokens > 0).sort((a, b) => b.totalTokens - a.totalTokens);
     const maxDayTokens = Math.max(1, ...data.tokenWeekly.map((d) => d.totalTokens));
 
-    if (t.reportsWithUsage === 0) {
+    if (t.reportsWithUsage === 0 && t.claudeCalls === 0 && t.unknownCalls === 0) {
         return (
             <EmptyState message="No token usage recorded yet. Figures appear here once a report runs with Claude enabled." />
         );
@@ -305,21 +306,26 @@ function TokensTab({ query }: { query: ReturnType<typeof useAdminStats> }) {
         { label: "Cache read", value: t.cacheReadTokens, color: "var(--rc-type-excel)" },
     ];
     const mixTotal = Math.max(1, t.totalTokens);
+    const maxStage = Math.max(1, ...data.byLabel.map((l) => l.totalTokens));
 
     return (
         <>
             <div className="ad__stats">
                 <div className="ad-stat ad-stat--hero">
                     <div className="ad-stat__num">{formatTokens(t.totalTokens)}</div>
-                    <div className="ad-stat__label">Tokens total</div>
+                    <div className="ad-stat__label">Tokens measured</div>
                     <div className="ad-stat__delta">
                         across {t.reportsWithUsage} report{t.reportsWithUsage === 1 ? "" : "s"}
+                        {t.unknownCalls > 0 && ` · +~${formatTokens(t.estimatedTokens)} unmeasured`}
                     </div>
                 </div>
                 <div className="ad-stat">
                     <div className="ad-stat__num">{formatUsd(t.costUsd)}</div>
                     <div className="ad-stat__label">Estimated cost</div>
-                    <div className="ad-stat__delta">{formatUsd(t.costThisMonthUsd)} this month</div>
+                    <div className="ad-stat__delta">
+                        {formatUsd(t.costThisMonthUsd)} this month
+                        {t.unknownCalls > 0 && ` · +~${formatUsd(t.estimatedCostUsd)} unmeasured`}
+                    </div>
                 </div>
                 <div className="ad-stat">
                     <div className="ad-stat__num">{formatTokens(t.avgTokensPerReport)}</div>
@@ -334,6 +340,31 @@ function TokensTab({ query }: { query: ReturnType<typeof useAdminStats> }) {
                     <div className="ad-stat__delta">{t.claudeCalls} Claude calls total</div>
                 </div>
             </div>
+
+            {(t.unknownCalls > 0 || t.unattributedCalls > 0) && (
+                <div className="ad-note">
+                    {t.unknownCalls > 0 && (
+                        <p className="ad-note__line">
+                            <strong>
+                                {t.unknownCalls} call{t.unknownCalls === 1 ? "" : "s"} billed but not measured
+                            </strong>{" "}
+                            — the reply was lost to a timeout, so the real cost can never be known. Their prompts
+                            were measured before sending and their replies predicted from what the same batch
+                            normally returns: <strong>~{formatTokens(t.estimatedTokens)}</strong> tokens,{" "}
+                            <strong>~{formatUsd(t.estimatedCostUsd)}</strong>. This is a floor, and it is kept out
+                            of the figures above.
+                        </p>
+                    )}
+                    {t.unattributedCalls > 0 && (
+                        <p className="ad-note__line">
+                            <strong>{formatTokens(t.unattributedTokens)}</strong> tokens (
+                            {formatUsd(t.unattributedCostUsd)}) came from {t.unattributedCalls} call
+                            {t.unattributedCalls === 1 ? "" : "s"} made outside any report — line-item matching runs
+                            during the wizard. Counted in the team total, excluded from the per-report averages.
+                        </p>
+                    )}
+                </div>
+            )}
 
             <div className="ad__body">
                 <div className="ad-users">
@@ -373,6 +404,35 @@ function TokensTab({ query }: { query: ReturnType<typeof useAdminStats> }) {
                 </div>
 
                 <div className="ad-rail">
+                    <div className="ad-rail__card">
+                        <div className="ad-rail__title">By pipeline stage</div>
+                        <div className="ad-stages">
+                            {data.byLabel.length === 0 && <div className="ad-rail__empty">Nothing recorded yet.</div>}
+                            {data.byLabel.map((s: AdminTokenLabel) => (
+                                <div className="ad-stages__row" key={s.label}>
+                                    <span className="ad-stages__name">{s.label}</span>
+                                    <span className="ad-stages__bar">
+                                        <span
+                                            className="ad-stages__fill"
+                                            style={{ width: `${Math.round((s.totalTokens / maxStage) * 100)}%` }}
+                                        />
+                                    </span>
+                                    <span className="ad-stages__val">
+                                        {formatTokens(s.totalTokens)}
+                                        {s.unknownCalls > 0 && (
+                                            <span
+                                                className="ad-stages__lost"
+                                                title={`${s.unknownCalls} call(s) lost to a timeout`}
+                                            >
+                                                +{s.unknownCalls}?
+                                            </span>
+                                        )}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
                     <div className="ad-rail__card">
                         <div className="ad-rail__title">Token mix</div>
                         <div className="ad-types">
@@ -439,6 +499,14 @@ function TokensTab({ query }: { query: ReturnType<typeof useAdminStats> }) {
                             <div className="ad-tech__row">
                                 <dt>Tokens this month</dt>
                                 <dd>{t.tokensThisMonth.toLocaleString("en-US")}</dd>
+                            </div>
+                            <div className="ad-tech__row">
+                                <dt>Measured calls</dt>
+                                <dd>{t.claudeCalls.toLocaleString("en-US")}</dd>
+                            </div>
+                            <div className="ad-tech__row">
+                                <dt>Unmeasured calls</dt>
+                                <dd>{t.unknownCalls.toLocaleString("en-US")}</dd>
                             </div>
                         </dl>
                         <p className="ad-rail__note">

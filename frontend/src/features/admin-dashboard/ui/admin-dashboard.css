@@ -136,6 +136,81 @@
     border-color: var(--rc-orange);
 }
 
+/* Caveat panel — what the figures above deliberately leave out. */
+.ad-note {
+    border: 1px solid var(--rc-amber-border);
+    background: var(--rc-amber-tint);
+    border-radius: 14px;
+    padding: 16px 20px;
+    margin-bottom: 16px;
+}
+
+.ad-note__line {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--rc-amber);
+}
+
+.ad-note__line + .ad-note__line {
+    margin-top: 10px;
+}
+
+/* Spend per pipeline stage */
+.ad-stages {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.ad-stages__row {
+    display: grid;
+    grid-template-columns: 1fr 64px auto;
+    align-items: center;
+    gap: 10px;
+}
+
+.ad-stages__name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--rc-ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ad-stages__bar {
+    height: 6px;
+    border-radius: 999px;
+    background: var(--rc-gray-wash);
+    overflow: hidden;
+}
+
+.ad-stages__fill {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: var(--rc-blue);
+}
+
+.ad-stages__val {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 5px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--rc-slate);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.ad-stages__lost {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--rc-amber);
+    cursor: help;
+}
+
 /* Two-column body */
 .ad__body {
     display: grid;

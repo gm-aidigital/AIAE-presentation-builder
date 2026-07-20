@@ -50,6 +50,7 @@ public class AnthropicMessagesClient {
 	private final ObjectMapper json = new ObjectMapper();
 	private final ClaudeResponseNormalizer normalizer;
 	private final ClaudeUsageTracker usageTracker;
+	private final PromptTokenEstimator tokenEstimator;
 
 	/**
 	 * Creates the client, capturing the configured API key and target Claude model and building an
@@ -57,14 +58,19 @@ public class AnthropicMessagesClient {
 	 *
 	 * @param props        Anthropic configuration supplying the API key and model identifier
 	 * @param normalizer   helper that extracts the assistant text content from a Messages API response
-	 * @param usageTracker per-run token accounting every reply's {@code usage} block is added to
+	 * @param usageTracker   token accounting every call is reported to
+	 * @param tokenEstimator local prompt-size estimate, used to book a call whose reply never arrived
 	 */
 	public AnthropicMessagesClient(
-			AnthropicProperties props, ClaudeResponseNormalizer normalizer, ClaudeUsageTracker usageTracker) {
+			AnthropicProperties props,
+			ClaudeResponseNormalizer normalizer,
+			ClaudeUsageTracker usageTracker,
+			PromptTokenEstimator tokenEstimator) {
 		this.apiKey = props.getApiKey();
 		this.model = props.getModel();
 		this.normalizer = normalizer;
 		this.usageTracker = usageTracker;
+		this.tokenEstimator = tokenEstimator;
 		this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
 	}
 
@@ -233,13 +239,14 @@ public class AnthropicMessagesClient {
 	 * @return the full Messages API response as a JSON tree, or {@code null} on failure
 	 */
 	public JsonNode callRaw(String prompt, int maxTokens, int timeoutSec, String label) {
+		HttpRequest req;
 		try {
 			Map<String, Object> body = Map.of(
 					"model", model,
 					"max_tokens", maxTokens,
 					"messages", List.of(Map.of("role", "user", "content", buildUserContent(prompt)))
 			);
-			HttpRequest req = HttpRequest.newBuilder()
+			req = HttpRequest.newBuilder()
 					.uri(URI.create(ENDPOINT))
 					.timeout(Duration.ofSeconds(timeoutSec))
 					.header("x-api-key", apiKey)
@@ -247,8 +254,16 @@ public class AnthropicMessagesClient {
 					.header("content-type", "application/json")
 					.POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body)))
 					.build();
+		} catch (Exception ex) {
+			// Nothing left the process, so nothing was billed and nothing is recorded.
+			log.error("[claude:{}] request could not be built: {}", label, ex.getMessage());
+			return null;
+		}
+		try {
 			HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
 			if (res.statusCode() != 200) {
+				// Rejected requests — rate limits, overloads, bad requests — are not billed, so they are
+				// deliberately not recorded as spend.
 				log.error("[claude:{}] error {} body={}", label, res.statusCode(), res.body());
 				return null;
 			}
@@ -256,7 +271,12 @@ public class AnthropicMessagesClient {
 			recordUsage(parsed, label);
 			return parsed;
 		} catch (Exception ex) {
-			log.error("[claude:{}] request failed: {}", label, ex.getMessage());
+			// The request went out and Claude may well have answered it — a read timeout or a dropped
+			// connection loses the reply, not the charge. Recording nothing here understates spend exactly
+			// on the slowest, largest calls, so the call is booked with an estimate of what it cost and
+			// flagged as such rather than dropped.
+			log.error("[claude:{}] request failed after sending: {}", label, ex.getMessage());
+			usageTracker.recordEstimated(label, tokenEstimator.estimateTokens(prompt), model);
 			return null;
 		}
 	}
@@ -280,7 +300,7 @@ public class AnthropicMessagesClient {
 		long output = usage.path("output_tokens").asLong(0);
 		long cacheWrite = usage.path("cache_creation_input_tokens").asLong(0);
 		long cacheRead = usage.path("cache_read_input_tokens").asLong(0);
-		usageTracker.record(input, output, cacheWrite, cacheRead, response.path("model").asText(model));
+		usageTracker.record(label, input, output, cacheWrite, cacheRead, response.path("model").asText(model));
 		log.debug("[claude:{}] usage in={} out={} cacheWrite={} cacheRead={}",
 				label, input, output, cacheWrite, cacheRead);
 	}

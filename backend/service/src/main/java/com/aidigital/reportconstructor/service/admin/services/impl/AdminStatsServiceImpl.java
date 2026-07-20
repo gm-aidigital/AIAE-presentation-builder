@@ -14,6 +14,7 @@ import com.aidigital.reportconstructor.service.common.error.AppException;
 import com.aidigital.reportconstructor.service.common.error.ErrorReason;
 import com.aidigital.reportconstructor.service.common.text.DisplayNameHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportJobProgressHelper;
+import com.aidigital.reportconstructor.service.reports.usage.ClaudeUsageEventService;
 import com.aidigital.reportconstructor.service.reports.usage.JobTokenUsage;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -50,6 +51,7 @@ public class AdminStatsServiceImpl implements AdminStatsService {
 	private final AdminAccessPolicy adminAccessPolicy;
 	private final DisplayNameHelper displayNameHelper;
 	private final AdminTokenAggregator tokenAggregator;
+	private final ClaudeUsageEventService usageEvents;
 	private final JobTokenUsage tokenUsage;
 	private final AdminFailureAssembler failureAssembler;
 
@@ -59,6 +61,7 @@ public class AdminStatsServiceImpl implements AdminStatsService {
 			throw new AppException(ErrorReason.C004, "Admin access required");
 		}
 		List<ReportJobEntity> all = jobs.listAllJobs();
+		var events = usageEvents.listAll();
 		OffsetDateTime now = OffsetDateTime.now();
 		return new AdminStats(
 				now.toLocalDateTime(),
@@ -66,8 +69,9 @@ public class AdminStatsServiceImpl implements AdminStatsService {
 				byUser(all, now),
 				byType(all),
 				weekly(all, now),
-				tokenAggregator.totals(all, now),
-				tokenAggregator.weekly(all, now),
+				tokenAggregator.totals(events, now),
+				tokenAggregator.weekly(events, now),
+				tokenAggregator.byLabel(events),
 				failureAssembler.recentFailures(all, FAILURE_LIMIT));
 	}
 

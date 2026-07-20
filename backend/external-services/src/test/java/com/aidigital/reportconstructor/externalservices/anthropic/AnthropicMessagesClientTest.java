@@ -1,11 +1,13 @@
 package com.aidigital.reportconstructor.externalservices.anthropic;
 
+import com.aidigital.reportconstructor.service.reports.usage.ClaudeUsageEventService;
 import com.aidigital.reportconstructor.service.reports.usage.impl.ClaudeUsageTrackerImpl;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 class AnthropicMessagesClientTest {
 
@@ -15,7 +17,8 @@ class AnthropicMessagesClientTest {
 		// the shape that used to blank a whole breakdown slide
 		AnthropicProperties props = new AnthropicProperties();
 		props.setApiKey("key");
-		AnthropicMessagesClient client = new AnthropicMessagesClient(props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl());
+		AnthropicMessagesClient client = new AnthropicMessagesClient(
+				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator());
 		String truncated = "{\"tactic_1\": [\"First bullet.\", \"Second bullet.\", \"Third bullet.\", \"Fourth bul";
 
 		// When:
@@ -32,7 +35,8 @@ class AnthropicMessagesClientTest {
 		// does not parse
 		AnthropicProperties props = new AnthropicProperties();
 		props.setApiKey("key");
-		AnthropicMessagesClient client = new AnthropicMessagesClient(props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl());
+		AnthropicMessagesClient client = new AnthropicMessagesClient(
+				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator());
 
 		// When:
 		String repaired = client.repairTruncatedJson("{\"tactic_1\": [\"Done.\"], \"tactic_2\"");
@@ -47,7 +51,8 @@ class AnthropicMessagesClientTest {
 		// not the brackets open at the point the document is cut
 		AnthropicProperties props = new AnthropicProperties();
 		props.setApiKey("key");
-		AnthropicMessagesClient client = new AnthropicMessagesClient(props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl());
+		AnthropicMessagesClient client = new AnthropicMessagesClient(
+				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator());
 
 		// When:
 		String repaired = client.repairTruncatedJson("{\"a\": [1,2], \"b\": {\"c\": 1");
@@ -61,7 +66,8 @@ class AnthropicMessagesClientTest {
 		// Given: a bullet quoting a placeholder token, whose braces must not be read as JSON structure
 		AnthropicProperties props = new AnthropicProperties();
 		props.setApiKey("key");
-		AnthropicMessagesClient client = new AnthropicMessagesClient(props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl());
+		AnthropicMessagesClient client = new AnthropicMessagesClient(
+				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator());
 
 		// When:
 		String repaired = client.repairTruncatedJson("{\"tactic_1\": [\"Cell still reads {{cr_live_n}}.\", \"Sec");
@@ -75,7 +81,8 @@ class AnthropicMessagesClientTest {
 		// Given: a reply that was cut before its first entry closed — there is nothing to salvage
 		AnthropicProperties props = new AnthropicProperties();
 		props.setApiKey("key");
-		AnthropicMessagesClient client = new AnthropicMessagesClient(props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl());
+		AnthropicMessagesClient client = new AnthropicMessagesClient(
+				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator());
 
 		// When:
 		String repaired = client.repairTruncatedJson("{\"tactic_1\": [\"Unfinished bul");
@@ -89,10 +96,10 @@ class AnthropicMessagesClientTest {
 		// Given: a run's accounting scope, and a Messages API reply carrying a usage block
 		AnthropicProperties props = new AnthropicProperties();
 		props.setApiKey("key");
-		ClaudeUsageTrackerImpl tracker = new ClaudeUsageTrackerImpl();
-		var scope = tracker.begin();
+		ClaudeUsageTrackerImpl tracker = new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class));
+		var scope = tracker.begin(7L, null, null);
 		AnthropicMessagesClient client =
-				new AnthropicMessagesClient(props, new ClaudeResponseNormalizer(), tracker);
+				new AnthropicMessagesClient(props, new ClaudeResponseNormalizer(), tracker, new PromptTokenEstimator());
 		JsonNode response = new ObjectMapper().readTree("""
 				{"model": "claude-sonnet-4-6", "usage": {"input_tokens": 1200, "output_tokens": 340,
 				"cache_creation_input_tokens": 90, "cache_read_input_tokens": 8000}}""");
@@ -115,10 +122,10 @@ class AnthropicMessagesClientTest {
 		// Given: a reply with no usage block — accounting must never break a request
 		AnthropicProperties props = new AnthropicProperties();
 		props.setApiKey("key");
-		ClaudeUsageTrackerImpl tracker = new ClaudeUsageTrackerImpl();
-		var scope = tracker.begin();
+		ClaudeUsageTrackerImpl tracker = new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class));
+		var scope = tracker.begin(7L, null, null);
 		AnthropicMessagesClient client =
-				new AnthropicMessagesClient(props, new ClaudeResponseNormalizer(), tracker);
+				new AnthropicMessagesClient(props, new ClaudeResponseNormalizer(), tracker, new PromptTokenEstimator());
 		JsonNode response = new ObjectMapper().readTree("{\"content\": []}");
 
 		// When:
