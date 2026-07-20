@@ -8,7 +8,14 @@ import { useMatchLineItems } from "../api/useMatchLineItems";
 import { fetchReportJob, startReportJob } from "../api/useReportJob";
 import { MatchModal } from "./MatchModal";
 import { Stepper } from "./Stepper";
-import { BREAKDOWNS, StepBreakdowns, type BreakdownId, type BreakdownState, type TacticView } from "./StepBreakdowns";
+import {
+    allowedBreakdowns,
+    BREAKDOWNS,
+    StepBreakdowns,
+    type BreakdownId,
+    type BreakdownState,
+    type TacticView,
+} from "./StepBreakdowns";
 import { StepDataInputs, type InputErrors } from "./StepDataInputs";
 import { StepGenerate, type GenStatus } from "./StepGenerate";
 import { StepReportType } from "./StepReportType";
@@ -363,11 +370,26 @@ function PageInner() {
         [w.mapping, budgets, summaryRows]
     );
 
+    // Enabled sections per tactic, dropped to the ones the tactic's channel actually supports (Meta,
+    // TikTok, Google Search and Performance Max have no publisher or device split).
+    const breakdownSelections = useMemo(
+        () =>
+            (w.mapping ?? []).map((m) => {
+                const state = breakdowns[m.tacticNum] ?? DEFAULT_BREAKDOWNS;
+                const allowed = allowedBreakdowns(m.tacticName, m.expectedChannel ?? "");
+                return {
+                    tacticNum: m.tacticNum,
+                    breakdowns: BREAKDOWNS.filter((b) => allowed.includes(b.id) && state[b.id]).map((b) => b.id),
+                };
+            }),
+        [w.mapping, breakdowns]
+    );
+
     // True when any tactic has at least one breakdown section enabled — those slides need the user to
     // fill the sheet's "Breakdowns" tab by hand, so Review Sheet warns and gates Confirm on it.
     const breakdownsEnabled = useMemo(
-        () => Object.values(breakdowns).some((s) => BREAKDOWNS.some((b) => s[b.id])),
-        [breakdowns]
+        () => breakdownSelections.some((s) => s.breakdowns.length > 0),
+        [breakdownSelections]
     );
 
     function toggleBreakdown(tacticNum: number, id: BreakdownId) {
@@ -392,12 +414,7 @@ function PageInner() {
             lineItemMapping: w.mapping ?? undefined,
             // Step-3 breakdown toggles → the backend clears the sections a tactic didn't enable on the
             // generated sheet's "Breakdowns" tab. One entry per mapped tactic (empty list = none enabled).
-            breakdownSelections: (w.mapping ?? []).map((m) => ({
-                tacticNum: m.tacticNum,
-                breakdowns: BREAKDOWNS.filter((b) => (breakdowns[m.tacticNum] ?? DEFAULT_BREAKDOWNS)[b.id]).map(
-                    (b) => b.id
-                ),
-            })),
+            breakdownSelections,
             bqSheetId: w.elevate?.sheetId,
             // Persisted for the admin history so reviewers can open the user's source sheets.
             mediaPlanUrl: sheetUrlFromId(w.mediaPlan?.sheetId),

@@ -12,6 +12,44 @@ export const BREAKDOWNS = [
 export type BreakdownId = (typeof BREAKDOWNS)[number]["id"];
 export type BreakdownState = Record<BreakdownId, boolean>;
 
+/**
+ * Walled-garden tactics: the ad platform reports no publisher and no device split, so only creative,
+ * geo and audience analysis can ever be filled in. Mirrors the channel map in the backend
+ * TacticCatalog for Meta, TikTok, Google Search and Performance Max.
+ */
+const CREATIVE_GEO_AUDIENCE_ONLY_TACTICS = new Set([
+    "meta (cpm)",
+    "meta (cpc)",
+    "facebook specific",
+    "meta lead forms",
+    "meta boosted posts",
+    "instagram specific",
+    "tiktok (cpm)",
+    "tiktok (cpc)",
+    "tiktok spark ads (cpm)",
+    "tiktok spark ads (cpc)",
+    "tiktok search ads",
+    "google sem",
+    "demand gen",
+    "performance max",
+]);
+
+/** Channels matching the tactics above, for mappings that carry an explicit channel. */
+const CREATIVE_GEO_AUDIENCE_ONLY_CHANNELS = new Set(["meta", "tiktok", "google search", "performance max"]);
+
+const CREATIVE_GEO_AUDIENCE_IDS: readonly BreakdownId[] = ["ca", "geo", "aud"];
+
+/**
+ * Breakdown sections offered for a tactic. Meta, TikTok, Google Search and Performance Max drop
+ * Top Publishers and Device Breakdown — those splits do not exist in the platform data.
+ */
+export function allowedBreakdowns(tacticName: string, channel: string): readonly BreakdownId[] {
+    const limited =
+        CREATIVE_GEO_AUDIENCE_ONLY_TACTICS.has(tacticName.trim().toLowerCase()) ||
+        CREATIVE_GEO_AUDIENCE_ONLY_CHANNELS.has(channel.trim().toLowerCase());
+    return limited ? CREATIVE_GEO_AUDIENCE_IDS : BREAKDOWNS.map((b) => b.id);
+}
+
 /** Max tactics the report deck template supports; extras are trimmed to this at generation time. */
 const MAX_TACTICS = 28;
 
@@ -77,7 +115,9 @@ export function StepBreakdowns({ tactics, building, sheetBuilt, onToggle, onBuil
             ) : (
                 <div className="rc-tactics">
                     {tactics.map((t) => {
-                        const count = BREAKDOWNS.filter((b) => t.on[b.id]).length;
+                        const allowed = allowedBreakdowns(t.name, t.channel);
+                        const rows = BREAKDOWNS.filter((b) => allowed.includes(b.id));
+                        const count = rows.filter((b) => t.on[b.id]).length;
                         return (
                             <div className="rc-tactic" key={t.tacticNum}>
                                 <div className="rc-tactic__head">
@@ -88,10 +128,12 @@ export function StepBreakdowns({ tactics, building, sheetBuilt, onToggle, onBuil
                                         </div>
                                         {t.meta && <div className="rc-tactic__meta">{t.meta}</div>}
                                     </div>
-                                    <span className="rc-tactic__count">{count} of 5 included</span>
+                                    <span className="rc-tactic__count">
+                                        {count} of {rows.length} included
+                                    </span>
                                 </div>
                                 <div className="rc-tactic__grid">
-                                    {BREAKDOWNS.map((b) => {
+                                    {rows.map((b) => {
                                         const on = t.on[b.id];
                                         return (
                                             <div className="rc-toggle-row" key={b.id}>
