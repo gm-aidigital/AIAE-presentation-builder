@@ -9,10 +9,10 @@ import java.io.IOException;
 import java.util.List;
 
 /**
- * Grants standing access to generated Drive files (decks) by creating a
+ * Grants standing access to generated Drive files (decks and EOC sheets) by creating a
  * {@code writer} permission per configured email. Kept separate from the deck
  * providers so the sharing policy is one testable collaborator rather than
- * inline copy-paste in each provider.
+ * inline copy-paste in each provider. Recipients come from {@link DriveShareRecipients}.
  */
 @Slf4j
 @Component
@@ -28,7 +28,7 @@ public class DriveSharer {
 	 * is returned regardless of who it could be shared with.
 	 *
 	 * @param drive  authenticated Drive client used to issue the permission calls
-	 * @param fileId Drive file id of the deck to share
+	 * @param fileId Drive file id of the file to share
 	 * @param emails email addresses to grant writer access to; null/empty is a no-op
 	 */
 	public void shareWith(Drive drive, String fileId, List<String> emails) {

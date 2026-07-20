@@ -80,10 +80,11 @@ public class GoogleProperties {
 	private String sheetsTargetFolderId = "";
 
 	/**
-	 * Optional list of email addresses every generated deck is auto-shared with
-	 * (as writers), so an admin/owner keeps access even when a report is created
-	 * in another user's My Drive. Bound from the comma-separated
-	 * {@code SLIDES_SHARE_WITH_EMAILS} env var; empty means no auto-share.
+	 * Optional list of email addresses every generated file (deck and EOC sheet) is
+	 * auto-shared with (as writers), so an admin/owner keeps access even when a report
+	 * is created in another user's My Drive. Bound from the comma-separated
+	 * {@code SLIDES_SHARE_WITH_EMAILS} env var. Admins are shared with regardless of
+	 * this list — see {@code DriveShareRecipients}.
 	 */
 	private List<String> shareWithEmails = List.of();
 

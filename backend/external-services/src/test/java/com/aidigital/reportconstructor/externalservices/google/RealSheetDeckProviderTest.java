@@ -41,7 +41,9 @@ class RealSheetDeckProviderTest {
 		when(props.getSheetsTargetFolderId()).thenReturn("");
 		SheetPacingTableWriter writer = Mockito.mock(SheetPacingTableWriter.class);
 		GoogleRequestRetrier retrier = Mockito.mock(GoogleRequestRetrier.class);
-		return new RealSheetDeckProvider(creds, props, writer, retrier);
+		DriveSharer driveSharer = Mockito.mock(DriveSharer.class);
+		DriveShareRecipients shareRecipients = Mockito.mock(DriveShareRecipients.class);
+		return new RealSheetDeckProvider(creds, props, writer, retrier, driveSharer, shareRecipients);
 	}
 
 	@Test

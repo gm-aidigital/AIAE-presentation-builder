@@ -266,12 +266,16 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 	private final String templateId;
 	private final String targetFolderId;
 	private final SheetPacingTableWriter pacingTableWriter;
+	private final DriveSharer driveSharer;
+	private final DriveShareRecipients shareRecipients;
 
 	public RealSheetDeckProvider(
 			GoogleCredentialsFactory creds, GoogleProperties props, SheetPacingTableWriter pacingTableWriter,
-			GoogleRequestRetrier retrier) {
+			GoogleRequestRetrier retrier, DriveSharer driveSharer, DriveShareRecipients shareRecipients) {
 		this.creds = creds;
 		this.retrier = retrier;
+		this.driveSharer = driveSharer;
+		this.shareRecipients = shareRecipients;
 		this.pacingTableWriter = pacingTableWriter;
 		this.sheets = new Sheets.Builder(creds.transport(), creds.jsonFactory(), creds.initializer())
 				.setApplicationName(APPLICATION_NAME)
@@ -349,6 +353,12 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 			if (!requests.isEmpty()) {
 				executeInChunks(sheetsClient, newId, requests, "createSheet batchUpdate for " + newId);
 			}
+
+			// Grant standing access to the configured recipients and every admin, so a workbook created in
+			// a user's own My Drive stays reachable. Issued after the fill: sharing is a Drive ACL write on
+			// the same file and racing it with a long batchUpdate can abort the write with 409 ABORTED
+			// (mirrors RealSlidesProvider#createDeck).
+			driveSharer.shareWith(driveClient, newId, shareRecipients.resolve());
 			return "https://docs.google.com/spreadsheets/d/" + newId + "/edit";
 		} catch (IOException ex) {
 			log.error("[sheets] createSheet failed for job {}", jobId, ex);

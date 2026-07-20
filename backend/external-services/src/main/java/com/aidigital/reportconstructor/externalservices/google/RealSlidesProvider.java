@@ -105,7 +105,7 @@ public class RealSlidesProvider implements SlidesProvider {
 	private final GoogleCredentialsFactory creds;
 	private final GoogleRequestRetrier retrier;
 	private final DriveSharer driveSharer;
-	private final List<String> shareWithEmails;
+	private final DriveShareRecipients shareRecipients;
 	private final Slides slides;
 	private final Drive drive;
 	private final String templateId;
@@ -119,7 +119,8 @@ public class RealSlidesProvider implements SlidesProvider {
 
 	public RealSlidesProvider(
 			GoogleCredentialsFactory creds, GoogleProperties props, DriveSharer driveSharer,
-			GoogleRequestRetrier retrier, BreakdownSlideNaming breakdownSlideNaming) {
+			DriveShareRecipients shareRecipients, GoogleRequestRetrier retrier,
+			BreakdownSlideNaming breakdownSlideNaming) {
 		String templateId = props.getSlidesTemplateId();
 		String targetFolderId = props.getSlidesTargetFolderId();
 		this.summaryTableObjectIds = props.getSummaryTableObjectIds();
@@ -130,7 +131,7 @@ public class RealSlidesProvider implements SlidesProvider {
 		this.breakdownSlideNaming = breakdownSlideNaming;
 		this.driveSharer = driveSharer;
 		this.retrier = retrier;
-		this.shareWithEmails = props.getShareWithEmails();
+		this.shareRecipients = shareRecipients;
 		this.creds = creds;
 		this.slides = new Slides.Builder(creds.transport(), creds.jsonFactory(), creds.initializer())
 				.setApplicationName(APPLICATION_NAME)
@@ -191,7 +192,7 @@ public class RealSlidesProvider implements SlidesProvider {
 
 			// Grant standing access to the configured recipients (e.g. an admin owner) so decks created in a
 			// user's own My Drive remain reachable — after the fill, to keep the ACL write off the content write.
-			driveSharer.shareWith(driveClient, newId, shareWithEmails);
+			driveSharer.shareWith(driveClient, newId, shareRecipients.resolve());
 			return "https://docs.google.com/presentation/d/" + newId + "/edit";
 		} catch (IOException ex) {
 			log.error("[slides] createDeck failed for job {}", jobId, ex);
