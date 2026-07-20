@@ -108,19 +108,6 @@ public class PlaceholderClaudeGateImpl implements PlaceholderClaudeGate {
 	}
 
 	@Override
-	public boolean needFunnelSummary(GeneratePayload payload) {
-		List<List<String>> adj = payload.adjRows();
-		List<List<String>> sheet = payload.sheetRows();
-		if (sheetUtils.findLabelValue(adj, "Funnel stages:") != null) {
-			return false;
-		}
-		if (sheetUtils.findLabelValue(sheet, "Funnel stages:") != null) {
-			return false;
-		}
-		return sheetUtils.collectColumnValuesBelow(sheet, MediaPlanColumn.FUNNEL.getSynonyms()).isEmpty();
-	}
-
-	@Override
 	public boolean needPrimaryKpis(GeneratePayload payload) {
 		return bothNull(payload.adjRows(), payload.sheetRows(), "Primary KPIs:");
 	}

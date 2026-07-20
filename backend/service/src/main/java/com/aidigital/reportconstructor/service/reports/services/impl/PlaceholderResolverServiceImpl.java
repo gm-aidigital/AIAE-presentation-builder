@@ -151,11 +151,6 @@ public class PlaceholderResolverServiceImpl implements PlaceholderResolverServic
 	}
 
 	@Override
-	public boolean needFunnelSummary(GeneratePayload payload) {
-		return claudeGate.needFunnelSummary(payload);
-	}
-
-	@Override
 	public boolean needPrimaryKpis(GeneratePayload payload) {
 		return claudeGate.needPrimaryKpis(payload);
 	}

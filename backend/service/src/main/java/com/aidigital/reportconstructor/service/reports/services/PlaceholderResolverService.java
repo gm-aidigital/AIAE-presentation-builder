@@ -121,15 +121,6 @@ public interface PlaceholderResolverService {
 	boolean needGeoSummary(GeneratePayload payload);
 
 	/**
-	 * Gates the AI funnel-stage summary when manual funnel stages are absent and the media plan carries
-	 * no funnel/goal column.
-	 *
-	 * @param payload the constructor request whose adjustments and sheet rows are inspected
-	 * @return {@code true} if the funnel-stage summary must be generated from the workbook
-	 */
-	boolean needFunnelSummary(GeneratePayload payload);
-
-	/**
 	 * Gates the AI primary-KPIs generation when no manual primary-KPIs value is present.
 	 *
 	 * @param payload the constructor request whose adjustments and sheet rows are inspected
