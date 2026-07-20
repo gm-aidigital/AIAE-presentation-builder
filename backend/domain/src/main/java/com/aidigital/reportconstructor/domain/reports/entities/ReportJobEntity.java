@@ -71,6 +71,30 @@ public class ReportJobEntity extends IdAwareEntity {
 	@Column(name = "error_message")
 	private String errorMessage;
 
+	/** Plain (uncached) input tokens Claude billed across the whole run; null for pre-accounting jobs. */
+	@Column(name = "input_tokens")
+	private Long inputTokens;
+
+	/** Output tokens Claude generated across the whole run; null for pre-accounting jobs. */
+	@Column(name = "output_tokens")
+	private Long outputTokens;
+
+	/** Input tokens written into the prompt cache, billed above the plain input rate. */
+	@Column(name = "cache_write_tokens")
+	private Long cacheWriteTokens;
+
+	/** Input tokens served from the prompt cache, billed well below the plain input rate. */
+	@Column(name = "cache_read_tokens")
+	private Long cacheReadTokens;
+
+	/** Number of Anthropic Messages API calls the run made. */
+	@Column(name = "claude_calls")
+	private Integer claudeCalls;
+
+	/** Claude model the run billed against, so cost stays attributable after the configured model changes. */
+	@Column(name = "claude_model")
+	private String claudeModel;
+
 	@Column(name = "created_at", nullable = false)
 	private OffsetDateTime createdAt;
 

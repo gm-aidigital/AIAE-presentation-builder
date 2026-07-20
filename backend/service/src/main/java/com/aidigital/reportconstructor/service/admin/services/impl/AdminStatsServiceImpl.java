@@ -2,6 +2,8 @@ package com.aidigital.reportconstructor.service.admin.services.impl;
 
 import com.aidigital.reportconstructor.domain.reports.entities.ReportJobEntity;
 import com.aidigital.reportconstructor.service.admin.AdminAccessPolicy;
+import com.aidigital.reportconstructor.service.admin.AdminFailureAssembler;
+import com.aidigital.reportconstructor.service.admin.AdminTokenAggregator;
 import com.aidigital.reportconstructor.service.admin.dto.AdminDayVolume;
 import com.aidigital.reportconstructor.service.admin.dto.AdminStats;
 import com.aidigital.reportconstructor.service.admin.dto.AdminTotals;
@@ -12,6 +14,7 @@ import com.aidigital.reportconstructor.service.common.error.AppException;
 import com.aidigital.reportconstructor.service.common.error.ErrorReason;
 import com.aidigital.reportconstructor.service.common.text.DisplayNameHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportJobProgressHelper;
+import com.aidigital.reportconstructor.service.reports.usage.JobTokenUsage;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -40,9 +43,15 @@ public class AdminStatsServiceImpl implements AdminStatsService {
 	private static final String TYPE_OTHER = "OTHER";
 	private static final int WEEK_DAYS = 7;
 
+	/** Failures shown on the dashboard — enough to spot a pattern, bounded so the payload stays small. */
+	private static final int FAILURE_LIMIT = 50;
+
 	private final ReportJobProgressHelper jobs;
 	private final AdminAccessPolicy adminAccessPolicy;
 	private final DisplayNameHelper displayNameHelper;
+	private final AdminTokenAggregator tokenAggregator;
+	private final JobTokenUsage tokenUsage;
+	private final AdminFailureAssembler failureAssembler;
 
 	@Override
 	public AdminStats statsFor(String callerEmail) {
@@ -52,7 +61,14 @@ public class AdminStatsServiceImpl implements AdminStatsService {
 		List<ReportJobEntity> all = jobs.listAllJobs();
 		OffsetDateTime now = OffsetDateTime.now();
 		return new AdminStats(
-				now.toLocalDateTime(), totals(all, now), byUser(all, now), byType(all), weekly(all, now));
+				now.toLocalDateTime(),
+				totals(all, now),
+				byUser(all, now),
+				byType(all),
+				weekly(all, now),
+				tokenAggregator.totals(all, now),
+				tokenAggregator.weekly(all, now),
+				failureAssembler.recentFailures(all, FAILURE_LIMIT));
 	}
 
 	/**
@@ -73,7 +89,8 @@ public class AdminStatsServiceImpl implements AdminStatsService {
 	}
 
 	/**
-	 * Groups jobs by owner into per-user rows, most reports first.
+	 * Groups jobs by owner into per-user rows carrying both report counts and token spend,
+	 * most reports first.
 	 *
 	 * @param all all report jobs
 	 * @param now reference time for the "this month" window
@@ -96,8 +113,14 @@ public class AdminStatsServiceImpl implements AdminStatsService {
 					.map(ReportJobEntity::getCreatedAt)
 					.filter(java.util.Objects::nonNull)
 					.max(Comparator.naturalOrder()).orElse(null);
+			long input = owned.stream().mapToLong(tokenUsage::inputTokens).sum();
+			long output = owned.stream().mapToLong(tokenUsage::outputTokens).sum();
+			long cache = owned.stream()
+					.mapToLong(job -> tokenUsage.cacheWriteTokens(job) + tokenUsage.cacheReadTokens(job)).sum();
+			double cost = owned.stream().mapToDouble(tokenUsage::costUsd).sum();
 			rows.add(new AdminUserStat(entry.getKey(), email, displayNameHelper.fromEmail(email), owned.size(),
-					thisMonth, last == null ? null : last.toLocalDateTime()));
+					thisMonth, last == null ? null : last.toLocalDateTime(),
+					input, output, cache, input + output + cache, cost));
 		}
 		rows.sort(Comparator.comparingInt(AdminUserStat::total).reversed());
 		return rows;

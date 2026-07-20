@@ -4,6 +4,7 @@ import com.aidigital.reportconstructor.domain.reports.entities.ReportJobEntity;
 import com.aidigital.reportconstructor.domain.reports.repositories.ReportJobRepository;
 import com.aidigital.reportconstructor.service.common.error.AppException;
 import com.aidigital.reportconstructor.service.common.error.ErrorReason;
+import com.aidigital.reportconstructor.service.reports.dto.ClaudeUsage;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportJobProgressHelper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -56,6 +57,24 @@ public class ReportJobProgressHelperImpl implements ReportJobProgressHelper {
 		jobs.findById(jobId).ifPresent(job -> {
 			job.setArtifactName(artifactName);
 			job.setSheetUrl(sheetUrl);
+			job.setUpdatedAt(OffsetDateTime.now());
+			jobs.save(job);
+		});
+	}
+
+	@Transactional
+	@Override
+	public void recordTokenUsage(Long jobId, ClaudeUsage usage) {
+		if (usage == null || usage.calls() == 0) {
+			return;
+		}
+		jobs.findById(jobId).ifPresent(job -> {
+			job.setInputTokens(usage.inputTokens());
+			job.setOutputTokens(usage.outputTokens());
+			job.setCacheWriteTokens(usage.cacheWriteTokens());
+			job.setCacheReadTokens(usage.cacheReadTokens());
+			job.setClaudeCalls(usage.calls());
+			job.setClaudeModel(usage.model());
 			job.setUpdatedAt(OffsetDateTime.now());
 			jobs.save(job);
 		});

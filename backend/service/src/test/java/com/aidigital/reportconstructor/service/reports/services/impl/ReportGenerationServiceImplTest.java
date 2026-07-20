@@ -28,6 +28,7 @@ import com.aidigital.reportconstructor.service.reports.ports.SlidesProvider;
 import com.aidigital.reportconstructor.service.reports.ports.UserGoogleTokenProvider;
 import com.aidigital.reportconstructor.service.reports.services.PlaceholderResolverService;
 import com.aidigital.reportconstructor.service.reports.services.ReportGenerationService;
+import com.aidigital.reportconstructor.service.reports.usage.impl.ClaudeUsageTrackerImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -100,7 +101,7 @@ class ReportGenerationServiceImplTest {
 		service = new ReportGenerationServiceImpl(
 				jobProgress, warnings, chartHelper, sheetHelper, publisherBreakdown, creativeBreakdown, geoBreakdown, audienceBreakdown, deviceBreakdown, placeholderReader, sheetCampaign, placeholders,
 				claude, slides, userGoogleTokens, self, claudeDefaults, fileNamer,
-				new ReportNumberParserImpl(), new Fmt(), new SimpleAsyncTaskExecutor());
+				new ReportNumberParserImpl(), new Fmt(), new SimpleAsyncTaskExecutor(), new ClaudeUsageTrackerImpl());
 	}
 
 	@Test

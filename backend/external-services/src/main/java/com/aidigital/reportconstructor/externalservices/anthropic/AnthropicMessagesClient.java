@@ -1,5 +1,6 @@
 package com.aidigital.reportconstructor.externalservices.anthropic;
 
+import com.aidigital.reportconstructor.service.reports.usage.ClaudeUsageTracker;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -48,18 +49,22 @@ public class AnthropicMessagesClient {
 	private final HttpClient http;
 	private final ObjectMapper json = new ObjectMapper();
 	private final ClaudeResponseNormalizer normalizer;
+	private final ClaudeUsageTracker usageTracker;
 
 	/**
 	 * Creates the client, capturing the configured API key and target Claude model and building an
 	 * HTTP client with a 15-second connect timeout.
 	 *
-	 * @param props      Anthropic configuration supplying the API key and model identifier
-	 * @param normalizer helper that extracts the assistant text content from a Messages API response
+	 * @param props        Anthropic configuration supplying the API key and model identifier
+	 * @param normalizer   helper that extracts the assistant text content from a Messages API response
+	 * @param usageTracker per-run token accounting every reply's {@code usage} block is added to
 	 */
-	public AnthropicMessagesClient(AnthropicProperties props, ClaudeResponseNormalizer normalizer) {
+	public AnthropicMessagesClient(
+			AnthropicProperties props, ClaudeResponseNormalizer normalizer, ClaudeUsageTracker usageTracker) {
 		this.apiKey = props.getApiKey();
 		this.model = props.getModel();
 		this.normalizer = normalizer;
+		this.usageTracker = usageTracker;
 		this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
 	}
 
@@ -247,10 +252,36 @@ public class AnthropicMessagesClient {
 				log.error("[claude:{}] error {} body={}", label, res.statusCode(), res.body());
 				return null;
 			}
-			return json.readTree(res.body());
+			JsonNode parsed = json.readTree(res.body());
+			recordUsage(parsed, label);
+			return parsed;
 		} catch (Exception ex) {
 			log.error("[claude:{}] request failed: {}", label, ex.getMessage());
 			return null;
 		}
+	}
+
+	/**
+	 * Adds a successful reply's {@code usage} block to the run's token accounting. Runs on every
+	 * 200 response — including ones whose JSON later fails to parse, because those tokens were billed
+	 * all the same and leaving them out would understate the cost of exactly the runs that went wrong.
+	 * Accounting never breaks a request: a reply with no usage block, or an unexpected shape, is
+	 * skipped silently.
+	 *
+	 * @param response the parsed Messages API response body
+	 * @param label    short tag identifying this call in log messages
+	 */
+	void recordUsage(JsonNode response, String label) {
+		JsonNode usage = response == null ? null : response.get("usage");
+		if (usage == null || !usage.isObject()) {
+			return;
+		}
+		long input = usage.path("input_tokens").asLong(0);
+		long output = usage.path("output_tokens").asLong(0);
+		long cacheWrite = usage.path("cache_creation_input_tokens").asLong(0);
+		long cacheRead = usage.path("cache_read_input_tokens").asLong(0);
+		usageTracker.record(input, output, cacheWrite, cacheRead, response.path("model").asText(model));
+		log.debug("[claude:{}] usage in={} out={} cacheWrite={} cacheRead={}",
+				label, input, output, cacheWrite, cacheRead);
 	}
 }

@@ -4,6 +4,7 @@ import com.aidigital.reportconstructor.domain.reports.entities.ReportJobEntity;
 import com.aidigital.reportconstructor.service.common.text.DisplayNameHelper;
 import com.aidigital.reportconstructor.service.reports.dto.ReportSummary;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportSummaryAssembler;
+import com.aidigital.reportconstructor.service.reports.usage.JobTokenUsage;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -17,6 +18,7 @@ import java.util.Locale;
 public class ReportSummaryAssemblerImpl implements ReportSummaryAssembler {
 
 	private final DisplayNameHelper displayNameHelper;
+	private final JobTokenUsage tokenUsage;
 
 	@Override
 	public ReportSummary toSummary(ReportJobEntity job) {
@@ -33,7 +35,11 @@ public class ReportSummaryAssemblerImpl implements ReportSummaryAssembler {
 				job.getMediaPlanUrl(),
 				job.getElevateUrl(),
 				ownerEmail,
-				ownerEmail == null || ownerEmail.isBlank() ? null : displayNameHelper.fromEmail(ownerEmail));
+				ownerEmail == null || ownerEmail.isBlank() ? null : displayNameHelper.fromEmail(ownerEmail),
+				tokenUsage.allInputTokens(job),
+				tokenUsage.outputTokens(job),
+				tokenUsage.totalTokens(job),
+				tokenUsage.costUsd(job));
 	}
 
 	/**

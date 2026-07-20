@@ -109,6 +109,33 @@
     color: rgba(255, 255, 255, 0.62);
 }
 
+/* A stat card that navigates — the Failed jobs card opens the failures list. */
+.ad-stat--action {
+    display: block;
+    width: 100%;
+    text-align: left;
+    border: 1px solid transparent;
+    font-family: var(--rc-font);
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.ad-stat--action:hover {
+    border-color: var(--rc-input-border);
+}
+
+.ad-stat--alert {
+    background: var(--rc-orange-bg);
+}
+
+.ad-stat--alert .ad-stat__num {
+    color: var(--rc-orange);
+}
+
+.ad-stat--alert:hover {
+    border-color: var(--rc-orange);
+}
+
 /* Two-column body */
 .ad__body {
     display: grid;
@@ -147,6 +174,11 @@
 .ad-users__grid {
     display: grid;
     grid-template-columns: 2.4fr 1fr 1fr 1.3fr;
+}
+
+/* Token spend adds a fifth column (input / output / total / cost). */
+.ad-users__grid--tokens {
+    grid-template-columns: 2.2fr 1fr 1fr 1fr 1fr;
 }
 
 .ad-users__th {
@@ -218,6 +250,10 @@
     color: var(--rc-ink);
 }
 
+.ad-users__total--sm {
+    font-size: 17px;
+}
+
 .ad-users__month {
     font-size: 14px;
     color: var(--rc-slate);
@@ -258,6 +294,13 @@
 
 .ad-rail__empty {
     font-size: 13px;
+    color: var(--rc-mute);
+}
+
+.ad-rail__note {
+    margin: 16px 0 0;
+    font-size: 12px;
+    line-height: 1.5;
     color: var(--rc-mute);
 }
 
@@ -474,6 +517,40 @@
     text-overflow: ellipsis;
 }
 
+.ad-reports__tokens {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 7px;
+}
+
+.ad-reports__token {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 5px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: var(--rc-gray-wash);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--rc-slate);
+    font-variant-numeric: tabular-nums;
+}
+
+.ad-reports__tokenlabel {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--rc-mute);
+}
+
+.ad-reports__token--cost {
+    background: var(--rc-tint-2);
+    color: var(--rc-blue);
+}
+
 .ad-reports__sources {
     display: flex;
     align-items: center;
@@ -543,6 +620,67 @@
 .ad-reports__open:disabled {
     opacity: 0.5;
     cursor: default;
+}
+
+/* Failures list */
+.ad-fails {
+    border: 1px solid var(--rc-card-border);
+    border-radius: 14px;
+    overflow: hidden;
+}
+
+.ad-fails__row {
+    padding: 18px 22px;
+    background: var(--rc-white);
+}
+
+.ad-fails__row + .ad-fails__row {
+    border-top: 1px solid var(--rc-line-2);
+}
+
+.ad-fails__head {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.ad-fails__meta {
+    flex: 1;
+    min-width: 0;
+}
+
+.ad-fails__step {
+    flex: none;
+    padding: 5px 12px;
+    border-radius: 999px;
+    background: var(--rc-orange-bg);
+    color: var(--rc-orange);
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    max-width: 320px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ad-fails__error {
+    margin-top: 12px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid var(--rc-line);
+    background: var(--rc-sheet-head);
+    font-family: var(--rc-mono);
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--rc-slate);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.ad-fails__spend {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--rc-mute);
 }
 
 /* Manage admins */

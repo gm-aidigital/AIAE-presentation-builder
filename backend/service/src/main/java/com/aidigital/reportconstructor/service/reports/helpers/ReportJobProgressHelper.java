@@ -1,6 +1,7 @@
 package com.aidigital.reportconstructor.service.reports.helpers;
 
 import com.aidigital.reportconstructor.domain.reports.entities.ReportJobEntity;
+import com.aidigital.reportconstructor.service.reports.dto.ClaudeUsage;
 
 import java.util.List;
 
@@ -41,6 +42,16 @@ public interface ReportJobProgressHelper {
 	 * @param sheetUrl     source/associated Google Sheet URL, or {@code null} when none
 	 */
 	void recordArtifact(Long jobId, String artifactName, String sheetUrl);
+
+	/**
+	 * Stamps the run's Claude token consumption onto a job, for the admin token-spend dashboard.
+	 * Called once the run finishes, whether it succeeded or failed — tokens spent before a failure
+	 * were still billed. A no-op when the job no longer exists or when the run made no Claude calls.
+	 *
+	 * @param jobId id of the job to stamp
+	 * @param usage the run's accumulated token consumption
+	 */
+	void recordTokenUsage(Long jobId, ClaudeUsage usage);
 
 	/**
 	 * Lists a single owner's jobs, newest first, for the "My reports" history screen.

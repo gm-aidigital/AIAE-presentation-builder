@@ -11,6 +11,7 @@ import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeSheetBatch;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
+import com.aidigital.reportconstructor.service.reports.dto.ClaudeUsage;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
 import com.aidigital.reportconstructor.service.reports.dto.GenerationTarget;
 import com.aidigital.reportconstructor.service.reports.dto.ProgressView;
@@ -34,6 +35,8 @@ import com.aidigital.reportconstructor.service.reports.ports.SlidesProvider;
 import com.aidigital.reportconstructor.service.reports.ports.UserGoogleTokenProvider;
 import com.aidigital.reportconstructor.service.reports.services.PlaceholderResolverService;
 import com.aidigital.reportconstructor.service.reports.services.ReportGenerationService;
+import com.aidigital.reportconstructor.service.reports.usage.ClaudeUsageScope;
+import com.aidigital.reportconstructor.service.reports.usage.ClaudeUsageTracker;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
@@ -104,6 +107,8 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	 * bean name so injection resolves it by name.
 	 */
 	private final AsyncTaskExecutor applicationTaskExecutor;
+	/** Per-run Claude token accounting, opened in {@link #run} and stamped onto the job when it ends. */
+	private final ClaudeUsageTracker usageTracker;
 
 	/**
 	 * Validates the brief, then enqueues the job and launches the build through the
@@ -142,6 +147,10 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	@Override
 	@Async
 	public void run(Long jobId, GeneratePayload payload, String clerkUserId, String userEmail, GenerationTarget target) {
+		// Opened before any Claude work and read back in the finally below, so a run that fails half-way
+		// still reports the tokens it burned — those are billed either way, and a failed expensive run is
+		// exactly what the admin token dashboard exists to make visible.
+		ClaudeUsageScope usageScope = usageTracker.begin();
 		try {
 			if (target == GenerationTarget.SLIDES_FROM_SHEET) {
 				// Step 2 of the sheet-as-source flow: the user-reviewed sheet is the only input, so
@@ -251,6 +260,28 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		} catch (Exception ex) {
 			log.error("[report] job {} failed", jobId, ex);
 			jobProgress.markJobFailed(jobId, ex.getMessage());
+		} finally {
+			recordUsage(jobId, usageScope);
+			usageTracker.clear();
+		}
+	}
+
+	/**
+	 * Stamps the run's token consumption onto the job. Accounting must never turn a finished report
+	 * into a failed one, so a persistence problem here is logged and swallowed.
+	 *
+	 * @param jobId      id of the job that just finished
+	 * @param usageScope the run's token counters
+	 */
+	void recordUsage(Long jobId, ClaudeUsageScope usageScope) {
+		try {
+			ClaudeUsage usage = usageScope.snapshot();
+			jobProgress.recordTokenUsage(jobId, usage);
+			log.info("[report] job {} claude usage calls={} in={} out={} cacheWrite={} cacheRead={}",
+					jobId, usage.calls(), usage.inputTokens(), usage.outputTokens(),
+					usage.cacheWriteTokens(), usage.cacheReadTokens());
+		} catch (Exception ex) {
+			log.warn("[report] job {} token usage could not be recorded: {}", jobId, ex.getMessage());
 		}
 	}
 
@@ -316,25 +347,28 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		// Claude sees at most five concurrent breakdown requests at once, far inside the account rate limit;
 		// prelim/brief/token are read-only, so the shared inputs are safe. Each helper already catches its own
 		// failures and returns a value with warnings, so a section failing cannot abort the others.
+		// Token accounting is thread-bound, so each worker is wrapped to carry the run's scope across —
+		// without it every breakdown batch (the bulk of a run's Claude spend) would go unrecorded.
+		ClaudeUsageScope usageScope = usageTracker.current();
 		CompletableFuture<BreakdownValues> publisherFuture = CompletableFuture.supplyAsync(
-				() -> publisherBreakdown.buildPublisherValues(
-						payload.sheetUrl(), payload.breakdownSelections(), prelim, brief, userGoogleToken),
+				usageTracker.inScope(usageScope, () -> publisherBreakdown.buildPublisherValues(
+						payload.sheetUrl(), payload.breakdownSelections(), prelim, brief, userGoogleToken)),
 				applicationTaskExecutor);
 		CompletableFuture<BreakdownValues> creativeFuture = CompletableFuture.supplyAsync(
-				() -> creativeBreakdown.buildCreativeValues(
-						payload.sheetUrl(), payload.breakdownSelections(), prelim, brief, userGoogleToken),
+				usageTracker.inScope(usageScope, () -> creativeBreakdown.buildCreativeValues(
+						payload.sheetUrl(), payload.breakdownSelections(), prelim, brief, userGoogleToken)),
 				applicationTaskExecutor);
 		CompletableFuture<BreakdownValues> geoFuture = CompletableFuture.supplyAsync(
-				() -> geoBreakdown.buildGeoValues(
-						payload.sheetUrl(), payload.breakdownSelections(), prelim, brief, userGoogleToken),
+				usageTracker.inScope(usageScope, () -> geoBreakdown.buildGeoValues(
+						payload.sheetUrl(), payload.breakdownSelections(), prelim, brief, userGoogleToken)),
 				applicationTaskExecutor);
 		CompletableFuture<BreakdownValues> audienceFuture = CompletableFuture.supplyAsync(
-				() -> audienceBreakdown.buildAudienceValues(
-						payload.sheetUrl(), payload.breakdownSelections(), prelim, brief, userGoogleToken),
+				usageTracker.inScope(usageScope, () -> audienceBreakdown.buildAudienceValues(
+						payload.sheetUrl(), payload.breakdownSelections(), prelim, brief, userGoogleToken)),
 				applicationTaskExecutor);
 		CompletableFuture<BreakdownValues> deviceFuture = CompletableFuture.supplyAsync(
-				() -> deviceBreakdown.buildDeviceValues(
-						payload.sheetUrl(), payload.breakdownSelections(), prelim, brief, userGoogleToken),
+				usageTracker.inScope(usageScope, () -> deviceBreakdown.buildDeviceValues(
+						payload.sheetUrl(), payload.breakdownSelections(), prelim, brief, userGoogleToken)),
 				applicationTaskExecutor);
 		BreakdownValues publisherValues = publisherFuture.join();
 		BreakdownValues creativeValues = creativeFuture.join();

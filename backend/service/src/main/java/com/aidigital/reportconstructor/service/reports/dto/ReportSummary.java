@@ -18,6 +18,10 @@ import java.time.LocalDateTime;
  * @param elevateUrl   Elevate source sheet the user connected, or {@code null}
  * @param ownerEmail   report owner email, or {@code null} when unknown
  * @param ownerName    report owner display name derived from the email
+ * @param inputTokens  Claude input tokens the run billed (plain + cache), 0 when unrecorded
+ * @param outputTokens Claude output tokens the run billed, 0 when unrecorded
+ * @param totalTokens  every token the run billed, 0 when unrecorded
+ * @param costUsd      estimated cost of those tokens at configured list prices
  */
 public record ReportSummary(
 		Long jobId,
@@ -31,5 +35,9 @@ public record ReportSummary(
 		String mediaPlanUrl,
 		String elevateUrl,
 		String ownerEmail,
-		String ownerName) {
+		String ownerName,
+		long inputTokens,
+		long outputTokens,
+		long totalTokens,
+		double costUsd) {
 }

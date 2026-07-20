@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+	Claude token accounting per report job. Every Anthropic Messages API reply carries a
+	`usage` block; the pipeline sums those over the whole run and stamps the totals here so
+	the admin dashboard can report spend per report, per user and in aggregate.
+
+	Cache tokens are kept apart from plain input tokens because they are billed at different
+	rates (cache writes cost more than input, cache reads roughly a tenth), so folding them
+	together would make the money column wrong.
+
+	All nullable: jobs that ran before this changelog keep nulls and are excluded from the
+	averages rather than counted as zero-token reports.
+-->
+<databaseChangeLog
+		xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+		xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+		xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+														https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+	<changeSet id="report-jobs-token-usage-input" author="agent">
+		<preConditions onFail="MARK_RAN">
+			<not>
+				<columnExists tableName="report_jobs" columnName="input_tokens"/>
+			</not>
+		</preConditions>
+
+		<addColumn tableName="report_jobs">
+			<column name="input_tokens" type="BIGINT"/>
+		</addColumn>
+	</changeSet>
+
+	<changeSet id="report-jobs-token-usage-output" author="agent">
+		<preConditions onFail="MARK_RAN">
+			<not>
+				<columnExists tableName="report_jobs" columnName="output_tokens"/>
+			</not>
+		</preConditions>
+
+		<addColumn tableName="report_jobs">
+			<column name="output_tokens" type="BIGINT"/>
+		</addColumn>
+	</changeSet>
+
+	<changeSet id="report-jobs-token-usage-cache-write" author="agent">
+		<preConditions onFail="MARK_RAN">
+			<not>
+				<columnExists tableName="report_jobs" columnName="cache_write_tokens"/>
+			</not>
+		</preConditions>
+
+		<addColumn tableName="report_jobs">
+			<column name="cache_write_tokens" type="BIGINT"/>
+		</addColumn>
+	</changeSet>
+
+	<changeSet id="report-jobs-token-usage-cache-read" author="agent">
+		<preConditions onFail="MARK_RAN">
+			<not>
+				<columnExists tableName="report_jobs" columnName="cache_read_tokens"/>
+			</not>
+		</preConditions>
+
+		<addColumn tableName="report_jobs">
+			<column name="cache_read_tokens" type="BIGINT"/>
+		</addColumn>
+	</changeSet>
+
+	<changeSet id="report-jobs-token-usage-calls" author="agent">
+		<preConditions onFail="MARK_RAN">
+			<not>
+				<columnExists tableName="report_jobs" columnName="claude_calls"/>
+			</not>
+		</preConditions>
+
+		<addColumn tableName="report_jobs">
+			<column name="claude_calls" type="INTEGER"/>
+		</addColumn>
+	</changeSet>
+
+	<changeSet id="report-jobs-token-usage-model" author="agent">
+		<preConditions onFail="MARK_RAN">
+			<not>
+				<columnExists tableName="report_jobs" columnName="claude_model"/>
+			</not>
+		</preConditions>
+
+		<addColumn tableName="report_jobs">
+			<column name="claude_model" type="TEXT"/>
+		</addColumn>
+	</changeSet>
+
+</databaseChangeLog>

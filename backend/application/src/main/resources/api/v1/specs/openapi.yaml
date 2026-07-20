@@ -1019,7 +1019,7 @@ components:
 
     ReportSummaryV1:
       type: object
-      required: [ jobId, status, title, createdAt ]
+      required: [ jobId, status, title, createdAt, inputTokens, outputTokens, totalTokens, costUsd ]
       properties:
         jobId: { type: integer, format: int64 }
         type: { type: string, description: "Report type code (e.g. EOM/EOC), when known." }
@@ -1033,6 +1033,10 @@ components:
         elevateUrl: { type: string, description: "Elevate row-data source sheet the user connected (admin all-reports view)." }
         ownerEmail: { type: string, description: "Report owner email — populated only for the admin all-reports view." }
         ownerName: { type: string, description: "Report owner display name — populated only for the admin all-reports view." }
+        inputTokens: { type: integer, format: int64, description: "Claude input tokens this report billed (plain + prompt cache); 0 when the run predates token accounting." }
+        outputTokens: { type: integer, format: int64, description: "Claude output tokens this report billed; 0 when unrecorded." }
+        totalTokens: { type: integer, format: int64, description: "Every Claude token this report billed; 0 when unrecorded." }
+        costUsd: { type: number, format: double, description: "Estimated cost of this report's tokens in USD at configured list prices." }
 
     # ── Admin management (admins by email) ──────────────────────────────────────
     AdminSourceV1:
@@ -1070,7 +1074,7 @@ components:
     # ── Admin dashboard (team statistics + technical health) ────────────────────
     AdminStatsV1:
       type: object
-      required: [ updatedAt, totals, byUser, byType, weekly ]
+      required: [ updatedAt, totals, byUser, byType, weekly, tokens, tokenWeekly, failures ]
       properties:
         updatedAt: { type: string, format: date-time, description: "When the aggregation was computed." }
         totals: { $ref: "#/components/schemas/AdminTotalsV1" }
@@ -1084,6 +1088,15 @@ components:
           type: array
           description: "Report volume for each of the last 7 days, oldest first."
           items: { $ref: "#/components/schemas/AdminDayVolumeV1" }
+        tokens: { $ref: "#/components/schemas/AdminTokenTotalsV1" }
+        tokenWeekly:
+          type: array
+          description: "Claude token spend for each of the last 7 days, oldest first."
+          items: { $ref: "#/components/schemas/AdminTokenDayV1" }
+        failures:
+          type: array
+          description: "The most recent failed jobs, newest first, with the step each died on."
+          items: { $ref: "#/components/schemas/AdminFailedJobV1" }
 
     AdminTotalsV1:
       type: object
@@ -1097,7 +1110,7 @@ components:
 
     AdminUserStatV1:
       type: object
-      required: [ email, name, total, thisMonth ]
+      required: [ email, name, total, thisMonth, inputTokens, outputTokens, cacheTokens, totalTokens, costUsd ]
       properties:
         userId: { type: string }
         email: { type: string }
@@ -1105,6 +1118,11 @@ components:
         total: { type: integer, format: int32 }
         thisMonth: { type: integer, format: int32 }
         lastActivity: { type: string, format: date-time, description: "Timestamp of the user's most recent report." }
+        inputTokens: { type: integer, format: int64, description: "Plain (uncached) Claude input tokens across the user's reports." }
+        outputTokens: { type: integer, format: int64, description: "Claude output tokens across the user's reports." }
+        cacheTokens: { type: integer, format: int64, description: "Prompt-cache write + read tokens across the user's reports." }
+        totalTokens: { type: integer, format: int64, description: "Every Claude token across the user's reports." }
+        costUsd: { type: number, format: double, description: "Estimated cost of the user's reports in USD at configured list prices." }
 
     AdminTypeStatV1:
       type: object
@@ -1120,6 +1138,65 @@ components:
         date: { type: string, format: date }
         label: { type: string, description: "Short weekday label, e.g. 'Mon'." }
         count: { type: integer, format: int32 }
+
+    # ── Claude token consumption (admin "Token consumption" tab) ────────────────
+    AdminTokenTotalsV1:
+      type: object
+      description: |
+        Team-wide Claude token consumption. Cache write/read tokens are reported apart from
+        plain input because they are billed at different rates. Costs are estimates at the
+        server's configured list prices, computed at read time. Averages are taken over
+        `reportsWithUsage` only — reports generated before token accounting existed carry no
+        counts and would otherwise drag the mean down.
+      required:
+        [ reportsWithUsage, claudeCalls, inputTokens, outputTokens, cacheWriteTokens, cacheReadTokens,
+          totalTokens, costUsd, tokensThisMonth, costThisMonthUsd, avgTokensPerReport, avgInputPerReport,
+          avgOutputPerReport, avgCostPerReportUsd ]
+      properties:
+        reportsWithUsage: { type: integer, format: int32, description: "Reports that carry recorded token counts." }
+        claudeCalls: { type: integer, format: int64, description: "Anthropic API calls those reports made." }
+        inputTokens: { type: integer, format: int64 }
+        outputTokens: { type: integer, format: int64 }
+        cacheWriteTokens: { type: integer, format: int64, description: "Input tokens written into the prompt cache." }
+        cacheReadTokens: { type: integer, format: int64, description: "Input tokens served from the prompt cache." }
+        totalTokens: { type: integer, format: int64, description: "Every token above, summed." }
+        costUsd: { type: number, format: double, description: "Estimated total cost in USD." }
+        tokensThisMonth: { type: integer, format: int64 }
+        costThisMonthUsd: { type: number, format: double }
+        avgTokensPerReport: { type: integer, format: int64 }
+        avgInputPerReport: { type: integer, format: int64, description: "Mean input-side tokens (plain + cache) per report." }
+        avgOutputPerReport: { type: integer, format: int64 }
+        avgCostPerReportUsd: { type: number, format: double }
+
+    AdminTokenDayV1:
+      type: object
+      required: [ date, label, totalTokens, costUsd ]
+      properties:
+        date: { type: string, format: date }
+        label: { type: string, description: "Short weekday label, e.g. 'Mon'." }
+        totalTokens: { type: integer, format: int64 }
+        costUsd: { type: number, format: double }
+
+    AdminFailedJobV1:
+      type: object
+      description: |
+        One failed report job with the pipeline step it died on. `step`/`stepLabel` are the last
+        progress values the job reached before the failure, so they name the stage that threw.
+      required: [ jobId, title, step, total, errorMessage, totalTokens, costUsd ]
+      properties:
+        jobId: { type: integer, format: int64 }
+        type: { type: string, description: "Report type code, when known." }
+        title: { type: string, description: "Human-friendly report name." }
+        ownerEmail: { type: string }
+        ownerName: { type: string }
+        createdAt: { type: string, format: date-time }
+        failedAt: { type: string, format: date-time, description: "When the job was last updated, i.e. when it failed." }
+        step: { type: integer, format: int32, description: "1-based pipeline step the job had reached." }
+        total: { type: integer, format: int32, description: "Number of steps in the pipeline." }
+        stepLabel: { type: string, description: "Name of that step, e.g. 'Claude — executive batch (C)'." }
+        errorMessage: { type: string, description: "Recorded failure message, or a placeholder when none was captured." }
+        totalTokens: { type: integer, format: int64, description: "Tokens the failed run had already consumed." }
+        costUsd: { type: number, format: double, description: "Estimated cost of those tokens in USD." }
 
     VersionV1:
       type: object

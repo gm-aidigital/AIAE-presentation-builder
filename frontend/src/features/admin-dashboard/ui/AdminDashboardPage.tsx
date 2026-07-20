@@ -3,7 +3,14 @@ import { EmptyState } from "@/shared/ui/EmptyState";
 import { ErrorAlert } from "@/shared/ui/ErrorAlert";
 import { LoadingBlock } from "@/shared/ui/LoadingBlock";
 import { useVersionQuery } from "@/shared/api/useVersionQuery";
-import type { AdminEntry, AdminTypeStat, AdminUserStat, ReportSummary } from "@/shared/api/types";
+import type {
+    AdminEntry,
+    AdminFailedJob,
+    AdminTypeStat,
+    AdminUserStat,
+    ReportSummary,
+} from "@/shared/api/types";
+import { formatTokens, formatUsd } from "../lib/tokenFormat";
 import { useAdminStats } from "../api/useAdminStats";
 import { useAllReports } from "../api/useAllReports";
 import { useAddAdmin, useAdmins, useRemoveAdmin } from "../api/useAdmins";
@@ -17,7 +24,16 @@ const updatedFmt = new Intl.DateTimeFormat("en-US", {
     minute: "2-digit",
 });
 
-type Tab = "overview" | "reports" | "admins";
+type Tab = "overview" | "tokens" | "reports" | "failures" | "admins";
+
+const TAB_LABELS: Record<Tab, string> = {
+    overview: "Overview",
+    tokens: "Token consumption",
+    reports: "All reports",
+    failures: "Failures",
+    admins: "Admins",
+};
+
 
 /** First-letter initials (max 2) from a display name. */
 function initials(name: string): string {
@@ -88,7 +104,7 @@ export function AdminDashboardPage() {
                 </div>
 
                 <div className="ad-tabs" role="tablist">
-                    {(["overview", "reports", "admins"] as Tab[]).map((t) => (
+                    {(Object.keys(TAB_LABELS) as Tab[]).map((t) => (
                         <button
                             key={t}
                             type="button"
@@ -97,13 +113,15 @@ export function AdminDashboardPage() {
                             className={`ad-tabs__tab${tab === t ? " ad-tabs__tab--active" : ""}`}
                             onClick={() => setTab(t)}
                         >
-                            {t === "overview" ? "Overview" : t === "reports" ? "All reports" : "Admins"}
+                            {TAB_LABELS[t]}
                         </button>
                     ))}
                 </div>
 
-                {tab === "overview" && <OverviewTab query={stats} />}
+                {tab === "overview" && <OverviewTab query={stats} onShowFailures={() => setTab("failures")} />}
+                {tab === "tokens" && <TokensTab query={stats} />}
                 {tab === "reports" && <AllReportsTab />}
+                {tab === "failures" && <FailuresTab query={stats} />}
                 {tab === "admins" && <AdminsTab />}
             </div>
         </div>
@@ -111,7 +129,13 @@ export function AdminDashboardPage() {
 }
 
 /** The statistics overview (cards + by-user + by-type + weekly + technical). */
-function OverviewTab({ query }: { query: ReturnType<typeof useAdminStats> }) {
+function OverviewTab({
+    query,
+    onShowFailures,
+}: {
+    query: ReturnType<typeof useAdminStats>;
+    onShowFailures: () => void;
+}) {
     const { data, isLoading, isError, error } = query;
     const { data: version } = useVersionQuery();
 
@@ -124,23 +148,35 @@ function OverviewTab({ query }: { query: ReturnType<typeof useAdminStats> }) {
     const maxType = Math.max(1, ...byType.map((t: AdminTypeStat) => t.count));
     const maxWeek = Math.max(1, ...weekly.map((d) => d.count));
 
-    const cards = [
-        { value: String(totals.reportsTotal), label: "Reports total", delta: `${totals.thisMonth} this month`, hero: true },
-        { value: String(totals.thisMonth), label: "This month", delta: "created so far" },
-        { value: String(totals.activeUsers), label: "Active users", delta: "with a report" },
-        { value: String(totals.failed), label: "Failed jobs", delta: `${totals.running} running now` },
-    ];
-
     return (
         <>
             <div className="ad__stats">
-                {cards.map((c) => (
-                    <div key={c.label} className={`ad-stat${c.hero ? " ad-stat--hero" : ""}`}>
-                        <div className="ad-stat__num">{c.value}</div>
-                        <div className="ad-stat__label">{c.label}</div>
-                        <div className="ad-stat__delta">{c.delta}</div>
+                <div className="ad-stat ad-stat--hero">
+                    <div className="ad-stat__num">{totals.reportsTotal}</div>
+                    <div className="ad-stat__label">Reports total</div>
+                    <div className="ad-stat__delta">{totals.thisMonth} this month</div>
+                </div>
+                <div className="ad-stat">
+                    <div className="ad-stat__num">{totals.thisMonth}</div>
+                    <div className="ad-stat__label">This month</div>
+                    <div className="ad-stat__delta">created so far</div>
+                </div>
+                <div className="ad-stat">
+                    <div className="ad-stat__num">{totals.activeUsers}</div>
+                    <div className="ad-stat__label">Active users</div>
+                    <div className="ad-stat__delta">with a report</div>
+                </div>
+                <button
+                    type="button"
+                    className={`ad-stat ad-stat--action${totals.failed > 0 ? " ad-stat--alert" : ""}`}
+                    onClick={onShowFailures}
+                >
+                    <div className="ad-stat__num">{totals.failed}</div>
+                    <div className="ad-stat__label">Failed jobs</div>
+                    <div className="ad-stat__delta">
+                        {totals.failed > 0 ? "See what broke →" : `${totals.running} running now`}
                     </div>
-                ))}
+                </button>
             </div>
 
             <div className="ad__body">
@@ -241,6 +277,231 @@ function OverviewTab({ query }: { query: ReturnType<typeof useAdminStats> }) {
     );
 }
 
+/** Claude token consumption — totals, averages, cost, the week's trend, and who spent what. */
+function TokensTab({ query }: { query: ReturnType<typeof useAdminStats> }) {
+    const { data, isLoading, isError, error } = query;
+
+    if (isLoading) return <LoadingBlock label="Loading token consumption…" />;
+    if (isError || !data) {
+        return <ErrorAlert message={error instanceof Error ? error.message : "Could not load statistics"} />;
+    }
+
+    const t = data.tokens;
+    const byUser = [...data.byUser].filter((u) => u.totalTokens > 0).sort((a, b) => b.totalTokens - a.totalTokens);
+    const maxDayTokens = Math.max(1, ...data.tokenWeekly.map((d) => d.totalTokens));
+
+    if (t.reportsWithUsage === 0) {
+        return (
+            <EmptyState message="No token usage recorded yet. Figures appear here once a report runs with Claude enabled." />
+        );
+    }
+
+    // Input-side classes are charted apart from output because they are billed at different rates —
+    // the same reason the backend stores them separately.
+    const mix = [
+        { label: "Input", value: t.inputTokens, color: "var(--rc-blue)" },
+        { label: "Output", value: t.outputTokens, color: "var(--rc-orange)" },
+        { label: "Cache write", value: t.cacheWriteTokens, color: "var(--rc-type-eom)" },
+        { label: "Cache read", value: t.cacheReadTokens, color: "var(--rc-type-excel)" },
+    ];
+    const mixTotal = Math.max(1, t.totalTokens);
+
+    return (
+        <>
+            <div className="ad__stats">
+                <div className="ad-stat ad-stat--hero">
+                    <div className="ad-stat__num">{formatTokens(t.totalTokens)}</div>
+                    <div className="ad-stat__label">Tokens total</div>
+                    <div className="ad-stat__delta">
+                        across {t.reportsWithUsage} report{t.reportsWithUsage === 1 ? "" : "s"}
+                    </div>
+                </div>
+                <div className="ad-stat">
+                    <div className="ad-stat__num">{formatUsd(t.costUsd)}</div>
+                    <div className="ad-stat__label">Estimated cost</div>
+                    <div className="ad-stat__delta">{formatUsd(t.costThisMonthUsd)} this month</div>
+                </div>
+                <div className="ad-stat">
+                    <div className="ad-stat__num">{formatTokens(t.avgTokensPerReport)}</div>
+                    <div className="ad-stat__label">Avg per report</div>
+                    <div className="ad-stat__delta">
+                        {formatTokens(t.avgInputPerReport)} in / {formatTokens(t.avgOutputPerReport)} out
+                    </div>
+                </div>
+                <div className="ad-stat">
+                    <div className="ad-stat__num">{formatUsd(t.avgCostPerReportUsd)}</div>
+                    <div className="ad-stat__label">Avg cost per report</div>
+                    <div className="ad-stat__delta">{t.claudeCalls} Claude calls total</div>
+                </div>
+            </div>
+
+            <div className="ad__body">
+                <div className="ad-users">
+                    <div className="ad-users__head">
+                        <span className="ad-users__title">Spend by user</span>
+                        <span className="ad-users__count">{byUser.length} with usage</span>
+                    </div>
+                    <div className="ad-users__grid ad-users__grid--tokens">
+                        <div className="ad-users__th">User</div>
+                        <div className="ad-users__th">Input</div>
+                        <div className="ad-users__th">Output</div>
+                        <div className="ad-users__th">Total</div>
+                        <div className="ad-users__th">Cost</div>
+                        {byUser.map((u: AdminUserStat, i: number) => (
+                            <div className="ad-users__rowcontents" key={u.userId ?? u.email ?? i}>
+                                <div className="ad-users__user">
+                                    <span
+                                        className="ad-users__avatar"
+                                        style={{ background: `var(--rc-avatar-${(i % 6) + 1})` }}
+                                    >
+                                        {initials(u.name)}
+                                    </span>
+                                    <div className="ad-users__id">
+                                        <div className="ad-users__email">{u.email ?? "—"}</div>
+                                        <div className="ad-users__name">
+                                            {u.total} report{u.total === 1 ? "" : "s"}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="ad-users__month">{formatTokens(u.inputTokens + u.cacheTokens)}</div>
+                                <div className="ad-users__month">{formatTokens(u.outputTokens)}</div>
+                                <div className="ad-users__total ad-users__total--sm">{formatTokens(u.totalTokens)}</div>
+                                <div className="ad-users__month">{formatUsd(u.costUsd)}</div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                <div className="ad-rail">
+                    <div className="ad-rail__card">
+                        <div className="ad-rail__title">Token mix</div>
+                        <div className="ad-types">
+                            {mix.map((m) => (
+                                <div key={m.label}>
+                                    <div className="ad-types__row">
+                                        <span className="ad-types__name">
+                                            <span className="ad-types__dot" style={{ background: m.color }} />
+                                            {m.label}
+                                        </span>
+                                        <span className="ad-types__count">{formatTokens(m.value)}</span>
+                                    </div>
+                                    <div className="ad-types__track">
+                                        <div
+                                            className="ad-types__fill"
+                                            style={{
+                                                width: `${Math.round((m.value / mixTotal) * 100)}%`,
+                                                background: m.color,
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="ad-rail__card ad-rail__card--tint">
+                        <div className="ad-rail__title">Tokens this week</div>
+                        <div className="ad-week">
+                            {data.tokenWeekly.map((d) => (
+                                <div className="ad-week__col" key={d.date}>
+                                    <div
+                                        className="ad-week__bar"
+                                        style={{
+                                            height: `${Math.max(6, Math.round((d.totalTokens / maxDayTokens) * 76))}px`,
+                                        }}
+                                        title={`${formatTokens(d.totalTokens)} tokens · ${formatUsd(d.costUsd)}`}
+                                    />
+                                    <span className="ad-week__label">{d.label}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="ad-rail__card">
+                        <div className="ad-rail__title">Breakdown</div>
+                        <dl className="ad-tech">
+                            <div className="ad-tech__row">
+                                <dt>Input tokens</dt>
+                                <dd>{t.inputTokens.toLocaleString("en-US")}</dd>
+                            </div>
+                            <div className="ad-tech__row">
+                                <dt>Output tokens</dt>
+                                <dd>{t.outputTokens.toLocaleString("en-US")}</dd>
+                            </div>
+                            <div className="ad-tech__row">
+                                <dt>Cache write</dt>
+                                <dd>{t.cacheWriteTokens.toLocaleString("en-US")}</dd>
+                            </div>
+                            <div className="ad-tech__row">
+                                <dt>Cache read</dt>
+                                <dd>{t.cacheReadTokens.toLocaleString("en-US")}</dd>
+                            </div>
+                            <div className="ad-tech__row">
+                                <dt>Tokens this month</dt>
+                                <dd>{t.tokensThisMonth.toLocaleString("en-US")}</dd>
+                            </div>
+                        </dl>
+                        <p className="ad-rail__note">
+                            Costs are estimates at the server's configured list prices and exclude any negotiated
+                            discount.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </>
+    );
+}
+
+/** Failed jobs — what broke, on which pipeline step, and what it had already cost. */
+function FailuresTab({ query }: { query: ReturnType<typeof useAdminStats> }) {
+    const { data, isLoading, isError, error } = query;
+
+    if (isLoading) return <LoadingBlock label="Loading failures…" />;
+    if (isError || !data) {
+        return <ErrorAlert message={error instanceof Error ? error.message : "Could not load statistics"} />;
+    }
+
+    const failures = data.failures;
+    if (failures.length === 0) return <EmptyState message="No failed jobs. Every report finished." />;
+
+    return (
+        <div className="ad-fails">
+            <div className="ad-reports__head">
+                <span className="ad-reports__title">Failed jobs</span>
+                <span className="ad-reports__count">{failures.length} shown</span>
+            </div>
+            <div className="ad-fails__list">
+                {failures.map((f: AdminFailedJob) => (
+                    <div key={f.jobId} className="ad-fails__row">
+                        <div className="ad-fails__head">
+                            <span className="ad-reports__badge" style={{ background: typeColor(f.type ?? "") }}>
+                                {(f.type ?? "REP").toUpperCase()}
+                            </span>
+                            <div className="ad-fails__meta">
+                                <div className="ad-reports__name">{f.title}</div>
+                                <div className="ad-reports__sub">
+                                    {f.ownerEmail ?? "—"} · job #{f.jobId} ·{" "}
+                                    {f.failedAt ? updatedFmt.format(new Date(f.failedAt)) : ""}
+                                </div>
+                            </div>
+                            <span className="ad-fails__step">
+                                Step {f.step}/{f.total}
+                                {f.stepLabel ? ` · ${f.stepLabel}` : ""}
+                            </span>
+                        </div>
+                        <div className="ad-fails__error">{f.errorMessage}</div>
+                        {f.totalTokens > 0 && (
+                            <div className="ad-fails__spend">
+                                Burned {formatTokens(f.totalTokens)} tokens ({formatUsd(f.costUsd)}) before failing.
+                            </div>
+                        )}
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
 /** Team-wide report history — every user's reports in one list. */
 function AllReportsTab() {
     const { data, isLoading, isError, error } = useAllReports();
@@ -268,6 +529,19 @@ function AllReportsTab() {
                                 {r.ownerEmail ?? "—"} · {r.createdAt ? dateFmt.format(new Date(r.createdAt)) : ""} ·{" "}
                                 {statusLabel(r.status)}
                             </div>
+                            {r.totalTokens > 0 && (
+                                <div className="ad-reports__tokens">
+                                    <span className="ad-reports__token">
+                                        <span className="ad-reports__tokenlabel">in</span> {formatTokens(r.inputTokens)}
+                                    </span>
+                                    <span className="ad-reports__token">
+                                        <span className="ad-reports__tokenlabel">out</span> {formatTokens(r.outputTokens)}
+                                    </span>
+                                    <span className="ad-reports__token ad-reports__token--cost">
+                                        {formatUsd(r.costUsd)}
+                                    </span>
+                                </div>
+                            )}
                             {(r.mediaPlanUrl || r.elevateUrl) && (
                                 <div className="ad-reports__sources">
                                     <span className="ad-reports__srclabel">Sources:</span>
