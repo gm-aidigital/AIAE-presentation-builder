@@ -209,14 +209,32 @@ public interface ClaudeClient {
 	String summarizeGeo(List<List<String>> geoRows);
 
 	/**
-	 * Whole workbook → short comma-separated marketing-funnel-stage string (e.g.
+	 * Per-tactic goals → short comma-separated marketing-funnel-stage string (e.g.
 	 * {@code "Awareness, Consideration, Conversion"}), or {@code null}. Used as a fallback when the media
 	 * plan carries no explicit funnel/goal column.
 	 *
-	 * @param geoRows every tab of the media-plan workbook flattened into one grid (same shape as {@link #summarizeGeo})
-	 * @return the comma-separated funnel-stage line, or {@code null}
+	 * <p>The goals are the reviewed {@code {{tactic n goal}}} values read back from the assembled EOC sheet,
+	 * so this runs in the slides-from-sheet step rather than during sheet assembly: the model reads a dozen
+	 * short strings the user has already seen, not a scan of the whole source workbook.
+	 *
+	 * @param tacticGoals the per-tactic goal strings in tactic order; blank entries are ignored
+	 * @return the comma-separated funnel-stage line, or {@code null} when no goal carries any text
 	 */
-	String summarizeFunnelStages(List<List<String>> geoRows);
+	String summarizeFunnelStages(List<String> tacticGoals);
+
+	/**
+	 * Free-text campaign brief → compact thesis-style digest, or {@code null} when the brief is blank or the
+	 * call fails.
+	 *
+	 * <p>The brief is user-pasted and unbounded, and every narrative batch repeats it as context. Digesting
+	 * it once keeps the campaign facts the copy must stay faithful to while paying for the full text only
+	 * once. The digest is written into the EOC sheet's {@code {{RFP info}}} field, so the slides-from-sheet
+	 * step reads it back instead of digesting again — and the user can edit it like any other sheet value.
+	 *
+	 * @param brief the free-text campaign brief, optionally with its change-log section appended
+	 * @return the digest, or {@code null} when the caller should fall back to the raw brief
+	 */
+	String digestBrief(String brief);
 
 	/**
 	 * Media plan → single-line primary-KPIs string (e.g. {@code "Imps, CTR, VCR, R&F"}) reflecting the KPIs

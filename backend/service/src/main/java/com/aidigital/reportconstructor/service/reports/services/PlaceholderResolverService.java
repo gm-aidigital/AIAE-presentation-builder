@@ -45,6 +45,8 @@ public interface PlaceholderResolverService {
 	 * @param primaryKpis   AI-generated primary-KPIs line, or {@code null} when a manual value is used instead
 	 * @param geoSummary    AI-generated geo summary, or {@code null} when the Geo tab is not used
 	 * @param funnelSummary AI-generated funnel-stage summary, or {@code null} when a manual/column value is used instead
+	 * @param briefDigest   Claude's condensed campaign brief filling {@code {{RFP info}}}, or {@code null} to fall
+	 *                      back to the raw brief from the payload
 	 * @param frequencies   the {@link #computeFrequencies} result for this report, reused so
 	 *                      {@code {{reach_f}} / {{reach_f_pres}}} match the actual reach behind {@code {{f_fact}}}
 	 * @param tacticCount   number of real tactics to resolve (1..28); tactic slots above this are not built, so the
@@ -60,6 +62,7 @@ public interface PlaceholderResolverService {
 			String primaryKpis,
 			String geoSummary,
 			String funnelSummary,
+			String briefDigest,
 			CampaignFrequencies frequencies,
 			int tacticCount
 	);

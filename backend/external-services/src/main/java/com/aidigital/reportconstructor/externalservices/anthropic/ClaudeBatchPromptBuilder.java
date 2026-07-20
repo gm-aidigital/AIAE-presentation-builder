@@ -1448,52 +1448,92 @@ public class ClaudeBatchPromptBuilder {
 	}
 
 	/**
-	 * Builds the geo summarisation prompt from the whole media-plan workbook.
+	 * Builds the geo summarisation prompt from the geography-bearing rows of the media-plan workbook.
 	 *
-	 * @param geoRows every tab of the media-plan workbook flattened into one grid, each tab introduced by a
-	 *                {@code "### TAB: <name> ###"} marker row; each inner list is one row whose cells are joined with
-	 *                {@code " | "} (null rows are skipped)
-	 * @return a prompt asking Claude to locate the geographic targeting anywhere in the workbook and condense it into
-	 * a single short comma-separated string of key regions
+	 * <p>The caller passes rows already reduced by {@link WorkbookGeoFilter}, never the raw workbook: the
+	 * answer is one ≤40-character string, so shipping every budget and pacing row of a large client plan
+	 * only risked blowing the model's context window.
+	 *
+	 * @param geoRows the kept workbook rows, each already rendered as its cells joined with {@code " | "} and
+	 *                interleaved with the {@code "### TAB: <name> ###"} markers of the tabs they came from
+	 * @return a prompt asking Claude to condense the campaign's geographic targeting into a single short
+	 * comma-separated string of key regions
 	 */
-	public String buildGeoPrompt(List<List<String>> geoRows) {
-		StringBuilder tab = new StringBuilder();
-		for (List<String> row : geoRows) {
-			if (row == null) {
-				continue;
-			}
-			tab.append(String.join(" | ", row)).append('\n');
-		}
-		return "Below are the tabs of a media-plan workbook (each tab preceded by a '### TAB: <name> ###' marker).\n"
+	public String buildGeoPrompt(List<String> geoRows) {
+		return "Below are the geography-related rows of a media-plan workbook (each tab preceded by a "
+				+ "'### TAB: <name> ###' marker).\n"
 				+ "Find the campaign's geographic targeting locations anywhere in this data and summarise them into a "
 				+ "single short comma-separated string (≤40 characters), naming the most important "
 				+ "regions/cities/states. Ignore non-geographic data. No explanation — return only the string.\n\n"
-				+ tab;
+				+ String.join("\n", geoRows);
 	}
 
 	/**
-	 * Builds the funnel-stage summarisation prompt from the whole media-plan workbook.
+	 * Builds the funnel-stage summarisation prompt from the campaign's per-tactic goals.
 	 *
-	 * @param geoRows every tab of the media-plan workbook flattened into one grid, each tab introduced by a
-	 *                {@code "### TAB: <name> ###"} marker row; each inner list is one row whose cells are joined with
-	 *                {@code " | "} (null rows are skipped)
-	 * @return a prompt asking Claude to infer the campaign's marketing funnel stages anywhere in the workbook and
-	 * condense them into a single short comma-separated string
+	 * <p>The goals are the reviewed {@code {{tactic n goal}}} values read back from the assembled EOC sheet,
+	 * so the funnel line is inferred from a dozen short strings the user has already seen and can correct —
+	 * not from a scan of the whole source workbook.
+	 *
+	 * @param tacticGoals the non-blank per-tactic goal strings, in tactic order
+	 * @return a prompt asking Claude to condense the goals into a single short comma-separated funnel-stage
+	 * string, or empty when no goal carries any text
 	 */
-	public String buildFunnelPrompt(List<List<String>> geoRows) {
-		StringBuilder tab = new StringBuilder();
-		for (List<String> row : geoRows) {
-			if (row == null) {
-				continue;
+	public Optional<String> buildFunnelFromGoalsPrompt(List<String> tacticGoals) {
+		List<String> goals = new ArrayList<>();
+		if (tacticGoals != null) {
+			for (String goal : tacticGoals) {
+				if (normalizer.notBlank(goal)) {
+					goals.add("  - " + goal.trim());
+				}
 			}
-			tab.append(String.join(" | ", row)).append('\n');
 		}
-		return "Below are the tabs of a media-plan workbook (each tab preceded by a '### TAB: <name> ###' marker).\n"
-				+ "Determine the marketing funnel stages the campaign targets (typically some of "
-				+ "Awareness, Consideration, Conversion, Retention/Loyalty), inferring them from the goals, objectives, "
-				+ "tactics and KPIs anywhere in this data. Return a single short comma-separated string (≤60 characters) "
-				+ "ordered top-of-funnel first. No explanation — return only the string.\n\n"
-				+ tab;
+		if (goals.isEmpty()) {
+			return Optional.empty();
+		}
+		return Optional.of(
+				"Below are the per-tactic goals of a digital media campaign.\n"
+						+ "Determine the marketing funnel stages the campaign targets (typically some of "
+						+ "Awareness, Consideration, Conversion, Retention/Loyalty), inferring them from these goals. "
+						+ "Return a single short comma-separated string (≤60 characters) ordered top-of-funnel first, "
+						+ "with no stage repeated. No explanation — return only the string.\n\n"
+						+ "=== TACTIC GOALS ===\n" + String.join("\n", goals));
+	}
+
+	/**
+	 * Builds the brief-digest prompt: condenses the free-text campaign brief into a compact, thesis-style
+	 * summary that every later batch uses in place of the raw brief.
+	 *
+	 * <p>The brief is user-pasted and unbounded, and it was previously repeated verbatim into a dozen
+	 * prompts. Digesting it once means the campaign context is paid for once at full length and carried
+	 * everywhere else at a fraction of the tokens, while the facts the copy must stay faithful to survive.
+	 *
+	 * @param brief    the free-text campaign brief, optionally with its change-log section appended
+	 * @param maxChars the character budget the digest must fit into
+	 * @return the prompt asking for the digest, or empty when the brief is blank
+	 */
+	public Optional<String> buildBriefDigestPrompt(String brief, int maxChars) {
+		if (!normalizer.notBlank(brief)) {
+			return Optional.empty();
+		}
+		return Optional.of(
+				"You are condensing a campaign brief for a digital advertising agency into the working context "
+						+ "that every later copywriting step will read instead of the full brief.\n\n"
+						+ "Write a compact, thesis-style digest of at most " + maxChars + " characters. Rules:\n"
+						+ "- KEEP every fact later copy must stay faithful to: client and product, the business "
+						+ "objective, the target audience, the geography, the flight window, the budget, the stated "
+						+ "KPIs and success criteria, the channel/tactic mix, and any explicit constraint, mandatory "
+						+ "or prohibition.\n"
+						+ "- KEEP any mid-flight changes section verbatim in substance — what changed, and why.\n"
+						+ "- DROP boilerplate, agency pleasantries, process/timeline talk, contact details, legal "
+						+ "footers and anything repeated.\n"
+						+ "- Do NOT invent, infer or extrapolate a single fact. If the brief does not say it, it is "
+						+ "not in the digest.\n"
+						+ "- Write dense declarative sentences grouped by topic, no bullet characters, no markdown, "
+						+ "no headings, no preamble.\n"
+						+ "- Output in English regardless of the input language.\n\n"
+						+ "Return ONLY the digest text.\n\n"
+						+ "=== CAMPAIGN BRIEF ===\n" + brief);
 	}
 
 	/**

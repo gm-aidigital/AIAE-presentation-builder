@@ -217,23 +217,50 @@ public class RealClaudeClient implements ClaudeClient {
 	 */
 	private static final int BREAKDOWN_TIMEOUT_SEC = 90;
 
+	/**
+	 * Token budget for the geo prompt. The workbook is filtered down to its geography-bearing rows before
+	 * it is sent, and a plan that still does not fit in this budget is not worth a request: the answer is a
+	 * ≤40-character string, so anything larger means the filter matched half the plan and the reply would be
+	 * a guess. The summary is skipped in that case and {@code {{geo_locations}}} falls back to a dash, which
+	 * the user can fill in on the review sheet.
+	 */
+	private static final int GEO_PROMPT_MAX_TOKENS = 2000;
+
+	/** Character budget of the brief digest every later batch reads in place of the raw brief. */
+	private static final int BRIEF_DIGEST_LIMIT = 2000;
+
+	/**
+	 * Output budget for the brief digest: {@link #BRIEF_DIGEST_LIMIT} characters of dense prose, with the
+	 * usual head-room for the model writing past the character limit it was asked for.
+	 */
+	private static final int BRIEF_DIGEST_MAX_TOKENS = 1200;
+
+	/** Per-request HTTP timeout for the brief digest. */
+	private static final int BRIEF_DIGEST_TIMEOUT_SEC = 60;
+
 	private final AnthropicMessagesClient messagesClient;
 	private final ClaudeBatchPromptBuilder promptBuilder;
 	private final ClaudeResponseNormalizer normalizer;
 	private final ClaudeCompressionService compressionService;
 	private final ReportClaudeDefaults claudeDefaults;
+	private final WorkbookGeoFilter geoFilter;
+	private final PromptTokenEstimator tokenEstimator;
 
 	public RealClaudeClient(
 			AnthropicMessagesClient messagesClient,
 			ClaudeBatchPromptBuilder promptBuilder,
 			ClaudeResponseNormalizer normalizer,
 			ClaudeCompressionService compressionService,
-			ReportClaudeDefaults claudeDefaults) {
+			ReportClaudeDefaults claudeDefaults,
+			WorkbookGeoFilter geoFilter,
+			PromptTokenEstimator tokenEstimator) {
 		this.messagesClient = messagesClient;
 		this.promptBuilder = promptBuilder;
 		this.normalizer = normalizer;
 		this.compressionService = compressionService;
 		this.claudeDefaults = claudeDefaults;
+		this.geoFilter = geoFilter;
+		this.tokenEstimator = tokenEstimator;
 	}
 
 	@Override
@@ -1261,7 +1288,18 @@ public class RealClaudeClient implements ClaudeClient {
 		if (geoRows == null || geoRows.isEmpty()) {
 			return null;
 		}
-		String prompt = promptBuilder.buildGeoPrompt(geoRows);
+		List<String> kept = geoFilter.keepGeoRows(geoRows);
+		if (kept.isEmpty()) {
+			log.info("[claude:Geo] no geography-related row in the workbook; skipping the summary");
+			return null;
+		}
+		String prompt = promptBuilder.buildGeoPrompt(kept);
+		if (!tokenEstimator.fitsWithin(prompt, GEO_PROMPT_MAX_TOKENS)) {
+			log.warn("[claude:Geo] filtered workbook still ~{} tokens (budget {}); skipping the summary so "
+							+ "{{geo_locations}} falls back to a dash for the user to fill in",
+					tokenEstimator.estimateTokens(prompt), GEO_PROMPT_MAX_TOKENS);
+			return null;
+		}
 		JsonNode resp = messagesClient.callRaw(prompt, 60, 30, "Geo");
 		if (resp == null) {
 			return null;
@@ -1270,17 +1308,36 @@ public class RealClaudeClient implements ClaudeClient {
 	}
 
 	@Override
-	public String summarizeFunnelStages(List<List<String>> geoRows) {
-		if (geoRows == null || geoRows.isEmpty()) {
+	public String summarizeFunnelStages(List<String> tacticGoals) {
+		var prompt = promptBuilder.buildFunnelFromGoalsPrompt(tacticGoals);
+		if (prompt.isEmpty()) {
 			return null;
 		}
-		String prompt = promptBuilder.buildFunnelPrompt(geoRows);
-		JsonNode resp = messagesClient.callRaw(prompt, 60, 30, "Funnel");
+		JsonNode resp = messagesClient.callRaw(prompt.get(), 60, 30, "Funnel");
 		if (resp == null) {
 			return null;
 		}
 		String text = normalizer.extractText(resp);
 		return text == null || text.isBlank() ? null : text.trim();
+	}
+
+	@Override
+	public String digestBrief(String brief) {
+		var prompt = promptBuilder.buildBriefDigestPrompt(brief, BRIEF_DIGEST_LIMIT);
+		if (prompt.isEmpty()) {
+			return null;
+		}
+		JsonNode resp = messagesClient.callRaw(
+				prompt.get(), BRIEF_DIGEST_MAX_TOKENS, BRIEF_DIGEST_TIMEOUT_SEC, "BriefDigest");
+		if (resp == null) {
+			log.warn("[claude:BriefDigest] digest failed; the raw brief is used as context instead");
+			return null;
+		}
+		String text = normalizer.extractText(resp);
+		if (text == null || text.isBlank()) {
+			return null;
+		}
+		return normalizer.normalizeC(text.trim(), BRIEF_DIGEST_LIMIT);
 	}
 
 	@Override

@@ -61,6 +61,15 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	private static final String CLIENT_NAME_TOKEN = "{{client_name}}";
 	private static final String CHANGE_LOG_TOKEN = "{{change log}}";
 
+	/** Sheet field carrying the campaign context: step 1 writes Claude's brief digest here. */
+	private static final String RFP_INFO_TOKEN = "{{RFP info}}";
+
+	/** Deck/sheet field carrying the campaign's marketing funnel stages. */
+	private static final String FUNNEL_STAGES_TOKEN = "{{funnel_stages}}";
+
+	/** Value an unresolved placeholder flattens to; treated as "no value" when filling the funnel stages. */
+	private static final String DASH = "—";
+
 	/** Max tactics the report template carries; the derived tactic count is clamped to this. */
 	private static final int MAX_TACTICS = 28;
 
@@ -144,11 +153,17 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 
 			jobProgress.markJobRunningAtStep(jobId, 1, "Reading sheet data");
 			CampaignData data = placeholders.collectData(payload);
-			String brief = combineBriefWithChangeLog(payload.brief(), payload.changeLog());
+			String rawBrief = combineBriefWithChangeLog(payload.brief(), payload.changeLog());
 
 			jobProgress.markJobRunningAtStep(jobId, 2, "Resolving placeholders");
 
 			boolean live = claude.isLive();
+			// The brief is user-pasted and unbounded, and every batch below repeats it as context. Digest it
+			// once here and feed the digest everywhere instead: the campaign facts the copy must stay faithful
+			// to survive, the token cost of the raw text is paid a single time, and the digest is written into
+			// the sheet's {{RFP info}} so the slides step reads it back rather than digesting again.
+			String briefDigest = live ? claude.digestBrief(rawBrief) : null;
+			String brief = briefDigest == null || briefDigest.isBlank() ? rawBrief : briefDigest;
 			CampaignFrequencies frequencies = placeholders.computeFrequencies(payload, data);
 
 			ClaudeStrategic ccA;
@@ -183,9 +198,9 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 			String geoSummary = (live && placeholders.needGeoSummary(payload))
 					? claude.summarizeGeo(payload.geoRows()) : null;
 
-			String funnelSummary = (live && placeholders.needFunnelSummary(payload))
-					? claude.summarizeFunnelStages(payload.geoRows()) : null;
-
+			// Funnel stages are no longer inferred from a scan of the whole workbook — that call shipped every
+			// tab of the plan to answer with one short line. They are derived from the per-tactic goals once
+			// those are resolved, below, where the goal values already exist in the placeholder map.
 			String primaryKpis = (live && placeholders.needPrimaryKpis(payload))
 					? claude.summarizePrimaryKpis(data) : null;
 
@@ -199,7 +214,8 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 			int flatTacticCount = maxTacticNumber(data);
 			Map<String, String> flatReplacements =
 					placeholders.buildFlatReplacements(payload, data, ccA, ccB, ccC, primaryKpis, geoSummary,
-							funnelSummary, frequencies, flatTacticCount);
+							null, briefDigest, frequencies, flatTacticCount);
+			fillFunnelStages(flatReplacements, flatTacticCount, live);
 			UserGoogleTokenProvider clerk = userGoogleTokens.getIfAvailable();
 			String userGoogleToken = clerk == null ? null : clerk.googleAccessToken(clerkUserId);
 			String fileName = fileNamer.buildFileName(
@@ -265,7 +281,13 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		jobProgress.markJobRunningAtStep(jobId, 3, "Claude — narrative");
 		// The change log is read back from the reviewed sheet (never the payload) so any edit the user made
 		// in the sheet wins, consistent with the sheet-as-source contract of this flow.
-		String brief = combineBriefWithChangeLog(payload.brief(), sheetValues.get(CHANGE_LOG_TOKEN));
+		// The brief context is the digest step 1 wrote into {{RFP info}}, read back from the reviewed sheet for
+		// the same reason the change log is: any edit the user made there wins, and the two steps then run on
+		// exactly the same campaign context. The payload's raw brief is the fallback when the sheet carries no
+		// digest (older sheet, or Claude stubbed when step 1 ran).
+		String sheetBrief = sheetValues.get(RFP_INFO_TOKEN);
+		String briefContext = sheetBrief == null || sheetBrief.isBlank() ? payload.brief() : sheetBrief;
+		String brief = combineBriefWithChangeLog(briefContext, sheetValues.get(CHANGE_LOG_TOKEN));
 		CampaignData data = sheetCampaign.read(sheetValues, tacticCount);
 		// Frequencies are reconstructed from the reviewed sheet — never the raw media plan — and without a
 		// fresh random reach uplift, so the Claude frequency narrative and the deck's frequency figures both
@@ -338,6 +360,9 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		// so a missing sheet value renders blank (visible) rather than a stale raw value (silent).
 		Map<String, String> flatReplacements = buildSheetFlatReplacements(
 				payload, data, ccA, ccC, frequencies, tacticCount, sheetValues);
+		// Funnel stages are inferred here, from the reviewed per-tactic goals, rather than from a scan of the
+		// source workbook. A value the user already put on the sheet wins and costs no call at all.
+		fillFunnelStages(flatReplacements, tacticCount, live);
 
 		jobProgress.markJobRunningAtStep(jobId, 6, "Building slide deck");
 		String fileName = fileNamer.buildFileName(
@@ -460,8 +485,8 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 			CampaignFrequencies frequencies, int tacticCount, Map<String, String> sheetValues) {
 		GeneratePayload narrativePayload = narrativeOnly(payload);
 		Map<String, String> narrative = placeholders.buildFlatReplacements(
-				narrativePayload, data, ccA, claudeDefaults.emptyTactical(), ccC, null, null, null, frequencies,
-				tacticCount);
+				narrativePayload, data, ccA, claudeDefaults.emptyTactical(), ccC, null, null, null, null,
+				frequencies, tacticCount);
 		Map<String, String> flat = new LinkedHashMap<>(narrative);
 		flat.putAll(sheetValues);
 		aliasSheetTokens(flat, tacticCount);
@@ -501,6 +526,46 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 			}
 		}
 		return digest;
+	}
+
+	/**
+	 * Fills {@code {{funnel_stages}}} from the campaign's per-tactic goals when nothing else resolved it.
+	 *
+	 * <p>Replaces the old whole-workbook scan: that call flattened every tab of the media plan into one
+	 * prompt — megabytes on a large client plan, enough on its own to overrun the model's context window —
+	 * to produce a single ≤60-character line. The per-tactic goals already carry exactly the signal the
+	 * stages are inferred from, they are a dozen short strings, and in the sheet flow the user has seen and
+	 * can correct them before this runs.
+	 *
+	 * <p>A manual or media-plan value always wins: the map is only touched when the token is missing, blank
+	 * or a dash, so a reviewed value is never overwritten and costs no request at all.
+	 *
+	 * @param flatReplacements the placeholder map to fill, mutated in place
+	 * @param tacticCount      number of real tactics whose {@code {{tactic n goal}}} values are read
+	 * @param live             whether a live Claude client is configured; no call is made when it is not
+	 */
+	void fillFunnelStages(Map<String, String> flatReplacements, int tacticCount, boolean live) {
+		if (!live) {
+			return;
+		}
+		String current = flatReplacements.get(FUNNEL_STAGES_TOKEN);
+		if (current != null && !current.isBlank() && !DASH.equals(current.trim())) {
+			return;
+		}
+		List<String> goals = new ArrayList<>();
+		for (int n = 1; n <= tacticCount; n++) {
+			String goal = flatReplacements.get("{{tactic " + n + " goal}}");
+			if (goal != null && !goal.isBlank() && !DASH.equals(goal.trim())) {
+				goals.add(goal.trim());
+			}
+		}
+		if (goals.isEmpty()) {
+			return;
+		}
+		String stages = claude.summarizeFunnelStages(goals);
+		if (stages != null && !stages.isBlank()) {
+			flatReplacements.put(FUNNEL_STAGES_TOKEN, stages.trim());
+		}
 	}
 
 	/**

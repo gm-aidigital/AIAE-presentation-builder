@@ -35,6 +35,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.core.task.SimpleAsyncTaskExecutor;
 
 import java.util.List;
 import java.util.HashMap;
@@ -99,7 +100,7 @@ class ReportGenerationServiceImplTest {
 		service = new ReportGenerationServiceImpl(
 				jobProgress, warnings, chartHelper, sheetHelper, publisherBreakdown, creativeBreakdown, geoBreakdown, audienceBreakdown, deviceBreakdown, placeholderReader, sheetCampaign, placeholders,
 				claude, slides, userGoogleTokens, self, claudeDefaults, fileNamer,
-				new ReportNumberParserImpl(), new Fmt());
+				new ReportNumberParserImpl(), new Fmt(), new SimpleAsyncTaskExecutor());
 	}
 
 	@Test
@@ -157,7 +158,7 @@ class ReportGenerationServiceImplTest {
 		GeneratePayload payload = new GeneratePayload(
 				"Campaign brief.", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), null, "", null, null, null);
 		when(claude.isLive()).thenReturn(false);
-		when(placeholders.buildFlatReplacements(any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt()))
+		when(placeholders.buildFlatReplacements(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt()))
 				.thenReturn(Map.of());
 		when(fileNamer.buildFileName(any(), any(), any())).thenReturn("deck-file");
 		when(slides.createDeck(eq("7"), eq("deck-file"), any(), isNull())).thenReturn("http://deck");
@@ -171,7 +172,7 @@ class ReportGenerationServiceImplTest {
 		// The deck placeholder map is bounded to the real tactic count (here the collector yields none, so 1),
 		// never the full 28 template slots — this is what keeps createDeck's find-replace from timing out.
 		verify(placeholders).buildFlatReplacements(
-				any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(1));
+				any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(1));
 	}
 
 	@Test
@@ -181,7 +182,7 @@ class ReportGenerationServiceImplTest {
 				"Campaign brief.", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), null, "", null, null, null);
 		when(claude.isLive()).thenReturn(false);
 		when(claudeDefaults.emptySheetBatch()).thenReturn(new ClaudeSheetBatch(null, null, Map.of()));
-		when(placeholders.buildFlatReplacements(any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt()))
+		when(placeholders.buildFlatReplacements(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt()))
 				.thenReturn(Map.of());
 		when(fileNamer.buildFileName(any(), any(), any())).thenReturn("sheet-file");
 		when(sheetHelper.buildSheet("9", "sheet-file", Map.of(), null)).thenReturn("http://sheet");
@@ -199,7 +200,7 @@ class ReportGenerationServiceImplTest {
 		// so 1), not all 28 slots — the ~800-request find-replace was the createSheet "Read timed out" cause.
 		// Unused slots' leftover tokens are blanked by a single regex pass in createSheet.
 		verify(placeholders).buildFlatReplacements(
-				any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(1));
+				any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(1));
 		verifyNoInteractions(slides);
 		verifyNoInteractions(chartHelper);
 	}
@@ -219,7 +220,7 @@ class ReportGenerationServiceImplTest {
 		when(placeholderReader.readPlaceholders(grid)).thenReturn(sheetValues);
 		when(claude.isLive()).thenReturn(false);
 		when(placeholders.buildFlatReplacements(
-				any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt())).thenReturn(narrative);
+				any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt())).thenReturn(narrative);
 		when(fileNamer.buildFileName(any(), any(), any())).thenReturn("deck-file");
 		when(slides.createDeck(eq("11"), eq("deck-file"), any(), isNull())).thenReturn("http://deck");
 		when(publisherBreakdown.buildPublisherValues(
@@ -312,5 +313,53 @@ class ReportGenerationServiceImplTest {
 		assertThat(view.slideUrl()).isEmpty();
 		assertThat(view.error()).isEmpty();
 		assertThat(view.warnings()).containsExactly("w1");
+	}
+
+	@Test
+	void shouldFillFunnelStagesFromTheReviewedTacticGoalsTest() {
+		// Given: a map whose funnel token is an unresolved dash and whose two tactics carry goals
+		Map<String, String> flat = new HashMap<>();
+		flat.put("{{funnel_stages}}", "—");
+		flat.put("{{tactic 1 goal}}", "Build awareness");
+		flat.put("{{tactic 2 goal}}", "Drive site visits");
+		when(claude.summarizeFunnelStages(List.of("Build awareness", "Drive site visits")))
+				.thenReturn("Awareness, Consideration");
+
+		// When:
+		service.fillFunnelStages(flat, 2, true);
+
+		// Then: the goals — never the source workbook — produced the funnel line
+		assertThat(flat).containsEntry("{{funnel_stages}}", "Awareness, Consideration");
+		verify(claude).summarizeFunnelStages(List.of("Build awareness", "Drive site visits"));
+	}
+
+	@Test
+	void shouldKeepAnAlreadyResolvedFunnelValueWithoutCallingClaudeTest() {
+		// Given: a funnel value the media plan or the user already supplied
+		Map<String, String> flat = new HashMap<>();
+		flat.put("{{funnel_stages}}", "Awareness, Conversion");
+		flat.put("{{tactic 1 goal}}", "Build awareness");
+
+		// When:
+		service.fillFunnelStages(flat, 1, true);
+
+		// Then: a reviewed value is never overwritten and costs no request
+		assertThat(flat).containsEntry("{{funnel_stages}}", "Awareness, Conversion");
+		verifyNoInteractions(claude);
+	}
+
+	@Test
+	void shouldLeaveFunnelStagesUntouchedWhenNoTacticCarriesAGoalTest() {
+		// Given: dash-filled goals, which is what unused tactic slots render as
+		Map<String, String> flat = new HashMap<>();
+		flat.put("{{funnel_stages}}", "—");
+		flat.put("{{tactic 1 goal}}", "—");
+
+		// When:
+		service.fillFunnelStages(flat, 1, true);
+
+		// Then:
+		assertThat(flat).containsEntry("{{funnel_stages}}", "—");
+		verifyNoInteractions(claude);
 	}
 }

@@ -26,6 +26,8 @@ public interface PlaceholderSectionBuilder {
 	 * @param primaryKpis   AI-generated primary-KPIs line, or {@code null} when not used
 	 * @param geoSummary    AI geo summary, or {@code null} when not used
 	 * @param funnelSummary AI funnel-stage summary, or {@code null} when not used
+	 * @param briefDigest   Claude's condensed campaign brief filling {@code {{RFP info}}}, or {@code null} to fall
+	 *                      back to the raw brief from the payload
 	 * @param frequencies   the {@code plan}/{@code fact}/{@code reachFact} figures computed once for this report,
 	 *                      so {@code {{reach_f}} / {{reach_f_pres}}} resolve to the exact same actual-reach
 	 *                      number that seeded the Claude {@code {{f_fact}}} narrative
@@ -43,6 +45,7 @@ public interface PlaceholderSectionBuilder {
 			String primaryKpis,
 			String geoSummary,
 			String funnelSummary,
+			String briefDigest,
 			CampaignFrequencies frequencies,
 			int tacticCount
 	);

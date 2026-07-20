@@ -45,6 +45,7 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 			String primaryKpis,
 			String geoSummary,
 			String funnelSummary,
+			String briefDigest,
 			CampaignFrequencies frequencies,
 			int tacticCount
 	) {
@@ -73,7 +74,11 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		start.put("{{geo_locations}}", campaignResolvers.resolveGeoLocations(sheet, adj, geoSummary));
 		start.put("{{funnel_stages}}", campaignResolvers.resolveFunnelStages(sheet, adj, funnelSummary));
 		start.put("{{tactics_list}}", campaignResolvers.resolveTacticsList(sheet, adj));
-		start.put("{{RFP info}}", campaignResolvers.resolveRfpInfo(sheet, adj, payload.brief()));
+		// The digest — not the raw brief — is what the sheet carries, so the slides-from-sheet step reads
+		// back the same condensed context every batch of this step already ran on. It falls back to the raw
+		// brief when Claude is stubbed or the digest call failed.
+		String rfpBrief = briefDigest == null || briefDigest.isBlank() ? payload.brief() : briefDigest;
+		start.put("{{RFP info}}", campaignResolvers.resolveRfpInfo(sheet, adj, rfpBrief));
 		start.put("{{change log}}", campaignResolvers.resolveChangeLog(sheet, adj, payload.changeLog()));
 		sections.add(buildPreviewSection("Start", start));
 

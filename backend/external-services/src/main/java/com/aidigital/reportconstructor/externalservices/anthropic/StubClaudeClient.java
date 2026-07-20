@@ -104,7 +104,13 @@ public class StubClaudeClient implements ClaudeClient {
 	}
 
 	@Override
-	public String summarizeFunnelStages(List<List<String>> geoRows) {
+	public String summarizeFunnelStages(List<String> tacticGoals) {
+		return null;
+	}
+
+	@Override
+	public String digestBrief(String brief) {
+		// No live model: the caller falls back to the raw brief, exactly as it behaved before the digest step.
 		return null;
 	}
 
