@@ -45,6 +45,11 @@ public class PlaceholderClaudeGateImpl implements PlaceholderClaudeGate {
 
 	@Override
 	public boolean needTactical(GeneratePayload payload, CampaignData data) {
+		if (Boolean.FALSE.equals(payload.estimateDaypartGender())) {
+			// The user switched the dayparting/gender estimate off, so Batch B (its only consumer) must
+			// not run — the four tokens are forced to a dash downstream regardless of any Claude output.
+			return false;
+		}
 		if (data == null || data.tactics() == null) {
 			return false;
 		}

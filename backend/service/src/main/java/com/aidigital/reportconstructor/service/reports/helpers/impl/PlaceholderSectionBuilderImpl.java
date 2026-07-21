@@ -31,6 +31,9 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 	/** Max tactics the deck template carries — one preview section per tactic slot. */
 	private static final int MAX_TACTICS = 28;
 
+	/** Em-dash written into the dayparting/gender tokens when their AI estimate is switched off. */
+	private static final String DASH = "—"; // —
+
 	private final CampaignResolvers campaignResolvers;
 	private final TacticResolvers tacticResolvers;
 	private final TacticExtractionHelper tacticExtraction;
@@ -103,10 +106,14 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		totals.put("{{total spend}}", campaignResolvers.resolveTotalInvestment(sheet, adj, data));
 		sections.add(buildPreviewSection("Summary Metrics", totals));
 
+		// A null flag means the caller predates the toggle, so the AI estimate stays on; only an explicit
+		// FALSE switches dayparting/gender off and forces those tokens to a dash.
+		boolean estimateDaypartGender = !Boolean.FALSE.equals(payload.estimateDaypartGender());
 		int tacticLimit = Math.clamp(tacticCount, 1, MAX_TACTICS);
 		for (int n = 1; n <= tacticLimit; n++) {
 			sections.add(buildPreviewSection("Tactic " + n,
-					buildFullTacticSection(n, sheet, adj, data, ccB, ccC, mediaTactics, payload.marketVolume())));
+					buildFullTacticSection(n, sheet, adj, data, ccB, ccC, mediaTactics, payload.marketVolume(),
+							estimateDaypartGender)));
 		}
 
 		sections.add(buildPreviewSection("Optimization Recommendations",
@@ -121,9 +128,27 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		return sections;
 	}
 
+	/**
+	 * Builds the full placeholder map for one tactic slide. When {@code estimateDaypartGender} is
+	 * {@code false} the four dayparting/gender tokens are forced to an em-dash instead of being resolved
+	 * from the sheet or Claude, because those metrics are not always tracked reliably on the DSP side.
+	 *
+	 * @param n                     one-based tactic index
+	 * @param sheet                 Media Plan grid rows
+	 * @param adj                   manual Adjustments grid rows
+	 * @param data                  aggregated campaign data for computed fallbacks
+	 * @param ccB                   Claude Batch B per-tactic gender/daypart copy
+	 * @param ccC                   Claude Batch C results copy (tactic overview)
+	 * @param mediaTactics          tactic display names extracted from the Media column
+	 * @param marketVolume          raw market-volume string used to derive tactic volume
+	 * @param estimateDaypartGender whether the dayparting/gender tokens may be estimated ({@code false}
+	 *                              forces them to a dash)
+	 * @return the token-to-{@link Resolved} map for this tactic slide
+	 */
 	Map<String, Resolved> buildFullTacticSection(
 			int n, List<List<String>> sheet, List<List<String>> adj, CampaignData data,
-			ClaudeTactical ccB, ClaudeResults ccC, List<String> mediaTactics, String marketVolume
+			ClaudeTactical ccB, ClaudeResults ccC, List<String> mediaTactics, String marketVolume,
+			boolean estimateDaypartGender
 	) {
 		Resolved info = resolveTacticName(n, sheet, adj, mediaTactics);
 		String tacticName = info.value() == null ? "" : info.value();
@@ -151,11 +176,19 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 				tacticResolvers.resolveTacticVolume(n, tacticName, marketVolume, sheet, adj));
 		m.put("{{tactic " + n + " \u2013 bench}}", tacticResolvers.resolveTacticBench(n, tacticName, sheet, adj,
 				data));
-		m.put("{{tactic " + n + " male}}", tacticResolvers.resolveTacticGender(n, "male", sheet, adj, ccB));
-		m.put("{{tactic " + n + " female}}", tacticResolvers.resolveTacticGender(n, "female", sheet, adj, ccB));
+		m.put("{{tactic " + n + " male}}", estimateDaypartGender
+				? tacticResolvers.resolveTacticGender(n, "male", sheet, adj, ccB)
+				: daypartGenderOff(n, "male"));
+		m.put("{{tactic " + n + " female}}", estimateDaypartGender
+				? tacticResolvers.resolveTacticGender(n, "female", sheet, adj, ccB)
+				: daypartGenderOff(n, "female"));
 		m.put("{{tactic " + n + " f}}", tacticResolvers.resolveTacticFreq(n, sheet, adj, data));
-		m.put("{{tactic " + n + " weekdays}}", tacticResolvers.resolveTacticDaypart(n, "weekdays", sheet, adj, ccB));
-		m.put("{{tactic " + n + " weekends}}", tacticResolvers.resolveTacticDaypart(n, "weekends", sheet, adj, ccB));
+		m.put("{{tactic " + n + " weekdays}}", estimateDaypartGender
+				? tacticResolvers.resolveTacticDaypart(n, "weekdays", sheet, adj, ccB)
+				: daypartGenderOff(n, "weekdays"));
+		m.put("{{tactic " + n + " weekends}}", estimateDaypartGender
+				? tacticResolvers.resolveTacticDaypart(n, "weekends", sheet, adj, ccB)
+				: daypartGenderOff(n, "weekends"));
 		m.put("{{tactic " + n + " top creative name}}", tacticResolvers.resolveTacticTopCreativeName(n, sheet, adj,
 				data));
 		m.put("{{tactic " + n + " top creative imps}}", tacticResolvers.resolveTacticTopCreativeImps(n, sheet, adj,
@@ -163,6 +196,19 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		m.put("{{tactic " + n + " top creative clicks}}", tacticResolvers.resolveTacticTopCreativeClicks(n, sheet, adj
 				, data));
 		return m;
+	}
+
+	/**
+	 * Builds the resolved entry used for a dayparting/gender token when its AI estimate is switched off:
+	 * a hard em-dash that bypasses the sheet, Adjustments and Claude alike, tagged {@code adj} so the
+	 * preview treats it as an intentionally resolved value rather than a missing one.
+	 *
+	 * @param n    one-based tactic index, used only to build the human-readable label
+	 * @param part the token suffix ({@code male}, {@code female}, {@code weekdays} or {@code weekends})
+	 * @return a {@link Resolved} carrying the em-dash for this token
+	 */
+	Resolved daypartGenderOff(int n, String part) {
+		return new Resolved("Tactic " + n + " " + part + ": (estimate off)", DASH, "adj");
 	}
 
 	Resolved resolveTacticName(

@@ -415,6 +415,8 @@ function PageInner() {
             // Step-3 breakdown toggles → the backend clears the sections a tactic didn't enable on the
             // generated sheet's "Breakdowns" tab. One entry per mapped tactic (empty list = none enabled).
             breakdownSelections,
+            // When off, the per-tactic dayparting/gender tokens are dashed instead of AI-estimated.
+            estimateDaypartGender: w.estimateDaypartGender,
             bqSheetId: w.elevate?.sheetId,
             // Persisted for the admin history so reviewers can open the user's source sheets.
             mediaPlanUrl: sheetUrlFromId(w.mediaPlan?.sheetId),

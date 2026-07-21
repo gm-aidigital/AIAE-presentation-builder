@@ -23,6 +23,11 @@ import java.util.List;
  * @param breakdownSelections per-tactic Step-3 breakdown toggle state (SHEET flow only); the "Breakdowns" tab clears
  *                        every section a tactic did not enable. {@code null} leaves the tab untouched; an empty list
  *                        clears every section for every tactic
+ * @param estimateDaypartGender whether Claude may estimate the per-tactic dayparting (weekdays/weekends) and gender
+ *                        split (male/female) when no manual value exists. {@code null} or {@code TRUE} keeps the AI
+ *                        estimate (the default); {@code FALSE} forces the {@code {{tactic N weekdays|weekends|male|
+ *                        female}}} tokens to an em-dash regardless of any manual value, because these metrics are not
+ *                        always tracked reliably on the DSP side
  * @param bqSheetId       Google Sheet ID backing the BigQuery export; when blank, chart generation is skipped
  * @param dateFilter      user-confirmed raw-data date window (ALL or an inclusive RANGE); when {@code null} or ALL the
  *                        full date range present in the raw data ("Basic" tab) is used. This is the sole source of the
@@ -50,7 +55,46 @@ public record GeneratePayload(
 		String bqSheetId,
 		DateFilter dateFilter,
 		String sheetUrl,
-		String changeLog
+		String changeLog,
+		Boolean estimateDaypartGender
 ) {
 
+	/**
+	 * Backward-compatible constructor for callers that predate the dayparting/gender toggle; keeps the AI
+	 * estimate on by default so their behaviour is unchanged.
+	 *
+	 * @param brief               free-text campaign brief
+	 * @param reportType          report template code
+	 * @param marketVolume        maximum addressable audience volume entered in the UI
+	 * @param sheetRows           raw Media Plan grid rows
+	 * @param adjRows             manual Adjustments grid rows
+	 * @param audienceRows        raw audience-breakdown grid rows
+	 * @param estimatesRows       raw per-tactic estimates grid rows
+	 * @param geoRows             every workbook tab flattened into one grid
+	 * @param lineItemMapping     media-plan tactic to BigQuery line-item mapping
+	 * @param breakdownSelections per-tactic Step-3 breakdown toggle state
+	 * @param bqSheetId           Google Sheet ID backing the BigQuery export
+	 * @param dateFilter          user-confirmed raw-data date window
+	 * @param sheetUrl            URL of a previously generated sheet (slides-from-sheet only)
+	 * @param changeLog           optional free-text log of mid-flight changes
+	 */
+	public GeneratePayload(
+			String brief,
+			String reportType,
+			String marketVolume,
+			List<List<String>> sheetRows,
+			List<List<String>> adjRows,
+			List<List<String>> audienceRows,
+			List<List<String>> estimatesRows,
+			List<List<String>> geoRows,
+			List<LineItemMapping> lineItemMapping,
+			List<BreakdownSelection> breakdownSelections,
+			String bqSheetId,
+			DateFilter dateFilter,
+			String sheetUrl,
+			String changeLog
+	) {
+		this(brief, reportType, marketVolume, sheetRows, adjRows, audienceRows, estimatesRows, geoRows,
+				lineItemMapping, breakdownSelections, bqSheetId, dateFilter, sheetUrl, changeLog, Boolean.TRUE);
+	}
 }

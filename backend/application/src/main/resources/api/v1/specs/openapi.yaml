@@ -1013,6 +1013,19 @@ components:
             did NOT enable, leaving only the selected sections. Omit (null) to leave the
             Breakdowns tab untouched; an empty array clears all sections for all tactics.
           items: { $ref: "#/components/schemas/BreakdownSelectionV1" }
+        estimateDaypartGender:
+          type: boolean
+          default: true
+          description: |
+            Whether Claude may estimate the per-tactic dayparting (weekdays /
+            weekends peak windows) and gender split (male / female) when the
+            source sheets carry no manual value. Optional; defaults to true so
+            existing callers keep the AI estimate. When false the four tokens
+            {{tactic N weekdays}}, {{tactic N weekends}}, {{tactic N male}} and
+            {{tactic N female}} are always written as an em-dash "—": no AI call
+            is made and any manual sheet value is ignored, because these metrics
+            are not always tracked reliably on the DSP side and an estimate would
+            be a prediction rather than a measured figure.
         bqSheetId:
           type: string
           description: |

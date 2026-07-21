@@ -2,10 +2,12 @@ package com.aidigital.reportconstructor.service.reports.helpers.impl;
 
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
+import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
 import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
 import com.aidigital.reportconstructor.service.reports.dto.Placeholder;
 import com.aidigital.reportconstructor.service.reports.dto.PreviewSection;
+import com.aidigital.reportconstructor.service.reports.dto.TacticInsight;
 import com.aidigital.reportconstructor.service.reports.dto.Totals;
 import com.aidigital.reportconstructor.service.reports.engine.ReportClaudeDefaults;
 import com.aidigital.reportconstructor.service.reports.engine.ReportsEngineTestSupport;
@@ -110,6 +112,63 @@ class PlaceholderSectionBuilderImplTest {
 		assertThat(sections.get(5).title()).isEqualTo("Tactic 2");
 		assertThat(sections.get(6).title()).isEqualTo("Optimization Recommendations");
 		assertThat(sections).noneMatch(s -> s.title().equals("Tactic 3"));
+	}
+
+	@Test
+	void shouldEstimateDaypartGenderFromClaudeWhenOnTest() {
+		// Given: Batch B supplies per-tactic gender/daypart copy and the estimate is on (default)
+		GeneratePayload payload = minimalPayload();
+		ClaudeTactical ccB = new ClaudeTactical(Map.of(1, new TacticInsight(60, 40, "Mon-Fri peak", "Sat-Sun peak")));
+
+		// When: the tactic 1 section is built
+		List<PreviewSection> sections = builder.buildSections(
+				payload, emptyCampaignData(),
+				claudeDefaults.emptyStrategic(), ccB, claudeDefaults.emptyResults(),
+				null, null, null, null,
+				new CampaignFrequencies(null, null, null, null), 1
+		);
+
+		// Then: the four dayparting/gender tokens carry the Claude estimate
+		Map<String, String> tactic1 = tacticValues(sections.get(4));
+		assertThat(tactic1.get("{{tactic 1 male}}")).isEqualTo("60%");
+		assertThat(tactic1.get("{{tactic 1 female}}")).isEqualTo("40%");
+		assertThat(tactic1.get("{{tactic 1 weekdays}}")).isEqualTo("Mon-Fri peak");
+		assertThat(tactic1.get("{{tactic 1 weekends}}")).isEqualTo("Sat-Sun peak");
+	}
+
+	@Test
+	void shouldForceDashForDaypartGenderWhenEstimateOffTest() {
+		// Given: Batch B has values AND the sheet carries a manual male split, but the estimate is switched off
+		GeneratePayload payload = new GeneratePayload(
+				"brief", "standard", "",
+				List.of(
+						List.of("Media", "Comments"),
+						List.of("Programmatic Display", ""),
+						List.of("Tactic 1 male:", "70%")),
+				List.of(), List.of(), List.of(), List.of(), List.of(),
+				null, "", null, null, null, Boolean.FALSE);
+		ClaudeTactical ccB = new ClaudeTactical(Map.of(1, new TacticInsight(60, 40, "Mon-Fri peak", "Sat-Sun peak")));
+
+		// When: the tactic 1 section is built
+		List<PreviewSection> sections = builder.buildSections(
+				payload, emptyCampaignData(),
+				claudeDefaults.emptyStrategic(), ccB, claudeDefaults.emptyResults(),
+				null, null, null, null,
+				new CampaignFrequencies(null, null, null, null), 1
+		);
+
+		// Then: all four tokens are a dash, ignoring both the Claude estimate and the manual sheet value
+		Map<String, String> tactic1 = tacticValues(sections.get(4));
+		assertThat(tactic1.get("{{tactic 1 male}}")).isEqualTo("—");
+		assertThat(tactic1.get("{{tactic 1 female}}")).isEqualTo("—");
+		assertThat(tactic1.get("{{tactic 1 weekdays}}")).isEqualTo("—");
+		assertThat(tactic1.get("{{tactic 1 weekends}}")).isEqualTo("—");
+	}
+
+	private static Map<String, String> tacticValues(PreviewSection section) {
+		return section.placeholders().stream()
+				.collect(java.util.stream.Collectors.toMap(
+						Placeholder::key, p -> p.value() == null ? "" : p.value()));
 	}
 
 	private static GeneratePayload minimalPayload() {

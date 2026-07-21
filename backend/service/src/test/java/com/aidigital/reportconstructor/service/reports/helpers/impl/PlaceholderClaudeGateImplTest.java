@@ -141,6 +141,18 @@ class PlaceholderClaudeGateImplTest {
 	}
 
 	@Test
+	void shouldNotNeedTacticalWhenDaypartGenderEstimateOffTest() {
+		// Given: a tactic that would normally require Batch B, but the dayparting/gender estimate is off
+		GeneratePayload payload = new GeneratePayload(
+				"brief", "standard", "", List.of(), List.of(), List.of(), List.of(), List.of(),
+				null, null, "", null, null, null, Boolean.FALSE);
+		CampaignData data = campaignWithTactic(1);
+
+		// When-Then: Batch B (the estimate's only consumer) must not run
+		assertThat(gate.needTactical(payload, data)).isFalse();
+	}
+
+	@Test
 	void shouldNeedResultsWhenOnlyFrequencyNarrativeMissingTest() {
 		// Given: every Batch C manual value present EXCEPT the frequency-narrative labels (no tactics)
 		List<List<String>> rows = new java.util.ArrayList<>(List.of(

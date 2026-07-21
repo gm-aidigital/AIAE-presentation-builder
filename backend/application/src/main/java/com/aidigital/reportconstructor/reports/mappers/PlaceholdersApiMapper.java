@@ -53,6 +53,7 @@ public interface PlaceholdersApiMapper {
 	@Mapping(target = "sheetUrl", ignore = true)
 	@Mapping(target = "changeLog", ignore = true)
 	@Mapping(target = "breakdownSelections", ignore = true)
+	@Mapping(target = "estimateDaypartGender", ignore = true)
 	GeneratePayload toPayload(PreviewRequestV1 body);
 
 	/**

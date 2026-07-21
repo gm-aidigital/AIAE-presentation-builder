@@ -41,6 +41,10 @@ interface WizardContextValue {
     changeLog: string;
     reportType: ReportType;
     marketVolume: string;
+    // When false the per-tactic dayparting (weekdays/weekends) and gender split (male/female) are written
+    // to the deck as an em-dash instead of being estimated by Claude — those DSP metrics aren't always
+    // tracked reliably, so a data-sensitive client can fill them by hand instead of showing a prediction.
+    estimateDaypartGender: boolean;
     mediaPlan: MediaPlanState | null;
     elevate: ElevateState | null;
     mapping: MappingEntry[] | null;
@@ -55,6 +59,7 @@ interface WizardContextValue {
     setChangeLog(value: string): void;
     setReportType(value: ReportType): void;
     setMarketVolume(value: string): void;
+    setEstimateDaypartGender(value: boolean): void;
     connectMediaPlan(value: MediaPlanState): void;
     updateMediaPlanTabs(patch: Partial<OptionalTabs>): void;
     disconnectMediaPlan(): void;
@@ -75,6 +80,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     const [changeLog, setChangeLogState] = useState("");
     const [reportType, setReportTypeState] = useState<ReportType>("EOC");
     const [marketVolume, setMarketVolumeState] = useState("");
+    const [estimateDaypartGender, setEstimateDaypartGenderState] = useState(true);
     const [mediaPlan, setMediaPlan] = useState<MediaPlanState | null>(null);
     const [elevate, setElevate] = useState<ElevateState | null>(null);
     const [mapping, setMappingState] = useState<MappingEntry[] | null>(null);
@@ -102,6 +108,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
             changeLog,
             reportType,
             marketVolume,
+            estimateDaypartGender,
             mediaPlan,
             elevate,
             mapping,
@@ -113,6 +120,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
             setChangeLog: setChangeLogState,
             setReportType: setReportTypeState,
             setMarketVolume: setMarketVolumeState,
+            setEstimateDaypartGender: setEstimateDaypartGenderState,
             connectMediaPlan: (v) => {
                 setMediaPlan(v);
                 invalidateMatch();
@@ -152,6 +160,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
             changeLog,
             reportType,
             marketVolume,
+            estimateDaypartGender,
             mediaPlan,
             elevate,
             mapping,

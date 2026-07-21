@@ -235,6 +235,34 @@ export function StepDataInputs({
                         {errors.marketVolume && <div className="rc-field__error">Market volume is required.</div>}
                     </div>
 
+                    <div className="rc-field">
+                        <div className="rc-toggle-row">
+                            <span
+                                className={`rc-toggle-row__label${
+                                    w.estimateDaypartGender ? " rc-toggle-row__label--on" : ""
+                                }`}
+                            >
+                                Estimate dayparting &amp; gender split (AI)
+                            </span>
+                            <button
+                                type="button"
+                                role="switch"
+                                aria-checked={w.estimateDaypartGender}
+                                aria-label="Estimate dayparting and gender split with AI"
+                                className={`rc-switch${w.estimateDaypartGender ? " rc-switch--on" : ""}`}
+                                onClick={() => w.setEstimateDaypartGender(!w.estimateDaypartGender)}
+                            >
+                                <span className="rc-switch__knob" />
+                            </button>
+                        </div>
+                        <div className="rc-field__hint">
+                            Dayparting (weekday / weekend peaks) and gender distribution aren't always tracked
+                            reliably on the DSP side, so we estimate them — it's a prediction, not a measured
+                            figure. Leave this on for an AI estimate. Turn it off to leave those cells blank
+                            (—) and fill them by hand from the DSP when the client needs exact numbers.
+                        </div>
+                    </div>
+
                     <ConnectRow
                         label="Media Plan — Google Sheet link"
                         placeholder="https://docs.google.com/spreadsheets/…"
@@ -337,6 +365,11 @@ export function StepDataInputs({
                             label="Market Volume"
                             done={marketDone}
                             value={marketDone ? "Filled" : "Waiting"}
+                        />
+                        <StatusRow
+                            label="Dayparting & gender"
+                            done={w.estimateDaypartGender}
+                            value={w.estimateDaypartGender ? "AI estimate" : "Blank (—)"}
                         />
                         <StatusRow
                             label="Media Plan"
