@@ -583,6 +583,17 @@
     text-overflow: ellipsis;
 }
 
+.ad-reports__name--link {
+    display: inline-block;
+    max-width: 100%;
+    text-decoration: none;
+}
+
+.ad-reports__name--link:hover {
+    color: var(--rc-blue);
+    text-decoration: underline;
+}
+
 .ad-reports__sub {
     margin-top: 2px;
     font-size: 12px;
@@ -817,11 +828,58 @@
     overflow-wrap: anywhere;
 }
 
+.ad-fails__details {
+    margin-top: 12px;
+}
+
 .ad-fails__summary {
     margin-top: 12px;
     font-size: 13px;
     font-weight: 600;
     color: var(--rc-slate);
+}
+
+.ad-fails__details > .ad-fails__summary {
+    margin-top: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    cursor: pointer;
+    list-style: none;
+}
+
+.ad-fails__details > .ad-fails__summary::-webkit-details-marker {
+    display: none;
+}
+
+.ad-fails__summary-text {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.ad-fails__toggle {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--rc-blue);
+}
+
+.ad-fails__chevron {
+    transition: transform 0.15s ease;
+    font-size: 14px;
+    line-height: 1;
+}
+
+.ad-fails__details[open] .ad-fails__chevron {
+    transform: rotate(180deg);
+}
+
+.ad-fails__details[open] .ad-fails__toggle {
+    color: var(--rc-mute);
 }
 
 .ad-fails__warnings {

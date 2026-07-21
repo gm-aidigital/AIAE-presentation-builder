@@ -16,6 +16,7 @@ import java.util.List;
  * @param jobId        surrogate report-job id
  * @param type         report type code, or {@code null} when unknown
  * @param title        human-friendly report name
+ * @param slideUrl     generated deck URL when the run produced one (degraded reports), else {@code null}
  * @param ownerEmail   report owner's email, or {@code null} for legacy rows
  * @param ownerName    report owner's display name, or {@code null}
  * @param createdAt    when the job was created
@@ -33,6 +34,7 @@ public record AdminFailedJob(
 		Long jobId,
 		String type,
 		String title,
+		String slideUrl,
 		String ownerEmail,
 		String ownerName,
 		LocalDateTime createdAt,

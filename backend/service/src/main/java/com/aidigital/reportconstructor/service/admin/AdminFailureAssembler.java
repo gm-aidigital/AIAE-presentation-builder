@@ -4,6 +4,7 @@ import com.aidigital.reportconstructor.domain.reports.entities.ReportJobEntity;
 import com.aidigital.reportconstructor.service.admin.dto.AdminFailedJob;
 import com.aidigital.reportconstructor.service.admin.dto.AdminIssueSeverity;
 import com.aidigital.reportconstructor.service.common.text.DisplayNameHelper;
+import com.aidigital.reportconstructor.service.reports.dto.ReportSummary;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportGenerationWarningsHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportSummaryAssembler;
 import com.aidigital.reportconstructor.service.reports.usage.JobTokenUsage;
@@ -101,10 +102,12 @@ public class AdminFailureAssembler {
 	AdminFailedJob toIssue(
 			ReportJobEntity job, AdminIssueSeverity severity, String message, List<String> warnings) {
 		String ownerEmail = job.getOwnerEmail();
+		ReportSummary summary = summaryAssembler.toSummary(job);
 		return new AdminFailedJob(
 				job.getId(),
 				job.getReportTypeCode(),
-				summaryAssembler.toSummary(job).title(),
+				summary.title(),
+				summary.slideUrl(),
 				ownerEmail,
 				ownerEmail == null || ownerEmail.isBlank() ? null : displayNameHelper.fromEmail(ownerEmail),
 				job.getCreatedAt() == null ? null : job.getCreatedAt().toLocalDateTime(),

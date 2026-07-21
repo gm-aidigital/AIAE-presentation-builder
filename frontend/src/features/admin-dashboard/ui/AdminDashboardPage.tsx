@@ -563,7 +563,19 @@ function FailuresTab({ query }: { query: ReturnType<typeof useAdminStats> }) {
                                     {(f.type ?? "REP").toUpperCase()}
                                 </span>
                                 <div className="ad-fails__meta">
-                                    <div className="ad-reports__name">{f.title}</div>
+                                    {f.slideUrl ? (
+                                        <a
+                                            className="ad-reports__name ad-reports__name--link"
+                                            href={f.slideUrl}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            title="Open the presentation"
+                                        >
+                                            {f.title} ↗
+                                        </a>
+                                    ) : (
+                                        <div className="ad-reports__name">{f.title}</div>
+                                    )}
                                     <div className="ad-reports__sub">
                                         {f.ownerEmail ?? "—"} · job #{f.jobId} ·{" "}
                                         {f.failedAt ? updatedFmt.format(new Date(f.failedAt)) : ""}
@@ -589,16 +601,28 @@ function FailuresTab({ query }: { query: ReturnType<typeof useAdminStats> }) {
                                 </button>
                             </div>
                             {isWarning ? (
-                                <>
+                                f.warnings.length > 0 ? (
+                                    <details className="ad-fails__details">
+                                        <summary className="ad-fails__summary">
+                                            <span className="ad-fails__summary-text">{f.errorMessage}</span>
+                                            <span className="ad-fails__toggle">
+                                                Show details
+                                                <span className="ad-fails__chevron" aria-hidden="true">
+                                                    ⌄
+                                                </span>
+                                            </span>
+                                        </summary>
+                                        <ul className="ad-fails__warnings">
+                                            {f.warnings.map((w, i) => (
+                                                <li key={i} className="ad-fails__warning">
+                                                    {w}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </details>
+                                ) : (
                                     <div className="ad-fails__summary">{f.errorMessage}</div>
-                                    <ul className="ad-fails__warnings">
-                                        {f.warnings.map((w, i) => (
-                                            <li key={i} className="ad-fails__warning">
-                                                {w}
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </>
+                                )
                             ) : (
                                 <div className="ad-fails__error">{f.errorMessage}</div>
                             )}

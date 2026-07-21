@@ -1277,6 +1277,7 @@ components:
         jobId: { type: integer, format: int64 }
         type: { type: string, description: "Report type code, when known." }
         title: { type: string, description: "Human-friendly report name." }
+        slideUrl: { type: string, description: "Generated deck URL when the run produced one (degraded reports); absent for a hard failure." }
         ownerEmail: { type: string }
         ownerName: { type: string }
         createdAt: { type: string, format: date-time }

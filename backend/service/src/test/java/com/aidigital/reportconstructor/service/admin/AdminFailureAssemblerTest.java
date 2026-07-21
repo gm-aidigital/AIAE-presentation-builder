@@ -48,7 +48,8 @@ class AdminFailureAssemblerTest {
 	 */
 	void stubTitle(String title) {
 		when(summaryAssembler.toSummary(org.mockito.ArgumentMatchers.any(ReportJobEntity.class)))
-				.thenReturn(new ReportSummary(1L, "EOC", "error", title, null, null, null, null, null, null,
+				.thenReturn(new ReportSummary(1L, "EOC", "error", title,
+						null, "https://docs.google.com/presentation/d/deck", null, null, null, null,
 						null, null, 0, 0, 0, 0d));
 	}
 
@@ -102,6 +103,7 @@ class AdminFailureAssemblerTest {
 		// Then: it appears as a warning-severity row carrying both warning lines.
 		assertThat(failures).hasSize(1);
 		assertThat(failures.getFirst().severity()).isEqualTo("warning");
+		assertThat(failures.getFirst().slideUrl()).isEqualTo("https://docs.google.com/presentation/d/deck");
 		assertThat(failures.getFirst().errorMessage()).isEqualTo("Completed with 2 warnings.");
 		assertThat(failures.getFirst().warnings())
 				.containsExactly(
