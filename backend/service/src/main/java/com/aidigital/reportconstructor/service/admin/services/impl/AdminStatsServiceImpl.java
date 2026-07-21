@@ -3,6 +3,7 @@ package com.aidigital.reportconstructor.service.admin.services.impl;
 import com.aidigital.reportconstructor.domain.reports.entities.ReportJobEntity;
 import com.aidigital.reportconstructor.service.admin.AdminAccessPolicy;
 import com.aidigital.reportconstructor.service.admin.AdminFailureAssembler;
+import com.aidigital.reportconstructor.service.admin.AdminJobTokenTotals;
 import com.aidigital.reportconstructor.service.admin.AdminTokenAggregator;
 import com.aidigital.reportconstructor.service.admin.ReportCountPolicy;
 import com.aidigital.reportconstructor.service.admin.dto.AdminDayVolume;
@@ -30,8 +31,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * Default {@link AdminStatsService} — validates admin access, then aggregates every
@@ -55,6 +54,7 @@ public class AdminStatsServiceImpl implements AdminStatsService {
 	private final AdminAccessPolicy adminAccessPolicy;
 	private final DisplayNameHelper displayNameHelper;
 	private final AdminTokenAggregator tokenAggregator;
+	private final AdminJobTokenTotals jobTokenTotals;
 	private final ClaudeUsageEventService usageEvents;
 	private final JobTokenUsage tokenUsage;
 	private final AdminFailureAssembler failureAssembler;
@@ -68,19 +68,18 @@ public class AdminStatsServiceImpl implements AdminStatsService {
 		List<ReportJobEntity> all = jobs.listAllJobs();
 		var events = usageEvents.listAll();
 		OffsetDateTime now = OffsetDateTime.now();
-		Set<Long> intermediateSheetJobIds = all.stream()
-				.filter(reportCountPolicy::isIntermediateSheet)
-				.map(ReportJobEntity::getId)
-				.filter(Objects::nonNull)
-				.collect(Collectors.toSet());
+		// The token tab's headline figures and trend are derived from the same per-job stamps the
+		// spend-by-user, all-reports and failures views read, so a report's spend matches wherever it
+		// is shown. Only the per-pipeline-stage breakdown stays event-sourced, as the per-job stamp
+		// carries no stage detail.
 		return new AdminStats(
 				now.toLocalDateTime(),
 				totals(all, now),
 				byUser(all, now),
 				byType(all),
 				weekly(all, now),
-				tokenAggregator.totals(events, now, intermediateSheetJobIds),
-				tokenAggregator.weekly(events, now),
+				jobTokenTotals.totals(all, now),
+				jobTokenTotals.weekly(all, now),
 				tokenAggregator.byLabel(events),
 				failureAssembler.recentFailures(all, FAILURE_LIMIT));
 	}

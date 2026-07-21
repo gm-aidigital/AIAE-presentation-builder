@@ -85,11 +85,31 @@ class SheetPacingTableWriterTest {
 		int[] anchor = {1, 0};
 
 		// When:
-		DistributionColumns cols = writer.findDistributionColumns(grid, anchor, 1);
+		DistributionColumns cols = writer.findDistributionColumns(grid, anchor, 1, "Display Prospecting");
 
 		// Then:
 		assertThat(cols.tacticRow()).isEqualTo(3);
 		assertThat(cols.otherRow()).isEqualTo(4);
+		assertThat(cols.labelCol()).isEqualTo(0);
+	}
+
+	@Test
+	void findDistributionColumnsTest_matchesTheSliceRowByResolvedTacticNameWhenTheTokenWasAlreadyReplaced() {
+		// Given: on the SHEET target the earlier find/replace pass already swapped {{tactic 1}}
+		// for the tactic name, so the slice label cell now holds the resolved name, not the token
+		List<List<Object>> grid = gridOf(
+				List.of("Channel Distribution 1"),
+				List.of("Distribution", "Impressions"),
+				List.of("Display Prospecting"),
+				List.of("Total"));
+		int[] anchor = {0, 0};
+
+		// When:
+		DistributionColumns cols = writer.findDistributionColumns(grid, anchor, 1, "Display Prospecting");
+
+		// Then:
+		assertThat(cols.tacticRow()).isEqualTo(2);
+		assertThat(cols.otherRow()).isEqualTo(3);
 		assertThat(cols.labelCol()).isEqualTo(0);
 	}
 

@@ -224,7 +224,7 @@ public class SheetPacingTableWriter {
 			errors.add("Channel Distribution " + tacticNum + ": anchor not found");
 			return;
 		}
-		DistributionColumns cols = findDistributionColumns(grid, anchor, tacticNum);
+		DistributionColumns cols = findDistributionColumns(grid, anchor, tacticNum, tacticName);
 		if (cols.tacticRow() < 0) {
 			errors.add("Channel Distribution " + tacticNum + ": {{tactic " + tacticNum + "}} slice row not found");
 			return;
@@ -320,15 +320,21 @@ public class SheetPacingTableWriter {
 	/**
 	 * Resolves a tactic's channel-distribution slice row and its "Other" row within a
 	 * bounded window below its block anchor, searching only the anchor's own column so a
-	 * neighbouring tactic's block never matches.
+	 * neighbouring tactic's block never matches. The slice row is matched either by the
+	 * literal {@code {{tactic n}}} token or by the already-resolved tactic name, because on
+	 * the SHEET target the token is replaced with the tactic name by the earlier
+	 * find/replace pass before this writer runs.
 	 *
-	 * @param grid      the tab's full cell grid
-	 * @param anchor    the block's anchor cell {@code [row, col]}
-	 * @param tacticNum one-based tactic number to match exactly
+	 * @param grid       the tab's full cell grid
+	 * @param anchor     the block's anchor cell {@code [row, col]}
+	 * @param tacticNum  one-based tactic number to match exactly
+	 * @param tacticName resolved tactic name the token was replaced with, or {@code null}
 	 * @return the located rows (each {@code -1} when not found within the window)
 	 */
-	DistributionColumns findDistributionColumns(List<List<Object>> grid, int[] anchor, int tacticNum) {
+	DistributionColumns findDistributionColumns(
+			List<List<Object>> grid, int[] anchor, int tacticNum, String tacticName) {
 		Pattern tacticExact = Pattern.compile("\\{\\{tactic\\s+" + tacticNum + "\\}\\}", Pattern.CASE_INSENSITIVE);
+		String resolvedName = tacticName == null ? "" : tacticName.trim();
 		int labelCol = anchor[1];
 		int tacticRow = -1;
 		int otherRow = -1;
@@ -337,7 +343,9 @@ public class SheetPacingTableWriter {
 		for (int r = anchor[0]; r < rowTo; r++) {
 			List<Object> row = grid.get(r);
 			String cell = labelCol < row.size() ? str(row.get(labelCol)).trim() : "";
-			if (tacticRow < 0 && tacticExact.matcher(cell).matches()) {
+			boolean matchesSlice = tacticExact.matcher(cell).matches()
+					|| (!resolvedName.isEmpty() && cell.equalsIgnoreCase(resolvedName));
+			if (tacticRow < 0 && matchesSlice) {
 				tacticRow = r;
 				continue;
 			}
