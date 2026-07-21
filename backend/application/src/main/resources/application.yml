@@ -426,13 +426,6 @@ external:
         26: "g3f4bc4638d4_0_18"
         27: "g3f4bc4638d4_0_19"
         28: "g3f4bc4638d4_0_21"
-      pie-default-colors:
-        - red: 0.173
-          green: 0.490
-          blue: 0.502
-        - red: 0.937
-          green: 0.490
-          blue: 0.133
   anthropic:
     api-key: ${ANTHROPIC_API_KEY:}
     model: ${ANTHROPIC_MODEL:claude-sonnet-4-6}

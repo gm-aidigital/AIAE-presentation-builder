@@ -3,7 +3,6 @@ package com.aidigital.reportconstructor.externalservices.google;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -22,7 +21,6 @@ public class ChartTemplateCatalog {
 	private Map<Integer, String> monthlySlideObjectIds = Map.of();
 	private Map<Integer, String> distTemplateSheetIds = Map.of();
 	private Map<Integer, String> distSlideObjectIds = Map.of();
-	private List<RgbColor> pieDefaultColors = List.of();
 	private RgbColor comboColumnColor;
 	private RgbColor comboLineColor;
 
@@ -152,45 +150,6 @@ public class ChartTemplateCatalog {
 	 */
 	public void setDistSlideObjectIds(Map<Integer, String> distSlideObjectIds) {
 		this.distSlideObjectIds = distSlideObjectIds == null ? Map.of() : distSlideObjectIds;
-	}
-
-	/**
-	 * Returns the configured fallback palette applied to pie slices when the template defines no colors.
-	 *
-	 * @return ordered list of RGB colors used as the default pie palette
-	 */
-	public List<RgbColor> getPieDefaultColors() {
-		return pieDefaultColors;
-	}
-
-	/**
-	 * Sets the fallback pie palette, defaulting to an empty list when null.
-	 *
-	 * @param pieDefaultColors ordered list of RGB colors used as the default pie palette (may be null)
-	 */
-	public void setPieDefaultColors(List<RgbColor> pieDefaultColors) {
-		this.pieDefaultColors = pieDefaultColors == null ? List.of() : pieDefaultColors;
-	}
-
-	/**
-	 * Builds the pie slice color matrix as rows of {@code {red, green, blue}} components, falling back
-	 * to the built-in Teal/Orange palette when no default colors are configured.
-	 *
-	 * @return a matrix of normalized RGB component triples, one row per slice color
-	 */
-	public double[][] pieDefaultColorMatrix() {
-		if (pieDefaultColors.isEmpty()) {
-			return new double[][]{
-					{0.173, 0.490, 0.502},
-					{0.937, 0.490, 0.133}
-			};
-		}
-		double[][] out = new double[pieDefaultColors.size()][];
-		for (int i = 0; i < pieDefaultColors.size(); i++) {
-			RgbColor c = pieDefaultColors.get(i);
-			out[i] = new double[]{c.getRed(), c.getGreen(), c.getBlue()};
-		}
-		return out;
 	}
 
 	/**

@@ -55,8 +55,8 @@ public interface SlidesProvider {
 	 * {@code n} tokens are renumbered to the tactic number (scoped to the copy so identical master tokens
 	 * never overwrite each other across copies), and the copy is positioned immediately after that
 	 * tactic's main slide. When a tactic enables several breakdowns they follow the {@link BreakdownType}
-	 * declaration order (Top Publishers → Creative → Geo → Audience → Device). The master slides are
-	 * deleted from the deck at the end.
+	 * declaration order (Top Publishers → Creative → Geo → Audience → Device). The master slides are left
+	 * in place; {@link #deleteMasterSlides} removes them in a separate, unconditional pass.
 	 *
 	 * <p>A no-op when no masters are configured, the map is empty, or the deck carries no matching tactic
 	 * slides — so an unconfigured deck degrades safely.
@@ -78,4 +78,18 @@ public interface SlidesProvider {
 	void addBreakdownSlides(
 			String presentationId, Map<Integer, Set<BreakdownType>> enabledByTactic,
 			Map<String, String> breakdownValues, String userGoogleAccessToken);
+
+	/**
+	 * Removes the breakdown master slides (Top Publishers, Creative, Geo, Audience, Device) and the
+	 * "Thoughts on tactic performance" master from an already-built deck. These are template slides that
+	 * must never ship, regardless of whether any breakdown slides were inserted — so unlike
+	 * {@link #addBreakdownSlides} this runs unconditionally, after breakdown insertion has duplicated
+	 * whatever it needed from the masters. Only masters that are both configured and present in the deck
+	 * are deleted, so a deck without masters (or one already cleaned) degrades to a safe no-op.
+	 *
+	 * @param presentationId        the already-built deck to clean
+	 * @param userGoogleAccessToken optional signed-in user's Google OAuth token; falls back to the
+	 *                              service account when blank
+	 */
+	void deleteMasterSlides(String presentationId, String userGoogleAccessToken);
 }

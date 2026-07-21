@@ -397,8 +397,10 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		BreakdownSectionInputs<DeviceInsightInput> dev = devF.join();
 
 		// Step 2 (Claude) — ONE combined per-tactic call producing each tactic's overview and its enabled
-		// breakdown sections, replacing the old five separate section batches.
-		List<TacticConclusionInput> conclusionInputs = assembleConclusionInputs(pub, cre, geo, aud, dev);
+		// breakdown sections, replacing the old five separate section batches. Every tactic on the reviewed
+		// sheet is included so its overview (and the whole downstream results narrative) is always written from
+		// the EOC sheet figures + brief; the breakdown sections are attached only when present, as enrichment.
+		List<TacticConclusionInput> conclusionInputs = assembleConclusionInputs(data, pub, cre, geo, aud, dev);
 		List<TacticConclusion> conclusions = live && !conclusionInputs.isEmpty()
 				? claude.batchTacticConclusions(data, conclusionInputs, brief) : List.of();
 
@@ -441,6 +443,17 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		List<TacticNarrativeDigest> digests = conclusionAssembler.toCampaignDigests(conclusions, thoughts);
 		ClaudeResults campaign = live
 				? claude.batchCampaignResults(data, brief, frequencies, digests) : claudeDefaults.emptyResults();
+		// A silent empty campaign result despite real per-tactic digests means Batch C degraded to the empty DTO
+		// (timeout / parse failure / non-200) — the results overview, performance thoughts and recommendations
+		// will all render as dashes. Surface it as a job warning so the blank sections are visible rather than
+		// looking like an intended empty report.
+		if (live && !digests.isEmpty() && isCampaignResultsEmpty(campaign)) {
+			log.warn("[report] job {} campaign results came back empty for {} tactic digest(s); "
+					+ "results overview / performance thoughts / recommendations will be blank", jobId, digests.size());
+			jobWarnings.add("Campaign-level results (results overview, performance thoughts, recommendations) came "
+					+ "back empty from Claude despite " + digests.size() + " tactic conclusion(s); those sections "
+					+ "will show dashes. Usually a Claude timeout or parse failure — re-running the report fixes it.");
+		}
 		ClaudeResults ccC = mergeTacticOverviews(campaign, conclusions);
 
 		// Step 5 — final campaign narrative alignment: reconcile Batch A and the campaign results into one
@@ -478,6 +491,10 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		// copy of that workbook filled with the tactic's impressions. Runs after the slides exist; non-fatal.
 		List<String> breakdownChartWarnings = chartHelper.buildBreakdownCharts(
 				slideUrl, payload, tacticCount, flatReplacements, userGoogleToken);
+		// Remove the breakdown/thoughts master template slides. Unconditional and independent of whether any
+		// breakdown slides were inserted — the masters must never ship, even when Step 3 selected no
+		// breakdowns. Runs after the charts so every copy has finished duplicating from the masters.
+		chartHelper.deleteMasterSlides(slideUrl, userGoogleToken);
 
 		jobProgress.markJobRunningAtStep(jobId, 7, "Building charts");
 		List<String> chartWarnings = chartHelper.buildChartsFromSheet(
@@ -491,24 +508,31 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	}
 
 	/**
-	 * Assembles the Step-2 combined per-tactic input, one entry per tactic that enabled at least one breakdown
-	 * section (the union of the five sections' sent tactics), in ascending tactic order. Each entry carries only
-	 * the sections whose data block was non-empty for that tactic; the rest are null and never requested.
+	 * Assembles the Step-2 combined per-tactic input, one entry per tactic on the reviewed sheet, in ascending
+	 * tactic order. Every sheet tactic is included so its overview — and, through the digests, the whole
+	 * downstream campaign-results narrative — is always produced from the EOC sheet figures + brief, even when
+	 * no breakdown was selected. Each entry carries only the breakdown sections whose data block was non-empty
+	 * for that tactic (as enrichment); the rest are null and never requested.
 	 *
-	 * @param pub the publisher section inputs
-	 * @param cre the creative section inputs
-	 * @param geo the geo section inputs
-	 * @param aud the audience section inputs
-	 * @param dev the device section inputs
-	 * @return one {@link TacticConclusionInput} per tactic with any non-empty section, in ascending order
+	 * @param data the parsed campaign data whose tactic keys are the full tactic set
+	 * @param pub  the publisher section inputs
+	 * @param cre  the creative section inputs
+	 * @param geo  the geo section inputs
+	 * @param aud  the audience section inputs
+	 * @param dev  the device section inputs
+	 * @return one {@link TacticConclusionInput} per sheet tactic, sections attached where present, ascending
 	 */
 	List<TacticConclusionInput> assembleConclusionInputs(
+			CampaignData data,
 			BreakdownSectionInputs<PublisherObservationInput> pub,
 			BreakdownSectionInputs<CreativeTakeawayInput> cre,
 			BreakdownSectionInputs<GeoInsightInput> geo,
 			BreakdownSectionInputs<AudienceInsightInput> aud,
 			BreakdownSectionInputs<DeviceInsightInput> dev) {
 		Set<Integer> tactics = new TreeSet<>();
+		if (data != null && data.tactics() != null) {
+			tactics.addAll(data.tactics().keySet());
+		}
 		tactics.addAll(pub.inputs().keySet());
 		tactics.addAll(cre.inputs().keySet());
 		tactics.addAll(geo.inputs().keySet());
@@ -629,6 +653,22 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		return new ClaudeResults(
 				campaign.resultsOverviews(), campaign.thoughtsOnPerformance(), overviews,
 				campaign.recommendations(), campaign.fOpportunity(), campaign.fFact(), campaign.fStorytelling());
+	}
+
+	/**
+	 * Reports whether a campaign-results batch carries no campaign-level narrative at all, i.e. it degraded to the
+	 * {@link ReportClaudeDefaults#emptyResults()} shape (empty results overviews, performance thoughts and
+	 * recommendations). The per-tactic {@code tacticOverviews} and the frequency copy are deliberately excluded:
+	 * the overviews are merged in from the Step-2 conclusions afterwards, and the frequency copy is legitimately
+	 * {@code null} when the sheet has no reach data, so neither indicates a Batch C failure.
+	 *
+	 * @param campaign the raw {@link ClaudeResults} returned by {@code batchCampaignResults}, before overview merge
+	 * @return {@code true} when the results overviews, performance thoughts and recommendations are all empty
+	 */
+	boolean isCampaignResultsEmpty(ClaudeResults campaign) {
+		return campaign.resultsOverviews().isEmpty()
+				&& campaign.thoughtsOnPerformance().isEmpty()
+				&& campaign.recommendations().isEmpty();
 	}
 
 	/**

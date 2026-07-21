@@ -280,19 +280,12 @@ public class TacticChartBuilder {
 			Map<String, ElementTransform> transforms,
 			DistributionChartJob job) throws IOException {
 		String copiedId = driveCopier.copyFile(clients.drive(), job.templateId(), job.copyName(), folderId);
-		ChartSpec spec = chartSpecBuilder.readChartSpec(clients.sheets(), job.templateId());
 		String tab = chartSpecBuilder.findDataTab(clients.sheets(), copiedId);
 		chartSheetWriter.writeDistribution(
 				clients.sheets(), copiedId, tab, job.tacticName(), job.tacticImp(), job.otherImps());
-		if (spec != null) {
-			try {
-				chartSpecBuilder.applyChartSpec(
-						clients.sheets(), copiedId, chartSpecBuilder.injectPieSliceColors(spec));
-			} catch (IOException colorEx) {
-				log.warn("[charts] distribution tactic {} slice recolor skipped (non-fatal): {}",
-						job.tacticNum(), colorEx.getMessage());
-			}
-		}
+		// Pie slice colors are not recolored here: the Sheets API v4 pie chart spec has no per-slice color
+		// field, so the copy keeps the template's own slice colors. (The old injectPieSliceColors pushed a
+		// non-existent "slices" field and the API rejected the whole updateChartSpec with a 400.)
 		slideChartSwapper.replaceChartOnSlide(
 				clients.slides(), presentationId, job.oldObjectId(), copiedId, transforms.get(job.oldObjectId()));
 	}

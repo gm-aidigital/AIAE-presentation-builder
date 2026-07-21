@@ -39,6 +39,12 @@ class RealSlidesProviderTest {
 	}
 
 	private RealSlidesProvider newProvider(Map<Integer, String> tacticSlideObjectIds, String thoughtsMasterId) {
+		return newProvider(tacticSlideObjectIds, thoughtsMasterId, Map.of());
+	}
+
+	private RealSlidesProvider newProvider(
+			Map<Integer, String> tacticSlideObjectIds, String thoughtsMasterId,
+			Map<String, String> breakdownMasterWireIds) {
 		GoogleCredentialsFactory creds = Mockito.mock(GoogleCredentialsFactory.class);
 		when(creds.transport()).thenReturn(new NetHttpTransport());
 		when(creds.jsonFactory()).thenReturn(GsonFactory.getDefaultInstance());
@@ -49,6 +55,7 @@ class RealSlidesProviderTest {
 		when(props.getSlidesTargetFolderId()).thenReturn("");
 		when(props.getTacticSlideObjectIds()).thenReturn(tacticSlideObjectIds);
 		when(props.getThoughtsMasterSlideObjectId()).thenReturn(thoughtsMasterId);
+		when(props.getBreakdownMasterSlideObjectIds()).thenReturn(breakdownMasterWireIds);
 		DriveSharer driveSharer = Mockito.mock(DriveSharer.class);
 		GoogleRequestRetrier retrier = Mockito.mock(GoogleRequestRetrier.class);
 		DriveShareRecipients shareRecipients = Mockito.mock(DriveShareRecipients.class);
@@ -126,7 +133,7 @@ class RealSlidesProviderTest {
 	}
 
 	@Test
-	void buildBreakdownRequests_duplicatesRenumbersPositionsAndDeletesMastersTest() {
+	void buildBreakdownRequests_duplicatesRenumbersAndPositionsTest() {
 		// Given: a deck with tactic slides 1..3 followed by the master slides, tactic 1 enables Top
 		// Publishers + Device and tactic 3 enables Top Publishers (tactic 2 enables nothing)
 		Map<Integer, String> tacticSlideObjectIds = new LinkedHashMap<>();
@@ -182,20 +189,13 @@ class RealSlidesProviderTest {
 		assertThat(positions.get(1).getUpdateSlidesPosition().getSlideObjectIds()).containsExactly("bd_tp_3");
 		assertThat(positions.get(1).getUpdateSlidesPosition().getInsertionIndex()).isEqualTo(5);
 
-		// And: every configured master present in the deck is deleted (m_geo is absent, so skipped)
-		List<String> deleted = requests.stream()
-				.filter(r -> r.getDeleteObject() != null)
-				.map(r -> r.getDeleteObject().getObjectId())
-				.toList();
-		assertThat(deleted).containsExactlyInAnyOrder("m_tp", "m_ca", "m_dev");
+		// And: no master deletes are emitted here — master cleanup is a separate, unconditional pass
+		assertThat(requests).noneMatch(r -> r.getDeleteObject() != null);
 
-		// And: phase order holds — all duplicates precede all positions, which precede all deletes
+		// And: phase order holds — all duplicates precede all positions
 		int lastDup = lastIndexOf(requests, r -> r.getDuplicateObject() != null);
 		int firstPos = firstIndexOf(requests, r -> r.getUpdateSlidesPosition() != null);
-		int lastPos = lastIndexOf(requests, r -> r.getUpdateSlidesPosition() != null);
-		int firstDel = firstIndexOf(requests, r -> r.getDeleteObject() != null);
 		assertThat(lastDup).isLessThan(firstPos);
-		assertThat(lastPos).isLessThan(firstDel);
 	}
 
 	@Test
@@ -248,12 +248,47 @@ class RealSlidesProviderTest {
 		assertThat(positions.get(1).getUpdateSlidesPosition().getSlideObjectIds())
 				.containsExactly("bd_tp_2", "bd_geo_2");
 
-		// And: the thoughts master is deleted at the end alongside the breakdown masters
+		// And: no master deletes are emitted here — master cleanup is a separate, unconditional pass
+		assertThat(requests).noneMatch(r -> r.getDeleteObject() != null);
+	}
+
+	@Test
+	void buildMasterDeleteRequests_deletesEveryConfiguredMasterPresentInTheDeckTest() {
+		// Given: a provider configured with four breakdown masters plus a thoughts master, and a deck that
+		// carries three of the breakdown masters (geo is configured but absent) and the thoughts master
+		Map<String, String> breakdownMasterWireIds = new LinkedHashMap<>();
+		breakdownMasterWireIds.put("tp", "m_tp");
+		breakdownMasterWireIds.put("ca", "m_ca");
+		breakdownMasterWireIds.put("geo", "m_geo"); // configured but absent from the deck
+		breakdownMasterWireIds.put("dev", "m_dev");
+		RealSlidesProvider provider = newProvider(Map.of(1, "tactic1"), "m_thoughts", breakdownMasterWireIds);
+
+		List<Page> deck = List.of(
+				slide("tactic1"), slide("m_tp"), slide("m_ca"), slide("m_dev"), slide("m_thoughts"));
+
+		// When:
+		List<Request> requests = provider.buildMasterDeleteRequests(deck);
+
+		// Then: only masters present in the deck are deleted (m_geo skipped), thoughts master last
 		List<String> deleted = requests.stream()
 				.filter(r -> r.getDeleteObject() != null)
 				.map(r -> r.getDeleteObject().getObjectId())
 				.toList();
-		assertThat(deleted).contains("m_thoughts");
+		assertThat(deleted).containsExactly("m_tp", "m_ca", "m_dev", "m_thoughts");
+	}
+
+	@Test
+	void buildMasterDeleteRequests_noOpWhenNoConfiguredMasterIsPresentTest() {
+		// Given: masters are configured but the deck carries none of them (only tactic slides)
+		Map<String, String> breakdownMasterWireIds = Map.of("tp", "m_tp", "dev", "m_dev");
+		RealSlidesProvider provider = newProvider(Map.of(1, "tactic1"), "m_thoughts", breakdownMasterWireIds);
+		List<Page> deck = List.of(slide("tactic1"), slide("tactic2"));
+
+		// When:
+		List<Request> requests = provider.buildMasterDeleteRequests(deck);
+
+		// Then: nothing is deleted
+		assertThat(requests).isEmpty();
 	}
 
 	@Test

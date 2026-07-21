@@ -104,4 +104,17 @@ public interface ReportGenerationChartHelper {
 	List<String> buildBreakdownCharts(
 			String slideUrl, GeneratePayload payload, int tacticCount, Map<String, String> flatReplacements,
 			String userGoogleToken);
+
+	/**
+	 * Removes the breakdown and thoughts master template slides from the built deck. Runs unconditionally,
+	 * independent of whether any breakdown slides were inserted: the masters are template scaffolding that
+	 * must never ship, so they are cleaned even when Step 3 selected no breakdowns (in which case
+	 * {@link #addBreakdownSlides} was a no-op that never touched them). Must run after
+	 * {@link #buildBreakdownCharts} so the copies have finished duplicating from the masters. Non-fatal: a
+	 * failure is logged and the deck is delivered with the masters still present.
+	 *
+	 * @param slideUrl        URL of the generated Google Slides deck
+	 * @param userGoogleToken OAuth token for Google Slides API, or null when unavailable
+	 */
+	void deleteMasterSlides(String slideUrl, String userGoogleToken);
 }

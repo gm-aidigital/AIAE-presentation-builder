@@ -72,10 +72,3 @@ external:
         5: "g3e3101095f6_0_4"
         6: "g3e3101095f6_0_5"
         7: "g3e3101095f6_0_6"
-      pie-default-colors:
-        - red: 0.173
-          green: 0.490
-          blue: 0.502
-        - red: 0.937
-          green: 0.490
-          blue: 0.133

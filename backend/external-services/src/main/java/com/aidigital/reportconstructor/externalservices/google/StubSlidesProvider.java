@@ -44,4 +44,9 @@ public class StubSlidesProvider implements SlidesProvider {
 			Map<String, String> breakdownValues, String userGoogleAccessToken) {
 		// No-op: the stub never clones a real deck, so there are no master slides to duplicate.
 	}
+
+	@Override
+	public void deleteMasterSlides(String presentationId, String userGoogleAccessToken) {
+		// No-op: the stub never clones a real deck, so there are no master slides to delete.
+	}
 }

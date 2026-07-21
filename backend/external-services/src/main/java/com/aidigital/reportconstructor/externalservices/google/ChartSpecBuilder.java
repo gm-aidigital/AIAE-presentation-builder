@@ -11,7 +11,6 @@ import com.google.api.services.sheets.v4.model.Color;
 import com.google.api.services.sheets.v4.model.ColorStyle;
 import com.google.api.services.sheets.v4.model.EmbeddedChart;
 import com.google.api.services.sheets.v4.model.GridRange;
-import com.google.api.services.sheets.v4.model.PieChartSpec;
 import com.google.api.services.sheets.v4.model.Sheet;
 import com.google.api.services.sheets.v4.model.Spreadsheet;
 import com.google.api.services.sheets.v4.model.UpdateChartSpecRequest;
@@ -19,9 +18,7 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Reads and re-applies embedded chart specs from helper spreadsheets (combo + pie).
@@ -171,48 +168,6 @@ public class ChartSpecBuilder {
 	}
 
 	/**
-	 * Forces pie slice colors into the spec (PHP {@code _injectPieSliceColors}).
-	 * The non-standard {@code slices} field may be rejected by the API — callers treat as best-effort.
-	 *
-	 * @param spec the chart spec to mutate; returned unchanged when it has no pie chart
-	 * @return the same {@code spec} instance, with per-slice background colors written (preserving any existing slice
-	 * colors, otherwise falling back to the catalog's default color matrix)
-	 */
-	@SuppressWarnings("unchecked")
-	public ChartSpec injectPieSliceColors(ChartSpec spec) {
-		PieChartSpec pie = spec.getPieChart();
-		if (pie == null) {
-			return spec;
-		}
-		List<Map<String, Object>> colors = new ArrayList<>();
-		Object existing = pie.get("slices");
-		if (existing instanceof List<?> list) {
-			for (Object o : list) {
-				if (o instanceof Map<?, ?> m && m.get("backgroundColor") != null) {
-					colors.add(Map.of("backgroundColor", m.get("backgroundColor")));
-				}
-			}
-		}
-		double[][] defaults = templates.pieDefaultColorMatrix();
-		if (colors.isEmpty()) {
-			for (double[] c : defaults) {
-				colors.add(Map.of("backgroundColor", rgb(c)));
-			}
-		}
-
-		int sliceCount = Math.max(2, colors.size());
-		List<Map<String, Object>> newSlices = new ArrayList<>(sliceCount);
-		for (int i = 0; i < sliceCount; i++) {
-			Map<String, Object> color = i < colors.size()
-					? colors.get(i)
-					: Map.of("backgroundColor", rgb(defaults[i % defaults.length]));
-			newSlices.add(color);
-		}
-		pie.set("slices", newSlices);
-		return spec;
-	}
-
-	/**
 	 * Builds one combo-chart data series over a single column of the copy's data tab, pinned to an explicit color so
 	 * the chart keeps its brand styling instead of reverting to the sheet's default theme once linked into Slides.
 	 *
@@ -243,13 +198,5 @@ public class ChartSpecBuilder {
 				.setTargetAxis(targetAxis)
 				.setColor(seriesColor)
 				.setColorStyle(new ColorStyle().setRgbColor(seriesColor));
-	}
-
-	Map<String, Object> rgb(double[] c) {
-		Map<String, Object> m = new LinkedHashMap<>();
-		m.put("red", c[0]);
-		m.put("green", c[1]);
-		m.put("blue", c[2]);
-		return m;
 	}
 }

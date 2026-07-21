@@ -38,6 +38,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -92,6 +93,12 @@ public class RealSlidesProvider implements SlidesProvider {
 			"slides.objectId,"
 			+ "slides.pageElements.shape.text.textElements.textRun.content,"
 			+ "slides.pageElements.table.tableRows.tableCells.text.textElements.textRun.content";
+
+	/**
+	 * Field mask for the {@code presentations.get} used by {@link #deleteMasterSlides}: only the slide
+	 * order ({@code objectId}) is needed to check which configured masters are present in the deck.
+	 */
+	private static final String MASTER_FIELDS = "slides.objectId";
 
 	/** Matches a whole {@code {{…}}} placeholder token (no nested braces). */
 	private static final Pattern TOKEN = Pattern.compile("\\{\\{[^{}]*\\}\\}");
@@ -338,10 +345,10 @@ public class RealSlidesProvider implements SlidesProvider {
 	/**
 	 * Builds the ordered batchUpdate requests that insert the selected per-tactic breakdown slides into
 	 * an already-built deck: duplicate each master, renumber its {@code n} tokens to the tactic number
-	 * (scoped to the copy), position each tactic's copies right after its main slide, then delete the
-	 * masters. Requests are emitted in three ordered phases — all duplicates+renumbers, then all
-	 * position moves, then master deletes — so a later request never references a slide an earlier one
-	 * has not yet created.
+	 * (scoped to the copy), then position each tactic's copies right after its main slide. Requests are
+	 * emitted in two ordered phases — all duplicates+renumbers, then all position moves — so a later
+	 * request never references a slide an earlier one has not yet created. The masters themselves are left
+	 * in place for {@link #deleteMasterSlides} to remove in a separate, unconditional pass.
 	 *
 	 * <p>Only tactics whose main slide is present in the deck and that enable at least one breakdown with
 	 * a configured, in-deck master are processed; everything else is skipped so the method degrades to a
@@ -461,13 +468,63 @@ public class RealSlidesProvider implements SlidesProvider {
 			inserted += copyIds.size();
 		}
 
-		// Phase 3: remove the master slides so they never appear in the delivered deck.
-		for (String masterId : new LinkedHashSet<>(masterIds.values())) {
-			if (indexById.containsKey(masterId)) {
+		// The master slides are intentionally left in place here: {@link #deleteMasterSlides} removes them
+		// in a separate, unconditional pass, so masters are cleaned even when no breakdowns were selected
+		// (and this method returned early).
+		return requests;
+	}
+
+	@Override
+	public void deleteMasterSlides(String presentationId, String userGoogleAccessToken) {
+		if (breakdownMasterIds.isEmpty() && thoughtsMasterId.isBlank()) {
+			return;
+		}
+		boolean asUser = userGoogleAccessToken != null && !userGoogleAccessToken.isBlank();
+		Slides slidesClient = asUser ? buildSlides(userGoogleAccessToken) : slides;
+		try {
+			Presentation deck = retrier.execute(
+					slidesClient.presentations().get(presentationId).setFields(MASTER_FIELDS),
+					"deleteMasterSlides get " + presentationId);
+			List<Request> requests = buildMasterDeleteRequests(deck.getSlides());
+			if (requests.isEmpty()) {
+				return;
+			}
+			executeInChunks(slidesClient, presentationId, requests,
+					"deleteMasterSlides batchUpdate for " + presentationId);
+		} catch (IOException ex) {
+			log.error("[slides] deleteMasterSlides failed for {}", presentationId, ex);
+			throw new AppException(ErrorReason.C000,
+					"Google Slides deleteMasterSlides failed: " + ex.getMessage());
+		}
+	}
+
+	/**
+	 * Builds the {@code DeleteObject} requests that remove every configured breakdown master and the
+	 * thoughts master that is actually present in the deck. Presence is checked against the deck's slide
+	 * object ids so a master configured but absent from this template variant (or already deleted) is
+	 * skipped rather than failing the batch. Breakdown masters are de-duplicated and emitted before the
+	 * thoughts master.
+	 *
+	 * @param slides the deck's slides in order (from {@code presentations.get} with {@link #MASTER_FIELDS})
+	 * @return the ordered delete requests, or an empty list when no configured master is present
+	 */
+	List<Request> buildMasterDeleteRequests(List<Page> slides) {
+		List<Request> requests = new ArrayList<>();
+		if (slides == null || slides.isEmpty()) {
+			return requests;
+		}
+		Set<String> presentIds = new HashSet<>();
+		for (Page page : slides) {
+			if (page.getObjectId() != null) {
+				presentIds.add(page.getObjectId());
+			}
+		}
+		for (String masterId : new LinkedHashSet<>(breakdownMasterIds.values())) {
+			if (masterId != null && presentIds.contains(masterId)) {
 				requests.add(new Request().setDeleteObject(new DeleteObjectRequest().setObjectId(masterId)));
 			}
 		}
-		if (thoughtsEnabled) {
+		if (!thoughtsMasterId.isBlank() && presentIds.contains(thoughtsMasterId)) {
 			requests.add(new Request().setDeleteObject(new DeleteObjectRequest().setObjectId(thoughtsMasterId)));
 		}
 		return requests;
