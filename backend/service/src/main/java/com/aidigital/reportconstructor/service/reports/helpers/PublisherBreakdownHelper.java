@@ -1,10 +1,12 @@
 package com.aidigital.reportconstructor.service.reports.helpers;
 
+import com.aidigital.reportconstructor.service.reports.dto.BreakdownSectionInputs;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownSelection;
-import com.aidigital.reportconstructor.service.reports.dto.BreakdownValues;
+import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationInput;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Assembles the "Top Publishers" breakdown slides' token values: the hand-entered publisher rows read
@@ -17,25 +19,33 @@ import java.util.Map;
 public interface PublisherBreakdownHelper {
 
 	/**
-	 * Builds the {@code token → value} map for every tactic that enabled the Top Publishers breakdown,
-	 * reading the tables the user filled in on the sheet's "Breakdowns" tab and asking Claude for each
-	 * tactic's four observation bullets.
-	 *
-	 * <p>Values are copied from the sheet verbatim so the slide and the workbook cannot disagree. Table
-	 * rows the user left blank are written as an em-dash rather than left as a raw token. A tactic whose
-	 * table is entirely empty still gets its slide (the user did enable the toggle), but its observations
-	 * are blank and Claude is never asked about it — there would be nothing to observe.
+	 * Reads the publisher tables, fills the data-only slide tokens, and returns each tactic's
+	 * {@link PublisherObservationInput} — WITHOUT calling Claude. The flow uses this to gather every section's
+	 * inputs before making one combined per-tactic call, then fills the observation tokens with
+	 * {@link #writePublisherObservations}.
 	 *
 	 * @param sheetUrl         URL of the generated, user-reviewed Google Sheet
 	 * @param selections       the Step-3 per-tactic breakdown selections from the request (may be null)
-	 * @param flatReplacements the deck's resolved placeholder map, source of each tactic's name and
-	 *                         total impressions
-	 * @param brief            free-text campaign brief passed to Claude for audience context
+	 * @param flatReplacements the deck's resolved placeholder map, source of each tactic's name and totals
 	 * @param userGoogleToken  OAuth token for Google Sheets API, or null when unavailable
-	 * @return the section's token values, plus a warning per tactic whose observations Claude failed to
-	 *         write; empty when no tactic enabled the Top Publishers breakdown
+	 * @return the section's enabled tactics, per-tactic Claude inputs (non-empty tables only), and data tokens
 	 */
-	BreakdownValues buildPublisherValues(
+	BreakdownSectionInputs<PublisherObservationInput> readPublisherInputs(
 			String sheetUrl, List<BreakdownSelection> selections,
-			Map<String, String> flatReplacements, String brief, String userGoogleToken);
+			Map<String, String> flatReplacements, String userGoogleToken);
+
+	/**
+	 * Writes the KEY OBSERVATIONS tokens for every enabled tactic from the observations the combined call
+	 * produced, blanking a tactic that came back with none and warning for one that had rows but no bullets.
+	 *
+	 * @param values           the accumulating token → value map to write into
+	 * @param tactics          every tactic that enabled the Top Publishers breakdown
+	 * @param sentTactics      the tactics whose tables were non-empty and were actually sent to Claude
+	 * @param observations     tactic number → its four observation bullets, from the combined call
+	 * @param flatReplacements the deck's resolved placeholder map, source of each tactic's name for warnings
+	 * @return one warning per sent tactic that came back without observations; empty when all answered
+	 */
+	List<String> writePublisherObservations(
+			Map<String, String> values, Set<Integer> tactics, Set<Integer> sentTactics,
+			Map<Integer, List<String>> observations, Map<String, String> flatReplacements);
 }

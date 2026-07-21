@@ -1,15 +1,14 @@
 package com.aidigital.reportconstructor.service.reports.helpers.impl;
 
+import com.aidigital.reportconstructor.service.reports.dto.BreakdownSectionInputs;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownSelection;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
-import com.aidigital.reportconstructor.service.reports.dto.BreakdownValues;
 import com.aidigital.reportconstructor.service.reports.dto.GeoInsightInput;
 import com.aidigital.reportconstructor.service.reports.dto.GeoRow;
 import com.aidigital.reportconstructor.service.reports.dto.GeoTable;
 import com.aidigital.reportconstructor.service.reports.helpers.BreakdownSelectionResolver;
 import com.aidigital.reportconstructor.service.reports.helpers.GeoBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportSheetHelper;
-import com.aidigital.reportconstructor.service.reports.ports.ClaudeClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -61,25 +60,33 @@ public class GeoBreakdownHelperImpl implements GeoBreakdownHelper {
 
 	private final ReportSheetHelper sheetHelper;
 	private final BreakdownSelectionResolver breakdownResolver;
-	private final ClaudeClient claude;
 
 	@Override
-	public BreakdownValues buildGeoValues(
+	public BreakdownSectionInputs<GeoInsightInput> readGeoInputs(
 			String sheetUrl, List<BreakdownSelection> selections,
-			Map<String, String> flatReplacements, String brief, String userGoogleToken) {
+			Map<String, String> flatReplacements, String userGoogleToken) {
 		Set<Integer> tacticNums = geoTactics(breakdownResolver.resolve(selections));
 		if (tacticNums.isEmpty()) {
-			return BreakdownValues.EMPTY;
+			return new BreakdownSectionInputs<>(Set.of(), Map.of(), Map.of(), List.of());
 		}
 		Map<Integer, GeoTable> tables =
 				sheetHelper.readGeoTables(sheetUrl, tacticNums, userGoogleToken);
 
 		Map<String, String> values = new LinkedHashMap<>();
+		Map<Integer, GeoInsightInput> inputs = new LinkedHashMap<>();
 		for (Integer tacticNum : tacticNums) {
 			putTableValues(values, tacticNum, tables.getOrDefault(tacticNum, GeoTable.EMPTY), flatReplacements);
+			GeoTable table = sanitized(tables.getOrDefault(tacticNum, GeoTable.EMPTY));
+			if (table.isEmpty()) {
+				log.info("[geo] tactic {} enabled Geo analysis but its block is empty — "
+						+ "slide ships without insights", tacticNum);
+				continue;
+			}
+			String name = flatReplacements.getOrDefault("{{tactic " + tacticNum + "}}", "Tactic " + tacticNum);
+			String kpiType = flatReplacements.getOrDefault("{{tactic " + tacticNum + " KPI type}}", "");
+			inputs.put(tacticNum, new GeoInsightInput(tacticNum, name, kpiType, table));
 		}
-		List<String> warnings = putInsights(values, tacticNums, tables, flatReplacements, brief);
-		return new BreakdownValues(values, warnings);
+		return new BreakdownSectionInputs<>(tacticNums, inputs, values, List.of());
 	}
 
 	/**
@@ -145,33 +152,19 @@ public class GeoBreakdownHelperImpl implements GeoBreakdownHelper {
 	 * @return one warning per tactic that had geo data but came back without insights; empty when every
 	 * tactic Claude was asked about answered
 	 */
-	List<String> putInsights(
-			Map<String, String> values, Set<Integer> tacticNums, Map<Integer, GeoTable> tables,
-			Map<String, String> flatReplacements, String brief) {
-		List<GeoInsightInput> inputs = new ArrayList<>();
-		for (Integer tacticNum : tacticNums) {
-			GeoTable table = sanitized(tables.getOrDefault(tacticNum, GeoTable.EMPTY));
-			if (table.isEmpty()) {
-				log.info("[geo] tactic {} enabled Geo analysis but its block is empty — "
-						+ "slide ships without insights", tacticNum);
-				continue;
-			}
-			String name = flatReplacements.getOrDefault("{{tactic " + tacticNum + "}}", "Tactic " + tacticNum);
-			String kpiType = flatReplacements.getOrDefault("{{tactic " + tacticNum + " KPI type}}", "");
-			inputs.add(new GeoInsightInput(tacticNum, name, kpiType, table));
-		}
-		Map<Integer, List<String>> insights = inputs.isEmpty()
-				? Map.of() : claude.batchGeoInsights(inputs, brief);
-
+	@Override
+	public List<String> writeGeoInsights(
+			Map<String, String> values, Set<Integer> tactics, Set<Integer> sentTactics,
+			Map<Integer, List<String>> insights, Map<String, String> flatReplacements) {
 		List<String> warnings = new ArrayList<>();
-		for (Integer tacticNum : tacticNums) {
+		for (Integer tacticNum : tactics) {
 			List<String> bullets = insights.getOrDefault(tacticNum, List.of());
 			// A tactic we did send that came back with nothing ships blank insights, which on the slide is
 			// indistinguishable from "the user filled nothing in" — so say so, in the log and on the card.
-			if (bullets.isEmpty() && inputs.stream().anyMatch(input -> input.tacticNum() == tacticNum)) {
+			if (bullets.isEmpty() && sentTactics.contains(tacticNum)) {
 				String name = flatReplacements.getOrDefault("{{tactic " + tacticNum + "}}", "Tactic " + tacticNum);
 				log.warn("[geo] tactic {} had geo data but Claude returned no insights — "
-						+ "slide ships with blank bullets (see the [claude:BatchGeo] log line above "
+						+ "slide ships with blank bullets (see the [claude:BatchConclusions] log line above "
 						+ "for the cause)", tacticNum);
 				warnings.add("Geo analysis – " + name
 						+ ": WHAT THE MAP TELLS US is empty, Claude did not return it. The table itself is filled.");

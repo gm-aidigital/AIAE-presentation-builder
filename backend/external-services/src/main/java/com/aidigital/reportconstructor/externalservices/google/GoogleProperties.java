@@ -67,6 +67,15 @@ public class GoogleProperties {
 	private Map<String, String> breakdownMasterSlideObjectIds = Map.of();
 
 	/**
+	 * Master object id of the single generic "Thoughts on tactic performance" slide in the template. The
+	 * slide carries the literal {@code n} tactic variable in its {@code {{thoughts on tactic n performance
+	 * 1..4}}} tokens. It is duplicated once per tactic that enables more than two breakdown sections, placed
+	 * right after that tactic's last breakdown copy, and the master itself is deleted at the end. Blank
+	 * disables the feature (safe no-op) — set it once the master slide is added to the live deck.
+	 */
+	private String thoughtsMasterSlideObjectId = "";
+
+	/**
 	 * Source Sheets workbook copied for every generated report in the "Generate
 	 * Sheet" flow. Independent of {@link #slidesTemplateId}.
 	 */
@@ -194,6 +203,25 @@ public class GoogleProperties {
 	public void setBreakdownMasterSlideObjectIds(Map<String, String> breakdownMasterSlideObjectIds) {
 		this.breakdownMasterSlideObjectIds =
 				breakdownMasterSlideObjectIds == null ? Map.of() : breakdownMasterSlideObjectIds;
+	}
+
+	/**
+	 * Returns the master object id of the "Thoughts on tactic performance" slide; blank disables the
+	 * per-tactic thoughts slide.
+	 *
+	 * @return the thoughts master slide object id, or a blank string when unconfigured
+	 */
+	public String getThoughtsMasterSlideObjectId() {
+		return thoughtsMasterSlideObjectId;
+	}
+
+	/**
+	 * Sets the thoughts master slide object id, defaulting to a blank string when null.
+	 *
+	 * @param thoughtsMasterSlideObjectId the master slide object id (may be null)
+	 */
+	public void setThoughtsMasterSlideObjectId(String thoughtsMasterSlideObjectId) {
+		this.thoughtsMasterSlideObjectId = thoughtsMasterSlideObjectId == null ? "" : thoughtsMasterSlideObjectId;
 	}
 
 	public String getSheetsTemplateId() {

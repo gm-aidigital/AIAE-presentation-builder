@@ -1,14 +1,13 @@
 package com.aidigital.reportconstructor.service.reports.helpers.impl;
 
+import com.aidigital.reportconstructor.service.reports.dto.BreakdownSectionInputs;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownSelection;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
-import com.aidigital.reportconstructor.service.reports.dto.BreakdownValues;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationInput;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
 import com.aidigital.reportconstructor.service.reports.helpers.BreakdownSelectionResolver;
 import com.aidigital.reportconstructor.service.reports.helpers.PublisherBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportSheetHelper;
-import com.aidigital.reportconstructor.service.reports.ports.ClaudeClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -52,26 +51,32 @@ public class PublisherBreakdownHelperImpl implements PublisherBreakdownHelper {
 
 	private final ReportSheetHelper sheetHelper;
 	private final BreakdownSelectionResolver breakdownResolver;
-	private final ClaudeClient claude;
 
 	@Override
-	public BreakdownValues buildPublisherValues(
+	public BreakdownSectionInputs<PublisherObservationInput> readPublisherInputs(
 			String sheetUrl, List<BreakdownSelection> selections,
-			Map<String, String> flatReplacements, String brief, String userGoogleToken) {
+			Map<String, String> flatReplacements, String userGoogleToken) {
 		Set<Integer> tacticNums = publisherTactics(breakdownResolver.resolve(selections));
 		if (tacticNums.isEmpty()) {
-			return BreakdownValues.EMPTY;
+			return new BreakdownSectionInputs<>(Set.of(), Map.of(), Map.of(), List.of());
 		}
 		Map<Integer, List<PublisherRow>> tables =
 				sheetHelper.readPublisherTables(sheetUrl, tacticNums, userGoogleToken);
 
 		Map<String, String> values = new LinkedHashMap<>();
+		Map<Integer, PublisherObservationInput> inputs = new LinkedHashMap<>();
 		for (Integer tacticNum : tacticNums) {
 			List<PublisherRow> rows = tables.getOrDefault(tacticNum, List.of());
 			putTableValues(values, tacticNum, rows, flatReplacements);
+			if (rows.isEmpty()) {
+				log.info("[publishers] tactic {} enabled Top Publishers but its table is empty — "
+						+ "slide ships without observations", tacticNum);
+				continue;
+			}
+			String name = flatReplacements.getOrDefault("{{tactic " + tacticNum + "}}", "Tactic " + tacticNum);
+			inputs.put(tacticNum, new PublisherObservationInput(tacticNum, name, rows));
 		}
-		List<String> warnings = putObservations(values, tacticNums, tables, flatReplacements, brief);
-		return new BreakdownValues(values, warnings);
+		return new BreakdownSectionInputs<>(tacticNums, inputs, values, List.of());
 	}
 
 	/**
@@ -120,46 +125,19 @@ public class PublisherBreakdownHelperImpl implements PublisherBreakdownHelper {
 		}
 	}
 
-	/**
-	 * Asks Claude for the observation bullets of every tactic whose table has rows, and writes them.
-	 * Tactics with an empty table are never sent — there is nothing to observe and any copy would be
-	 * invented — and their bullets are blanked instead, as are those of a tactic Claude returned nothing
-	 * for.
-	 *
-	 * @param values           the accumulating token → value map
-	 * @param tacticNums       the tactics that enabled the Top Publishers breakdown
-	 * @param tables           each tactic's filled publisher rows
-	 * @param flatReplacements the deck's resolved placeholder map, source of the tactic names
-	 * @param brief            free-text campaign brief passed to Claude for audience context
-	 * @return one warning per tactic that had a table but came back without observations; empty when every
-	 * tactic Claude was asked about answered
-	 */
-	List<String> putObservations(
-			Map<String, String> values, Set<Integer> tacticNums, Map<Integer, List<PublisherRow>> tables,
-			Map<String, String> flatReplacements, String brief) {
-		List<PublisherObservationInput> inputs = new ArrayList<>();
-		for (Integer tacticNum : tacticNums) {
-			List<PublisherRow> rows = tables.getOrDefault(tacticNum, List.of());
-			if (rows.isEmpty()) {
-				log.info("[publishers] tactic {} enabled Top Publishers but its table is empty — "
-						+ "slide ships without observations", tacticNum);
-				continue;
-			}
-			String name = flatReplacements.getOrDefault("{{tactic " + tacticNum + "}}", "Tactic " + tacticNum);
-			inputs.add(new PublisherObservationInput(tacticNum, name, rows));
-		}
-		Map<Integer, List<String>> observations = inputs.isEmpty()
-				? Map.of() : claude.batchPublisherObservations(inputs, brief);
-
+	@Override
+	public List<String> writePublisherObservations(
+			Map<String, String> values, Set<Integer> tactics, Set<Integer> sentTactics,
+			Map<Integer, List<String>> observations, Map<String, String> flatReplacements) {
 		List<String> warnings = new ArrayList<>();
-		for (Integer tacticNum : tacticNums) {
+		for (Integer tacticNum : tactics) {
 			List<String> bullets = observations.getOrDefault(tacticNum, List.of());
 			// A tactic we did send that came back with nothing ships blank bullets, which on the slide is
 			// indistinguishable from "the user filled nothing in" — so say so, in the log and on the card.
-			if (bullets.isEmpty() && inputs.stream().anyMatch(input -> input.tacticNum() == tacticNum)) {
+			if (bullets.isEmpty() && sentTactics.contains(tacticNum)) {
 				String name = flatReplacements.getOrDefault("{{tactic " + tacticNum + "}}", "Tactic " + tacticNum);
 				log.warn("[publishers] tactic {} had publisher rows but Claude returned no observations — "
-						+ "slide ships with blank bullets (see the [claude:BatchPublishers] log line above "
+						+ "slide ships with blank bullets (see the [claude:BatchConclusions] log line above "
 						+ "for the cause)", tacticNum);
 				warnings.add("Top Publishers – " + name
 						+ ": KEY OBSERVATIONS are empty, Claude did not return them. The table itself is filled.");

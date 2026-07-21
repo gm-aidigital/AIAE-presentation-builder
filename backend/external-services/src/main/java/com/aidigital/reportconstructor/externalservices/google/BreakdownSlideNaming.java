@@ -24,4 +24,16 @@ public class BreakdownSlideNaming {
 	public String slideId(BreakdownType type, int tacticNum) {
 		return "bd_" + type.code() + "_" + tacticNum;
 	}
+
+	/**
+	 * Builds the deterministic object id for a duplicated "Thoughts on tactic performance" slide, unique per
+	 * tactic, e.g. {@code thoughts_3}. Kept alongside {@link #slideId(BreakdownType, int)} so all duplicated
+	 * per-tactic slide ids are minted in one place.
+	 *
+	 * @param tacticNum the 1-based tactic number
+	 * @return the copy's slide object id
+	 */
+	public String thoughtsSlideId(int tacticNum) {
+		return "thoughts_" + tacticNum;
+	}
 }

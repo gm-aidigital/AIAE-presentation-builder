@@ -3,7 +3,19 @@ package com.aidigital.reportconstructor.service.reports.services.impl;
 import com.aidigital.reportconstructor.domain.reports.entities.ReportJobEntity;
 import com.aidigital.reportconstructor.service.common.error.AppException;
 import com.aidigital.reportconstructor.service.common.error.ErrorReason;
+import com.aidigital.reportconstructor.service.reports.dto.BreakdownSectionInputs;
+import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownValues;
+import com.aidigital.reportconstructor.service.reports.dto.AudienceInsightInput;
+import com.aidigital.reportconstructor.service.reports.dto.CreativeTakeawayInput;
+import com.aidigital.reportconstructor.service.reports.dto.DeviceInsightInput;
+import com.aidigital.reportconstructor.service.reports.dto.GeoInsightInput;
+import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationInput;
+import com.aidigital.reportconstructor.service.reports.dto.TacticConclusion;
+import com.aidigital.reportconstructor.service.reports.dto.TacticConclusionInput;
+import com.aidigital.reportconstructor.service.reports.dto.TacticNarrativeDigest;
+import com.aidigital.reportconstructor.service.reports.dto.TacticThoughts;
+import com.aidigital.reportconstructor.service.reports.dto.TacticThoughtsInput;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeNarrative;
@@ -28,8 +40,11 @@ import com.aidigital.reportconstructor.service.reports.helpers.DeviceBreakdownHe
 import com.aidigital.reportconstructor.service.reports.helpers.GeoBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.PublisherBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportSheetHelper;
+import com.aidigital.reportconstructor.service.reports.helpers.BreakdownSelectionResolver;
+import com.aidigital.reportconstructor.service.reports.helpers.BreakdownThoughtsGate;
 import com.aidigital.reportconstructor.service.reports.helpers.SheetCampaignReader;
 import com.aidigital.reportconstructor.service.reports.helpers.SheetPlaceholderReader;
+import com.aidigital.reportconstructor.service.reports.helpers.TacticConclusionAssembler;
 import com.aidigital.reportconstructor.service.reports.ports.ClaudeClient;
 import com.aidigital.reportconstructor.service.reports.ports.SlidesProvider;
 import com.aidigital.reportconstructor.service.reports.ports.UserGoogleTokenProvider;
@@ -49,7 +64,10 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
 
 /**
  * Orchestrates the end-to-end marketing report build: persists a {@link ReportJobEntity},
@@ -75,6 +93,9 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 
 	/** Max tactics the report template carries; the derived tactic count is clamped to this. */
 	private static final int MAX_TACTICS = 28;
+
+	/** The per-tactic "thoughts on tactic performance" slide holds exactly four thought tokens. */
+	private static final int THOUGHTS_ON_TACTIC_COUNT = 4;
 
 	/** Max breakdown-conclusion lines fed to Batch D as read-only alignment context, bounding its input size. */
 	private static final int BREAKDOWN_DIGEST_MAX_LINES = 80;
@@ -109,6 +130,12 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	private final AsyncTaskExecutor applicationTaskExecutor;
 	/** Per-run Claude token accounting, opened in {@link #run} and stamped onto the job when it ends. */
 	private final ClaudeUsageTracker usageTracker;
+	/** Reduces the request's per-tactic breakdown selections into the typed enabled-sections map. */
+	private final BreakdownSelectionResolver breakdownResolver;
+	/** The shared "&gt; 2 breakdowns" gate deciding which tactics get Step-3 thoughts and the thoughts slide. */
+	private final BreakdownThoughtsGate thoughtsGate;
+	/** Assembles the Step-3 thoughts inputs and Step-4 campaign digests from the Step-2 conclusions. */
+	private final TacticConclusionAssembler conclusionAssembler;
 
 	/**
 	 * Validates the brief, then enqueues the job and launches the build through the
@@ -329,61 +356,100 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 					jobId, tacticCount, describeTactics(data));
 		}
 		boolean live = claude.isLive();
-		// Strategic narrative only (proposal + insights). Audience already lives in the sheet from step 1, so
-		// this flow never regenerates it — no duplicate Claude work across the two steps.
+		// Batch A: strategic narrative only (proposal + insights). Audience already lives in the sheet from the
+		// sheet-build step, so this flow never regenerates it — no duplicate Claude work across the two steps.
 		ClaudeStrategic ccA = live ? claude.batchStrategicNarrative(data, brief) : claudeDefaults.emptyStrategic();
-		ClaudeResults ccC = live ? claude.batchResults(data, brief, frequencies) : claudeDefaults.emptyResults();
 
-		// Breakdown copy is generated BEFORE the deck is built so the Batch D alignment pass can reconcile the
-		// campaign-level narrative against the deeper per-tactic conclusions. The values do not need the deck —
-		// only their later insertion does — and the helpers read only sheet-derived tokens (tactic names, gender
-		// splits) that Batch D never rewrites, so seeding them from the pre-alignment map is safe. A preliminary
-		// map is used here; the map that actually fills the deck is rebuilt below from the aligned narrative.
+		// Seed map for the breakdown data reads (tactic names, KPI types, gender split). The results copy is
+		// intentionally empty here: the per-tactic overviews come from Step 2 and the campaign results from
+		// Step 4; only the deck-filling map rebuilt at the end carries them.
 		Map<String, String> prelim = buildSheetFlatReplacements(
-				payload, data, ccA, ccC, frequencies, tacticCount, sheetValues);
-		// The five breakdown sections are independent — each reads its own sheet ranges and runs its own Claude
-		// batches — so they run concurrently on the shared virtual-thread executor rather than back to back.
-		// This is the slowest part of the sheet flow, and overlapping the five cuts its wall-clock sharply.
-		// Claude sees at most five concurrent breakdown requests at once, far inside the account rate limit;
-		// prelim/brief/token are read-only, so the shared inputs are safe. Each helper already catches its own
-		// failures and returns a value with warnings, so a section failing cannot abort the others.
-		// Token accounting is thread-bound, so each worker is wrapped to carry the run's scope across —
-		// without it every breakdown batch (the bulk of a run's Claude spend) would go unrecorded.
-		ClaudeUsageScope usageScope = usageTracker.current();
-		CompletableFuture<BreakdownValues> publisherFuture = CompletableFuture.supplyAsync(
-				usageTracker.inScope(usageScope, () -> publisherBreakdown.buildPublisherValues(
-						payload.sheetUrl(), payload.breakdownSelections(), prelim, brief, userGoogleToken)),
-				applicationTaskExecutor);
-		CompletableFuture<BreakdownValues> creativeFuture = CompletableFuture.supplyAsync(
-				usageTracker.inScope(usageScope, () -> creativeBreakdown.buildCreativeValues(
-						payload.sheetUrl(), payload.breakdownSelections(), prelim, brief, userGoogleToken)),
-				applicationTaskExecutor);
-		CompletableFuture<BreakdownValues> geoFuture = CompletableFuture.supplyAsync(
-				usageTracker.inScope(usageScope, () -> geoBreakdown.buildGeoValues(
-						payload.sheetUrl(), payload.breakdownSelections(), prelim, brief, userGoogleToken)),
-				applicationTaskExecutor);
-		CompletableFuture<BreakdownValues> audienceFuture = CompletableFuture.supplyAsync(
-				usageTracker.inScope(usageScope, () -> audienceBreakdown.buildAudienceValues(
-						payload.sheetUrl(), payload.breakdownSelections(), prelim, brief, userGoogleToken)),
-				applicationTaskExecutor);
-		CompletableFuture<BreakdownValues> deviceFuture = CompletableFuture.supplyAsync(
-				usageTracker.inScope(usageScope, () -> deviceBreakdown.buildDeviceValues(
-						payload.sheetUrl(), payload.breakdownSelections(), prelim, brief, userGoogleToken)),
-				applicationTaskExecutor);
-		BreakdownValues publisherValues = publisherFuture.join();
-		BreakdownValues creativeValues = creativeFuture.join();
-		BreakdownValues geoValues = geoFuture.join();
-		BreakdownValues audienceValues = audienceFuture.join();
-		BreakdownValues deviceValues = deviceFuture.join();
+				payload, data, ccA, claudeDefaults.emptyResults(), frequencies, tacticCount, sheetValues);
 
-		// Batch D — final narrative alignment. Reconcile the independently written proposal, strategic insights,
-		// results overviews, thoughts and frequency copy into one storyline faithful to the brief, informed by a
-		// read-only digest of the breakdown conclusions. Purely additive: on any failure the originals are
-		// returned, so the deck is never worse than before this pass ran.
+		// Step 2 (data) — read every breakdown section's tables and per-tactic Claude inputs. These are pure
+		// Google-Sheet reads with no Claude call, so they run concurrently on the shared virtual-thread
+		// executor; each helper catches its own failures, so one section failing cannot abort the others.
+		ClaudeUsageScope usageScope = usageTracker.current();
+		CompletableFuture<BreakdownSectionInputs<PublisherObservationInput>> pubF = CompletableFuture.supplyAsync(
+				usageTracker.inScope(usageScope, () -> publisherBreakdown.readPublisherInputs(
+						payload.sheetUrl(), payload.breakdownSelections(), prelim, userGoogleToken)),
+				applicationTaskExecutor);
+		CompletableFuture<BreakdownSectionInputs<CreativeTakeawayInput>> creF = CompletableFuture.supplyAsync(
+				usageTracker.inScope(usageScope, () -> creativeBreakdown.readCreativeInputs(
+						payload.sheetUrl(), payload.breakdownSelections(), prelim, userGoogleToken)),
+				applicationTaskExecutor);
+		CompletableFuture<BreakdownSectionInputs<GeoInsightInput>> geoF = CompletableFuture.supplyAsync(
+				usageTracker.inScope(usageScope, () -> geoBreakdown.readGeoInputs(
+						payload.sheetUrl(), payload.breakdownSelections(), prelim, userGoogleToken)),
+				applicationTaskExecutor);
+		CompletableFuture<BreakdownSectionInputs<AudienceInsightInput>> audF = CompletableFuture.supplyAsync(
+				usageTracker.inScope(usageScope, () -> audienceBreakdown.readAudienceInputs(
+						payload.sheetUrl(), payload.breakdownSelections(), prelim, userGoogleToken)),
+				applicationTaskExecutor);
+		CompletableFuture<BreakdownSectionInputs<DeviceInsightInput>> devF = CompletableFuture.supplyAsync(
+				usageTracker.inScope(usageScope, () -> deviceBreakdown.readDeviceInputs(
+						payload.sheetUrl(), payload.breakdownSelections(), prelim, userGoogleToken)),
+				applicationTaskExecutor);
+		BreakdownSectionInputs<PublisherObservationInput> pub = pubF.join();
+		BreakdownSectionInputs<CreativeTakeawayInput> cre = creF.join();
+		BreakdownSectionInputs<GeoInsightInput> geo = geoF.join();
+		BreakdownSectionInputs<AudienceInsightInput> aud = audF.join();
+		BreakdownSectionInputs<DeviceInsightInput> dev = devF.join();
+
+		// Step 2 (Claude) — ONE combined per-tactic call producing each tactic's overview and its enabled
+		// breakdown sections, replacing the old five separate section batches.
+		List<TacticConclusionInput> conclusionInputs = assembleConclusionInputs(pub, cre, geo, aud, dev);
+		List<TacticConclusion> conclusions = live && !conclusionInputs.isEmpty()
+				? claude.batchTacticConclusions(data, conclusionInputs, brief) : List.of();
+
+		// Breakdown token map: the section data tokens first, then the Claude section tokens written from the
+		// combined call's conclusions. Each section only emits tokens for its own tactics, so the merge cannot
+		// collide. The warnings collect every tactic whose section shipped without its Claude copy.
+		Map<String, String> breakdownValues = new LinkedHashMap<>();
+		breakdownValues.putAll(pub.dataValues());
+		breakdownValues.putAll(cre.dataValues());
+		breakdownValues.putAll(geo.dataValues());
+		breakdownValues.putAll(aud.dataValues());
+		breakdownValues.putAll(dev.dataValues());
+		List<String> jobWarnings = new ArrayList<>();
+		jobWarnings.addAll(publisherBreakdown.writePublisherObservations(breakdownValues, pub.tactics(),
+				pub.inputs().keySet(), sectionBullets(conclusions, TacticConclusion::publisherBullets), prelim));
+		jobWarnings.addAll(creativeBreakdown.writeCreativeTakeaways(breakdownValues, cre.tactics(),
+				cre.inputs().keySet(), sectionBullets(conclusions, TacticConclusion::creativeBullets), prelim));
+		jobWarnings.addAll(geoBreakdown.writeGeoInsights(breakdownValues, geo.tactics(),
+				geo.inputs().keySet(), sectionBullets(conclusions, TacticConclusion::geoBullets), prelim));
+		jobWarnings.addAll(audienceBreakdown.writeAudienceInsights(breakdownValues, aud.tactics(),
+				aud.inputs().keySet(), sectionBullets(conclusions, TacticConclusion::audienceFields), prelim));
+		jobWarnings.addAll(deviceBreakdown.writeDeviceInsights(breakdownValues, dev.tactics(),
+				dev.inputs().keySet(), sectionBullets(conclusions, TacticConclusion::deviceFields), prelim));
+
+		// Step 3 — per-tactic "thoughts on tactic performance" for the tactics with more than two breakdowns
+		// (the same gate the thoughts slide uses). Written into the breakdown token map so the slide picks
+		// them up when it is duplicated.
+		Map<Integer, Set<BreakdownType>> enabledByTactic = qualifyingSelections(payload, tacticCount);
+		Set<Integer> qualifying = thoughtsGate.qualifyingTactics(enabledByTactic);
+		List<TacticThoughts> thoughts = List.of();
+		if (live && !qualifying.isEmpty()) {
+			List<TacticThoughtsInput> thoughtsInputs = conclusionAssembler.toThoughtsInputs(
+					conclusions, tacticNames(prelim, tacticCount), qualifying);
+			thoughts = claude.batchTacticThoughts(thoughtsInputs, brief);
+		}
+		writeThoughtsTokens(breakdownValues, qualifying, thoughts);
+
+		// Step 4 — campaign-level results (results overviews, performance thoughts, recommendations, frequency)
+		// from the per-tactic digests; the Step-2 overviews are merged back in for the tactic-overview slides.
+		List<TacticNarrativeDigest> digests = conclusionAssembler.toCampaignDigests(conclusions, thoughts);
+		ClaudeResults campaign = live
+				? claude.batchCampaignResults(data, brief, frequencies, digests) : claudeDefaults.emptyResults();
+		ClaudeResults ccC = mergeTacticOverviews(campaign, conclusions);
+
+		// Step 5 — final campaign narrative alignment: reconcile Batch A and the campaign results into one
+		// storyline faithful to the brief, informed by a read-only digest of the breakdown conclusions. Purely
+		// additive: on any failure the originals are returned, so the deck is never worse than before this ran.
 		if (live) {
-			List<String> breakdownDigest = buildBreakdownDigest(
-					List.of(publisherValues, creativeValues, geoValues, audienceValues, deviceValues));
-			ClaudeNarrative aligned = claude.batchAlignNarrative(ccA, ccC, breakdownDigest, brief);
+			List<String> breakdownDigest =
+					buildBreakdownDigest(List.of(new BreakdownValues(breakdownValues, List.of())));
+			ClaudeNarrative aligned = claude.batchAlignCampaign(ccA, ccC, breakdownDigest, brief);
 			if (aligned != null) {
 				ccA = aligned.strategic();
 				ccC = aligned.results();
@@ -403,21 +469,9 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 				payload.reportType(), flatReplacements.get(CLIENT_NAME_TOKEN), userEmail);
 		String slideUrl = slides.createDeck(String.valueOf(jobId), fileName, flatReplacements, userGoogleToken);
 		chartHelper.trimUnusedTactics(slideUrl, tacticCount, userGoogleToken);
-		// Step-3 per-tactic breakdown slides: duplicate the selected master slides, fill their tokens for
-		// each tactic, and place them after the tactic's main slide. Non-fatal — the deck still ships
-		// without them on failure.
-		//
-		// The values were assembled above (before the deck existed) because these slides do not exist yet when
-		// createDeck runs its placeholder pass: they are duplicated from the masters afterwards, so their tokens
-		// have to be filled as part of that same insertion.
-		//
-		// One map across all breakdown sections: each helper only emits tokens for the tactics that enabled
-		// its own section, and the sections share no tokens, so the merge cannot collide.
-		Map<String, String> breakdownValues = new LinkedHashMap<>(publisherValues.values());
-		breakdownValues.putAll(creativeValues.values());
-		breakdownValues.putAll(geoValues.values());
-		breakdownValues.putAll(audienceValues.values());
-		breakdownValues.putAll(deviceValues.values());
+		// Per-tactic breakdown + thoughts slides: duplicate the selected masters, fill their tokens (already in
+		// breakdownValues, including the {{thoughts on tactic n performance}} tokens for the > 2-breakdown
+		// tactics), and place them after the tactic's main slide. Non-fatal — the deck still ships on failure.
 		chartHelper.addBreakdownSlides(slideUrl, payload, tacticCount, breakdownValues, userGoogleToken);
 		// Give each audience/device breakdown slide its own live chart: the master's embedded chart is
 		// duplicated pointing at a shared, empty source workbook, so this relinks every copy to a per-tactic
@@ -429,18 +483,152 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		List<String> chartWarnings = chartHelper.buildChartsFromSheet(
 				slideUrl, grid, flatReplacements, tacticCount, userGoogleToken);
 
-		// One list for the "Report ready" card: a breakdown slide that shipped without its Claude bullets is
-		// as much a partial result as a chart that could not be drawn, and is invisible on the slide itself.
-		List<String> jobWarnings = new ArrayList<>(publisherValues.warnings());
-		jobWarnings.addAll(creativeValues.warnings());
-		jobWarnings.addAll(geoValues.warnings());
-		jobWarnings.addAll(audienceValues.warnings());
-		jobWarnings.addAll(deviceValues.warnings());
 		jobWarnings.addAll(breakdownChartWarnings);
 		jobWarnings.addAll(chartWarnings);
 
 		jobProgress.recordArtifact(jobId, fileName, payload.sheetUrl());
 		jobProgress.markJobDone(jobId, slideUrl, warnings.serializeWarnings(jobWarnings));
+	}
+
+	/**
+	 * Assembles the Step-2 combined per-tactic input, one entry per tactic that enabled at least one breakdown
+	 * section (the union of the five sections' sent tactics), in ascending tactic order. Each entry carries only
+	 * the sections whose data block was non-empty for that tactic; the rest are null and never requested.
+	 *
+	 * @param pub the publisher section inputs
+	 * @param cre the creative section inputs
+	 * @param geo the geo section inputs
+	 * @param aud the audience section inputs
+	 * @param dev the device section inputs
+	 * @return one {@link TacticConclusionInput} per tactic with any non-empty section, in ascending order
+	 */
+	List<TacticConclusionInput> assembleConclusionInputs(
+			BreakdownSectionInputs<PublisherObservationInput> pub,
+			BreakdownSectionInputs<CreativeTakeawayInput> cre,
+			BreakdownSectionInputs<GeoInsightInput> geo,
+			BreakdownSectionInputs<AudienceInsightInput> aud,
+			BreakdownSectionInputs<DeviceInsightInput> dev) {
+		Set<Integer> tactics = new TreeSet<>();
+		tactics.addAll(pub.inputs().keySet());
+		tactics.addAll(cre.inputs().keySet());
+		tactics.addAll(geo.inputs().keySet());
+		tactics.addAll(aud.inputs().keySet());
+		tactics.addAll(dev.inputs().keySet());
+		List<TacticConclusionInput> inputs = new ArrayList<>();
+		for (Integer n : tactics) {
+			inputs.add(new TacticConclusionInput(
+					n, pub.inputs().get(n), cre.inputs().get(n), geo.inputs().get(n),
+					aud.inputs().get(n), dev.inputs().get(n)));
+		}
+		return inputs;
+	}
+
+	/**
+	 * Projects one breakdown section's bullets out of the Step-2 conclusions into the {@code tactic → bullets}
+	 * map the section write helpers expect, skipping a tactic whose section came back null (not requested, or no
+	 * usable reply).
+	 *
+	 * @param conclusions the Step-2 per-tactic conclusions
+	 * @param section     the accessor for the section's bullet list on a conclusion
+	 * @return tactic number → its section bullets, only for tactics whose section is non-null
+	 */
+	Map<Integer, List<String>> sectionBullets(
+			List<TacticConclusion> conclusions, Function<TacticConclusion, List<String>> section) {
+		Map<Integer, List<String>> bullets = new LinkedHashMap<>();
+		for (TacticConclusion c : conclusions) {
+			List<String> value = section.apply(c);
+			if (value != null) {
+				bullets.put(c.tacticNum(), value);
+			}
+		}
+		return bullets;
+	}
+
+	/**
+	 * Resolves the request's breakdown selections into the clamped enabled-sections map, matching how the
+	 * slide-insertion step clamps: only real tactics (1..{@code tacticCount}) with at least one section enabled.
+	 * This is the map the "&gt; 2 breakdowns" gate reads, so Step 3 and the thoughts slide qualify the same
+	 * tactics.
+	 *
+	 * @param payload     the inbound generation payload carrying the breakdown selections
+	 * @param tacticCount the active tactic count
+	 * @return the clamped 1-based tactic number → enabled breakdown sections map
+	 */
+	Map<Integer, Set<BreakdownType>> qualifyingSelections(GeneratePayload payload, int tacticCount) {
+		Map<Integer, Set<BreakdownType>> enabledByTactic = new LinkedHashMap<>();
+		breakdownResolver.resolve(payload.breakdownSelections()).forEach((tacticNum, enabled) -> {
+			if (tacticNum != null && tacticNum >= 1 && tacticNum <= tacticCount && !enabled.isEmpty()) {
+				enabledByTactic.put(tacticNum, enabled);
+			}
+		});
+		return enabledByTactic;
+	}
+
+	/**
+	 * Reads each tactic's display name back out of the seed placeholder map ({@code {{tactic n}}}), for the
+	 * Step-3 thoughts inputs. A blank slot is skipped.
+	 *
+	 * @param flatReplacements the seed placeholder map
+	 * @param tacticCount      the active tactic count
+	 * @return 1-based tactic number → display name, for the tactics that carry a name
+	 */
+	Map<Integer, String> tacticNames(Map<String, String> flatReplacements, int tacticCount) {
+		Map<Integer, String> names = new LinkedHashMap<>();
+		for (int n = 1; n <= tacticCount; n++) {
+			String name = flatReplacements.get("{{tactic " + n + "}}");
+			if (name != null && !name.isBlank()) {
+				names.put(n, name.trim());
+			}
+		}
+		return names;
+	}
+
+	/**
+	 * Writes the four {@code {{thoughts on tactic n performance 1..4}}} tokens for every qualifying tactic from
+	 * its Step-3 thoughts, blanking a qualifying tactic that produced none so its (inserted) slide never ships a
+	 * raw token.
+	 *
+	 * @param breakdownValues the breakdown token map to write the thoughts tokens into
+	 * @param qualifying      the tactics that passed the "&gt; 2 breakdowns" gate (and get the thoughts slide)
+	 * @param thoughts        the Step-3 thoughts that were produced
+	 */
+	void writeThoughtsTokens(
+			Map<String, String> breakdownValues, Set<Integer> qualifying, List<TacticThoughts> thoughts) {
+		Map<Integer, List<String>> byTactic = new LinkedHashMap<>();
+		for (TacticThoughts t : thoughts) {
+			if (t != null && t.thoughts() != null) {
+				byTactic.put(t.tacticNum(), t.thoughts());
+			}
+		}
+		for (Integer n : qualifying) {
+			List<String> tacticThoughts = byTactic.getOrDefault(n, List.of());
+			for (int i = 1; i <= THOUGHTS_ON_TACTIC_COUNT; i++) {
+				String value = i <= tacticThoughts.size() ? tacticThoughts.get(i - 1) : null;
+				breakdownValues.put(
+						"{{thoughts on tactic " + n + " performance " + i + "}}", value == null ? "" : value);
+			}
+		}
+	}
+
+	/**
+	 * Rebuilds the campaign results with the Step-2 per-tactic overviews merged into their (empty) slot, so the
+	 * tactic-overview slides fill while the campaign-level copy stays as Step 4 (and the Step-5 alignment)
+	 * produced it.
+	 *
+	 * @param campaign    the Step-4 campaign results, carrying an empty tactic-overview map
+	 * @param conclusions the Step-2 conclusions, source of the per-tactic overviews
+	 * @return the campaign results with the per-tactic overviews filled in
+	 */
+	ClaudeResults mergeTacticOverviews(ClaudeResults campaign, List<TacticConclusion> conclusions) {
+		Map<Integer, String> overviews = new LinkedHashMap<>();
+		for (TacticConclusion c : conclusions) {
+			if (c.overview() != null && !c.overview().isBlank()) {
+				overviews.put(c.tacticNum(), c.overview());
+			}
+		}
+		return new ClaudeResults(
+				campaign.resultsOverviews(), campaign.thoughtsOnPerformance(), overviews,
+				campaign.recommendations(), campaign.fOpportunity(), campaign.fFact(), campaign.fStorytelling());
 	}
 
 	/**

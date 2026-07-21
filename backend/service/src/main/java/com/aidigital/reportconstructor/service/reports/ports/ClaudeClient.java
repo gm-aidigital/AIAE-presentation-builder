@@ -7,14 +7,13 @@ import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeSheetBatch;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
-import com.aidigital.reportconstructor.service.reports.dto.AudienceInsightInput;
-import com.aidigital.reportconstructor.service.reports.dto.CreativeTakeawayInput;
-import com.aidigital.reportconstructor.service.reports.dto.DeviceInsightInput;
-import com.aidigital.reportconstructor.service.reports.dto.GeoInsightInput;
-import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationInput;
+import com.aidigital.reportconstructor.service.reports.dto.TacticConclusion;
+import com.aidigital.reportconstructor.service.reports.dto.TacticConclusionInput;
+import com.aidigital.reportconstructor.service.reports.dto.TacticNarrativeDigest;
+import com.aidigital.reportconstructor.service.reports.dto.TacticThoughts;
+import com.aidigital.reportconstructor.service.reports.dto.TacticThoughtsInput;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * Abstraction over the Anthropic Claude calls the report engine makes:
@@ -104,104 +103,76 @@ public interface ClaudeClient {
 			ClaudeStrategic strategic, ClaudeResults results, List<String> breakdownDigest, String brief);
 
 	/**
-	 * Publisher-observations batch — the four {@code {{publishers_observation_N_1..4}}} bullets on each
-	 * tactic's "Top Publishers" breakdown slide, written from the hand-entered publisher table the user
-	 * reviewed in the sheet.
+	 * Step 2 of the restructured slides-from-sheet flow — the combined per-tactic conclusions call. For each
+	 * input it writes that tactic's {@code {{tactic n overview}}} narrative plus the bullets for every breakdown
+	 * section the tactic enabled, in a single call per tactic (replacing the old separate per-section batches for
+	 * this flow). The tactic's performance metrics for the overview are read from {@code data} by tactic number;
+	 * the enabled-section tables travel on each {@link TacticConclusionInput}.
 	 *
-	 * <p>Each bullet is capped at 155 characters, the slide's text budget. Tactics are sent in small
-	 * chunks rather than one call, keeping the reply well inside the output budget — the failure mode
-	 * Batch C hit at ~20 tactics, where a truncated reply failed to parse and every bullet rendered blank.
-	 * A chunk that fails or fails to parse only drops its own tactics; the rest still get their copy.
+	 * <p>Tactics are processed in configurable chunks (default one tactic per call) behind a global concurrency
+	 * semaphore, with a stable cached instruction/context prefix so each per-tactic call re-reads it cheaply. A
+	 * chunk that fails or fails to parse drops only its own tactics; the rest still get their conclusions, and a
+	 * tactic missing from the result got no usable reply.
 	 *
-	 * @param inputs one entry per tactic whose publisher table is non-empty; tactics with no rows must not
-	 *               be passed, since there is nothing to observe and the copy would be invented
-	 * @param brief  free-text campaign brief, used to tie the channel mix back to the campaign's audience
-	 * @return tactic number → its four bullets, in slide order; a tactic missing from the map got no usable
-	 *         reply and its bullets should render blank rather than fall back to invented copy
+	 * @param data   parsed campaign data supplying the shared context and each tactic's overview metrics
+	 * @param inputs one entry per tactic to cover, carrying its enabled-section inputs
+	 * @param brief  free-text campaign brief the conclusions must stay faithful to
+	 * @return one {@link TacticConclusion} per tactic that produced a usable reply, in input order
 	 */
-	Map<Integer, List<String>> batchPublisherObservations(List<PublisherObservationInput> inputs, String brief);
+	List<TacticConclusion> batchTacticConclusions(
+			CampaignData data, List<TacticConclusionInput> inputs, String brief);
 
 	/**
-	 * Creative-takeaways batch — the four {@code {{cr_takeaway_tactic N_1..4}}} bullets on each tactic's
-	 * "Creative analysis" breakdown slide, written from the hand-entered creative table the user reviewed
-	 * in the sheet.
+	 * Step 3 of the restructured slides-from-sheet flow — the per-tactic "thoughts on tactic performance" call.
+	 * Runs only for tactics that passed the shared "> 2 breakdowns" gate; the caller builds one input per such
+	 * tactic from that tactic's in-memory Step-2 conclusions. Each call reasons over one tactic's own overview and
+	 * breakdown conclusions and returns up to four length-capped thought strings.
 	 *
-	 * <p>The first three bullets read the creative mix (capped at 100 characters, the slide's text budget);
-	 * the fourth is a recommendation bullet describing an optimisation already made during the flight, and
-	 * gets a wider 140-character budget because it has to state both the action and its result. Chunking
-	 * and failure behaviour mirror {@link #batchPublisherObservations}: small chunks keep each reply inside
-	 * the output budget, and a chunk that fails only drops its own tactics.
+	 * <p>Calls run in parallel behind the same global concurrency semaphore as Step 2. A tactic whose call fails
+	 * or fails to parse is omitted from the result, so its slide renders those tokens blank rather than invented.
 	 *
-	 * @param inputs one entry per tactic whose creative block is non-empty; tactics with a blank block must
-	 *               not be passed, since there is nothing to observe and the copy would be invented
-	 * @param brief  free-text campaign brief, used to tie the creative read back to the client's industry
-	 * @return tactic number → its four bullets, in slide order; a tactic missing from the map got no usable
-	 *         reply and its bullets should render blank rather than fall back to invented copy
+	 * @param inputs one entry per qualifying tactic, carrying its overview and breakdown conclusions
+	 * @param brief  free-text campaign brief the thoughts must stay faithful to
+	 * @return one {@link TacticThoughts} per tactic that produced a usable reply, in input order
 	 */
-	Map<Integer, List<String>> batchCreativeTakeaways(List<CreativeTakeawayInput> inputs, String brief);
+	List<TacticThoughts> batchTacticThoughts(List<TacticThoughtsInput> inputs, String brief);
 
 	/**
-	 * Geo-insights batch — the four {@code {{geo_insight_N.1..4}}} "what the map tells us" bullets plus the
-	 * single {@code {{geo_N_reco}}} recommendation on each tactic's "Geo analysis" breakdown slide, written
-	 * from the hand-entered geo table the user reviewed in the sheet.
+	 * Step 4 of the restructured slides-from-sheet flow — the campaign-level results call. It fills the
+	 * campaign-wide result copy: {@code {{Our results overview N}}}, {@code {{thoughts on the performance N}}},
+	 * the optimization {@code {{recommendation N}}}/{@code {{recommendation N text}}} pairs, and the frequency
+	 * narrative. It reasons over the per-tactic digests — each tactic's Step-3 thoughts where available, otherwise
+	 * its overview plus a short breakdown digest — never over raw grids.
 	 *
-	 * <p>Each of the five strings is capped at 140 characters, the slide's text budget. Unlike the creative
-	 * and publisher batches — whose recommendations must be framed as something already done during the
-	 * flight — the geo recommendation is genuinely forward-looking: it states what we would do next to
-	 * improve results (e.g. where to open incremental budget). Chunking and failure behaviour mirror
-	 * {@link #batchPublisherObservations}: small chunks keep each reply inside the output budget, and a
-	 * chunk that fails only drops its own tactics.
+	 * <p>The returned {@link ClaudeResults} intentionally carries an empty {@code tacticOverviews} map: the
+	 * overviews are produced by {@link #batchTacticConclusions} in Step 2, and the caller merges them into the
+	 * aggregate before handing it to the placeholder resolver. On any failure an empty results DTO is returned so
+	 * the deck falls back to sheet values rather than blanking worse than before.
 	 *
-	 * @param inputs one entry per tactic whose geo block is non-empty; tactics with a blank block must not
-	 *               be passed, since there is nothing to observe and the copy would be invented
-	 * @param brief  free-text campaign brief, used to tie the geo read back to the campaign's audience/goals
-	 * @return tactic number → its five strings (four insights then the recommendation), in slide order; a
-	 * tactic missing from the map got no usable reply and its bullets should render blank rather than fall
-	 * back to invented copy
+	 * @param data        parsed campaign data supplying the shared campaign context
+	 * @param brief       free-text campaign brief the copy must stay faithful to
+	 * @param frequencies pre-computed planned/actual frequency figures embedded in the frequency narrative
+	 * @param perTactic   one digest per tactic (Step-3 thoughts, or overview + breakdown digest as fallback)
+	 * @return the campaign-level results copy with an empty tactic-overview map, or an empty DTO on failure
 	 */
-	Map<Integer, List<String>> batchGeoInsights(List<GeoInsightInput> inputs, String brief);
+	ClaudeResults batchCampaignResults(
+			CampaignData data, String brief, CampaignFrequencies frequencies, List<TacticNarrativeDigest> perTactic);
 
 	/**
-	 * Audience-insights batch — the four Claude-written strings on each tactic's "Audience analysis"
-	 * breakdown slide, written from the hand-entered audience block the user reviewed in the sheet:
-	 * the {@code {{aud_N_takeaway}}} key takeaway, the {@code {{aud_N_worked}}} "what worked", the
-	 * {@code {{aud_N_flag}}} watch-out, and the {@code {{aud_N_reco}}} recommended action.
+	 * Step 5 of the restructured slides-from-sheet flow — the campaign-level final alignment/trim pass. Like
+	 * {@link #batchAlignNarrative}, it harmonizes the Batch A strategic copy and the campaign-level result copy
+	 * into one brief-faithful storyline and enforces the character limits, informed by a read-only breakdown
+	 * digest. Purely additive: on any failure the originals are returned verbatim.
 	 *
-	 * <p>The four strings are returned in that fixed slide order. The takeaway is capped at 256
-	 * characters and the other three at 120, the slide's text budgets. The recommendation is
-	 * forward-looking — it advises which age groups and segments to lean into next, tied to the
-	 * campaign brief. Chunking and failure behaviour mirror {@link #batchGeoInsights}: small chunks
-	 * keep each reply inside the output budget, and a chunk that fails only drops its own tactics.
-	 *
-	 * @param inputs one entry per tactic whose audience block is non-empty; tactics with a blank block
-	 *               must not be passed, since there is nothing to observe and the copy would be invented
-	 * @param brief  free-text campaign brief, used to tie the audience read back to the campaign's goals
-	 * @return tactic number → its four strings (takeaway, what-worked, watch-out, recommendation), in
-	 * slide order; a tactic missing from the map got no usable reply and its fields should render blank
-	 * rather than fall back to invented copy
+	 * @param strategic       the Batch A output to align ({@code proposalOverview} + {@code strategicInsights})
+	 * @param results         the campaign-level results to align ({@code resultsOverviews} + performance thoughts
+	 *                        + frequency); tactic overviews and recommendations pass through untouched
+	 * @param breakdownDigest one short line per per-tactic breakdown conclusion, used as read-only context
+	 * @param brief           free-text campaign brief the aligned narrative must stay faithful to
+	 * @return the aligned strategic + results records, or the originals verbatim when nothing could be aligned
 	 */
-	Map<Integer, List<String>> batchAudienceInsights(List<AudienceInsightInput> inputs, String brief);
-
-	/**
-	 * Device-insights batch — the four Claude-written strings on each tactic's "Device breakdown" slide,
-	 * written from the hand-entered device block the user reviewed in the sheet: the
-	 * {@code {{dev_N_takeaway}}} key takeaway, the {@code {{dev_N_worked}}} "what worked", the
-	 * {@code {{dev_N_flag}}} watch-out, and the {@code {{dev_N_reco}}} recommended action.
-	 *
-	 * <p>The four strings are returned in that fixed slide order. The takeaway is capped at 256
-	 * characters and the other three at 120, the slide's text budgets. The recommendation is
-	 * forward-looking — it advises which devices to lean into next, tied to the campaign brief.
-	 * Chunking and failure behaviour mirror {@link #batchAudienceInsights}: small chunks keep each reply
-	 * inside the output budget, and a chunk that fails only drops its own tactics.
-	 *
-	 * @param inputs one entry per tactic whose device block is non-empty; tactics with a blank block
-	 *               must not be passed, since there is nothing to observe and the copy would be invented
-	 * @param brief  free-text campaign brief, used to tie the device read back to the campaign's goals
-	 * @return tactic number → its four strings (takeaway, what-worked, watch-out, recommendation), in
-	 * slide order; a tactic missing from the map got no usable reply and its fields should render blank
-	 * rather than fall back to invented copy
-	 */
-	Map<Integer, List<String>> batchDeviceInsights(List<DeviceInsightInput> inputs, String brief);
+	ClaudeNarrative batchAlignCampaign(
+			ClaudeStrategic strategic, ClaudeResults results, List<String> breakdownDigest, String brief);
 
 	/**
 	 * Geo-tab → short ≤40-char comma-separated location string (or null).

@@ -3,13 +3,12 @@ package com.aidigital.reportconstructor.service.reports.helpers.impl;
 import com.aidigital.reportconstructor.service.reports.dto.AudienceInsightInput;
 import com.aidigital.reportconstructor.service.reports.dto.AudienceSegmentRow;
 import com.aidigital.reportconstructor.service.reports.dto.AudienceTable;
+import com.aidigital.reportconstructor.service.reports.dto.BreakdownSectionInputs;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownSelection;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
-import com.aidigital.reportconstructor.service.reports.dto.BreakdownValues;
 import com.aidigital.reportconstructor.service.reports.helpers.AudienceBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.BreakdownSelectionResolver;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportSheetHelper;
-import com.aidigital.reportconstructor.service.reports.ports.ClaudeClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -58,26 +57,33 @@ public class AudienceBreakdownHelperImpl implements AudienceBreakdownHelper {
 
 	private final ReportSheetHelper sheetHelper;
 	private final BreakdownSelectionResolver breakdownResolver;
-	private final ClaudeClient claude;
 
 	@Override
-	public BreakdownValues buildAudienceValues(
+	public BreakdownSectionInputs<AudienceInsightInput> readAudienceInputs(
 			String sheetUrl, List<BreakdownSelection> selections,
-			Map<String, String> flatReplacements, String brief, String userGoogleToken) {
+			Map<String, String> flatReplacements, String userGoogleToken) {
 		Set<Integer> tacticNums = audienceTactics(breakdownResolver.resolve(selections));
 		if (tacticNums.isEmpty()) {
-			return BreakdownValues.EMPTY;
+			return new BreakdownSectionInputs<>(Set.of(), Map.of(), Map.of(), List.of());
 		}
 		Map<Integer, AudienceTable> tables =
 				sheetHelper.readAudienceTables(sheetUrl, tacticNums, userGoogleToken);
 
 		Map<String, String> values = new LinkedHashMap<>();
+		Map<Integer, AudienceInsightInput> inputs = new LinkedHashMap<>();
 		for (Integer tacticNum : tacticNums) {
 			putTableValues(
 					values, tacticNum, tables.getOrDefault(tacticNum, AudienceTable.EMPTY), flatReplacements);
+			AudienceTable table = sanitized(tables.getOrDefault(tacticNum, AudienceTable.EMPTY));
+			if (table.isEmpty()) {
+				log.info("[audience] tactic {} enabled Audience analysis but its block is empty — "
+						+ "slide ships without copy", tacticNum);
+				continue;
+			}
+			String name = flatReplacements.getOrDefault("{{tactic " + tacticNum + "}}", "Tactic " + tacticNum);
+			inputs.put(tacticNum, new AudienceInsightInput(tacticNum, name, table));
 		}
-		List<String> warnings = putInsights(values, tacticNums, tables, flatReplacements, brief);
-		return new BreakdownValues(values, warnings);
+		return new BreakdownSectionInputs<>(tacticNums, inputs, values, List.of());
 	}
 
 	/**
@@ -147,32 +153,19 @@ public class AudienceBreakdownHelperImpl implements AudienceBreakdownHelper {
 	 * @return one warning per tactic that had audience data but came back without copy; empty when every
 	 * tactic Claude was asked about answered
 	 */
-	List<String> putInsights(
-			Map<String, String> values, Set<Integer> tacticNums, Map<Integer, AudienceTable> tables,
-			Map<String, String> flatReplacements, String brief) {
-		List<AudienceInsightInput> inputs = new ArrayList<>();
-		for (Integer tacticNum : tacticNums) {
-			AudienceTable table = sanitized(tables.getOrDefault(tacticNum, AudienceTable.EMPTY));
-			if (table.isEmpty()) {
-				log.info("[audience] tactic {} enabled Audience analysis but its block is empty — "
-						+ "slide ships without copy", tacticNum);
-				continue;
-			}
-			String name = flatReplacements.getOrDefault("{{tactic " + tacticNum + "}}", "Tactic " + tacticNum);
-			inputs.add(new AudienceInsightInput(tacticNum, name, table));
-		}
-		Map<Integer, List<String>> insights = inputs.isEmpty()
-				? Map.of() : claude.batchAudienceInsights(inputs, brief);
-
+	@Override
+	public List<String> writeAudienceInsights(
+			Map<String, String> values, Set<Integer> tactics, Set<Integer> sentTactics,
+			Map<Integer, List<String>> insights, Map<String, String> flatReplacements) {
 		List<String> warnings = new ArrayList<>();
-		for (Integer tacticNum : tacticNums) {
+		for (Integer tacticNum : tactics) {
 			List<String> fields = insights.getOrDefault(tacticNum, List.of());
 			// A tactic we did send that came back with nothing ships blank copy, which on the slide is
 			// indistinguishable from "the user filled nothing in" — so say so, in the log and on the card.
-			if (fields.isEmpty() && inputs.stream().anyMatch(input -> input.tacticNum() == tacticNum)) {
+			if (fields.isEmpty() && sentTactics.contains(tacticNum)) {
 				String name = flatReplacements.getOrDefault("{{tactic " + tacticNum + "}}", "Tactic " + tacticNum);
 				log.warn("[audience] tactic {} had audience data but Claude returned no copy — "
-						+ "slide ships with blank fields (see the [claude:BatchAudience] log line above "
+						+ "slide ships with blank fields (see the [claude:BatchConclusions] log line above "
 						+ "for the cause)", tacticNum);
 				warnings.add("Audience analysis – " + name
 						+ ": the takeaway/what-worked/watch-out/recommendation are empty, Claude did not return "

@@ -217,6 +217,15 @@ external:
       geo: "g3f0a39e9ae9_0_2436"   # Geo performance
       aud: "g3f0a39e9ae9_0_2534"   # Audience analysis
       dev: "g3f0a39e9ae9_0_2623"   # Device breakdown
+    # Master object id of the single generic "Thoughts on tactic performance" slide, whose tokens carry
+    # the literal "n" tactic variable ({{thoughts on tactic n performance 1..4}}). Duplicated once per
+    # tactic that enables MORE THAN TWO breakdown sections, placed right after that tactic's last breakdown
+    # copy; the master is deleted at the end. Set directly (like breakdown-master-slide-object-ids above)
+    # rather than gated behind an env var: the Step-3 thoughts pass writes all four tokens for every
+    # qualifying tactic (blank on failure, never a raw token) and the slide is duplicated under the same
+    # gate, so no raw {{…}} can survive. Id read via presentations.get on 11qzOC7… (slide holding the
+    # four {{thoughts on tactic n performance 1..4}} tokens). Blank = feature disabled (safe no-op).
+    thoughts-master-slide-object-id: "g3f56c270c23_0_0"
     # Per-tactic breakdown charts (SLIDES_FROM_SHEET flow). The audience and device master slides
     # each embed a chart linked to a shared source workbook; after a master is duplicated per tactic
     # its chart still points at that shared (empty) workbook, so we copy the workbook per tactic, write
@@ -427,3 +436,8 @@ external:
   anthropic:
     api-key: ${ANTHROPIC_API_KEY:}
     model: ${ANTHROPIC_MODEL:claude-sonnet-4-6}
+    # Tactics per Step-2 combined conclusions call (slides-from-sheet flow). 1 keeps the cached
+    # instruction prefix re-read cheaply per tactic; raise to batch more tactics per call.
+    breakdown-chunk-size: ${CLAUDE_BREAKDOWN_CHUNK_SIZE:1}
+    # Max Claude HTTP calls in flight at once across a run (rate-limit guard for the per-tactic fan-out).
+    max-concurrent-calls: ${CLAUDE_MAX_CONCURRENT_CALLS:6}

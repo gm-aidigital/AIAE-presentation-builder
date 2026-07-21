@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Semaphore;
 import java.util.regex.Pattern;
 
 /**
@@ -56,6 +57,13 @@ public class AnthropicMessagesClient {
 	private final PromptTokenEstimator tokenEstimator;
 
 	/**
+	 * Caps Claude HTTP calls in flight at once across the whole process. The restructured slides-from-sheet
+	 * flow fans out many small per-tactic calls in parallel, so every send acquires a permit here first and
+	 * releases it when the call returns, keeping concurrency inside the account rate limit.
+	 */
+	private final Semaphore callLimiter;
+
+	/**
 	 * Creates the client, capturing the configured API key and target Claude model and building an
 	 * HTTP client with a 15-second connect timeout.
 	 *
@@ -75,6 +83,7 @@ public class AnthropicMessagesClient {
 		this.usageTracker = usageTracker;
 		this.tokenEstimator = tokenEstimator;
 		this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
+		this.callLimiter = new Semaphore(Math.max(1, props.getMaxConcurrentCalls()));
 	}
 
 	/**
@@ -318,6 +327,10 @@ public class AnthropicMessagesClient {
 			log.error("[claude:{}] request could not be built: {}", label, ex.getMessage());
 			return null;
 		}
+		// One permit per in-flight call caps how many requests hit Anthropic at once; a virtual thread parks
+		// cheaply here while it waits, so blocking is fine. Released in the finally so a permit is never leaked
+		// on a timeout or dropped connection.
+		callLimiter.acquireUninterruptibly();
 		try {
 			HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
 			if (res.statusCode() != 200) {
@@ -337,6 +350,8 @@ public class AnthropicMessagesClient {
 			log.error("[claude:{}] request failed after sending: {}", label, ex.getMessage());
 			usageTracker.recordEstimated(label, tokenEstimator.estimateTokens(prompt), model);
 			return null;
+		} finally {
+			callLimiter.release();
 		}
 	}
 

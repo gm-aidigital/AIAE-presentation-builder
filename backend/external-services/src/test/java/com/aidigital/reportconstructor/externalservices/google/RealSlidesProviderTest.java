@@ -6,8 +6,8 @@ import com.aidigital.reportconstructor.service.reports.dto.CreativeRow;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTable;
 import com.aidigital.reportconstructor.service.reports.helpers.BreakdownSelectionResolver;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportSheetHelper;
+import com.aidigital.reportconstructor.service.reports.helpers.impl.BreakdownThoughtsGateImpl;
 import com.aidigital.reportconstructor.service.reports.helpers.impl.CreativeBreakdownHelperImpl;
-import com.aidigital.reportconstructor.service.reports.ports.ClaudeClient;
 import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.services.slides.v1.model.Page;
@@ -35,6 +35,10 @@ import static org.mockito.Mockito.when;
 class RealSlidesProviderTest {
 
 	private RealSlidesProvider newProvider(Map<Integer, String> tacticSlideObjectIds) {
+		return newProvider(tacticSlideObjectIds, "");
+	}
+
+	private RealSlidesProvider newProvider(Map<Integer, String> tacticSlideObjectIds, String thoughtsMasterId) {
 		GoogleCredentialsFactory creds = Mockito.mock(GoogleCredentialsFactory.class);
 		when(creds.transport()).thenReturn(new NetHttpTransport());
 		when(creds.jsonFactory()).thenReturn(GsonFactory.getDefaultInstance());
@@ -44,11 +48,13 @@ class RealSlidesProviderTest {
 		when(props.getSlidesTemplateId()).thenReturn("template");
 		when(props.getSlidesTargetFolderId()).thenReturn("");
 		when(props.getTacticSlideObjectIds()).thenReturn(tacticSlideObjectIds);
+		when(props.getThoughtsMasterSlideObjectId()).thenReturn(thoughtsMasterId);
 		DriveSharer driveSharer = Mockito.mock(DriveSharer.class);
 		GoogleRequestRetrier retrier = Mockito.mock(GoogleRequestRetrier.class);
 		DriveShareRecipients shareRecipients = Mockito.mock(DriveShareRecipients.class);
 		return new RealSlidesProvider(
-				creds, props, driveSharer, shareRecipients, retrier, new BreakdownSlideNaming());
+				creds, props, driveSharer, shareRecipients, retrier,
+				new BreakdownSlideNaming(), new BreakdownThoughtsGateImpl());
 	}
 
 	private Page slide(String objectId) {
@@ -193,6 +199,64 @@ class RealSlidesProviderTest {
 	}
 
 	@Test
+	void buildBreakdownRequests_appendsThoughtsSlideOnlyForTacticsWithMoreThanTwoBreakdownsTest() {
+		// Given: a deck with tactic slides 1..2, the breakdown masters and the thoughts master; tactic 1
+		// enables three breakdowns (qualifies for thoughts), tactic 2 enables two (does not)
+		Map<Integer, String> tacticSlideObjectIds = new LinkedHashMap<>();
+		tacticSlideObjectIds.put(1, "tactic1");
+		tacticSlideObjectIds.put(2, "tactic2");
+		RealSlidesProvider provider = newProvider(tacticSlideObjectIds, "m_thoughts");
+
+		List<Page> deck = List.of(
+				slide("tactic1"), slide("tactic2"),
+				slide("m_tp"), slide("m_geo"), slide("m_dev"),
+				shapeSlide("m_thoughts", List.of(List.of("{{thoughts on tactic n performance 1}}"))));
+
+		Map<BreakdownType, String> masterIds = new LinkedHashMap<>();
+		masterIds.put(BreakdownType.TOP_PUBLISHERS, "m_tp");
+		masterIds.put(BreakdownType.GEO, "m_geo");
+		masterIds.put(BreakdownType.DEVICE, "m_dev");
+
+		Map<Integer, Set<BreakdownType>> enabledByTactic = new LinkedHashMap<>();
+		enabledByTactic.put(1, EnumSet.of(BreakdownType.TOP_PUBLISHERS, BreakdownType.GEO, BreakdownType.DEVICE));
+		enabledByTactic.put(2, EnumSet.of(BreakdownType.TOP_PUBLISHERS, BreakdownType.GEO));
+
+		Map<String, String> values = Map.of("{{thoughts on tactic 1 performance 1}}", "Great CTV pacing.");
+
+		// When:
+		List<Request> requests = provider.buildBreakdownRequests(deck, masterIds, enabledByTactic, values);
+
+		// Then: exactly one thoughts duplicate — for tactic 1 only — with the per-tactic id
+		List<Map<String, String>> thoughtsDups = requests.stream()
+				.filter(r -> r.getDuplicateObject() != null
+						&& "m_thoughts".equals(r.getDuplicateObject().getObjectId()))
+				.map(r -> r.getDuplicateObject().getObjectIds())
+				.toList();
+		assertThat(thoughtsDups).containsExactly(Map.of("m_thoughts", "thoughts_1"));
+
+		// And: its token is filled with the known value, scoped to the thoughts copy only
+		assertThat(requests).anyMatch(r -> r.getReplaceAllText() != null
+				&& r.getReplaceAllText().getContainsText().getText().equals("{{thoughts on tactic n performance 1}}")
+				&& r.getReplaceAllText().getReplaceText().equals("Great CTV pacing.")
+				&& r.getReplaceAllText().getPageObjectIds().equals(List.of("thoughts_1")));
+
+		// And: the thoughts copy is positioned last in tactic 1's block, after its breakdown copies
+		List<Request> positions = requests.stream().filter(r -> r.getUpdateSlidesPosition() != null).toList();
+		assertThat(positions.get(0).getUpdateSlidesPosition().getSlideObjectIds())
+				.containsExactly("bd_tp_1", "bd_geo_1", "bd_dev_1", "thoughts_1");
+		// And: tactic 2 (two breakdowns) gets no thoughts slide
+		assertThat(positions.get(1).getUpdateSlidesPosition().getSlideObjectIds())
+				.containsExactly("bd_tp_2", "bd_geo_2");
+
+		// And: the thoughts master is deleted at the end alongside the breakdown masters
+		List<String> deleted = requests.stream()
+				.filter(r -> r.getDeleteObject() != null)
+				.map(r -> r.getDeleteObject().getObjectId())
+				.toList();
+		assertThat(deleted).contains("m_thoughts");
+	}
+
+	@Test
 	void buildBreakdownRequests_writesTheValueWhenOneIsKnownForTheRenumberedTokenTest() {
 		// Given: tactic 1 enables Top Publishers and its first publisher row's value is known. The deck's own
 		// placeholder pass has already run by the time these copies exist, so a token left merely renumbered
@@ -287,19 +351,22 @@ class RealSlidesProviderTest {
 		RealSlidesProvider provider = newProvider(Map.of(1, "main-1"));
 		ReportSheetHelper sheetHelper = Mockito.mock(ReportSheetHelper.class);
 		BreakdownSelectionResolver resolver = Mockito.mock(BreakdownSelectionResolver.class);
-		ClaudeClient claude = Mockito.mock(ClaudeClient.class);
-		CreativeBreakdownHelperImpl helper = new CreativeBreakdownHelperImpl(sheetHelper, resolver, claude);
+		CreativeBreakdownHelperImpl helper = new CreativeBreakdownHelperImpl(sheetHelper, resolver);
 
 		List<BreakdownSelection> selections = List.of(new BreakdownSelection(1, List.of("ca")));
+		Map<String, String> flatReplacements = Map.of("{{tactic 1}}", "Display", "{{tactic 1 KPI type}}", "CTR");
 		when(resolver.resolve(selections)).thenReturn(Map.of(1, EnumSet.of(BreakdownType.CREATIVE)));
 		when(sheetHelper.readCreativeTables("sheet", Set.of(1), "token")).thenReturn(Map.of(
 				1, new CreativeTable("6", "11.04", "2.09", "CH-Ad-320-50-1B", List.of(
 						new CreativeRow("CH-Ad-320-50-1B", "144,070", "1.77%", "", "$861.81")))));
-		when(claude.batchCreativeTakeaways(Mockito.any(), Mockito.eq("brief")))
-				.thenReturn(Map.of(1, List.of("t1", "t2", "t3", "t4")));
-		Map<String, String> values = helper.buildCreativeValues(
-				"sheet", selections, Map.of("{{tactic 1}}", "Display", "{{tactic 1 KPI type}}", "CTR"),
-				"brief", "token").values();
+
+		// The data read fills the table/stat tokens; the combined call's takeaways are written on top, exactly
+		// as the orchestrator does — the union is the same map the old buildCreativeValues produced.
+		var read = helper.readCreativeInputs("sheet", selections, flatReplacements, "token");
+		Map<String, String> values = new LinkedHashMap<>(read.dataValues());
+		helper.writeCreativeTakeaways(
+				values, read.tactics(), read.inputs().keySet(),
+				Map.of(1, List.of("t1", "t2", "t3", "t4")), flatReplacements);
 
 		// When: every master token is renumbered exactly as buildBreakdownRequests renumbers it
 		List<String> masterTokens = List.of(

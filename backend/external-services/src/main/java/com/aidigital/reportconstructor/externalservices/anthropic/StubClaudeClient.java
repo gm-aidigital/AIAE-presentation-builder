@@ -7,17 +7,16 @@ import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeSheetBatch;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
-import com.aidigital.reportconstructor.service.reports.dto.AudienceInsightInput;
-import com.aidigital.reportconstructor.service.reports.dto.CreativeTakeawayInput;
-import com.aidigital.reportconstructor.service.reports.dto.DeviceInsightInput;
-import com.aidigital.reportconstructor.service.reports.dto.GeoInsightInput;
-import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationInput;
+import com.aidigital.reportconstructor.service.reports.dto.TacticConclusion;
+import com.aidigital.reportconstructor.service.reports.dto.TacticConclusionInput;
+import com.aidigital.reportconstructor.service.reports.dto.TacticNarrativeDigest;
+import com.aidigital.reportconstructor.service.reports.dto.TacticThoughts;
+import com.aidigital.reportconstructor.service.reports.dto.TacticThoughtsInput;
 import com.aidigital.reportconstructor.service.reports.engine.ReportClaudeDefaults;
 import com.aidigital.reportconstructor.service.reports.ports.ClaudeClient;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * No-op Claude client — the only candidate when {@code ANTHROPIC_API_KEY} is
@@ -74,28 +73,29 @@ public class StubClaudeClient implements ClaudeClient {
 	}
 
 	@Override
-	public Map<Integer, List<String>> batchPublisherObservations(List<PublisherObservationInput> inputs, String brief) {
-		return Map.of();
+	public List<TacticConclusion> batchTacticConclusions(
+			CampaignData data, List<TacticConclusionInput> inputs, String brief) {
+		// No live model: no conclusions to generate, so every tactic falls back to sheet values.
+		return List.of();
 	}
 
 	@Override
-	public Map<Integer, List<String>> batchCreativeTakeaways(List<CreativeTakeawayInput> inputs, String brief) {
-		return Map.of();
+	public List<TacticThoughts> batchTacticThoughts(List<TacticThoughtsInput> inputs, String brief) {
+		// No live model: no thoughts to generate, so the thoughts slides render blank.
+		return List.of();
 	}
 
 	@Override
-	public Map<Integer, List<String>> batchGeoInsights(List<GeoInsightInput> inputs, String brief) {
-		return Map.of();
+	public ClaudeResults batchCampaignResults(
+			CampaignData data, String brief, CampaignFrequencies frequencies, List<TacticNarrativeDigest> perTactic) {
+		return claudeDefaults.emptyResults();
 	}
 
 	@Override
-	public Map<Integer, List<String>> batchAudienceInsights(List<AudienceInsightInput> inputs, String brief) {
-		return Map.of();
-	}
-
-	@Override
-	public Map<Integer, List<String>> batchDeviceInsights(List<DeviceInsightInput> inputs, String brief) {
-		return Map.of();
+	public ClaudeNarrative batchAlignCampaign(
+			ClaudeStrategic strategic, ClaudeResults results, List<String> breakdownDigest, String brief) {
+		// No live model: there is nothing to align, so echo the inputs back unchanged.
+		return new ClaudeNarrative(strategic, results);
 	}
 
 	@Override

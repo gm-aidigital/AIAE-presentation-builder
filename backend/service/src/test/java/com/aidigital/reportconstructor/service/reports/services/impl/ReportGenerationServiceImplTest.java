@@ -9,14 +9,18 @@ import com.aidigital.reportconstructor.service.reports.dto.GenerationTarget;
 import com.aidigital.reportconstructor.service.reports.dto.ProgressView;
 import com.aidigital.reportconstructor.service.reports.engine.Fmt;
 import com.aidigital.reportconstructor.service.reports.engine.ReportClaudeDefaults;
-import com.aidigital.reportconstructor.service.reports.dto.BreakdownValues;
+import com.aidigital.reportconstructor.service.reports.dto.BreakdownSectionInputs;
+import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
 import com.aidigital.reportconstructor.service.reports.helpers.CreativeBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.AudienceBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.DeviceBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.GeoBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.PublisherBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportFileNamer;
+import com.aidigital.reportconstructor.service.reports.helpers.impl.BreakdownSelectionResolverImpl;
+import com.aidigital.reportconstructor.service.reports.helpers.impl.BreakdownThoughtsGateImpl;
 import com.aidigital.reportconstructor.service.reports.helpers.impl.ReportNumberParserImpl;
+import com.aidigital.reportconstructor.service.reports.helpers.impl.TacticConclusionAssemblerImpl;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportGenerationChartHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportGenerationWarningsHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportJobProgressHelper;
@@ -42,6 +46,7 @@ import org.springframework.core.task.SimpleAsyncTaskExecutor;
 import java.util.List;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
@@ -103,7 +108,9 @@ class ReportGenerationServiceImplTest {
 				jobProgress, warnings, chartHelper, sheetHelper, publisherBreakdown, creativeBreakdown, geoBreakdown, audienceBreakdown, deviceBreakdown, placeholderReader, sheetCampaign, placeholders,
 				claude, slides, userGoogleTokens, self, claudeDefaults, fileNamer,
 				new ReportNumberParserImpl(), new Fmt(), new SimpleAsyncTaskExecutor(),
-				new ClaudeUsageTrackerImpl(new NoOpClaudeUsageEventService()));
+				new ClaudeUsageTrackerImpl(new NoOpClaudeUsageEventService()),
+				new BreakdownSelectionResolverImpl(), new BreakdownThoughtsGateImpl(),
+				new TacticConclusionAssemblerImpl());
 	}
 
 	@Test
@@ -226,21 +233,25 @@ class ReportGenerationServiceImplTest {
 				any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt())).thenReturn(narrative);
 		when(fileNamer.buildFileName(any(), any(), any())).thenReturn("deck-file");
 		when(slides.createDeck(eq("11"), eq("deck-file"), any(), isNull())).thenReturn("http://deck");
-		when(publisherBreakdown.buildPublisherValues(
-				eq("http://sheet"), isNull(), any(), eq("Campaign brief."), isNull()))
-				.thenReturn(BreakdownValues.EMPTY);
-		when(creativeBreakdown.buildCreativeValues(
-				eq("http://sheet"), isNull(), any(), eq("Campaign brief."), isNull()))
-				.thenReturn(BreakdownValues.EMPTY);
-		when(geoBreakdown.buildGeoValues(
-				eq("http://sheet"), isNull(), any(), eq("Campaign brief."), isNull()))
-				.thenReturn(BreakdownValues.EMPTY);
-		when(audienceBreakdown.buildAudienceValues(
-				eq("http://sheet"), isNull(), any(), eq("Campaign brief."), isNull()))
-				.thenReturn(BreakdownValues.EMPTY);
-		when(deviceBreakdown.buildDeviceValues(
-				eq("http://sheet"), isNull(), any(), eq("Campaign brief."), isNull()))
-				.thenReturn(BreakdownValues.EMPTY);
+		// Step 2 reads (no Claude call): each section returns no enabled tactics, so no tokens and no writes.
+		when(publisherBreakdown.readPublisherInputs(eq("http://sheet"), isNull(), any(), isNull()))
+				.thenReturn(new BreakdownSectionInputs<>(Set.of(), Map.of(), Map.of(), List.of()));
+		when(creativeBreakdown.readCreativeInputs(eq("http://sheet"), isNull(), any(), isNull()))
+				.thenReturn(new BreakdownSectionInputs<>(Set.of(), Map.of(), Map.of(), List.of()));
+		when(geoBreakdown.readGeoInputs(eq("http://sheet"), isNull(), any(), isNull()))
+				.thenReturn(new BreakdownSectionInputs<>(Set.of(), Map.of(), Map.of(), List.of()));
+		when(audienceBreakdown.readAudienceInputs(eq("http://sheet"), isNull(), any(), isNull()))
+				.thenReturn(new BreakdownSectionInputs<>(Set.of(), Map.of(), Map.of(), List.of()));
+		when(deviceBreakdown.readDeviceInputs(eq("http://sheet"), isNull(), any(), isNull()))
+				.thenReturn(new BreakdownSectionInputs<>(Set.of(), Map.of(), Map.of(), List.of()));
+		when(publisherBreakdown.writePublisherObservations(any(), any(), any(), any(), any()))
+				.thenReturn(List.of());
+		when(creativeBreakdown.writeCreativeTakeaways(any(), any(), any(), any(), any())).thenReturn(List.of());
+		when(geoBreakdown.writeGeoInsights(any(), any(), any(), any(), any())).thenReturn(List.of());
+		when(audienceBreakdown.writeAudienceInsights(any(), any(), any(), any(), any())).thenReturn(List.of());
+		when(deviceBreakdown.writeDeviceInsights(any(), any(), any(), any(), any())).thenReturn(List.of());
+		when(claudeDefaults.emptyResults())
+				.thenReturn(new ClaudeResults(Map.of(), List.of(), Map.of(), List.of(), null, null, null));
 		when(chartHelper.buildChartsFromSheet(eq("http://deck"), eq(grid), any(), eq(2), isNull()))
 				.thenReturn(List.of());
 		when(warnings.serializeWarnings(List.of())).thenReturn("[]");

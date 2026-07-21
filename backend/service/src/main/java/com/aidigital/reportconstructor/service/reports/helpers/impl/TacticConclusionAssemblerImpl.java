@@ -1,0 +1,119 @@
+package com.aidigital.reportconstructor.service.reports.helpers.impl;
+
+import com.aidigital.reportconstructor.service.reports.dto.TacticConclusion;
+import com.aidigital.reportconstructor.service.reports.dto.TacticNarrativeDigest;
+import com.aidigital.reportconstructor.service.reports.dto.TacticThoughts;
+import com.aidigital.reportconstructor.service.reports.dto.TacticThoughtsInput;
+import com.aidigital.reportconstructor.service.reports.helpers.TacticConclusionAssembler;
+import org.springframework.stereotype.Component;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+/**
+ * Spring bean implementation of {@link TacticConclusionAssembler}. Pure in-memory transformation of the
+ * Step-2 conclusions into the Step-3 and Step-4 inputs; it reads no sheet and calls no external service.
+ */
+@Component
+public class TacticConclusionAssemblerImpl implements TacticConclusionAssembler {
+
+	/**
+	 * Upper bound on the breakdown-digest lines carried for a tactic that has no Step-3 thoughts, so a tactic
+	 * with several sections cannot bloat the campaign call. A non-qualifying tactic has at most two sections, so
+	 * this only ever clamps a pathological case.
+	 */
+	private static final int MAX_DIGEST_LINES = 12;
+
+	@Override
+	public List<TacticThoughtsInput> toThoughtsInputs(
+			List<TacticConclusion> conclusions, Map<Integer, String> tacticNames, Set<Integer> qualifyingTactics) {
+		List<TacticThoughtsInput> inputs = new ArrayList<>();
+		if (conclusions == null || qualifyingTactics == null) {
+			return inputs;
+		}
+		Map<Integer, String> names = tacticNames == null ? Map.of() : tacticNames;
+		for (TacticConclusion c : conclusions) {
+			if (c == null || !qualifyingTactics.contains(c.tacticNum())) {
+				continue;
+			}
+			inputs.add(new TacticThoughtsInput(
+					c.tacticNum(),
+					names.get(c.tacticNum()),
+					c.overview(),
+					c.publisherBullets(),
+					c.creativeBullets(),
+					c.geoBullets(),
+					c.audienceFields(),
+					c.deviceFields()));
+		}
+		return inputs;
+	}
+
+	@Override
+	public List<TacticNarrativeDigest> toCampaignDigests(
+			List<TacticConclusion> conclusions, List<TacticThoughts> thoughts) {
+		List<TacticNarrativeDigest> digests = new ArrayList<>();
+		if (conclusions == null) {
+			return digests;
+		}
+		Map<Integer, List<String>> thoughtsByTactic = new LinkedHashMap<>();
+		if (thoughts != null) {
+			for (TacticThoughts t : thoughts) {
+				if (t != null && t.thoughts() != null && !t.thoughts().isEmpty()) {
+					thoughtsByTactic.putIfAbsent(t.tacticNum(), t.thoughts());
+				}
+			}
+		}
+		for (TacticConclusion c : conclusions) {
+			if (c == null) {
+				continue;
+			}
+			List<String> tacticThoughts = thoughtsByTactic.get(c.tacticNum());
+			if (tacticThoughts != null) {
+				digests.add(new TacticNarrativeDigest(c.tacticNum(), c.overview(), tacticThoughts, List.of()));
+			} else {
+				digests.add(new TacticNarrativeDigest(
+						c.tacticNum(), c.overview(), null, breakdownDigestLines(c)));
+			}
+		}
+		return digests;
+	}
+
+	/**
+	 * Flattens a conclusion's non-blank breakdown strings into a bounded digest, in section order (publishers,
+	 * creative, geo, audience, device). Each string is already a self-contained slide sentence, so the campaign
+	 * call reads conclusions rather than raw grids. Used only for tactics without Step-3 thoughts.
+	 *
+	 * @param conclusion the tactic's Step-2 conclusion
+	 * @return up to {@link #MAX_DIGEST_LINES} non-blank breakdown lines, in section order
+	 */
+	List<String> breakdownDigestLines(TacticConclusion conclusion) {
+		List<String> lines = new ArrayList<>();
+		addNonBlank(lines, conclusion.publisherBullets());
+		addNonBlank(lines, conclusion.creativeBullets());
+		addNonBlank(lines, conclusion.geoBullets());
+		addNonBlank(lines, conclusion.audienceFields());
+		addNonBlank(lines, conclusion.deviceFields());
+		return lines.size() > MAX_DIGEST_LINES ? new ArrayList<>(lines.subList(0, MAX_DIGEST_LINES)) : lines;
+	}
+
+	/**
+	 * Appends every non-blank, trimmed entry of {@code source} to {@code target}, skipping a null source.
+	 *
+	 * @param target the accumulating digest lines
+	 * @param source a section's bullet list, possibly {@code null} or holding blank entries
+	 */
+	void addNonBlank(List<String> target, List<String> source) {
+		if (source == null) {
+			return;
+		}
+		for (String value : source) {
+			if (value != null && !value.isBlank()) {
+				target.add(value.trim());
+			}
+		}
+	}
+}

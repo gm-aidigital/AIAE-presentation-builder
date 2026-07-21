@@ -7,14 +7,14 @@ import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeSheetBatch;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
-import com.aidigital.reportconstructor.service.reports.dto.AudienceInsightInput;
-import com.aidigital.reportconstructor.service.reports.dto.CreativeTakeawayInput;
-import com.aidigital.reportconstructor.service.reports.dto.DeviceInsightInput;
-import com.aidigital.reportconstructor.service.reports.dto.GeoInsightInput;
-import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationInput;
 import com.aidigital.reportconstructor.service.reports.dto.Recommendation;
 import com.aidigital.reportconstructor.service.reports.dto.StrategicInsight;
+import com.aidigital.reportconstructor.service.reports.dto.TacticConclusion;
+import com.aidigital.reportconstructor.service.reports.dto.TacticConclusionInput;
 import com.aidigital.reportconstructor.service.reports.dto.TacticInsight;
+import com.aidigital.reportconstructor.service.reports.dto.TacticNarrativeDigest;
+import com.aidigital.reportconstructor.service.reports.dto.TacticThoughts;
+import com.aidigital.reportconstructor.service.reports.dto.TacticThoughtsInput;
 import com.aidigital.reportconstructor.service.reports.engine.ReportClaudeDefaults;
 import com.aidigital.reportconstructor.service.reports.ports.ClaudeClient;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -78,22 +78,6 @@ public class RealClaudeClient implements ClaudeClient {
 	/** Bullets per tactic on the "Top Publishers" slide. */
 	private static final int PUBLISHER_OBSERVATION_COUNT = 4;
 
-	/**
-	 * Tactics per publisher-observations call. Small chunks keep each reply far inside the output budget:
-	 * a single call covering all 28 tactics would repeat Batch C's failure, where an over-long reply was
-	 * truncated, failed to parse, and lost every field at once. A chunk that fails costs only its own tactics
-	 * — and even that is retried one tactic at a time, see {@link #publisherObservationsResilient}.
-	 */
-	private static final int PUBLISHER_OBSERVATION_CHUNK = 5;
-
-	/**
-	 * Output budget per publisher-observations chunk: 4 bullets × 5 tactics plus JSON overhead, with room
-	 * for the model writing past the character limit it was asked for (it cannot count characters, so it
-	 * routinely does). Cheap to over-provision — unused output tokens are not billed — and running out is
-	 * what blanks a whole slide.
-	 */
-	private static final int PUBLISHER_OBSERVATION_MAX_TOKENS = 4000;
-
 	/** Character budget of the first three {@code {{cr_takeaway_tactic N_x}}} bullets on the slide. */
 	private static final int CREATIVE_TAKEAWAY_LIMIT = 100;
 
@@ -106,15 +90,6 @@ public class RealClaudeClient implements ClaudeClient {
 	/** Bullets per tactic on the "Creative analysis" slide; the last one is the recommendation. */
 	private static final int CREATIVE_TAKEAWAY_COUNT = 4;
 
-	/** Tactics per creative-takeaways call, chunked for the same reason publisher observations are. */
-	private static final int CREATIVE_TAKEAWAY_CHUNK = 5;
-
-	/**
-	 * Output budget per creative-takeaways chunk, over-provisioned for the same reason
-	 * {@link #PUBLISHER_OBSERVATION_MAX_TOKENS} is.
-	 */
-	private static final int CREATIVE_TAKEAWAY_MAX_TOKENS = 4000;
-
 	/**
 	 * Character budget of each geo string on the slide — the four {@code {{geo_insight_N.x}}} bullets and
 	 * the {@code {{geo_N_reco}}} recommendation all share the same 140-character budget.
@@ -126,15 +101,6 @@ public class RealClaudeClient implements ClaudeClient {
 	 * forward-looking recommendation, in that order.
 	 */
 	private static final int GEO_BULLET_COUNT = 5;
-
-	/** Tactics per geo-insights call, chunked for the same reason publisher observations are. */
-	private static final int GEO_INSIGHT_CHUNK = 5;
-
-	/**
-	 * Output budget per geo-insights chunk, over-provisioned for the same reason
-	 * {@link #PUBLISHER_OBSERVATION_MAX_TOKENS} is.
-	 */
-	private static final int GEO_INSIGHT_MAX_TOKENS = 4000;
 
 	/**
 	 * Character budget of the "Audience analysis" slide's key takeaway ({@code {{aud_N_takeaway}}}), the
@@ -155,15 +121,6 @@ public class RealClaudeClient implements ClaudeClient {
 	 */
 	private static final int AUDIENCE_FIELD_COUNT = 4;
 
-	/** Tactics per audience-insights call, chunked for the same reason publisher observations are. */
-	private static final int AUDIENCE_INSIGHT_CHUNK = 5;
-
-	/**
-	 * Output budget per audience-insights chunk, over-provisioned for the same reason
-	 * {@link #PUBLISHER_OBSERVATION_MAX_TOKENS} is.
-	 */
-	private static final int AUDIENCE_INSIGHT_MAX_TOKENS = 4000;
-
 	/**
 	 * Character budget of the "Device breakdown" slide's key takeaway ({@code {{dev_N_takeaway}}}), the
 	 * widest of the four device fields.
@@ -183,15 +140,6 @@ public class RealClaudeClient implements ClaudeClient {
 	 */
 	private static final int DEVICE_FIELD_COUNT = 4;
 
-	/** Tactics per device-insights call, chunked for the same reason publisher observations are. */
-	private static final int DEVICE_INSIGHT_CHUNK = 5;
-
-	/**
-	 * Output budget per device-insights chunk, over-provisioned for the same reason
-	 * {@link #PUBLISHER_OBSERVATION_MAX_TOKENS} is.
-	 */
-	private static final int DEVICE_INSIGHT_MAX_TOKENS = 4000;
-
 	// Batch C emits one results-overview per tactic group plus one tactic-overview PER TACTIC (up to 28), on
 	// top of thoughts, four recommendations and the frequency copy — all in a single JSON reply. A fixed cap
 	// truncated the reply once a campaign carried ~20+ tactics, so the JSON failed to parse and the whole
@@ -200,6 +148,29 @@ public class RealClaudeClient implements ClaudeClient {
 	private static final int BATCH_C_BASE_TOKENS = 2500;
 	private static final int BATCH_C_TOKENS_PER_TACTIC = 170;
 	private static final int BATCH_C_MAX_TOKENS_CAP = 8000;
+
+	/**
+	 * Output budget for the Step-2 combined conclusions call. Each tactic can carry an overview plus up to five
+	 * sections (~21 strings), so the per-tactic allowance is generous; the base covers JSON overhead and the cap
+	 * bounds a large chunk. A reply that still overruns salvages the tactics it finished (allowPartial).
+	 */
+	private static final int CONCLUSIONS_BASE_TOKENS = 800;
+	private static final int CONCLUSIONS_TOKENS_PER_TACTIC = 1200;
+	private static final int CONCLUSIONS_MAX_TOKENS_CAP = 8000;
+
+	/** The per-tactic "thoughts on tactic performance" slide holds exactly four thought strings. */
+	private static final int TACTIC_THOUGHTS_COUNT = 4;
+	/** Output budget for one tactic's thoughts call: four ~220-char thoughts plus JSON overhead. */
+	private static final int TACTIC_THOUGHTS_MAX_TOKENS = 900;
+
+	/**
+	 * Output budget for the Step-4 campaign-results call. Its output is largely fixed (grouped overviews, four
+	 * thoughts, four recommendations, frequency) and scales with tactic GROUPS, not tactics, so the per-tactic
+	 * term is small; the base covers the fixed copy and the cap bounds a many-group deck.
+	 */
+	private static final int CAMPAIGN_RESULTS_BASE_TOKENS = 2500;
+	private static final int CAMPAIGN_RESULTS_TOKENS_PER_TACTIC = 80;
+	private static final int CAMPAIGN_RESULTS_MAX_TOKENS_CAP = 6000;
 
 	// Batch D (narrative alignment) only ever rewrites the bounded campaign-level copy — the proposal, four
 	// strategic insights, up to four group results overviews, up to four thoughts and three frequency strings —
@@ -245,6 +216,8 @@ public class RealClaudeClient implements ClaudeClient {
 	private final ReportClaudeDefaults claudeDefaults;
 	private final WorkbookGeoFilter geoFilter;
 	private final PromptTokenEstimator tokenEstimator;
+	/** Tactics per Step-2 combined conclusions call; bound from config, clamped to at least 1. */
+	private final int breakdownChunkSize;
 
 	public RealClaudeClient(
 			AnthropicMessagesClient messagesClient,
@@ -253,7 +226,8 @@ public class RealClaudeClient implements ClaudeClient {
 			ClaudeCompressionService compressionService,
 			ReportClaudeDefaults claudeDefaults,
 			WorkbookGeoFilter geoFilter,
-			PromptTokenEstimator tokenEstimator) {
+			PromptTokenEstimator tokenEstimator,
+			AnthropicProperties anthropicProperties) {
 		this.messagesClient = messagesClient;
 		this.promptBuilder = promptBuilder;
 		this.normalizer = normalizer;
@@ -261,6 +235,7 @@ public class RealClaudeClient implements ClaudeClient {
 		this.claudeDefaults = claudeDefaults;
 		this.geoFilter = geoFilter;
 		this.tokenEstimator = tokenEstimator;
+		this.breakdownChunkSize = Math.max(1, anthropicProperties.getBreakdownChunkSize());
 	}
 
 	@Override
@@ -667,6 +642,417 @@ public class RealClaudeClient implements ClaudeClient {
 		return new ClaudeNarrative(alignedStrategic, alignedResults);
 	}
 
+	@Override
+	public List<TacticConclusion> batchTacticConclusions(
+			CampaignData data, List<TacticConclusionInput> inputs, String brief) {
+		List<TacticConclusion> out = new ArrayList<>();
+		if (inputs == null || inputs.isEmpty() || data == null) {
+			return out;
+		}
+		for (int start = 0; start < inputs.size(); start += breakdownChunkSize) {
+			List<TacticConclusionInput> chunk =
+					inputs.subList(start, Math.min(start + breakdownChunkSize, inputs.size()));
+			out.addAll(tacticConclusionsResilient(data, chunk, brief));
+		}
+		return out;
+	}
+
+	/**
+	 * Runs one conclusions chunk and, when it comes back with nothing at all, retries rather than shipping the
+	 * chunk's tactics with no conclusions. A multi-tactic chunk is retried one tactic per call so a single bad
+	 * tactic cannot take its neighbours down, and a chunk already down to one tactic simply gets one more attempt.
+	 *
+	 * @param data  parsed campaign data supplying the shared context and each tactic's overview metrics
+	 * @param chunk the tactics to cover
+	 * @param brief free-text campaign brief passed through to the prompt
+	 * @return the tactics' conclusions; empty only when every attempt failed
+	 */
+	List<TacticConclusion> tacticConclusionsResilient(
+			CampaignData data, List<TacticConclusionInput> chunk, String brief) {
+		List<TacticConclusion> res = tacticConclusionsChunk(data, chunk, brief);
+		if (!res.isEmpty() || chunk.isEmpty()) {
+			return res;
+		}
+		if (chunk.size() == 1) {
+			log.warn("[claude:BatchConclusions] tactic {} came back empty — retrying once",
+					chunk.getFirst().tacticNum());
+			return tacticConclusionsChunk(data, chunk, brief);
+		}
+		log.warn("[claude:BatchConclusions] chunk {} came back empty — retrying one tactic per call",
+				chunk.stream().map(TacticConclusionInput::tacticNum).toList());
+		List<TacticConclusion> perTactic = new ArrayList<>();
+		for (TacticConclusionInput input : chunk) {
+			perTactic.addAll(tacticConclusionsResilient(data, List.of(input), brief));
+		}
+		return perTactic;
+	}
+
+	/**
+	 * Runs one conclusions chunk: build the combined prompt, parse each tactic's object, compress every
+	 * over-budget field in one pass, then assemble the per-tactic conclusions. Returns an empty list — never
+	 * partial junk — when the call or parse fails, so only this chunk's tactics lose their conclusions.
+	 *
+	 * @param data  parsed campaign data supplying the shared context and each tactic's overview metrics
+	 * @param chunk the tactics to cover in this single call
+	 * @param brief free-text campaign brief passed through to the prompt
+	 * @return the tactics' conclusions; empty when the chunk produced no usable reply
+	 */
+	List<TacticConclusion> tacticConclusionsChunk(
+			CampaignData data, List<TacticConclusionInput> chunk, String brief) {
+		List<TacticConclusion> out = new ArrayList<>();
+		var prompt = promptBuilder.buildTacticConclusionsPrompt(
+				data, chunk, brief, PUBLISHER_OBSERVATION_LIMIT, CREATIVE_TAKEAWAY_LIMIT, CREATIVE_RECO_LIMIT,
+				GEO_INSIGHT_LIMIT, AUDIENCE_TAKEAWAY_LIMIT, AUDIENCE_SHORT_LIMIT, DEVICE_TAKEAWAY_LIMIT,
+				DEVICE_SHORT_LIMIT);
+		if (prompt.isEmpty()) {
+			return out;
+		}
+		int maxTokens = Math.min(CONCLUSIONS_MAX_TOKENS_CAP, CONCLUSIONS_BASE_TOKENS
+				+ CONCLUSIONS_TOKENS_PER_TACTIC * chunk.size());
+		// allowPartial: a reply that ran past the budget still carries whole conclusions for the tactics it
+		// finished, and salvaging those beats blanking the chunk over its unfinished tail.
+		JsonNode parsed = messagesClient.callJsonObject(
+				prompt.get(), maxTokens, BREAKDOWN_TIMEOUT_SEC, "BatchConclusions", true);
+		if (parsed == null) {
+			return out;
+		}
+		Map<Integer, JsonNode> byTactic = conclusionsByTactic(parsed);
+
+		// One compression pass over every over-budget field in the whole chunk, keyed by tactic+field so the
+		// assembly below can read each rewritten value back.
+		List<ClaudeCompressionField> fields = new ArrayList<>();
+		for (TacticConclusionInput input : chunk) {
+			JsonNode obj = byTactic.get(input.tacticNum());
+			if (obj == null) {
+				continue;
+			}
+			int n = input.tacticNum();
+			addConclusionField(fields, n + "_overview", obj.get("overview"), TACTIC_OVERVIEW_LIMIT);
+			if (input.publisher() != null) {
+				addSectionFields(fields, n, "pub", obj.get("top_publishers"),
+						PUBLISHER_OBSERVATION_COUNT, PUBLISHER_OBSERVATION_LIMIT, -1);
+			}
+			if (input.creative() != null) {
+				addSectionFields(fields, n, "cre", obj.get("creative"),
+						CREATIVE_TAKEAWAY_COUNT, CREATIVE_TAKEAWAY_LIMIT, CREATIVE_RECO_LIMIT);
+			}
+			if (input.geo() != null) {
+				addSectionFields(fields, n, "geo", obj.get("geo"), GEO_BULLET_COUNT, GEO_INSIGHT_LIMIT, -1);
+			}
+			if (input.audience() != null) {
+				addSectionFields(fields, n, "aud", obj.get("audience"),
+						AUDIENCE_FIELD_COUNT, AUDIENCE_SHORT_LIMIT, AUDIENCE_TAKEAWAY_LIMIT);
+			}
+			if (input.device() != null) {
+				addSectionFields(fields, n, "dev", obj.get("device"),
+						DEVICE_FIELD_COUNT, DEVICE_SHORT_LIMIT, DEVICE_TAKEAWAY_LIMIT);
+			}
+		}
+		Map<String, String> compressed = compressionService.compress(fields, "BatchD-Conclusions");
+
+		for (TacticConclusionInput input : chunk) {
+			JsonNode obj = byTactic.get(input.tacticNum());
+			if (obj == null) {
+				continue;
+			}
+			int n = input.tacticNum();
+			String overview = obj.hasNonNull("overview")
+					? normalizer.limitTacticOverview(compressed.get(n + "_overview")) : null;
+			List<String> publisher = input.publisher() != null && obj.get("top_publishers") != null
+					? assembleSection(compressed, n, "pub", PUBLISHER_OBSERVATION_COUNT, PUBLISHER_OBSERVATION_LIMIT, -1)
+					: null;
+			List<String> creative = input.creative() != null && obj.get("creative") != null
+					? assembleSection(compressed, n, "cre", CREATIVE_TAKEAWAY_COUNT, CREATIVE_TAKEAWAY_LIMIT,
+							CREATIVE_RECO_LIMIT)
+					: null;
+			List<String> geo = input.geo() != null && obj.get("geo") != null
+					? assembleSection(compressed, n, "geo", GEO_BULLET_COUNT, GEO_INSIGHT_LIMIT, -1) : null;
+			List<String> audience = input.audience() != null && obj.get("audience") != null
+					? assembleSection(compressed, n, "aud", AUDIENCE_FIELD_COUNT, AUDIENCE_SHORT_LIMIT,
+							AUDIENCE_TAKEAWAY_LIMIT)
+					: null;
+			List<String> device = input.device() != null && obj.get("device") != null
+					? assembleSection(compressed, n, "dev", DEVICE_FIELD_COUNT, DEVICE_SHORT_LIMIT,
+							DEVICE_TAKEAWAY_LIMIT)
+					: null;
+			out.add(new TacticConclusion(n, overview, publisher, creative, geo, audience, device));
+		}
+		return out;
+	}
+
+	/**
+	 * Maps the combined reply's {@code {"tactic_1": {...}, …}} object to a number-keyed map of each tactic's
+	 * conclusion object, recovering the tactic number from the key's digits via {@link #TACTIC_KEY} to tolerate
+	 * key drift. Non-object values are skipped.
+	 *
+	 * @param parsed the parsed combined reply
+	 * @return tactic number → its conclusion object, first writer wins per number
+	 */
+	Map<Integer, JsonNode> conclusionsByTactic(JsonNode parsed) {
+		Map<Integer, JsonNode> byTactic = new LinkedHashMap<>();
+		var fields = parsed.fields();
+		while (fields.hasNext()) {
+			var entry = fields.next();
+			Matcher matcher = TACTIC_KEY.matcher(entry.getKey().trim());
+			if (!matcher.matches() || !entry.getValue().isObject()) {
+				log.warn("[claude:BatchConclusions] reply key '{}' carries no tactic number or no object — ignoring",
+						entry.getKey());
+				continue;
+			}
+			byTactic.putIfAbsent(Integer.parseInt(matcher.group(1)), entry.getValue());
+		}
+		return byTactic;
+	}
+
+	/**
+	 * Adds one over-budget-eligible field (the overview) to the compression batch when present.
+	 *
+	 * @param fields the accumulating compression fields
+	 * @param key    the field key used to read the rewritten value back
+	 * @param node   the raw JSON value (may be null/blank)
+	 * @param limit  the field's character budget
+	 */
+	void addConclusionField(List<ClaudeCompressionField> fields, String key, JsonNode node, int limit) {
+		String raw = node == null ? "" : node.asText("").trim();
+		fields.add(new ClaudeCompressionField(key, raw, limit));
+	}
+
+	/**
+	 * Adds a section's fixed-count array to the compression batch, keyed {@code <tactic>_<section>_<i>}. When
+	 * {@code lastLimit} is non-negative it is used for the final index (the creative reco / audience-device
+	 * takeaway budget differs from the other fields); otherwise every field uses {@code limit}.
+	 *
+	 * @param fields    the accumulating compression fields
+	 * @param tacticNum the tactic number
+	 * @param section   the short section tag ({@code pub}/{@code cre}/{@code geo}/{@code aud}/{@code dev})
+	 * @param arr       the section's raw JSON array (may be null/not-array)
+	 * @param count     the fixed number of fields the section carries
+	 * @param limit     the character budget for the ordinary fields
+	 * @param lastLimit the character budget for index 0 (takeaway) or the last index (reco), or -1 when uniform
+	 */
+	void addSectionFields(
+			List<ClaudeCompressionField> fields, int tacticNum, String section, JsonNode arr, int count,
+			int limit, int lastLimit) {
+		for (int i = 0; i < count; i++) {
+			String raw = arr != null && arr.isArray() && i < arr.size() ? arr.get(i).asText("").trim() : "";
+			fields.add(new ClaudeCompressionField(
+					tacticNum + "_" + section + "_" + i, raw, sectionFieldLimit(section, i, count, limit, lastLimit)));
+		}
+	}
+
+	/**
+	 * Assembles a section's normalized, length-capped strings from the compressed map, in slide order.
+	 *
+	 * @param compressed the compressed field map
+	 * @param tacticNum  the tactic number
+	 * @param section    the short section tag
+	 * @param count      the fixed number of fields the section carries
+	 * @param limit      the character budget for the ordinary fields
+	 * @param lastLimit  the character budget for the special field, or -1 when uniform
+	 * @return the section's {@code count} normalized strings, in slide order
+	 */
+	List<String> assembleSection(
+			Map<String, String> compressed, int tacticNum, String section, int count, int limit, int lastLimit) {
+		List<String> values = new ArrayList<>(count);
+		for (int i = 0; i < count; i++) {
+			int fieldLimit = sectionFieldLimit(section, i, count, limit, lastLimit);
+			values.add(normalizer.normalizeC(compressed.get(tacticNum + "_" + section + "_" + i), fieldLimit));
+		}
+		return values;
+	}
+
+	/**
+	 * Returns the character budget for one section field. Creative's reco is the LAST index; audience/device's
+	 * takeaway is the FIRST index; publishers and geo are uniform. Encoded via {@code lastLimit}: -1 = uniform,
+	 * creative uses it for the last index, audience/device for index 0.
+	 *
+	 * @param section   the short section tag
+	 * @param i         the field index
+	 * @param count     the section's field count
+	 * @param limit     the ordinary budget
+	 * @param lastLimit the special budget, or -1 when uniform
+	 * @return the character budget for field {@code i}
+	 */
+	int sectionFieldLimit(String section, int i, int count, int limit, int lastLimit) {
+		if (lastLimit < 0) {
+			return limit;
+		}
+		if ("cre".equals(section)) {
+			return i == count - 1 ? lastLimit : limit;
+		}
+		return i == 0 ? lastLimit : limit;
+	}
+
+	@Override
+	public List<TacticThoughts> batchTacticThoughts(List<TacticThoughtsInput> inputs, String brief) {
+		List<TacticThoughts> out = new ArrayList<>();
+		if (inputs == null || inputs.isEmpty()) {
+			return out;
+		}
+		for (TacticThoughtsInput input : inputs) {
+			TacticThoughts thoughts = tacticThoughtsResilient(input, brief);
+			if (thoughts != null) {
+				out.add(thoughts);
+			}
+		}
+		return out;
+	}
+
+	/**
+	 * Runs one tactic's thoughts call and retries once when it comes back with nothing, rather than shipping
+	 * the tactic's thoughts slide blank. A tactic whose retry also fails is dropped (returns {@code null}), so
+	 * the caller renders those tokens blank rather than invented.
+	 *
+	 * @param input the tactic's assembled conclusions
+	 * @param brief free-text campaign brief passed through to the prompt
+	 * @return the tactic's four thoughts, or {@code null} when both attempts failed
+	 */
+	TacticThoughts tacticThoughtsResilient(TacticThoughtsInput input, String brief) {
+		TacticThoughts thoughts = tacticThoughtsOne(input, brief);
+		if (thoughts != null) {
+			return thoughts;
+		}
+		log.warn("[claude:BatchTacticThoughts] tactic {} came back empty — retrying once", input.tacticNum());
+		return tacticThoughtsOne(input, brief);
+	}
+
+	/**
+	 * Runs one tactic's thoughts call: build the prompt, parse the four thoughts, compress any over-budget
+	 * ones, and normalize. Returns {@code null} — never partial junk — when the call or parse fails.
+	 *
+	 * @param input the tactic's assembled conclusions
+	 * @param brief free-text campaign brief passed through to the prompt
+	 * @return the tactic's four thoughts, or {@code null} when the call produced no usable reply
+	 */
+	TacticThoughts tacticThoughtsOne(TacticThoughtsInput input, String brief) {
+		var prompt = promptBuilder.buildTacticThoughtsPrompt(input, brief, THOUGHT_LIMIT);
+		if (prompt.isEmpty()) {
+			return null;
+		}
+		JsonNode parsed = messagesClient.callJsonObject(
+				prompt.get(), TACTIC_THOUGHTS_MAX_TOKENS, BREAKDOWN_TIMEOUT_SEC, "BatchTacticThoughts", true);
+		if (parsed == null) {
+			return null;
+		}
+		JsonNode arr = parsed.get("thoughts");
+		if (arr == null || !arr.isArray()) {
+			return null;
+		}
+		List<ClaudeCompressionField> fields = new ArrayList<>();
+		for (int i = 0; i < TACTIC_THOUGHTS_COUNT; i++) {
+			String raw = i < arr.size() ? arr.get(i).asText("").trim() : "";
+			fields.add(new ClaudeCompressionField(input.tacticNum() + "_thought_" + i, raw, THOUGHT_LIMIT));
+		}
+		Map<String, String> compressed = compressionService.compress(fields, "BatchD-TacticThoughts");
+		List<String> thoughts = new ArrayList<>(TACTIC_THOUGHTS_COUNT);
+		for (int i = 0; i < TACTIC_THOUGHTS_COUNT; i++) {
+			thoughts.add(normalizer.normalizeC(compressed.get(input.tacticNum() + "_thought_" + i), THOUGHT_LIMIT));
+		}
+		return new TacticThoughts(input.tacticNum(), thoughts);
+	}
+
+	@Override
+	public ClaudeResults batchCampaignResults(
+			CampaignData data, String brief, CampaignFrequencies frequencies, List<TacticNarrativeDigest> perTactic) {
+		var prompt = promptBuilder.buildCampaignResultsPrompt(data, brief, frequencies, perTactic);
+		if (prompt.isEmpty()) {
+			return claudeDefaults.emptyResults();
+		}
+		int tacticCount = data.tactics() == null ? 0 : data.tactics().size();
+		int maxTokens = Math.min(CAMPAIGN_RESULTS_MAX_TOKENS_CAP,
+				CAMPAIGN_RESULTS_BASE_TOKENS + CAMPAIGN_RESULTS_TOKENS_PER_TACTIC * tacticCount);
+		int timeoutSec = tacticCount > 10 ? 120 : 60;
+		JsonNode parsed = messagesClient.callJsonObject(prompt.get(), maxTokens, timeoutSec, "BatchCampaign", true);
+		if (parsed == null) {
+			return claudeDefaults.emptyResults();
+		}
+
+		Map<Integer, String> rawResultsOverviews = parseNumberedTextMap(parsed.get("results_overviews"));
+		List<String> rawThoughts =
+				normalizer.normalizeThoughts(normalizer.textOrNull(parsed.get("thoughts_on_performance")));
+
+		JsonNode recArr = parsed.get("optimization_recommendations");
+		String[] rawRecTitles = new String[4];
+		String[] rawRecTexts = new String[4];
+		for (int i = 0; i < 4; i++) {
+			JsonNode item = (recArr != null && recArr.isArray() && i < recArr.size()) ? recArr.get(i) : null;
+			rawRecTitles[i] = item == null ? "" : item.path("title").asText("").trim();
+			rawRecTexts[i] = item == null ? "" : item.path("text").asText("").trim();
+		}
+
+		String rawFOpportunity = normalizer.textOrNull(parsed.get("f_opportunity"));
+		String rawFFact = normalizer.textOrNull(parsed.get("f_fact"));
+		String rawFStorytelling = normalizer.textOrNull(parsed.get("f_storytelling"));
+
+		List<ClaudeCompressionField> compressionFields = new ArrayList<>();
+		for (Map.Entry<Integer, String> e : rawResultsOverviews.entrySet()) {
+			compressionFields.add(new ClaudeCompressionField(
+					"results_overview_" + e.getKey(), e.getValue(), RESULTS_OVERVIEW_LIMIT));
+		}
+		if (rawFOpportunity != null) {
+			compressionFields.add(new ClaudeCompressionField("f_opportunity", rawFOpportunity, F_OPPORTUNITY_LIMIT));
+		}
+		if (rawFFact != null) {
+			compressionFields.add(new ClaudeCompressionField("f_fact", rawFFact, F_FACT_LIMIT));
+		}
+		if (rawFStorytelling != null) {
+			compressionFields.add(new ClaudeCompressionField("f_storytelling", rawFStorytelling, F_STORYTELLING_LIMIT));
+		}
+		for (int i = 0; i < rawThoughts.size(); i++) {
+			String thought = rawThoughts.get(i);
+			if (thought != null) {
+				compressionFields.add(new ClaudeCompressionField("thought_" + i, thought, THOUGHT_LIMIT));
+			}
+		}
+		for (int i = 0; i < 4; i++) {
+			compressionFields.add(
+					new ClaudeCompressionField("rec_title_" + i, rawRecTitles[i], RECOMMENDATION_TITLE_LIMIT));
+			compressionFields.add(
+					new ClaudeCompressionField("rec_text_" + i, rawRecTexts[i], RECOMMENDATION_TEXT_LIMIT));
+		}
+		Map<String, String> compressed = compressionService.compress(compressionFields, "BatchD-Campaign");
+
+		Map<Integer, String> resultsOverviews = new LinkedHashMap<>();
+		for (Integer group : rawResultsOverviews.keySet()) {
+			resultsOverviews.put(group,
+					normalizer.limitResultsOverview(compressed.get("results_overview_" + group)));
+		}
+
+		List<String> thoughts = new ArrayList<>();
+		for (int i = 0; i < rawThoughts.size(); i++) {
+			String thought = rawThoughts.get(i);
+			thoughts.add(thought == null ? null : normalizer.normalizeC(compressed.get("thought_" + i), THOUGHT_LIMIT));
+		}
+
+		List<Recommendation> recommendations = new ArrayList<>();
+		for (int i = 0; i < 4; i++) {
+			String title = normalizer.limitRecommendationTitle(compressed.get("rec_title_" + i));
+			String text = normalizer.limitRecommendationText(compressed.get("rec_text_" + i));
+			recommendations.add(new Recommendation(title, text));
+		}
+
+		String fOpportunity = rawFOpportunity == null
+				? null
+				: normalizer.limitFOpportunity(compressed.get("f_opportunity"));
+		String fFact = rawFFact == null ? null : normalizer.limitFFact(compressed.get("f_fact"));
+		String fStorytelling = rawFStorytelling == null
+				? null
+				: normalizer.limitFStorytelling(compressed.get("f_storytelling"));
+
+		// tacticOverviews is intentionally empty: the overviews come from Step 2 and the orchestrator merges
+		// them into the aggregate before the placeholder resolver reads it.
+		return new ClaudeResults(resultsOverviews, thoughts, Map.of(), recommendations,
+				fOpportunity, fFact, fStorytelling);
+	}
+
+	@Override
+	public ClaudeNarrative batchAlignCampaign(
+			ClaudeStrategic strategic, ClaudeResults results, List<String> breakdownDigest, String brief) {
+		// The campaign-level Step-5 pass is exactly the existing narrative alignment (Batch A strategic +
+		// campaign results into one brief-faithful storyline), so it delegates rather than duplicating it.
+		return batchAlignNarrative(strategic, results, breakdownDigest, brief);
+	}
+
 	/**
 	 * Returns {@code value} when it is non-null and not blank, otherwise {@code fallback}. Used by the Batch D
 	 * alignment merge so any field the model dropped or returned empty keeps its original, un-aligned copy
@@ -709,578 +1095,6 @@ public class RealClaudeClient implements ClaudeClient {
 			}
 		}
 		return out;
-	}
-
-	@Override
-	public Map<Integer, List<String>> batchPublisherObservations(List<PublisherObservationInput> inputs, String brief) {
-		Map<Integer, List<String>> observations = new LinkedHashMap<>();
-		if (inputs == null || inputs.isEmpty()) {
-			return observations;
-		}
-		for (int start = 0; start < inputs.size(); start += PUBLISHER_OBSERVATION_CHUNK) {
-			List<PublisherObservationInput> chunk =
-					inputs.subList(start, Math.min(start + PUBLISHER_OBSERVATION_CHUNK, inputs.size()));
-			observations.putAll(publisherObservationsResilient(chunk, brief));
-		}
-		return observations;
-	}
-
-	/**
-	 * Runs one publisher-observations chunk and, when it comes back with nothing at all, tries again rather
-	 * than shipping the whole chunk's slides with blank bullets.
-	 *
-	 * <p>A chunk of several tactics is retried one tactic at a time: whatever cost the first reply its
-	 * bullets — a rate limit, an unparseable reply, an over-long answer — the single-tactic calls are
-	 * smaller, independent, and a tactic that fails again can no longer take its neighbours down with it. A
-	 * chunk already down to one tactic simply gets one more attempt, since these failures are usually
-	 * transient. A chunk that came back partially filled is left alone: {@link #bulletsByTactic} has
-	 * already logged which tactics the reply skipped.
-	 *
-	 * @param chunk the tactics to cover
-	 * @param brief free-text campaign brief passed through to the prompt
-	 * @return tactic number → its four bullets; empty only when every attempt failed
-	 */
-	Map<Integer, List<String>> publisherObservationsResilient(List<PublisherObservationInput> chunk, String brief) {
-		Map<Integer, List<String>> observations = publisherObservationsChunk(chunk, brief);
-		if (!observations.isEmpty() || chunk.isEmpty()) {
-			return observations;
-		}
-		if (chunk.size() == 1) {
-			log.warn("[claude:BatchPublishers] tactic {} came back with no bullets — retrying once",
-					chunk.getFirst().tacticNum());
-			return publisherObservationsChunk(chunk, brief);
-		}
-		log.warn("[claude:BatchPublishers] chunk {} came back empty — retrying one tactic per call",
-				chunk.stream().map(PublisherObservationInput::tacticNum).toList());
-		Map<Integer, List<String>> perTactic = new LinkedHashMap<>();
-		for (PublisherObservationInput input : chunk) {
-			perTactic.putAll(publisherObservationsResilient(List.of(input), brief));
-		}
-		return perTactic;
-	}
-
-	/**
-	 * Runs one publisher-observations chunk: prompt, parse, compress the over-budget bullets, then apply
-	 * the truncation safety net. Returns an empty map — never partial or invented copy — when the call or
-	 * the parse fails, so only this chunk's tactics lose their bullets.
-	 *
-	 * @param chunk the tactics to cover in this single call
-	 * @param brief free-text campaign brief passed through to the prompt
-	 * @return tactic number → its four bullets; empty when the chunk produced no usable reply
-	 */
-	Map<Integer, List<String>> publisherObservationsChunk(List<PublisherObservationInput> chunk, String brief) {
-		Map<Integer, List<String>> observations = new LinkedHashMap<>();
-		var prompt = promptBuilder.buildPublisherObservationsPrompt(chunk, brief, PUBLISHER_OBSERVATION_LIMIT);
-		if (prompt.isEmpty()) {
-			return observations;
-		}
-		// allowPartial: a reply that ran past the budget still carries whole bullets for the tactics it did
-		// answer, and salvaging those beats blanking the chunk over its unfinished tail.
-		JsonNode parsed = messagesClient.callJsonObject(
-				prompt.get(), PUBLISHER_OBSERVATION_MAX_TOKENS, BREAKDOWN_TIMEOUT_SEC, "BatchPublishers", true);
-		if (parsed == null) {
-			return observations;
-		}
-
-		// Collect every bullet across the chunk's tactics first, so the whole chunk's over-budget text is
-		// compressed in one Batch D call rather than one per tactic.
-		Map<Integer, JsonNode> byTactic = bulletsByTactic(parsed, "BatchPublishers");
-		List<ClaudeCompressionField> compressionFields = new ArrayList<>();
-		for (PublisherObservationInput input : chunk) {
-			JsonNode arr = byTactic.get(input.tacticNum());
-			if (arr == null) {
-				log.warn("[claude:BatchPublishers] reply carries no bullets for tactic {} (keys: {})",
-						input.tacticNum(), byTactic.keySet());
-				continue;
-			}
-			for (int i = 0; i < PUBLISHER_OBSERVATION_COUNT; i++) {
-				String raw = i < arr.size() ? arr.get(i).asText("").trim() : "";
-				compressionFields.add(new ClaudeCompressionField(
-						input.tacticNum() + "_" + i, raw, PUBLISHER_OBSERVATION_LIMIT));
-			}
-		}
-		if (compressionFields.isEmpty()) {
-			return observations;
-		}
-		Map<String, String> compressed = compressionService.compress(compressionFields, "BatchD-Publishers");
-
-		for (PublisherObservationInput input : chunk) {
-			if (byTactic.get(input.tacticNum()) == null) {
-				continue;
-			}
-			List<String> bullets = new ArrayList<>(PUBLISHER_OBSERVATION_COUNT);
-			for (int i = 0; i < PUBLISHER_OBSERVATION_COUNT; i++) {
-				bullets.add(normalizer.normalizeC(
-						compressed.get(input.tacticNum() + "_" + i), PUBLISHER_OBSERVATION_LIMIT));
-			}
-			observations.put(input.tacticNum(), bullets);
-		}
-		return observations;
-	}
-
-	@Override
-	public Map<Integer, List<String>> batchCreativeTakeaways(List<CreativeTakeawayInput> inputs, String brief) {
-		Map<Integer, List<String>> takeaways = new LinkedHashMap<>();
-		if (inputs == null || inputs.isEmpty()) {
-			return takeaways;
-		}
-		for (int start = 0; start < inputs.size(); start += CREATIVE_TAKEAWAY_CHUNK) {
-			List<CreativeTakeawayInput> chunk =
-					inputs.subList(start, Math.min(start + CREATIVE_TAKEAWAY_CHUNK, inputs.size()));
-			takeaways.putAll(creativeTakeawaysResilient(chunk, brief));
-		}
-		return takeaways;
-	}
-
-	/**
-	 * Runs one creative-takeaways chunk and retries an empty result, mirroring
-	 * {@link #publisherObservationsResilient} — see it for why a multi-tactic chunk is retried one tactic
-	 * at a time.
-	 *
-	 * @param chunk the tactics to cover
-	 * @param brief free-text campaign brief passed through to the prompt
-	 * @return tactic number → its four bullets; empty only when every attempt failed
-	 */
-	Map<Integer, List<String>> creativeTakeawaysResilient(List<CreativeTakeawayInput> chunk, String brief) {
-		Map<Integer, List<String>> takeaways = creativeTakeawaysChunk(chunk, brief);
-		if (!takeaways.isEmpty() || chunk.isEmpty()) {
-			return takeaways;
-		}
-		if (chunk.size() == 1) {
-			log.warn("[claude:BatchCreatives] tactic {} came back with no bullets — retrying once",
-					chunk.getFirst().tacticNum());
-			return creativeTakeawaysChunk(chunk, brief);
-		}
-		log.warn("[claude:BatchCreatives] chunk {} came back empty — retrying one tactic per call",
-				chunk.stream().map(CreativeTakeawayInput::tacticNum).toList());
-		Map<Integer, List<String>> perTactic = new LinkedHashMap<>();
-		for (CreativeTakeawayInput input : chunk) {
-			perTactic.putAll(creativeTakeawaysResilient(List.of(input), brief));
-		}
-		return perTactic;
-	}
-
-	/**
-	 * Runs one creative-takeaways chunk: prompt, parse, compress the over-budget bullets, then apply the
-	 * truncation safety net. Returns an empty map — never partial or invented copy — when the call or the
-	 * parse fails, so only this chunk's tactics lose their bullets.
-	 *
-	 * @param chunk the tactics to cover in this single call
-	 * @param brief free-text campaign brief passed through to the prompt
-	 * @return tactic number → its four bullets; empty when the chunk produced no usable reply
-	 */
-	Map<Integer, List<String>> creativeTakeawaysChunk(List<CreativeTakeawayInput> chunk, String brief) {
-		Map<Integer, List<String>> takeaways = new LinkedHashMap<>();
-		var prompt = promptBuilder.buildCreativeTakeawaysPrompt(
-				chunk, brief, CREATIVE_TAKEAWAY_LIMIT, CREATIVE_RECO_LIMIT);
-		if (prompt.isEmpty()) {
-			return takeaways;
-		}
-		// allowPartial for the same reason publisher observations use it.
-		JsonNode parsed = messagesClient.callJsonObject(
-				prompt.get(), CREATIVE_TAKEAWAY_MAX_TOKENS, BREAKDOWN_TIMEOUT_SEC, "BatchCreatives", true);
-		if (parsed == null) {
-			return takeaways;
-		}
-
-		// Collect every bullet across the chunk's tactics first, so the whole chunk's over-budget text is
-		// compressed in one Batch D call rather than one per tactic.
-		Map<Integer, JsonNode> byTactic = bulletsByTactic(parsed, "BatchCreatives");
-		List<ClaudeCompressionField> compressionFields = new ArrayList<>();
-		for (CreativeTakeawayInput input : chunk) {
-			JsonNode arr = byTactic.get(input.tacticNum());
-			if (arr == null) {
-				log.warn("[claude:BatchCreatives] reply carries no bullets for tactic {} (keys: {})",
-						input.tacticNum(), byTactic.keySet());
-				continue;
-			}
-			for (int i = 0; i < CREATIVE_TAKEAWAY_COUNT; i++) {
-				String raw = i < arr.size() ? arr.get(i).asText("").trim() : "";
-				compressionFields.add(new ClaudeCompressionField(
-						input.tacticNum() + "_" + i, raw, creativeTakeawayLimit(i)));
-			}
-		}
-		if (compressionFields.isEmpty()) {
-			return takeaways;
-		}
-		Map<String, String> compressed = compressionService.compress(compressionFields, "BatchD-Creatives");
-
-		for (CreativeTakeawayInput input : chunk) {
-			if (byTactic.get(input.tacticNum()) == null) {
-				continue;
-			}
-			List<String> bullets = new ArrayList<>(CREATIVE_TAKEAWAY_COUNT);
-			for (int i = 0; i < CREATIVE_TAKEAWAY_COUNT; i++) {
-				bullets.add(normalizer.normalizeC(
-						compressed.get(input.tacticNum() + "_" + i), creativeTakeawayLimit(i)));
-			}
-			takeaways.put(input.tacticNum(), bullets);
-		}
-		return takeaways;
-	}
-
-	/**
-	 * Returns the character budget of one creative takeaway by its zero-based slide position: the last
-	 * bullet is the mid-flight optimisation note and gets the wider {@link #CREATIVE_RECO_LIMIT}.
-	 *
-	 * @param index zero-based bullet index within the tactic's four takeaways
-	 * @return the bullet's character budget
-	 */
-	int creativeTakeawayLimit(int index) {
-		return index == CREATIVE_TAKEAWAY_COUNT - 1 ? CREATIVE_RECO_LIMIT : CREATIVE_TAKEAWAY_LIMIT;
-	}
-
-	@Override
-	public Map<Integer, List<String>> batchGeoInsights(List<GeoInsightInput> inputs, String brief) {
-		Map<Integer, List<String>> insights = new LinkedHashMap<>();
-		if (inputs == null || inputs.isEmpty()) {
-			return insights;
-		}
-		for (int start = 0; start < inputs.size(); start += GEO_INSIGHT_CHUNK) {
-			List<GeoInsightInput> chunk =
-					inputs.subList(start, Math.min(start + GEO_INSIGHT_CHUNK, inputs.size()));
-			insights.putAll(geoInsightsResilient(chunk, brief));
-		}
-		return insights;
-	}
-
-	/**
-	 * Runs one geo-insights chunk and retries an empty result, mirroring
-	 * {@link #publisherObservationsResilient} — see it for why a multi-tactic chunk is retried one tactic
-	 * at a time.
-	 *
-	 * @param chunk the tactics to cover
-	 * @param brief free-text campaign brief passed through to the prompt
-	 * @return tactic number → its five strings; empty only when every attempt failed
-	 */
-	Map<Integer, List<String>> geoInsightsResilient(List<GeoInsightInput> chunk, String brief) {
-		Map<Integer, List<String>> insights = geoInsightsChunk(chunk, brief);
-		if (!insights.isEmpty() || chunk.isEmpty()) {
-			return insights;
-		}
-		if (chunk.size() == 1) {
-			log.warn("[claude:BatchGeo] tactic {} came back with no bullets — retrying once",
-					chunk.getFirst().tacticNum());
-			return geoInsightsChunk(chunk, brief);
-		}
-		log.warn("[claude:BatchGeo] chunk {} came back empty — retrying one tactic per call",
-				chunk.stream().map(GeoInsightInput::tacticNum).toList());
-		Map<Integer, List<String>> perTactic = new LinkedHashMap<>();
-		for (GeoInsightInput input : chunk) {
-			perTactic.putAll(geoInsightsResilient(List.of(input), brief));
-		}
-		return perTactic;
-	}
-
-	/**
-	 * Runs one geo-insights chunk: prompt, parse, compress the over-budget strings, then apply the
-	 * truncation safety net. Returns an empty map — never partial or invented copy — when the call or the
-	 * parse fails, so only this chunk's tactics lose their bullets.
-	 *
-	 * @param chunk the tactics to cover in this single call
-	 * @param brief free-text campaign brief passed through to the prompt
-	 * @return tactic number → its five strings (four insights then the recommendation); empty when the
-	 * chunk produced no usable reply
-	 */
-	Map<Integer, List<String>> geoInsightsChunk(List<GeoInsightInput> chunk, String brief) {
-		Map<Integer, List<String>> insights = new LinkedHashMap<>();
-		var prompt = promptBuilder.buildGeoInsightsPrompt(chunk, brief, GEO_INSIGHT_LIMIT);
-		if (prompt.isEmpty()) {
-			return insights;
-		}
-		// allowPartial for the same reason publisher observations use it.
-		JsonNode parsed = messagesClient.callJsonObject(
-				prompt.get(), GEO_INSIGHT_MAX_TOKENS, BREAKDOWN_TIMEOUT_SEC, "BatchGeo", true);
-		if (parsed == null) {
-			return insights;
-		}
-
-		// Collect every string across the chunk's tactics first, so the whole chunk's over-budget text is
-		// compressed in one Batch D call rather than one per tactic.
-		Map<Integer, JsonNode> byTactic = bulletsByTactic(parsed, "BatchGeo");
-		List<ClaudeCompressionField> compressionFields = new ArrayList<>();
-		for (GeoInsightInput input : chunk) {
-			JsonNode arr = byTactic.get(input.tacticNum());
-			if (arr == null) {
-				log.warn("[claude:BatchGeo] reply carries no bullets for tactic {} (keys: {})",
-						input.tacticNum(), byTactic.keySet());
-				continue;
-			}
-			for (int i = 0; i < GEO_BULLET_COUNT; i++) {
-				String raw = i < arr.size() ? arr.get(i).asText("").trim() : "";
-				compressionFields.add(new ClaudeCompressionField(
-						input.tacticNum() + "_" + i, raw, GEO_INSIGHT_LIMIT));
-			}
-		}
-		if (compressionFields.isEmpty()) {
-			return insights;
-		}
-		Map<String, String> compressed = compressionService.compress(compressionFields, "BatchD-Geo");
-
-		for (GeoInsightInput input : chunk) {
-			if (byTactic.get(input.tacticNum()) == null) {
-				continue;
-			}
-			List<String> bullets = new ArrayList<>(GEO_BULLET_COUNT);
-			for (int i = 0; i < GEO_BULLET_COUNT; i++) {
-				bullets.add(normalizer.normalizeC(
-						compressed.get(input.tacticNum() + "_" + i), GEO_INSIGHT_LIMIT));
-			}
-			insights.put(input.tacticNum(), bullets);
-		}
-		return insights;
-	}
-
-	/**
-	 * Indexes a per-tactic bullet reply by tactic number, recovering the number from each key's digits
-	 * rather than demanding the exact {@code "tactic_<n>"} spelling that was asked for. Keys carrying no
-	 * digits, or no bullet array, are dropped; the first key claiming a tactic wins, so a duplicate cannot
-	 * silently replace a good answer.
-	 *
-	 * @param parsed the reply object, keyed by whatever Claude called each tactic
-	 * @param label  short tag identifying the batch in log messages
-	 * @return tactic number → its bullet array (empty when the reply carried no usable key)
-	 */
-	Map<Integer, JsonNode> bulletsByTactic(JsonNode parsed, String label) {
-		Map<Integer, JsonNode> byTactic = new LinkedHashMap<>();
-		var fields = parsed.fields();
-		while (fields.hasNext()) {
-			var entry = fields.next();
-			Matcher matcher = TACTIC_KEY.matcher(entry.getKey().trim());
-			if (!matcher.matches() || !entry.getValue().isArray()) {
-				log.warn("[claude:{}] reply key '{}' carries no tactic number or no bullet array — ignoring",
-						label, entry.getKey());
-				continue;
-			}
-			byTactic.putIfAbsent(Integer.parseInt(matcher.group(1)), entry.getValue());
-		}
-		return byTactic;
-	}
-
-	@Override
-	public Map<Integer, List<String>> batchAudienceInsights(List<AudienceInsightInput> inputs, String brief) {
-		Map<Integer, List<String>> insights = new LinkedHashMap<>();
-		if (inputs == null || inputs.isEmpty()) {
-			return insights;
-		}
-		for (int start = 0; start < inputs.size(); start += AUDIENCE_INSIGHT_CHUNK) {
-			List<AudienceInsightInput> chunk =
-					inputs.subList(start, Math.min(start + AUDIENCE_INSIGHT_CHUNK, inputs.size()));
-			insights.putAll(audienceInsightsResilient(chunk, brief));
-		}
-		return insights;
-	}
-
-	/**
-	 * Runs one audience-insights chunk and retries an empty result, mirroring
-	 * {@link #publisherObservationsResilient} — see it for why a multi-tactic chunk is retried one tactic
-	 * at a time.
-	 *
-	 * @param chunk the tactics to cover
-	 * @param brief free-text campaign brief passed through to the prompt
-	 * @return tactic number → its four strings; empty only when every attempt failed
-	 */
-	Map<Integer, List<String>> audienceInsightsResilient(List<AudienceInsightInput> chunk, String brief) {
-		Map<Integer, List<String>> insights = audienceInsightsChunk(chunk, brief);
-		if (!insights.isEmpty() || chunk.isEmpty()) {
-			return insights;
-		}
-		if (chunk.size() == 1) {
-			log.warn("[claude:BatchAudience] tactic {} came back with no fields — retrying once",
-					chunk.getFirst().tacticNum());
-			return audienceInsightsChunk(chunk, brief);
-		}
-		log.warn("[claude:BatchAudience] chunk {} came back empty — retrying one tactic per call",
-				chunk.stream().map(AudienceInsightInput::tacticNum).toList());
-		Map<Integer, List<String>> perTactic = new LinkedHashMap<>();
-		for (AudienceInsightInput input : chunk) {
-			perTactic.putAll(audienceInsightsResilient(List.of(input), brief));
-		}
-		return perTactic;
-	}
-
-	/**
-	 * Runs one audience-insights chunk: prompt, parse, compress the over-budget strings, then apply the
-	 * truncation safety net. Returns an empty map — never partial or invented copy — when the call or the
-	 * parse fails, so only this chunk's tactics lose their copy.
-	 *
-	 * @param chunk the tactics to cover in this single call
-	 * @param brief free-text campaign brief passed through to the prompt
-	 * @return tactic number → its four strings (takeaway, what-worked, watch-out, recommendation); empty
-	 * when the chunk produced no usable reply
-	 */
-	Map<Integer, List<String>> audienceInsightsChunk(List<AudienceInsightInput> chunk, String brief) {
-		Map<Integer, List<String>> insights = new LinkedHashMap<>();
-		var prompt = promptBuilder.buildAudienceInsightsPrompt(
-				chunk, brief, AUDIENCE_TAKEAWAY_LIMIT, AUDIENCE_SHORT_LIMIT);
-		if (prompt.isEmpty()) {
-			return insights;
-		}
-		// allowPartial for the same reason publisher observations use it.
-		JsonNode parsed = messagesClient.callJsonObject(
-				prompt.get(), AUDIENCE_INSIGHT_MAX_TOKENS, BREAKDOWN_TIMEOUT_SEC, "BatchAudience", true);
-		if (parsed == null) {
-			return insights;
-		}
-
-		// Collect every string across the chunk's tactics first, so the whole chunk's over-budget text is
-		// compressed in one Batch D call rather than one per tactic.
-		Map<Integer, JsonNode> byTactic = bulletsByTactic(parsed, "BatchAudience");
-		List<ClaudeCompressionField> compressionFields = new ArrayList<>();
-		for (AudienceInsightInput input : chunk) {
-			JsonNode arr = byTactic.get(input.tacticNum());
-			if (arr == null) {
-				log.warn("[claude:BatchAudience] reply carries no fields for tactic {} (keys: {})",
-						input.tacticNum(), byTactic.keySet());
-				continue;
-			}
-			for (int i = 0; i < AUDIENCE_FIELD_COUNT; i++) {
-				String raw = i < arr.size() ? arr.get(i).asText("").trim() : "";
-				compressionFields.add(new ClaudeCompressionField(
-						input.tacticNum() + "_" + i, raw, audienceFieldLimit(i)));
-			}
-		}
-		if (compressionFields.isEmpty()) {
-			return insights;
-		}
-		Map<String, String> compressed = compressionService.compress(compressionFields, "BatchD-Audience");
-
-		for (AudienceInsightInput input : chunk) {
-			if (byTactic.get(input.tacticNum()) == null) {
-				continue;
-			}
-			List<String> fields = new ArrayList<>(AUDIENCE_FIELD_COUNT);
-			for (int i = 0; i < AUDIENCE_FIELD_COUNT; i++) {
-				fields.add(normalizer.normalizeC(
-						compressed.get(input.tacticNum() + "_" + i), audienceFieldLimit(i)));
-			}
-			insights.put(input.tacticNum(), fields);
-		}
-		return insights;
-	}
-
-	/**
-	 * Returns the character budget of one audience field by its zero-based slide position: the first
-	 * string is the wider key takeaway, the other three share the shorter budget.
-	 *
-	 * @param index zero-based field index within the tactic's four strings
-	 * @return the field's character budget
-	 */
-	int audienceFieldLimit(int index) {
-		return index == 0 ? AUDIENCE_TAKEAWAY_LIMIT : AUDIENCE_SHORT_LIMIT;
-	}
-
-	@Override
-	public Map<Integer, List<String>> batchDeviceInsights(List<DeviceInsightInput> inputs, String brief) {
-		Map<Integer, List<String>> insights = new LinkedHashMap<>();
-		if (inputs == null || inputs.isEmpty()) {
-			return insights;
-		}
-		for (int start = 0; start < inputs.size(); start += DEVICE_INSIGHT_CHUNK) {
-			List<DeviceInsightInput> chunk =
-					inputs.subList(start, Math.min(start + DEVICE_INSIGHT_CHUNK, inputs.size()));
-			insights.putAll(deviceInsightsResilient(chunk, brief));
-		}
-		return insights;
-	}
-
-	/**
-	 * Runs one device-insights chunk and retries an empty result, mirroring
-	 * {@link #publisherObservationsResilient} — see it for why a multi-tactic chunk is retried one tactic
-	 * at a time.
-	 *
-	 * @param chunk the tactics to cover
-	 * @param brief free-text campaign brief passed through to the prompt
-	 * @return tactic number → its four strings; empty only when every attempt failed
-	 */
-	Map<Integer, List<String>> deviceInsightsResilient(List<DeviceInsightInput> chunk, String brief) {
-		Map<Integer, List<String>> insights = deviceInsightsChunk(chunk, brief);
-		if (!insights.isEmpty() || chunk.isEmpty()) {
-			return insights;
-		}
-		if (chunk.size() == 1) {
-			log.warn("[claude:BatchDevice] tactic {} came back with no fields — retrying once",
-					chunk.getFirst().tacticNum());
-			return deviceInsightsChunk(chunk, brief);
-		}
-		log.warn("[claude:BatchDevice] chunk {} came back empty — retrying one tactic per call",
-				chunk.stream().map(DeviceInsightInput::tacticNum).toList());
-		Map<Integer, List<String>> perTactic = new LinkedHashMap<>();
-		for (DeviceInsightInput input : chunk) {
-			perTactic.putAll(deviceInsightsResilient(List.of(input), brief));
-		}
-		return perTactic;
-	}
-
-	/**
-	 * Runs one device-insights chunk: prompt, parse, compress the over-budget strings, then apply the
-	 * truncation safety net. Returns an empty map — never partial or invented copy — when the call or the
-	 * parse fails, so only this chunk's tactics lose their copy.
-	 *
-	 * @param chunk the tactics to cover in this single call
-	 * @param brief free-text campaign brief passed through to the prompt
-	 * @return tactic number → its four strings (takeaway, what-worked, watch-out, recommendation); empty
-	 * when the chunk produced no usable reply
-	 */
-	Map<Integer, List<String>> deviceInsightsChunk(List<DeviceInsightInput> chunk, String brief) {
-		Map<Integer, List<String>> insights = new LinkedHashMap<>();
-		var prompt = promptBuilder.buildDeviceInsightsPrompt(
-				chunk, brief, DEVICE_TAKEAWAY_LIMIT, DEVICE_SHORT_LIMIT);
-		if (prompt.isEmpty()) {
-			return insights;
-		}
-		// allowPartial for the same reason publisher observations use it.
-		JsonNode parsed = messagesClient.callJsonObject(
-				prompt.get(), DEVICE_INSIGHT_MAX_TOKENS, BREAKDOWN_TIMEOUT_SEC, "BatchDevice", true);
-		if (parsed == null) {
-			return insights;
-		}
-
-		// Collect every string across the chunk's tactics first, so the whole chunk's over-budget text is
-		// compressed in one Batch D call rather than one per tactic.
-		Map<Integer, JsonNode> byTactic = bulletsByTactic(parsed, "BatchDevice");
-		List<ClaudeCompressionField> compressionFields = new ArrayList<>();
-		for (DeviceInsightInput input : chunk) {
-			JsonNode arr = byTactic.get(input.tacticNum());
-			if (arr == null) {
-				log.warn("[claude:BatchDevice] reply carries no fields for tactic {} (keys: {})",
-						input.tacticNum(), byTactic.keySet());
-				continue;
-			}
-			for (int i = 0; i < DEVICE_FIELD_COUNT; i++) {
-				String raw = i < arr.size() ? arr.get(i).asText("").trim() : "";
-				compressionFields.add(new ClaudeCompressionField(
-						input.tacticNum() + "_" + i, raw, deviceFieldLimit(i)));
-			}
-		}
-		if (compressionFields.isEmpty()) {
-			return insights;
-		}
-		Map<String, String> compressed = compressionService.compress(compressionFields, "BatchD-Device");
-
-		for (DeviceInsightInput input : chunk) {
-			if (byTactic.get(input.tacticNum()) == null) {
-				continue;
-			}
-			List<String> fields = new ArrayList<>(DEVICE_FIELD_COUNT);
-			for (int i = 0; i < DEVICE_FIELD_COUNT; i++) {
-				fields.add(normalizer.normalizeC(
-						compressed.get(input.tacticNum() + "_" + i), deviceFieldLimit(i)));
-			}
-			insights.put(input.tacticNum(), fields);
-		}
-		return insights;
-	}
-
-	/**
-	 * Returns the character budget of one device field by its zero-based slide position: the first
-	 * string is the wider key takeaway, the other three share the shorter budget.
-	 *
-	 * @param index zero-based field index within the tactic's four strings
-	 * @return the field's character budget
-	 */
-	int deviceFieldLimit(int index) {
-		return index == 0 ? DEVICE_TAKEAWAY_LIMIT : DEVICE_SHORT_LIMIT;
 	}
 
 	@Override

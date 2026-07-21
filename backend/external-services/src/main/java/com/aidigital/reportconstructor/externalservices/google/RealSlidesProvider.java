@@ -3,6 +3,7 @@ package com.aidigital.reportconstructor.externalservices.google;
 import com.aidigital.reportconstructor.service.common.error.AppException;
 import com.aidigital.reportconstructor.service.common.error.ErrorReason;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
+import com.aidigital.reportconstructor.service.reports.helpers.BreakdownThoughtsGate;
 import com.aidigital.reportconstructor.service.reports.ports.SlidesProvider;
 import com.google.api.client.http.HttpRequestInitializer;
 import com.google.api.services.drive.Drive;
@@ -115,12 +116,14 @@ public class RealSlidesProvider implements SlidesProvider {
 	private final Map<Integer, String> resultsSlideObjectIds;
 	private final Map<Integer, String> tacticSlideObjectIds;
 	private final Map<BreakdownType, String> breakdownMasterIds;
+	private final String thoughtsMasterId;
 	private final BreakdownSlideNaming breakdownSlideNaming;
+	private final BreakdownThoughtsGate thoughtsGate;
 
 	public RealSlidesProvider(
 			GoogleCredentialsFactory creds, GoogleProperties props, DriveSharer driveSharer,
 			DriveShareRecipients shareRecipients, GoogleRequestRetrier retrier,
-			BreakdownSlideNaming breakdownSlideNaming) {
+			BreakdownSlideNaming breakdownSlideNaming, BreakdownThoughtsGate thoughtsGate) {
 		String templateId = props.getSlidesTemplateId();
 		String targetFolderId = props.getSlidesTargetFolderId();
 		this.summaryTableObjectIds = props.getSummaryTableObjectIds();
@@ -128,7 +131,10 @@ public class RealSlidesProvider implements SlidesProvider {
 		this.resultsSlideObjectIds = props.getResultsSlideObjectIds();
 		this.tacticSlideObjectIds = props.getTacticSlideObjectIds();
 		this.breakdownMasterIds = resolveBreakdownMasterIds(props.getBreakdownMasterSlideObjectIds());
+		String thoughtsMaster = props.getThoughtsMasterSlideObjectId();
+		this.thoughtsMasterId = thoughtsMaster == null ? "" : thoughtsMaster.trim();
 		this.breakdownSlideNaming = breakdownSlideNaming;
+		this.thoughtsGate = thoughtsGate;
 		this.driveSharer = driveSharer;
 		this.retrier = retrier;
 		this.shareRecipients = shareRecipients;
@@ -409,6 +415,12 @@ public class RealSlidesProvider implements SlidesProvider {
 		// renumbered here stays raw in the delivered deck.
 		Map<BreakdownType, Set<String>> tokensByType = new EnumMap<>(BreakdownType.class);
 		Map<Integer, List<String>> copyIdsByTactic = new LinkedHashMap<>();
+		// The "Thoughts on tactic performance" master is one generic slide (not a breakdown type): it is
+		// duplicated once per tactic that passes the shared ">2 breakdowns" gate and appended after that
+		// tactic's breakdown copies. A blank or absent master disables it as a safe no-op.
+		boolean thoughtsEnabled = !thoughtsMasterId.isBlank() && indexById.containsKey(thoughtsMasterId);
+		Set<String> thoughtsTokens = thoughtsEnabled
+				? extractRenumberableTokens(pageById.get(thoughtsMasterId)) : Set.of();
 		for (Map.Entry<Integer, List<BreakdownType>> entry : orderedByTactic.entrySet()) {
 			int tacticNum = entry.getKey();
 			List<String> copyIds = new ArrayList<>();
@@ -420,19 +432,17 @@ public class RealSlidesProvider implements SlidesProvider {
 						.setObjectIds(Map.of(masterId, copyId))));
 				Set<String> tokens = tokensByType.computeIfAbsent(
 						type, t -> extractRenumberableTokens(pageById.get(masterId)));
-				for (String token : tokens) {
-					String concrete = renumber(token, tacticNum);
-					String value = breakdownValues.get(concrete);
-					String replacement = value != null ? value : concrete;
-					if (replacement.equals(token)) {
-						continue;
-					}
-					requests.add(new Request().setReplaceAllText(new ReplaceAllTextRequest()
-							.setContainsText(new SubstringMatchCriteria().setText(token).setMatchCase(true))
-							.setReplaceText(replacement)
-							.setPageObjectIds(List.of(copyId))));
-				}
+				emitRenumberedTokens(requests, copyId, tacticNum, tokens, breakdownValues);
 				copyIds.add(copyId);
+			}
+			// Append the tactic's thoughts copy last, so it lands right after its final breakdown slide.
+			if (thoughtsEnabled && thoughtsGate.qualifies(enabledByTactic.get(tacticNum))) {
+				String thoughtsCopyId = breakdownSlideNaming.thoughtsSlideId(tacticNum);
+				requests.add(new Request().setDuplicateObject(new DuplicateObjectRequest()
+						.setObjectId(thoughtsMasterId)
+						.setObjectIds(Map.of(thoughtsMasterId, thoughtsCopyId))));
+				emitRenumberedTokens(requests, thoughtsCopyId, tacticNum, thoughtsTokens, breakdownValues);
+				copyIds.add(thoughtsCopyId);
 			}
 			copyIdsByTactic.put(tacticNum, copyIds);
 		}
@@ -457,7 +467,41 @@ public class RealSlidesProvider implements SlidesProvider {
 				requests.add(new Request().setDeleteObject(new DeleteObjectRequest().setObjectId(masterId)));
 			}
 		}
+		if (thoughtsEnabled) {
+			requests.add(new Request().setDeleteObject(new DeleteObjectRequest().setObjectId(thoughtsMasterId)));
+		}
 		return requests;
+	}
+
+	/**
+	 * Emits the copy-scoped {@code replaceAllText} requests that turn a duplicated slide's generic {@code n}
+	 * tokens into the tactic's concrete tokens — replaced with the token's final value when one is known in
+	 * {@code breakdownValues}, otherwise just renumbered. Scoping every replacement to {@code copyId} is what
+	 * stops identical master tokens on sibling copies from overwriting each other. A token that renumbers to
+	 * itself (carries no {@code n}) is skipped. Shared by the breakdown copies and the thoughts copy so both
+	 * fill their tokens identically.
+	 *
+	 * @param requests        the request list to append the replacements to
+	 * @param copyId          the duplicated slide's object id, used to scope each replacement
+	 * @param tacticNum       the 1-based tactic number the copy belongs to
+	 * @param tokens          the master's distinct renumberable tokens
+	 * @param breakdownValues renumbered token → final value; a token found here is written straight to its value
+	 */
+	void emitRenumberedTokens(
+			List<Request> requests, String copyId, int tacticNum, Set<String> tokens,
+			Map<String, String> breakdownValues) {
+		for (String token : tokens) {
+			String concrete = renumber(token, tacticNum);
+			String value = breakdownValues.get(concrete);
+			String replacement = value != null ? value : concrete;
+			if (replacement.equals(token)) {
+				continue;
+			}
+			requests.add(new Request().setReplaceAllText(new ReplaceAllTextRequest()
+					.setContainsText(new SubstringMatchCriteria().setText(token).setMatchCase(true))
+					.setReplaceText(replacement)
+					.setPageObjectIds(List.of(copyId))));
+		}
 	}
 
 	/**

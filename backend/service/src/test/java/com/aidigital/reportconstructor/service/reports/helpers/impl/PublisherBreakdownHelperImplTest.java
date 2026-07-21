@@ -1,30 +1,27 @@
 package com.aidigital.reportconstructor.service.reports.helpers.impl;
 
+import com.aidigital.reportconstructor.service.reports.dto.BreakdownSectionInputs;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownSelection;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
-import com.aidigital.reportconstructor.service.reports.dto.BreakdownValues;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationInput;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
 import com.aidigital.reportconstructor.service.reports.helpers.BreakdownSelectionResolver;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportSheetHelper;
-import com.aidigital.reportconstructor.service.reports.ports.ClaudeClient;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Mock;
 import org.mockito.InjectMocks;
+import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -34,8 +31,6 @@ class PublisherBreakdownHelperImplTest {
 	ReportSheetHelper sheetHelper;
 	@Mock
 	BreakdownSelectionResolver breakdownResolver;
-	@Mock
-	ClaudeClient claude;
 
 	@InjectMocks
 	PublisherBreakdownHelperImpl helper;
@@ -50,15 +45,13 @@ class PublisherBreakdownHelperImplTest {
 				new PublisherRow("YouTube", "1,200,000", "26%"),
 				new PublisherRow("Hulu", "800,000", "17%"));
 		when(sheetHelper.readPublisherTables("sheet-url", Set.of(1), "token")).thenReturn(Map.of(1, rows));
-		when(claude.batchPublisherObservations(
-				List.of(new PublisherObservationInput(1, "CTV", rows)), "brief"))
-				.thenReturn(Map.of(1, List.of("a", "b", "c", "d")));
 
-		// When:
-		Map<String, String> values = helper.buildPublisherValues(
-				"sheet-url", selections, Map.of("{{tactic 1}}", "CTV"), "brief", "token").values();
+		// When: the data-only read runs (no Claude call)
+		BreakdownSectionInputs<PublisherObservationInput> read = helper.readPublisherInputs(
+				"sheet-url", selections, Map.of("{{tactic 1}}", "CTV"), "token");
 
 		// Then: the filled rows are carried across exactly as typed
+		Map<String, String> values = read.dataValues();
 		assertThat(values.get("{{publisher_1.1}}")).isEqualTo("YouTube");
 		assertThat(values.get("{{pub_imp_1.1}}")).isEqualTo("1,200,000");
 		assertThat(values.get("{{pub_sov_1.1}}")).isEqualTo("26%");
@@ -82,13 +75,10 @@ class PublisherBreakdownHelperImplTest {
 				new PublisherRow("mail.yahoo.com", "2,950", "1.17%"),
 				new PublisherRow("dailymotion.com", "2,281", "0.91%"));
 		when(sheetHelper.readPublisherTables("sheet-url", Set.of(1), "token")).thenReturn(Map.of(1, rows));
-		when(claude.batchPublisherObservations(
-				List.of(new PublisherObservationInput(1, "Display", rows)), "brief"))
-				.thenReturn(Map.of(1, List.of("a", "b", "c", "d")));
 
 		// When:
-		Map<String, String> values = helper.buildPublisherValues(
-				"sheet-url", selections, Map.of("{{tactic 1}}", "Display"), "brief", "token").values();
+		Map<String, String> values = helper.readPublisherInputs(
+				"sheet-url", selections, Map.of("{{tactic 1}}", "Display"), "token").dataValues();
 
 		// Then: the name is cut at the FIRST separator, dropping both the tail and the bundle id
 		assertThat(values.get("{{publisher_1.1}}")).isEqualTo("Chai");
@@ -103,9 +93,9 @@ class PublisherBreakdownHelperImplTest {
 	}
 
 	@Test
-	void shouldSendClaudeTheFullPublisherNamesNotTheShortenedOnesTest() {
-		// Given: two listings of the same app that differ only past the separator — the distinction Claude
-		// needs to reason about the platform mix, and the one the slide's shortened names throw away
+	void shouldCarryTheFullPublisherNamesIntoTheClaudeInputNotTheShortenedOnesTest() {
+		// Given: two listings of the same app that differ only past the separator — the distinction the
+		// combined call needs to reason about the platform mix, and the one the slide's short names throw away
 		List<BreakdownSelection> selections = List.of(new BreakdownSelection(1, List.of("tp")));
 		when(breakdownResolver.resolve(selections))
 				.thenReturn(Map.of(1, EnumSet.of(BreakdownType.TOP_PUBLISHERS)));
@@ -113,92 +103,22 @@ class PublisherBreakdownHelperImplTest {
 				new PublisherRow("Chai - Chat with AI bots - iOS (1544750895)", "25,534", "10.15%"),
 				new PublisherRow("Chai - Chat with AI Friends - Android (com.Beauchamp.Messenger)", "3,493", "1.39%"));
 		when(sheetHelper.readPublisherTables("sheet-url", Set.of(1), "token")).thenReturn(Map.of(1, rows));
-		when(claude.batchPublisherObservations(
-				List.of(new PublisherObservationInput(1, "Display", rows)), "brief"))
-				.thenReturn(Map.of(1, List.of("a", "b", "c", "d")));
 
 		// When:
-		Map<String, String> values = helper.buildPublisherValues(
-				"sheet-url", selections, Map.of("{{tactic 1}}", "Display"), "brief", "token").values();
+		BreakdownSectionInputs<PublisherObservationInput> read = helper.readPublisherInputs(
+				"sheet-url", selections, Map.of("{{tactic 1}}", "Display"), "token");
 
-		// Then: Claude was handed the rows verbatim, platform suffixes intact
-		ArgumentCaptor<List<PublisherObservationInput>> captor = ArgumentCaptor.captor();
-		verify(claude).batchPublisherObservations(captor.capture(), eq("brief"));
-		assertThat(captor.getValue().getFirst().rows()).isEqualTo(rows);
+		// Then: the tactic's input carries the rows verbatim, platform suffixes intact
+		assertThat(read.inputs().get(1).rows()).isEqualTo(rows);
 
 		// Then: the slide still collapses both to the same short label
+		Map<String, String> values = read.dataValues();
 		assertThat(values.get("{{publisher_1.1}}")).isEqualTo("Chai");
 		assertThat(values.get("{{publisher_1.2}}")).isEqualTo("Chai");
 	}
 
 	@Test
-	void shouldWarnWhenAFilledTableCameBackWithoutObservationsTest() {
-		// Given: a tactic whose table Claude was asked about, but that came back with nothing — on the slide
-		// the empty KEY OBSERVATIONS box is indistinguishable from a table the user never filled in
-		List<BreakdownSelection> selections = List.of(new BreakdownSelection(1, List.of("tp")));
-		when(breakdownResolver.resolve(selections))
-				.thenReturn(Map.of(1, EnumSet.of(BreakdownType.TOP_PUBLISHERS)));
-		List<PublisherRow> rows = List.of(new PublisherRow("modrinth.com", "19,674", "15.71%"));
-		when(sheetHelper.readPublisherTables("sheet-url", Set.of(1), "token")).thenReturn(Map.of(1, rows));
-		when(claude.batchPublisherObservations(
-				List.of(new PublisherObservationInput(1, "Video", rows)), "brief"))
-				.thenReturn(Map.of());
-
-		// When:
-		BreakdownValues result = helper.buildPublisherValues(
-				"sheet-url", selections, Map.of("{{tactic 1}}", "Video"), "brief", "token");
-
-		// Then: the failure is reported to the user by tactic name rather than only to the log
-		assertThat(result.warnings()).hasSize(1);
-		assertThat(result.warnings().getFirst()).contains("Top Publishers", "Video", "KEY OBSERVATIONS");
-
-		// Then: the table still ships, with blank bullets rather than raw tokens
-		assertThat(result.values().get("{{publisher_1.1}}")).isEqualTo("modrinth.com");
-		assertThat(result.values().get("{{publishers_observation_1_1}}")).isEmpty();
-	}
-
-	@Test
-	void shouldNotWarnWhenTheTableWasEmptyAndClaudeWasNeverAskedTest() {
-		// Given: a tactic that enabled the breakdown but left its table blank — blank bullets are the
-		// user's own doing here, so warning about them would be noise
-		List<BreakdownSelection> selections = List.of(new BreakdownSelection(1, List.of("tp")));
-		when(breakdownResolver.resolve(selections))
-				.thenReturn(Map.of(1, EnumSet.of(BreakdownType.TOP_PUBLISHERS)));
-		when(sheetHelper.readPublisherTables("sheet-url", Set.of(1), "token"))
-				.thenReturn(Map.of(1, List.of()));
-
-		// When:
-		BreakdownValues result = helper.buildPublisherValues(
-				"sheet-url", selections, Map.of("{{tactic 1}}", "Video"), "brief", "token");
-
-		// Then:
-		assertThat(result.warnings()).isEmpty();
-	}
-
-	@Test
-	void shouldNotAskClaudeWhenTheTacticsPublisherTableIsEmptyTest() {
-		// Given: tactic 1 enabled Top Publishers but never filled the table in
-		List<BreakdownSelection> selections = List.of(new BreakdownSelection(1, List.of("tp")));
-		when(breakdownResolver.resolve(selections))
-				.thenReturn(Map.of(1, EnumSet.of(BreakdownType.TOP_PUBLISHERS)));
-		when(sheetHelper.readPublisherTables("sheet-url", Set.of(1), "token"))
-				.thenReturn(Map.of(1, List.of()));
-
-		// When:
-		Map<String, String> values = helper.buildPublisherValues(
-				"sheet-url", selections, Map.of(), "brief", "token").values();
-
-		// Then: Claude is never asked — there is nothing to observe and any copy would be invented
-		verifyNoInteractions(claude);
-
-		// Then: the slide still gets its tokens, with blank observations rather than raw tokens
-		assertThat(values.get("{{publishers_observation_1_1}}")).isEmpty();
-		assertThat(values.get("{{publishers_observation_1_4}}")).isEmpty();
-		assertThat(values.get("{{publisher_1.1}}")).isEqualTo("—");
-	}
-
-	@Test
-	void shouldSendOnlyTacticsWithRowsToClaudeAndCarryTheirNamesTest() {
+	void shouldBuildAnInputOnlyForTacticsWithRowsAndCarryTheirNamesTest() {
 		// Given: tactic 1 has rows, tactic 2 enabled the toggle but left its table empty
 		List<BreakdownSelection> selections =
 				List.of(new BreakdownSelection(1, List.of("tp")), new BreakdownSelection(2, List.of("tp")));
@@ -209,24 +129,19 @@ class PublisherBreakdownHelperImplTest {
 		when(sheetHelper.readPublisherTables("sheet-url", Set.of(1, 2), "token")).thenReturn(Map.of(
 				1, rows,
 				2, List.of()));
-		when(claude.batchPublisherObservations(
-				List.of(new PublisherObservationInput(1, "CTV", rows)), "brief"))
-				.thenReturn(Map.of(1, List.of("one", "two", "three", "four")));
 
 		// When:
-		Map<String, String> values = helper.buildPublisherValues(
-				"sheet-url", selections, Map.of("{{tactic 1}}", "CTV", "{{tactic 2}}", "Display"), "brief", "token").values();
+		BreakdownSectionInputs<PublisherObservationInput> read = helper.readPublisherInputs(
+				"sheet-url", selections, Map.of("{{tactic 1}}", "CTV", "{{tactic 2}}", "Display"), "token");
 
-		// Then: only tactic 1 is sent, carrying its deck name
-		ArgumentCaptor<List<PublisherObservationInput>> captor = ArgumentCaptor.captor();
-		verify(claude).batchPublisherObservations(captor.capture(), eq("brief"));
-		assertThat(captor.getValue()).hasSize(1);
-		assertThat(captor.getValue().getFirst().tacticNum()).isEqualTo(1);
-		assertThat(captor.getValue().getFirst().tacticName()).isEqualTo("CTV");
+		// Then: both tactics are enabled, but only tactic 1 becomes a Claude input, carrying its deck name
+		assertThat(read.tactics()).containsExactlyInAnyOrder(1, 2);
+		assertThat(read.inputs().keySet()).containsExactly(1);
+		assertThat(read.inputs().get(1).tacticNum()).isEqualTo(1);
+		assertThat(read.inputs().get(1).tacticName()).isEqualTo("CTV");
 
-		// Then: tactic 1 gets its bullets and tactic 2's are blanked
-		assertThat(values.get("{{publishers_observation_1_1}}")).isEqualTo("one");
-		assertThat(values.get("{{publishers_observation_2_1}}")).isEmpty();
+		// Then: tactic 2 still gets its dashed data tokens even though it is never sent
+		assertThat(read.dataValues().get("{{publisher_2.1}}")).isEqualTo("—");
 	}
 
 	@Test
@@ -236,13 +151,14 @@ class PublisherBreakdownHelperImplTest {
 		when(breakdownResolver.resolve(selections)).thenReturn(Map.of(1, EnumSet.of(BreakdownType.DEVICE)));
 
 		// When:
-		Map<String, String> values = helper.buildPublisherValues(
-				"sheet-url", selections, Map.of(), "brief", "token").values();
+		BreakdownSectionInputs<PublisherObservationInput> read = helper.readPublisherInputs(
+				"sheet-url", selections, Map.of(), "token");
 
-		// Then: the sheet is never read and no values are produced
-		assertThat(values).isEmpty();
+		// Then: the sheet is never read and no inputs are produced
+		assertThat(read.tactics()).isEmpty();
+		assertThat(read.inputs()).isEmpty();
+		assertThat(read.dataValues()).isEmpty();
 		verify(sheetHelper, never()).readPublisherTables("sheet-url", Set.of(1), "token");
-		verifyNoInteractions(claude);
 	}
 
 	@Test
@@ -254,12 +170,50 @@ class PublisherBreakdownHelperImplTest {
 		when(sheetHelper.readPublisherTables("sheet-url", Set.of(1), "token")).thenReturn(Map.of(1, List.of()));
 
 		// When:
-		Map<String, String> values = helper.buildPublisherValues(
+		Map<String, String> values = helper.readPublisherInputs(
 				"sheet-url", selections,
-				Map.of("{{tactic 1}}", "CTV", "{{tactic 1 imps}}", "4,600,000"), "brief", "token").values();
+				Map.of("{{tactic 1}}", "CTV", "{{tactic 1 imps}}", "4,600,000"), "token").dataValues();
 
 		// Then: both are re-issued for the copy, which the deck's own placeholder pass can no longer reach
 		assertThat(values.get("{{tactic 1}}")).isEqualTo("CTV");
 		assertThat(values.get("{{tactic 1 imps}}")).isEqualTo("4,600,000");
+	}
+
+	@Test
+	void shouldWriteBulletsForAnsweredTacticsAndBlankTheOthersTest() {
+		// Given: tactic 1 was sent and answered, tactic 2 was sent and came back empty
+		Map<String, String> values = new LinkedHashMap<>();
+		Map<Integer, List<String>> observations = Map.of(1, List.of("one", "two", "three", "four"));
+
+		// When:
+		List<String> warnings = helper.writePublisherObservations(
+				values, Set.of(1, 2), Set.of(1, 2), observations, Map.of("{{tactic 2}}", "Display"));
+
+		// Then: tactic 1's bullets are written in slide order
+		assertThat(values.get("{{publishers_observation_1_1}}")).isEqualTo("one");
+		assertThat(values.get("{{publishers_observation_1_4}}")).isEqualTo("four");
+
+		// Then: tactic 2's bullets are blanked rather than left as raw tokens
+		assertThat(values.get("{{publishers_observation_2_1}}")).isEmpty();
+
+		// Then: a sent tactic that came back with nothing is reported to the user by name
+		assertThat(warnings).hasSize(1);
+		assertThat(warnings.getFirst()).contains("Top Publishers", "Display", "KEY OBSERVATIONS");
+	}
+
+	@Test
+	void shouldNotWarnWhenTheTableWasEmptyAndTheTacticWasNeverSentTest() {
+		// Given: a tactic that enabled the breakdown but was never sent (its table was blank) — blank bullets
+		// are the user's own doing here, so warning about them would be noise
+		Map<String, String> values = new LinkedHashMap<>();
+
+		// When:
+		List<String> warnings = helper.writePublisherObservations(
+				values, Set.of(1), Set.of(), Map.of(), Map.of("{{tactic 1}}", "Video"));
+
+		// Then: no warning, and the bullets still render blank rather than as raw tokens
+		assertThat(warnings).isEmpty();
+		assertThat(values.get("{{publishers_observation_1_1}}")).isEmpty();
+		assertThat(values.get("{{publishers_observation_1_4}}")).isEmpty();
 	}
 }

@@ -1,15 +1,14 @@
 package com.aidigital.reportconstructor.service.reports.helpers.impl;
 
+import com.aidigital.reportconstructor.service.reports.dto.BreakdownSectionInputs;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownSelection;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
-import com.aidigital.reportconstructor.service.reports.dto.BreakdownValues;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeRow;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTable;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTakeawayInput;
 import com.aidigital.reportconstructor.service.reports.helpers.BreakdownSelectionResolver;
 import com.aidigital.reportconstructor.service.reports.helpers.CreativeBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportSheetHelper;
-import com.aidigital.reportconstructor.service.reports.ports.ClaudeClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -55,25 +54,33 @@ public class CreativeBreakdownHelperImpl implements CreativeBreakdownHelper {
 
 	private final ReportSheetHelper sheetHelper;
 	private final BreakdownSelectionResolver breakdownResolver;
-	private final ClaudeClient claude;
 
 	@Override
-	public BreakdownValues buildCreativeValues(
+	public BreakdownSectionInputs<CreativeTakeawayInput> readCreativeInputs(
 			String sheetUrl, List<BreakdownSelection> selections,
-			Map<String, String> flatReplacements, String brief, String userGoogleToken) {
+			Map<String, String> flatReplacements, String userGoogleToken) {
 		Set<Integer> tacticNums = creativeTactics(breakdownResolver.resolve(selections));
 		if (tacticNums.isEmpty()) {
-			return BreakdownValues.EMPTY;
+			return new BreakdownSectionInputs<>(Set.of(), Map.of(), Map.of(), List.of());
 		}
 		Map<Integer, CreativeTable> tables =
 				sheetHelper.readCreativeTables(sheetUrl, tacticNums, userGoogleToken);
 
 		Map<String, String> values = new LinkedHashMap<>();
+		Map<Integer, CreativeTakeawayInput> inputs = new LinkedHashMap<>();
 		for (Integer tacticNum : tacticNums) {
 			putTableValues(values, tacticNum, tables.getOrDefault(tacticNum, CreativeTable.EMPTY), flatReplacements);
+			CreativeTable table = sanitized(tables.getOrDefault(tacticNum, CreativeTable.EMPTY));
+			if (table.isEmpty()) {
+				log.info("[creatives] tactic {} enabled Creative analysis but its block is empty — "
+						+ "slide ships without takeaways", tacticNum);
+				continue;
+			}
+			String name = flatReplacements.getOrDefault("{{tactic " + tacticNum + "}}", "Tactic " + tacticNum);
+			String kpiType = flatReplacements.getOrDefault("{{tactic " + tacticNum + " KPI type}}", "");
+			inputs.put(tacticNum, new CreativeTakeawayInput(tacticNum, name, kpiType, table));
 		}
-		List<String> warnings = putTakeaways(values, tacticNums, tables, flatReplacements, brief);
-		return new BreakdownValues(values, warnings);
+		return new BreakdownSectionInputs<>(tacticNums, inputs, values, List.of());
 	}
 
 	/**
@@ -144,34 +151,20 @@ public class CreativeBreakdownHelperImpl implements CreativeBreakdownHelper {
 	 * @return one warning per tactic that had creative data but came back without takeaways; empty when
 	 * every tactic Claude was asked about answered
 	 */
-	List<String> putTakeaways(
-			Map<String, String> values, Set<Integer> tacticNums, Map<Integer, CreativeTable> tables,
-			Map<String, String> flatReplacements, String brief) {
-		List<CreativeTakeawayInput> inputs = new ArrayList<>();
-		for (Integer tacticNum : tacticNums) {
-			CreativeTable table = sanitized(tables.getOrDefault(tacticNum, CreativeTable.EMPTY));
-			if (table.isEmpty()) {
-				log.info("[creatives] tactic {} enabled Creative analysis but its block is empty — "
-						+ "slide ships without takeaways", tacticNum);
-				continue;
-			}
-			String name = flatReplacements.getOrDefault("{{tactic " + tacticNum + "}}", "Tactic " + tacticNum);
-			String kpiType = flatReplacements.getOrDefault("{{tactic " + tacticNum + " KPI type}}", "");
-			inputs.add(new CreativeTakeawayInput(tacticNum, name, kpiType, table));
-		}
-		Map<Integer, List<String>> takeaways = inputs.isEmpty()
-				? Map.of() : claude.batchCreativeTakeaways(inputs, brief);
-
+	@Override
+	public List<String> writeCreativeTakeaways(
+			Map<String, String> values, Set<Integer> tactics, Set<Integer> sentTactics,
+			Map<Integer, List<String>> takeaways, Map<String, String> flatReplacements) {
 		List<String> warnings = new ArrayList<>();
-		for (Integer tacticNum : tacticNums) {
+		for (Integer tacticNum : tactics) {
 			List<String> bullets = takeaways.getOrDefault(tacticNum, List.of());
 			// A tactic we did send that came back with nothing ships blank bullets, which on the slide is
 			// indistinguishable from "the user filled nothing in". Say so, or the next blank KEY TAKEAWAYS
 			// is a guessing game between an empty block, a failed call and an unparseable reply.
-			if (bullets.isEmpty() && inputs.stream().anyMatch(input -> input.tacticNum() == tacticNum)) {
+			if (bullets.isEmpty() && sentTactics.contains(tacticNum)) {
 				String name = flatReplacements.getOrDefault("{{tactic " + tacticNum + "}}", "Tactic " + tacticNum);
 				log.warn("[creatives] tactic {} had creative data but Claude returned no takeaways — "
-						+ "slide ships with blank bullets (see the [claude:BatchCreatives] log line above "
+						+ "slide ships with blank bullets (see the [claude:BatchConclusions] log line above "
 						+ "for the cause)", tacticNum);
 				warnings.add("Creative analysis – " + name
 						+ ": KEY TAKEAWAYS are empty, Claude did not return them. The table itself is filled.");

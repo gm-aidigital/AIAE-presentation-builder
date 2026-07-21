@@ -1,15 +1,14 @@
 package com.aidigital.reportconstructor.service.reports.helpers.impl;
 
+import com.aidigital.reportconstructor.service.reports.dto.BreakdownSectionInputs;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownSelection;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
-import com.aidigital.reportconstructor.service.reports.dto.BreakdownValues;
 import com.aidigital.reportconstructor.service.reports.dto.DeviceInsightInput;
 import com.aidigital.reportconstructor.service.reports.dto.DeviceRow;
 import com.aidigital.reportconstructor.service.reports.dto.DeviceTable;
 import com.aidigital.reportconstructor.service.reports.helpers.BreakdownSelectionResolver;
 import com.aidigital.reportconstructor.service.reports.helpers.DeviceBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportSheetHelper;
-import com.aidigital.reportconstructor.service.reports.ports.ClaudeClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -68,26 +67,33 @@ public class DeviceBreakdownHelperImpl implements DeviceBreakdownHelper {
 
 	private final ReportSheetHelper sheetHelper;
 	private final BreakdownSelectionResolver breakdownResolver;
-	private final ClaudeClient claude;
 
 	@Override
-	public BreakdownValues buildDeviceValues(
+	public BreakdownSectionInputs<DeviceInsightInput> readDeviceInputs(
 			String sheetUrl, List<BreakdownSelection> selections,
-			Map<String, String> flatReplacements, String brief, String userGoogleToken) {
+			Map<String, String> flatReplacements, String userGoogleToken) {
 		Set<Integer> tacticNums = deviceTactics(breakdownResolver.resolve(selections));
 		if (tacticNums.isEmpty()) {
-			return BreakdownValues.EMPTY;
+			return new BreakdownSectionInputs<>(Set.of(), Map.of(), Map.of(), List.of());
 		}
 		Map<Integer, DeviceTable> tables =
 				sheetHelper.readDeviceTables(sheetUrl, tacticNums, userGoogleToken);
 
 		Map<String, String> values = new LinkedHashMap<>();
+		Map<Integer, DeviceInsightInput> inputs = new LinkedHashMap<>();
 		for (Integer tacticNum : tacticNums) {
 			putTableValues(
 					values, tacticNum, tables.getOrDefault(tacticNum, DeviceTable.EMPTY), flatReplacements);
+			DeviceTable table = sanitized(tables.getOrDefault(tacticNum, DeviceTable.EMPTY));
+			if (table.isEmpty()) {
+				log.info("[device] tactic {} enabled Device breakdown but its block is empty — "
+						+ "slide ships without copy", tacticNum);
+				continue;
+			}
+			String name = flatReplacements.getOrDefault("{{tactic " + tacticNum + "}}", "Tactic " + tacticNum);
+			inputs.put(tacticNum, new DeviceInsightInput(tacticNum, name, table));
 		}
-		List<String> warnings = putInsights(values, tacticNums, tables, flatReplacements, brief);
-		return new BreakdownValues(values, warnings);
+		return new BreakdownSectionInputs<>(tacticNums, inputs, values, List.of());
 	}
 
 	/**
@@ -194,32 +200,19 @@ public class DeviceBreakdownHelperImpl implements DeviceBreakdownHelper {
 	 * @return one warning per tactic that had device data but came back without copy; empty when every
 	 * tactic Claude was asked about answered
 	 */
-	List<String> putInsights(
-			Map<String, String> values, Set<Integer> tacticNums, Map<Integer, DeviceTable> tables,
-			Map<String, String> flatReplacements, String brief) {
-		List<DeviceInsightInput> inputs = new ArrayList<>();
-		for (Integer tacticNum : tacticNums) {
-			DeviceTable table = sanitized(tables.getOrDefault(tacticNum, DeviceTable.EMPTY));
-			if (table.isEmpty()) {
-				log.info("[device] tactic {} enabled Device breakdown but its block is empty — "
-						+ "slide ships without copy", tacticNum);
-				continue;
-			}
-			String name = flatReplacements.getOrDefault("{{tactic " + tacticNum + "}}", "Tactic " + tacticNum);
-			inputs.add(new DeviceInsightInput(tacticNum, name, table));
-		}
-		Map<Integer, List<String>> insights = inputs.isEmpty()
-				? Map.of() : claude.batchDeviceInsights(inputs, brief);
-
+	@Override
+	public List<String> writeDeviceInsights(
+			Map<String, String> values, Set<Integer> tactics, Set<Integer> sentTactics,
+			Map<Integer, List<String>> insights, Map<String, String> flatReplacements) {
 		List<String> warnings = new ArrayList<>();
-		for (Integer tacticNum : tacticNums) {
+		for (Integer tacticNum : tactics) {
 			List<String> fields = insights.getOrDefault(tacticNum, List.of());
 			// A tactic we did send that came back with nothing ships blank copy, which on the slide is
 			// indistinguishable from "the user filled nothing in" — so say so, in the log and on the card.
-			if (fields.isEmpty() && inputs.stream().anyMatch(input -> input.tacticNum() == tacticNum)) {
+			if (fields.isEmpty() && sentTactics.contains(tacticNum)) {
 				String name = flatReplacements.getOrDefault("{{tactic " + tacticNum + "}}", "Tactic " + tacticNum);
 				log.warn("[device] tactic {} had device data but Claude returned no copy — "
-						+ "slide ships with blank fields (see the [claude:BatchDevice] log line above "
+						+ "slide ships with blank fields (see the [claude:BatchConclusions] log line above "
 						+ "for the cause)", tacticNum);
 				warnings.add("Device breakdown – " + name
 						+ ": the takeaway/what-worked/watch-out/recommendation are empty, Claude did not return "
