@@ -170,6 +170,57 @@ class AnthropicMessagesClientTest {
 	}
 
 	@Test
+	void shouldRetryTheTransientStatusesThatBlankedABatchTest() {
+		// Given: the client. The 522 that wiped the PrimaryKpis fact columns is a Cloudflare edge timeout,
+		// alongside the other transient upstream conditions worth another send.
+		AnthropicProperties props = new AnthropicProperties();
+		props.setApiKey("key");
+		AnthropicMessagesClient client = new AnthropicMessagesClient(
+				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator());
+
+		// When-Then: every transient upstream status is retried.
+		assertThat(client.isTransientStatus(522)).isTrue();
+		assertThat(client.isTransientStatus(529)).isTrue();
+		assertThat(client.isTransientStatus(429)).isTrue();
+		assertThat(client.isTransientStatus(500)).isTrue();
+		assertThat(client.isTransientStatus(503)).isTrue();
+		assertThat(client.isTransientStatus(504)).isTrue();
+	}
+
+	@Test
+	void shouldNotRetryPermanentClientErrorsTest() {
+		// Given: the client. A bad request or auth failure would only fail again, so it must fail fast.
+		AnthropicProperties props = new AnthropicProperties();
+		props.setApiKey("key");
+		AnthropicMessagesClient client = new AnthropicMessagesClient(
+				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator());
+
+		// When-Then: permanent statuses are never retried.
+		assertThat(client.isTransientStatus(400)).isFalse();
+		assertThat(client.isTransientStatus(401)).isFalse();
+		assertThat(client.isTransientStatus(403)).isFalse();
+		assertThat(client.isTransientStatus(404)).isFalse();
+	}
+
+	@Test
+	void shouldSkipTheBackoffSleepWhenTheBaseDelayIsZeroTest() {
+		// Given: a client configured with a zero base backoff, so a retry incurs no wait.
+		AnthropicProperties props = new AnthropicProperties();
+		props.setApiKey("key");
+		props.setRetryBackoffMillis(0);
+		AnthropicMessagesClient client = new AnthropicMessagesClient(
+				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator());
+
+		// When: the backoff for a failed attempt is applied.
+		long start = System.nanoTime();
+		client.backoffBeforeRetry(3, "PrimaryKpis");
+		long elapsedMillis = (System.nanoTime() - start) / 1_000_000;
+
+		// Then: it returns immediately rather than sleeping.
+		assertThat(elapsedMillis).isLessThan(50);
+	}
+
+	@Test
 	void shouldRecordTheUsageBlockOfAReplyAgainstTheRunTest() throws Exception {
 		// Given: a run's accounting scope, and a Messages API reply carrying a usage block
 		AnthropicProperties props = new AnthropicProperties();

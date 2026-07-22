@@ -38,6 +38,21 @@ public class AnthropicProperties {
 	 */
 	private int maxConcurrentCalls = 6;
 
+	/**
+	 * Extra attempts a Claude HTTP call makes after its first send fails on a transient upstream condition —
+	 * a retryable status such as a Cloudflare 522 or an Anthropic 529 overload, or a dropped connection. One
+	 * such failure otherwise discards a whole batch and blanks its slide tokens, so a few cheap re-sends are
+	 * worth it. Default 2 means up to three sends in total. Clamped to at least 0 (no retry) at use.
+	 */
+	private int maxRetries = 2;
+
+	/**
+	 * Base backoff between retries in milliseconds, scaled linearly by attempt number (attempt 1 waits this,
+	 * attempt 2 waits twice this, and so on). Default 1000. Clamped to at least 0 at use; 0 retries with no
+	 * delay.
+	 */
+	private long retryBackoffMillis = 1000;
+
 	public String getApiKey() {
 		return apiKey;
 	}
@@ -68,5 +83,21 @@ public class AnthropicProperties {
 
 	public void setMaxConcurrentCalls(int maxConcurrentCalls) {
 		this.maxConcurrentCalls = maxConcurrentCalls;
+	}
+
+	public int getMaxRetries() {
+		return maxRetries;
+	}
+
+	public void setMaxRetries(int maxRetries) {
+		this.maxRetries = maxRetries;
+	}
+
+	public long getRetryBackoffMillis() {
+		return retryBackoffMillis;
+	}
+
+	public void setRetryBackoffMillis(long retryBackoffMillis) {
+		this.retryBackoffMillis = retryBackoffMillis;
 	}
 }

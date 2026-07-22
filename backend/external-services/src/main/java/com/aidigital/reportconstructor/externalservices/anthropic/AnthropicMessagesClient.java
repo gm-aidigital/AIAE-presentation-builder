@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Semaphore;
 import java.util.regex.Pattern;
 
@@ -37,6 +38,13 @@ public class AnthropicMessagesClient {
 	private static final int REPLY_SNIPPET_LIMIT = 400;
 
 	/**
+	 * HTTP statuses treated as transient and retried: 408 request timeout, 429 rate limit, 500/502/503/504
+	 * server and gateway errors, Cloudflare edge timeouts 522/524, and 529 (Anthropic "overloaded"). Any other
+	 * non-200 — a 400 bad request, a 401/403 auth failure — is permanent and fails fast without a retry.
+	 */
+	private static final Set<Integer> TRANSIENT_STATUS_CODES = Set.of(408, 429, 500, 502, 503, 504, 522, 524, 529);
+
+	/**
 	 * Marker a prompt builder may embed to split the prompt into a cacheable prefix — everything before the
 	 * marker — and a variable body — everything after. {@link #callRaw} turns the two sides into separate
 	 * content blocks and puts an ephemeral {@code cache_control} breakpoint on the prefix, so a large
@@ -55,6 +63,12 @@ public class AnthropicMessagesClient {
 	private final ClaudeResponseNormalizer normalizer;
 	private final ClaudeUsageTracker usageTracker;
 	private final PromptTokenEstimator tokenEstimator;
+
+	/** Extra attempts after the first send when a transient upstream failure is retryable; at least 0. */
+	private final int maxRetries;
+
+	/** Base linear backoff between retries in milliseconds, scaled by attempt number; at least 0. */
+	private final long retryBackoffMillis;
 
 	/**
 	 * Caps Claude HTTP calls in flight at once across the whole process. The restructured slides-from-sheet
@@ -84,6 +98,8 @@ public class AnthropicMessagesClient {
 		this.tokenEstimator = tokenEstimator;
 		this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
 		this.callLimiter = new Semaphore(Math.max(1, props.getMaxConcurrentCalls()));
+		this.maxRetries = Math.max(0, props.getMaxRetries());
+		this.retryBackoffMillis = Math.max(0, props.getRetryBackoffMillis());
 	}
 
 	/**
@@ -328,30 +344,101 @@ public class AnthropicMessagesClient {
 			return null;
 		}
 		// One permit per in-flight call caps how many requests hit Anthropic at once; a virtual thread parks
-		// cheaply here while it waits, so blocking is fine. Released in the finally so a permit is never leaked
-		// on a timeout or dropped connection.
+		// cheaply here while it waits, so blocking is fine. The permit is held across the whole retry sequence
+		// (including its backoff) so a retrying call never lifts total concurrency above the configured cap.
+		// Released in the finally so a permit is never leaked on a timeout or dropped connection.
 		callLimiter.acquireUninterruptibly();
 		try {
-			HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
-			if (res.statusCode() != 200) {
-				// Rejected requests — rate limits, overloads, bad requests — are not billed, so they are
-				// deliberately not recorded as spend.
-				log.error("[claude:{}] error {} body={}", label, res.statusCode(), res.body());
-				return null;
-			}
-			JsonNode parsed = json.readTree(res.body());
-			recordUsage(parsed, label);
-			return parsed;
-		} catch (Exception ex) {
-			// The request went out and Claude may well have answered it — a read timeout or a dropped
-			// connection loses the reply, not the charge. Recording nothing here understates spend exactly
-			// on the slowest, largest calls, so the call is booked with an estimate of what it cost and
-			// flagged as such rather than dropped.
-			log.error("[claude:{}] request failed after sending: {}", label, ex.getMessage());
-			usageTracker.recordEstimated(label, tokenEstimator.estimateTokens(prompt), model);
-			return null;
+			return sendWithRetry(req, prompt, label);
 		} finally {
 			callLimiter.release();
+		}
+	}
+
+	/**
+	 * Sends the prepared request, retrying transient upstream failures up to {@link #maxRetries} extra
+	 * attempts with a linear backoff before giving up. A single transient failure — a retryable HTTP status
+	 * such as a Cloudflare 522 or an Anthropic 529 overload, or a transport error like a dropped connection or
+	 * read timeout — otherwise discards a whole batch and blanks its slide tokens, so it is worth a few cheap
+	 * re-sends. A permanent non-200 (bad request, auth failure) fails fast without retrying, since it would
+	 * only fail again.
+	 *
+	 * <p>Usage is booked exactly once. A billed 200 records real usage; a transport failure only books an
+	 * estimate on the final attempt. A request that a non-final attempt sent but lost may still have been
+	 * billed by Anthropic without being recorded here — the same understatement-on-failure the single-shot
+	 * path already accepted, now confined to a call that ultimately succeeds or times out on its last try.
+	 *
+	 * @param req    the fully built Messages API request
+	 * @param prompt the prompt text, used only to estimate spend when no reply arrives
+	 * @param label  short tag identifying this call in log messages
+	 * @return the parsed Messages API response, or {@code null} once the status is permanent or retries run out
+	 */
+	JsonNode sendWithRetry(HttpRequest req, String prompt, String label) {
+		int attempts = maxRetries + 1;
+		for (int attempt = 1; attempt <= attempts; attempt++) {
+			boolean lastAttempt = attempt == attempts;
+			try {
+				HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
+				if (res.statusCode() == 200) {
+					JsonNode parsed = json.readTree(res.body());
+					recordUsage(parsed, label);
+					return parsed;
+				}
+				// Rejected requests — rate limits, overloads, bad requests — are not billed, so they are
+				// deliberately not recorded as spend. A permanent status, or the last attempt, ends here.
+				if (lastAttempt || !isTransientStatus(res.statusCode())) {
+					log.error("[claude:{}] error {} body={}", label, res.statusCode(), res.body());
+					return null;
+				}
+				log.warn("[claude:{}] transient error {} (attempt {}/{}) — retrying",
+						label, res.statusCode(), attempt, attempts);
+			} catch (Exception ex) {
+				// The request went out and Claude may well have answered it — a read timeout or a dropped
+				// connection loses the reply, not the charge. On the final attempt the call is booked with an
+				// estimate of what it cost and flagged as such rather than dropped.
+				if (lastAttempt) {
+					log.error("[claude:{}] request failed after sending: {}", label, ex.getMessage());
+					usageTracker.recordEstimated(label, tokenEstimator.estimateTokens(prompt), model);
+					return null;
+				}
+				log.warn("[claude:{}] request failed after sending (attempt {}/{}) — retrying: {}",
+						label, attempt, attempts, ex.getMessage());
+			}
+			backoffBeforeRetry(attempt, label);
+		}
+		return null;
+	}
+
+	/**
+	 * Reports whether a non-200 HTTP status is worth retrying — a transient upstream condition (request
+	 * timeout, rate limit, server or gateway error, Cloudflare edge timeout, Anthropic overload) rather than a
+	 * permanent client error such as a bad request or auth failure that would only fail again.
+	 *
+	 * @param statusCode the HTTP status returned by the Messages API
+	 * @return {@code true} if the status is transient and the request should be retried
+	 */
+	boolean isTransientStatus(int statusCode) {
+		return TRANSIENT_STATUS_CODES.contains(statusCode);
+	}
+
+	/**
+	 * Sleeps for a linear backoff before the next retry: {@link #retryBackoffMillis} times the just-failed
+	 * attempt number. Restores the interrupt flag and returns early if interrupted so a shutdown still
+	 * propagates; a zero base delay skips the sleep entirely.
+	 *
+	 * @param attempt the 1-based number of the attempt that just failed
+	 * @param label   short tag identifying this call in log messages
+	 */
+	void backoffBeforeRetry(int attempt, String label) {
+		long delay = retryBackoffMillis * attempt;
+		if (delay <= 0) {
+			return;
+		}
+		try {
+			Thread.sleep(delay);
+		} catch (InterruptedException ie) {
+			Thread.currentThread().interrupt();
+			log.warn("[claude:{}] retry backoff interrupted", label);
 		}
 	}
 
