@@ -12,22 +12,6 @@ import static org.mockito.Mockito.mock;
 class AnthropicMessagesClientTest {
 
 	@Test
-	void attachJsonPrefillTest_restoresTheBraceForAContinuationButNotForARestartedObject() {
-		// Given: the two shapes a reply can take after a "{" assistant-turn prefill — one that continues from the
-		// prefill (starts with the first key) and one that ignored the prefill and emitted its own whole object
-		AnthropicProperties props = new AnthropicProperties();
-		props.setApiKey("key");
-		AnthropicMessagesClient client = new AnthropicMessagesClient(
-				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator());
-
-		// When-Then: a continuation gets its opening brace back, a restarted object is left alone (never "{{…}}")
-		assertThat(client.attachJsonPrefill("\"tactic_1\": {\"overview\": \"ok\"}}"))
-				.isEqualTo("{\"tactic_1\": {\"overview\": \"ok\"}}");
-		assertThat(client.attachJsonPrefill("{\"tactic_1\": {\"overview\": \"ok\"}}"))
-				.isEqualTo("{\"tactic_1\": {\"overview\": \"ok\"}}");
-	}
-
-	@Test
 	void shouldKeepTheCompleteBulletsOfATruncatedPerTacticReplyTest() {
 		// Given: a per-tactic bullet reply the model stopped writing part-way through the fourth bullet —
 		// the shape that used to blank a whole breakdown slide

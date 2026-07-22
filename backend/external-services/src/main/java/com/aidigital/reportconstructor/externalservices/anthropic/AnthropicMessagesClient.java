@@ -38,16 +38,6 @@ public class AnthropicMessagesClient {
 	private static final int REPLY_SNIPPET_LIMIT = 400;
 
 	/**
-	 * Assistant-turn prefill that forces a JSON-object reply. Sent as a final {@code assistant} message holding a
-	 * single open brace, so the model's answer must continue the object from that brace and physically cannot open
-	 * with a prose preamble ("I'll work through this systematically before producing the JSON…") — the recurring
-	 * failure where a whole batch parsed to nothing because the model reasoned out loud until it ran out of budget
-	 * before ever emitting {@code {}. The Messages API echoes only the continuation, not the prefill, so
-	 * {@link #callJsonObject} re-attaches this brace before parsing.
-	 */
-	private static final String JSON_OBJECT_PREFILL = "{";
-
-	/**
 	 * HTTP statuses treated as transient and retried: 408 request timeout, 429 rate limit, 500/502/503/504
 	 * server and gateway errors, Cloudflare edge timeouts 522/524, and 529 (Anthropic "overloaded"). Any other
 	 * non-200 — a 400 bad request, a 401/403 auth failure — is permanent and fails fast without a retry.
@@ -126,7 +116,7 @@ public class AnthropicMessagesClient {
 	 */
 	public JsonNode callJsonObject(
 			String prompt, int maxTokens, int timeoutSec, String label, boolean allowPartial) {
-		JsonNode resp = callRaw(prompt, maxTokens, timeoutSec, label, JSON_OBJECT_PREFILL);
+		JsonNode resp = callRaw(prompt, maxTokens, timeoutSec, label);
 		if (resp == null) {
 			return null;
 		}
@@ -138,13 +128,8 @@ public class AnthropicMessagesClient {
 		if (text == null || text.isBlank()) {
 			return null;
 		}
-		// Strip any code fences first, then conditionally restore the prefill's opening brace. The reply either
-		// continues from the prefilled "{" (so it starts with a key and the brace must be re-attached) or ignores
-		// the prefill and restarts with its own "{" — re-attaching in that case yields "{{…}}", which parses to
-		// nothing and would blank every Claude-derived field at once.
 		text = FENCE_OPEN.matcher(text.trim()).replaceFirst("");
 		text = FENCE_CLOSE.matcher(text).replaceFirst("").trim();
-		text = attachJsonPrefill(text);
 		JsonNode node = parseJsonObject(text, allowPartial);
 		if (node != null) {
 			return node;
@@ -154,21 +139,6 @@ public class AnthropicMessagesClient {
 		// diagnosable line without dumping the whole (often large) reply.
 		log.warn("[claude:{}] JSON parse failed; reply began: {}", label, snippet(text));
 		return null;
-	}
-
-	/**
-	 * Restores the {@link #JSON_OBJECT_PREFILL} opening brace to a reply that continued from it, while leaving a
-	 * reply that restarted the object with its own brace untouched. A genuine continuation of {@code {"key": ...}}
-	 * begins with the first key's quote, never with {@code {}, because the object's opening brace was the prefill
-	 * the API did not echo; a reply that instead emitted a whole {@code {...}} of its own already opens with
-	 * {@code {}. Prepending unconditionally would turn that second case into {@code {{…}}}, which parses to
-	 * nothing — the failure mode that blanks every Claude-derived field at once.
-	 *
-	 * @param text the fence-stripped, trimmed reply text
-	 * @return text guaranteed to open with exactly one {@code {}
-	 */
-	String attachJsonPrefill(String text) {
-		return text.startsWith(JSON_OBJECT_PREFILL) ? text : JSON_OBJECT_PREFILL + text;
 	}
 
 	/**
@@ -353,39 +323,12 @@ public class AnthropicMessagesClient {
 	 * @return the full Messages API response as a JSON tree, or {@code null} on failure
 	 */
 	public JsonNode callRaw(String prompt, int maxTokens, int timeoutSec, String label) {
-		return callRaw(prompt, maxTokens, timeoutSec, label, null);
-	}
-
-	/**
-	 * Sends a prompt as a user message to the Anthropic Messages API, optionally seeding the reply with an
-	 * {@code assistant}-turn prefill, and returns the raw parsed JSON response body, or {@code null} on a
-	 * non-200 status or transport failure.
-	 *
-	 * <p>When {@code assistantPrefill} is non-empty it is appended as a final {@code assistant} message, so the
-	 * model continues its answer from that text rather than starting a fresh turn — the mechanism that forces a
-	 * JSON object (see {@link #JSON_OBJECT_PREFILL}) and suppresses prose preambles. The API returns only the
-	 * continuation, never the prefill itself, so a caller that needs the prefill in the final text must re-attach
-	 * it. When {@code null} or empty the request is a single user message, exactly as before.
-	 *
-	 * @param prompt           the full user prompt sent as the single user message to Claude
-	 * @param maxTokens        cap on tokens the model may generate in its reply
-	 * @param timeoutSec       per-request HTTP timeout in seconds
-	 * @param label            short tag identifying this call in log messages
-	 * @param assistantPrefill text to seed the assistant turn with, or {@code null}/empty for none
-	 * @return the full Messages API response as a JSON tree, or {@code null} on failure
-	 */
-	public JsonNode callRaw(String prompt, int maxTokens, int timeoutSec, String label, String assistantPrefill) {
 		HttpRequest req;
 		try {
-			List<Map<String, Object>> messages = new ArrayList<>(2);
-			messages.add(Map.of("role", "user", "content", buildUserContent(prompt)));
-			if (assistantPrefill != null && !assistantPrefill.isEmpty()) {
-				messages.add(Map.of("role", "assistant", "content", assistantPrefill));
-			}
 			Map<String, Object> body = Map.of(
 					"model", model,
 					"max_tokens", maxTokens,
-					"messages", messages
+					"messages", List.of(Map.of("role", "user", "content", buildUserContent(prompt)))
 			);
 			req = HttpRequest.newBuilder()
 					.uri(URI.create(ENDPOINT))
