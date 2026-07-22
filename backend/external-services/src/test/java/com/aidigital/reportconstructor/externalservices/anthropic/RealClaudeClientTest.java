@@ -202,6 +202,72 @@ class RealClaudeClientTest {
 	}
 
 	@Test
+	void batchTacticConclusionsRecoversASingleTacticReplyMissingItsTacticWrapperTest() throws Exception {
+		// Given: one tactic that enabled only the publisher section, and a reply the model returned as a bare
+		// conclusion object (overview + publisher bullets) WITHOUT the "tactic_1" wrapper key
+		ClaudeResponseNormalizer normalizer = new ClaudeResponseNormalizer();
+		ClaudeBatchPromptBuilder promptBuilder = new ClaudeBatchPromptBuilder(normalizer, new Fmt());
+		ReportClaudeDefaults defaults = new ReportClaudeDefaults();
+		RealClaudeClient client = new RealClaudeClient(
+				messagesClient, promptBuilder, normalizer, compressionService, defaults,
+				new WorkbookGeoFilter(), new PromptTokenEstimator(), new AnthropicProperties());
+
+		Tactic ctv = new Tactic(
+				"CTV", "CTV", null,
+				5000.0, 1_000_000.0, 0.0, 980_000.0, null, 98.0, null, null,
+				null, null, null, null, null, null, null, null);
+		CampaignData data = new CampaignData(
+				"Acme", "Spring Launch", "US", "Awareness", "Jan 1 - Mar 31",
+				null, "$500,000", "Reach", "CTV", "25-44", "Auto intenders",
+				new Totals(0, 0, 0, 0, null, null), Map.of(1, ctv), null);
+		String brief = "Drive awareness for the Spring Launch.";
+		PublisherObservationInput publisher = new PublisherObservationInput(
+				1, "CTV", List.of(new PublisherRow("Hulu", "400,000", "40%")));
+		List<TacticConclusionInput> inputs =
+				List.of(new TacticConclusionInput(1, publisher, null, null, null, null));
+
+		String expectedPrompt = promptBuilder.buildTacticConclusionsPrompt(
+				data, inputs, brief, 155, 100, 140, 140, 256, 120, 256, 120).orElseThrow();
+		JsonNode bareResponse = json.readTree("""
+				{
+				  "overview": "CTV delivered 1M impressions at 98% VCR, driven by premium inventory.",
+				  "top_publishers": ["Hulu led delivery.", "Long tail carried reach.",
+				                     "Premium brand-safe mix.", "We steered weight to strong publishers."]
+				}
+				""");
+		List<ClaudeCompressionField> expectedFields = List.of(
+				new ClaudeCompressionField(
+						"1_overview", "CTV delivered 1M impressions at 98% VCR, driven by premium inventory.", 210),
+				new ClaudeCompressionField("1_pub_0", "Hulu led delivery.", 155),
+				new ClaudeCompressionField("1_pub_1", "Long tail carried reach.", 155),
+				new ClaudeCompressionField("1_pub_2", "Premium brand-safe mix.", 155),
+				new ClaudeCompressionField("1_pub_3", "We steered weight to strong publishers.", 155));
+		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(2000), eq(90), eq("BatchConclusions"), eq(true)))
+				.thenReturn(bareResponse);
+		when(compressionService.compress(eq(expectedFields), eq("BatchD-Conclusions")))
+				.thenAnswer(invocation -> {
+					List<ClaudeCompressionField> fields = invocation.getArgument(0);
+					Map<String, String> out = new LinkedHashMap<>();
+					for (ClaudeCompressionField field : fields) {
+						out.put(field.key(), field.text());
+					}
+					return out;
+				});
+
+		// When:
+		List<TacticConclusion> conclusions = client.batchTacticConclusions(data, inputs, brief);
+
+		// Then: the bare object is recovered as tactic 1 rather than dropped, so the overview and bullets survive
+		assertThat(conclusions).hasSize(1);
+		TacticConclusion c = conclusions.getFirst();
+		assertThat(c.tacticNum()).isEqualTo(1);
+		assertThat(c.overview()).isEqualTo("CTV delivered 1M impressions at 98% VCR, driven by premium inventory.");
+		assertThat(c.publisherBullets()).containsExactly(
+				"Hulu led delivery.", "Long tail carried reach.",
+				"Premium brand-safe mix.", "We steered weight to strong publishers.");
+	}
+
+	@Test
 	void batchTacticThoughtsParsesFourThoughtsForOneTacticTest() throws Exception {
 		// Given: a real prompt builder/normalizer, identity compression, and one tactic's assembled conclusions
 		ClaudeResponseNormalizer normalizer = new ClaudeResponseNormalizer();

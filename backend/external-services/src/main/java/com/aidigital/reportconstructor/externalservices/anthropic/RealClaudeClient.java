@@ -717,6 +717,7 @@ public class RealClaudeClient implements ClaudeClient {
 			return out;
 		}
 		Map<Integer, JsonNode> byTactic = conclusionsByTactic(parsed);
+		recoverBareConclusion(byTactic, parsed, chunk);
 
 		// One compression pass over every over-budget field in the whole chunk, keyed by tactic+field so the
 		// assembly below can read each rewritten value back.
@@ -778,6 +779,36 @@ public class RealClaudeClient implements ClaudeClient {
 			out.add(new TacticConclusion(n, overview, publisher, creative, geo, audience, device));
 		}
 		return out;
+	}
+
+	/** Top-level keys that identify a conclusion object returned without its {@code tactic_N} wrapper. */
+	private static final List<String> CONCLUSION_SECTION_KEYS =
+			List.of("overview", "top_publishers", "creative", "geo", "audience", "device");
+
+	/**
+	 * Recovers a single-tactic reply the model returned without its {@code tactic_N} wrapper, i.e. as a bare
+	 * {@code {"overview": ..., "top_publishers": [...], ...}} object rather than {@code {"tactic_5": {...}}}.
+	 * The wrapper carries the only tactic number in the reply, so {@link #conclusionsByTactic} drops such a
+	 * reply entirely and the tactic loses its overview and every breakdown section. This only fires when the
+	 * chunk is exactly one tactic (so the number is unambiguous), the number-keyed map came back empty, and the
+	 * bare object actually looks like a conclusion — otherwise it is a safe no-op.
+	 *
+	 * @param byTactic the number-keyed conclusion map, mutated in place when a bare object is recovered
+	 * @param parsed   the parsed reply, possibly a bare conclusion object
+	 * @param chunk    the tactics this call covered; recovery applies only to a single-tactic chunk
+	 */
+	void recoverBareConclusion(Map<Integer, JsonNode> byTactic, JsonNode parsed, List<TacticConclusionInput> chunk) {
+		if (!byTactic.isEmpty() || chunk == null || chunk.size() != 1 || parsed == null || !parsed.isObject()) {
+			return;
+		}
+		boolean looksLikeConclusion = CONCLUSION_SECTION_KEYS.stream().anyMatch(parsed::has);
+		if (!looksLikeConclusion) {
+			return;
+		}
+		int tacticNum = chunk.getFirst().tacticNum();
+		log.warn("[claude:BatchConclusions] reply for tactic {} arrived without its tactic_N wrapper — "
+				+ "recovering the bare conclusion object", tacticNum);
+		byTactic.put(tacticNum, parsed);
 	}
 
 	/**
