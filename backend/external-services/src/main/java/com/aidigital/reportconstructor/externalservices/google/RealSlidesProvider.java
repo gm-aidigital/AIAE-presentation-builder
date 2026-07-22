@@ -104,11 +104,13 @@ public class RealSlidesProvider implements SlidesProvider {
 	private static final Pattern TOKEN = Pattern.compile("\\{\\{[^{}]*\\}\\}");
 
 	/**
-	 * Matches the standalone tactic variable {@code n} inside a token: an {@code n} bounded on both
-	 * sides by a token delimiter ({@code _}, {@code .}, whitespace, or a brace), so the {@code n} in
-	 * words like {@code name} or {@code imps} is never touched. Replaced with the tactic number.
+	 * Matches the standalone tactic variable {@code n} inside a token: a single {@code n} or {@code N}
+	 * bounded on both sides by a token delimiter ({@code _}, {@code .}, whitespace, or a brace), so the
+	 * {@code n} in words like {@code name} or {@code imps} is never touched. Both cases are accepted
+	 * because master templates use either (e.g. {@code {{tactic n}}} vs {@code {{tactic N}}}). Replaced
+	 * with the tactic number.
 	 */
-	private static final Pattern N_VARIABLE = Pattern.compile("(?<=[_.\\s{])n(?=[_.\\s}])");
+	private static final Pattern N_VARIABLE = Pattern.compile("(?<=[_.\\s{])[nN](?=[_.\\s}])");
 
 	private final GoogleCredentialsFactory creds;
 	private final GoogleRequestRetrier retrier;

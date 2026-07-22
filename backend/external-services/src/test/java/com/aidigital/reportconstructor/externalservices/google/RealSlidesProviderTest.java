@@ -97,6 +97,8 @@ class RealSlidesProviderTest {
 		// The n in "name" / "imps" / "geo" must not change:
 		assertThat(provider.renumber("{{tactic n.2 top creative imps}}", 5))
 				.isEqualTo("{{tactic 5.2 top creative imps}}");
+		// An uppercase standalone N is renumbered too (the thoughts master title uses {{tactic N}}):
+		assertThat(provider.renumber("{{tactic N}}", 2)).isEqualTo("{{tactic 2}}");
 	}
 
 	@Test

@@ -436,7 +436,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 					conclusions, tacticNames(prelim, tacticCount), qualifying);
 			thoughts = claude.batchTacticThoughts(thoughtsInputs, brief);
 		}
-		writeThoughtsTokens(breakdownValues, qualifying, thoughts);
+		writeThoughtsTokens(breakdownValues, qualifying, thoughts, prelim);
 
 		// Step 4 — campaign-level results (results overviews, performance thoughts, recommendations, frequency)
 		// from the per-tactic digests; the Step-2 overviews are merged back in for the tactic-overview slides.
@@ -610,14 +610,17 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	/**
 	 * Writes the four {@code {{thoughts on tactic n performance 1..4}}} tokens for every qualifying tactic from
 	 * its Step-3 thoughts, blanking a qualifying tactic that produced none so its (inserted) slide never ships a
-	 * raw token.
+	 * raw token. Also carries the tactic's {@code {{tactic n}}} display name into the map, so the thoughts slide
+	 * title renumbers to the name the same way the breakdown slides do (their helpers copy the name token in).
 	 *
 	 * @param breakdownValues the breakdown token map to write the thoughts tokens into
 	 * @param qualifying      the tactics that passed the "&gt; 2 breakdowns" gate (and get the thoughts slide)
 	 * @param thoughts        the Step-3 thoughts that were produced
+	 * @param flatReplacements the seed placeholder map, read for each tactic's {@code {{tactic n}}} display name
 	 */
 	void writeThoughtsTokens(
-			Map<String, String> breakdownValues, Set<Integer> qualifying, List<TacticThoughts> thoughts) {
+			Map<String, String> breakdownValues, Set<Integer> qualifying, List<TacticThoughts> thoughts,
+			Map<String, String> flatReplacements) {
 		Map<Integer, List<String>> byTactic = new LinkedHashMap<>();
 		for (TacticThoughts t : thoughts) {
 			if (t != null && t.thoughts() != null) {
@@ -625,6 +628,10 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 			}
 		}
 		for (Integer n : qualifying) {
+			String name = flatReplacements.get("{{tactic " + n + "}}");
+			if (name != null && !name.isBlank()) {
+				breakdownValues.put("{{tactic " + n + "}}", name);
+			}
 			List<String> tacticThoughts = byTactic.getOrDefault(n, List.of());
 			for (int i = 1; i <= THOUGHTS_ON_TACTIC_COUNT; i++) {
 				String value = i <= tacticThoughts.size() ? tacticThoughts.get(i - 1) : null;
