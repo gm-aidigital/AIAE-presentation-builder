@@ -138,11 +138,13 @@ public class AnthropicMessagesClient {
 		if (text == null || text.isBlank()) {
 			return null;
 		}
-		// The assistant-turn prefill opened the object; the API echoes only the continuation, so restore the
-		// leading brace before any fence stripping or parsing so the reply reads as a complete JSON object.
-		text = JSON_OBJECT_PREFILL + text;
+		// Strip any code fences first, then conditionally restore the prefill's opening brace. The reply either
+		// continues from the prefilled "{" (so it starts with a key and the brace must be re-attached) or ignores
+		// the prefill and restarts with its own "{" — re-attaching in that case yields "{{…}}", which parses to
+		// nothing and would blank every Claude-derived field at once.
 		text = FENCE_OPEN.matcher(text.trim()).replaceFirst("");
 		text = FENCE_CLOSE.matcher(text).replaceFirst("").trim();
+		text = attachJsonPrefill(text);
 		JsonNode node = parseJsonObject(text, allowPartial);
 		if (node != null) {
 			return node;
@@ -152,6 +154,21 @@ public class AnthropicMessagesClient {
 		// diagnosable line without dumping the whole (often large) reply.
 		log.warn("[claude:{}] JSON parse failed; reply began: {}", label, snippet(text));
 		return null;
+	}
+
+	/**
+	 * Restores the {@link #JSON_OBJECT_PREFILL} opening brace to a reply that continued from it, while leaving a
+	 * reply that restarted the object with its own brace untouched. A genuine continuation of {@code {"key": ...}}
+	 * begins with the first key's quote, never with {@code {}, because the object's opening brace was the prefill
+	 * the API did not echo; a reply that instead emitted a whole {@code {...}} of its own already opens with
+	 * {@code {}. Prepending unconditionally would turn that second case into {@code {{…}}}, which parses to
+	 * nothing — the failure mode that blanks every Claude-derived field at once.
+	 *
+	 * @param text the fence-stripped, trimmed reply text
+	 * @return text guaranteed to open with exactly one {@code {}
+	 */
+	String attachJsonPrefill(String text) {
+		return text.startsWith(JSON_OBJECT_PREFILL) ? text : JSON_OBJECT_PREFILL + text;
 	}
 
 	/**
