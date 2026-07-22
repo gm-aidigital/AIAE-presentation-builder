@@ -52,7 +52,7 @@ class ClaudeCompressionServiceTest {
 		);
 		when(promptBuilder.buildCompressionPrompt(List.of(fields.get(1)))).thenReturn(Optional.of("prompt"));
 		JsonNode response = json.readTree("{\"overview_0\": \"shrunk but meaningful\"}");
-		when(messagesClient.callJsonObject(eq("prompt"), eq(1200), eq(30), eq("BatchD-Test"), eq(false)))
+		when(messagesClient.callJsonObject(eq("prompt"), eq(3000), eq(30), eq("BatchD-Test"), eq(true)))
 				.thenReturn(response);
 
 		// When:
@@ -70,7 +70,7 @@ class ClaudeCompressionServiceTest {
 		String longOverview = "y".repeat(300);
 		List<ClaudeCompressionField> fields = List.of(new ClaudeCompressionField("overview_0", longOverview, 240));
 		when(promptBuilder.buildCompressionPrompt(fields)).thenReturn(Optional.of("prompt"));
-		when(messagesClient.callJsonObject(eq("prompt"), eq(1200), eq(30), eq("BatchD-Test"), eq(false)))
+		when(messagesClient.callJsonObject(eq("prompt"), eq(3000), eq(30), eq("BatchD-Test"), eq(true)))
 				.thenReturn(null);
 
 		// When:

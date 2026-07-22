@@ -164,7 +164,7 @@ class RealClaudeClientTest {
 				  }
 				}
 				""");
-		// One tactic → budget is base 800 + 1200 = 2000, 90s timeout, allowPartial.
+		// One tactic → budget is base 1500 + 1200 = 2700, 90s timeout, allowPartial.
 		List<ClaudeCompressionField> expectedFields = List.of(
 				new ClaudeCompressionField(
 						"1_overview", "CTV delivered 1M impressions at 98% VCR, driven by premium inventory.", 210),
@@ -172,7 +172,7 @@ class RealClaudeClientTest {
 				new ClaudeCompressionField("1_pub_1", "Long tail carried reach.", 155),
 				new ClaudeCompressionField("1_pub_2", "Premium brand-safe mix.", 155),
 				new ClaudeCompressionField("1_pub_3", "We steered weight to strong publishers.", 155));
-		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(2000), eq(90), eq("BatchConclusions"), eq(true)))
+		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(2700), eq(90), eq("BatchConclusions"), eq(true)))
 				.thenReturn(response);
 		when(compressionService.compress(eq(expectedFields), eq("BatchD-Conclusions")))
 				.thenAnswer(invocation -> {
@@ -242,7 +242,7 @@ class RealClaudeClientTest {
 				new ClaudeCompressionField("1_pub_1", "Long tail carried reach.", 155),
 				new ClaudeCompressionField("1_pub_2", "Premium brand-safe mix.", 155),
 				new ClaudeCompressionField("1_pub_3", "We steered weight to strong publishers.", 155));
-		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(2000), eq(90), eq("BatchConclusions"), eq(true)))
+		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(2700), eq(90), eq("BatchConclusions"), eq(true)))
 				.thenReturn(bareResponse);
 		when(compressionService.compress(eq(expectedFields), eq("BatchD-Conclusions")))
 				.thenAnswer(invocation -> {

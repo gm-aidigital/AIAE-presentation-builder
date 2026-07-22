@@ -28,8 +28,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * Real Anthropic Messages API implementation — a faithful port of PHP
@@ -154,7 +156,7 @@ public class RealClaudeClient implements ClaudeClient {
 	 * sections (~21 strings), so the per-tactic allowance is generous; the base covers JSON overhead and the cap
 	 * bounds a large chunk. A reply that still overruns salvages the tactics it finished (allowPartial).
 	 */
-	private static final int CONCLUSIONS_BASE_TOKENS = 800;
+	private static final int CONCLUSIONS_BASE_TOKENS = 1500;
 	private static final int CONCLUSIONS_TOKENS_PER_TACTIC = 1200;
 	private static final int CONCLUSIONS_MAX_TOKENS_CAP = 8000;
 
@@ -653,6 +655,19 @@ public class RealClaudeClient implements ClaudeClient {
 			List<TacticConclusionInput> chunk =
 					inputs.subList(start, Math.min(start + breakdownChunkSize, inputs.size()));
 			out.addAll(tacticConclusionsResilient(data, chunk, brief));
+		}
+		// Name the tactics that finished every attempt with no conclusion so a future blank-overview run is one
+		// grep line ("shipped with no conclusion: [N]"), not a hunt back through raw reply snapshots. Each such
+		// tactic's {{tactic N overview}} and breakdown copy fall back to dashes for manual fill.
+		Set<Integer> produced = out.stream().map(TacticConclusion::tacticNum).collect(Collectors.toSet());
+		List<Integer> missing = inputs.stream()
+				.map(TacticConclusionInput::tacticNum)
+				.filter(n -> !produced.contains(n))
+				.toList();
+		if (!missing.isEmpty()) {
+			log.warn("[claude:BatchConclusions] {} of {} tactic(s) shipped with no conclusion: {} — their overview "
+							+ "and breakdown copy fall back to dashes",
+					missing.size(), inputs.size(), missing);
 		}
 		return out;
 	}

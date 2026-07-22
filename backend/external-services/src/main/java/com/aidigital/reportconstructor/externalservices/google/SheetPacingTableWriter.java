@@ -52,6 +52,13 @@ public class SheetPacingTableWriter {
 	 * How many columns right of a block's anchor cell to search for its tokens.
 	 */
 	static final int SEARCH_COLS_RIGHT = 8;
+	/**
+	 * How many columns left of a block's anchor cell to search for its tokens. The {@code "Daily pacing N"}
+	 * anchor label sits over the impressions column, so a tactic's {@code date} token sits one or more columns
+	 * to its left; the search therefore extends left as well as right. Cross-tactic bleed is impossible because
+	 * every token pattern carries the exact tactic number, so a neighbour's tokens never match.
+	 */
+	static final int SEARCH_COLS_LEFT = 8;
 
 	private final ChartPivot chartPivot;
 	private final TacticLineItemGrouper lineItemGrouper;
@@ -261,9 +268,10 @@ public class SheetPacingTableWriter {
 	}
 
 	/**
-	 * Resolves a tactic's daily/monthly pacing columns within a bounded window below/right
-	 * of its block anchor, matching only that tactic's number and, for the monthly block,
-	 * only tokens carrying the {@code mon} suffix.
+	 * Resolves a tactic's daily/monthly pacing columns within a bounded window below the block
+	 * anchor and spanning columns on both sides of it (the anchor label sits over the impressions
+	 * column, so the {@code date} token is to its left), matching only that tactic's number and,
+	 * for the monthly block, only tokens carrying the {@code mon} suffix.
 	 *
 	 * @param grid      the tab's full cell grid
 	 * @param anchor    the block's anchor cell {@code [row, col]}
@@ -290,8 +298,9 @@ public class SheetPacingTableWriter {
 		int rowTo = Math.min(grid.size(), anchor[0] + SEARCH_ROWS_DOWN);
 		for (int r = anchor[0]; r < rowTo; r++) {
 			List<Object> row = grid.get(r);
+			int colFrom = Math.max(0, anchor[1] - SEARCH_COLS_LEFT);
 			int colTo = Math.min(row.size(), anchor[1] + SEARCH_COLS_RIGHT);
-			for (int c = anchor[1]; c < colTo; c++) {
+			for (int c = colFrom; c < colTo; c++) {
 				String cell = str(row.get(c));
 				if (datePattern.matcher(cell).find()) {
 					dateCol = c;

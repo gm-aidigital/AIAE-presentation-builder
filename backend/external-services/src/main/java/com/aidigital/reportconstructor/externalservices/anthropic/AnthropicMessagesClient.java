@@ -38,6 +38,16 @@ public class AnthropicMessagesClient {
 	private static final int REPLY_SNIPPET_LIMIT = 400;
 
 	/**
+	 * Assistant-turn prefill that forces a JSON-object reply. Sent as a final {@code assistant} message holding a
+	 * single open brace, so the model's answer must continue the object from that brace and physically cannot open
+	 * with a prose preamble ("I'll work through this systematically before producing the JSON…") — the recurring
+	 * failure where a whole batch parsed to nothing because the model reasoned out loud until it ran out of budget
+	 * before ever emitting {@code {}. The Messages API echoes only the continuation, not the prefill, so
+	 * {@link #callJsonObject} re-attaches this brace before parsing.
+	 */
+	private static final String JSON_OBJECT_PREFILL = "{";
+
+	/**
 	 * HTTP statuses treated as transient and retried: 408 request timeout, 429 rate limit, 500/502/503/504
 	 * server and gateway errors, Cloudflare edge timeouts 522/524, and 529 (Anthropic "overloaded"). Any other
 	 * non-200 — a 400 bad request, a 401/403 auth failure — is permanent and fails fast without a retry.
@@ -116,7 +126,7 @@ public class AnthropicMessagesClient {
 	 */
 	public JsonNode callJsonObject(
 			String prompt, int maxTokens, int timeoutSec, String label, boolean allowPartial) {
-		JsonNode resp = callRaw(prompt, maxTokens, timeoutSec, label);
+		JsonNode resp = callRaw(prompt, maxTokens, timeoutSec, label, JSON_OBJECT_PREFILL);
 		if (resp == null) {
 			return null;
 		}
@@ -128,6 +138,9 @@ public class AnthropicMessagesClient {
 		if (text == null || text.isBlank()) {
 			return null;
 		}
+		// The assistant-turn prefill opened the object; the API echoes only the continuation, so restore the
+		// leading brace before any fence stripping or parsing so the reply reads as a complete JSON object.
+		text = JSON_OBJECT_PREFILL + text;
 		text = FENCE_OPEN.matcher(text.trim()).replaceFirst("");
 		text = FENCE_CLOSE.matcher(text).replaceFirst("").trim();
 		JsonNode node = parseJsonObject(text, allowPartial);
@@ -323,12 +336,39 @@ public class AnthropicMessagesClient {
 	 * @return the full Messages API response as a JSON tree, or {@code null} on failure
 	 */
 	public JsonNode callRaw(String prompt, int maxTokens, int timeoutSec, String label) {
+		return callRaw(prompt, maxTokens, timeoutSec, label, null);
+	}
+
+	/**
+	 * Sends a prompt as a user message to the Anthropic Messages API, optionally seeding the reply with an
+	 * {@code assistant}-turn prefill, and returns the raw parsed JSON response body, or {@code null} on a
+	 * non-200 status or transport failure.
+	 *
+	 * <p>When {@code assistantPrefill} is non-empty it is appended as a final {@code assistant} message, so the
+	 * model continues its answer from that text rather than starting a fresh turn — the mechanism that forces a
+	 * JSON object (see {@link #JSON_OBJECT_PREFILL}) and suppresses prose preambles. The API returns only the
+	 * continuation, never the prefill itself, so a caller that needs the prefill in the final text must re-attach
+	 * it. When {@code null} or empty the request is a single user message, exactly as before.
+	 *
+	 * @param prompt           the full user prompt sent as the single user message to Claude
+	 * @param maxTokens        cap on tokens the model may generate in its reply
+	 * @param timeoutSec       per-request HTTP timeout in seconds
+	 * @param label            short tag identifying this call in log messages
+	 * @param assistantPrefill text to seed the assistant turn with, or {@code null}/empty for none
+	 * @return the full Messages API response as a JSON tree, or {@code null} on failure
+	 */
+	public JsonNode callRaw(String prompt, int maxTokens, int timeoutSec, String label, String assistantPrefill) {
 		HttpRequest req;
 		try {
+			List<Map<String, Object>> messages = new ArrayList<>(2);
+			messages.add(Map.of("role", "user", "content", buildUserContent(prompt)));
+			if (assistantPrefill != null && !assistantPrefill.isEmpty()) {
+				messages.add(Map.of("role", "assistant", "content", assistantPrefill));
+			}
 			Map<String, Object> body = Map.of(
 					"model", model,
 					"max_tokens", maxTokens,
-					"messages", List.of(Map.of("role", "user", "content", buildUserContent(prompt)))
+					"messages", messages
 			);
 			req = HttpRequest.newBuilder()
 					.uri(URI.create(ENDPOINT))
