@@ -1,7 +1,12 @@
 package com.aidigital.reportconstructor.service.reports.ports;
 
+import com.aidigital.reportconstructor.service.reports.dto.AudienceInsightInput;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
+import com.aidigital.reportconstructor.service.reports.dto.CreativeTakeawayInput;
+import com.aidigital.reportconstructor.service.reports.dto.DeviceInsightInput;
+import com.aidigital.reportconstructor.service.reports.dto.GeoInsightInput;
+import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationInput;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeNarrative;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeSheetBatch;
@@ -30,6 +35,76 @@ public interface ClaudeClient {
 	 * @return true when the client is hitting the real Anthropic API.
 	 */
 	boolean isLive();
+
+	/**
+	 * @return true when per-section calls are enabled — each breakdown section is produced by its own dedicated
+	 *         per-tactic call ({@link #publisherSection}, {@link #creativeSection}, {@link #geoSection},
+	 *         {@link #audienceSection}, {@link #deviceSection}) instead of as one section of the combined
+	 *         conclusions call. Always false on the stub client, so the per-section path only runs against the
+	 *         real API.
+	 */
+	boolean perSectionCallsEnabled();
+
+	/**
+	 * One tactic's "Top Publishers" slide copy, produced by a small dedicated call. Common contract for every
+	 * per-section method: the call asks for exactly the section's fixed number of slide strings as a bare JSON
+	 * array and accepts the reply only when it carries that many non-blank strings, retrying a bounded number of
+	 * times before giving up; the smaller request and strict positional contract make a malformed or partial
+	 * reply far less likely and, when it still happens, visible rather than silently blank. The caller fans these
+	 * calls out across tactics on its own executor (bounded by the shared Claude concurrency limit).
+	 *
+	 * @param data  parsed campaign data supplying the shared campaign context
+	 * @param input the tactic's publisher input (name + rows)
+	 * @param brief free-text campaign brief the copy must stay faithful to
+	 * @return the four publisher observations in slide order, or an empty list when every attempt failed
+	 */
+	List<String> publisherSection(CampaignData data, PublisherObservationInput input, String brief);
+
+	/**
+	 * One tactic's "Creative analysis" slide copy, produced by a small dedicated call. See
+	 * {@link #publisherSection} for the shared accept/retry contract.
+	 *
+	 * @param data  parsed campaign data supplying the shared campaign context
+	 * @param input the tactic's creative input (name + KPI type + table)
+	 * @param brief free-text campaign brief the copy must stay faithful to
+	 * @return the four creative takeaways in slide order (three reads + one optimisation), or an empty list on failure
+	 */
+	List<String> creativeSection(CampaignData data, CreativeTakeawayInput input, String brief);
+
+	/**
+	 * One tactic's "Geo analysis" slide copy, produced by a small dedicated call. See {@link #publisherSection}
+	 * for the shared accept/retry contract.
+	 *
+	 * @param data  parsed campaign data supplying the shared campaign context
+	 * @param input the tactic's geo input (name + KPI type + table)
+	 * @param brief free-text campaign brief the copy must stay faithful to
+	 * @return the five geo strings in slide order (four insights + one forward-looking reco), or an empty list on failure
+	 */
+	List<String> geoSection(CampaignData data, GeoInsightInput input, String brief);
+
+	/**
+	 * One tactic's "Audience analysis" slide copy, produced by a small dedicated call. See
+	 * {@link #publisherSection} for the shared accept/retry contract.
+	 *
+	 * @param data  parsed campaign data supplying the shared campaign context
+	 * @param input the tactic's audience input (name + table)
+	 * @param brief free-text campaign brief the copy must stay faithful to
+	 * @return the four audience strings in slide order (takeaway, what worked, watch-out, recommendation), or an
+	 *         empty list when every attempt failed
+	 */
+	List<String> audienceSection(CampaignData data, AudienceInsightInput input, String brief);
+
+	/**
+	 * One tactic's "Device breakdown" slide copy, produced by a small dedicated call. See
+	 * {@link #publisherSection} for the shared accept/retry contract.
+	 *
+	 * @param data  parsed campaign data supplying the shared campaign context
+	 * @param input the tactic's device input (name + table)
+	 * @param brief free-text campaign brief the copy must stay faithful to
+	 * @return the four device strings in slide order (takeaway, what worked, watch-out, recommendation), or an
+	 *         empty list when every attempt failed
+	 */
+	List<String> deviceSection(CampaignData data, DeviceInsightInput input, String brief);
 
 	/**
 	 * Batch A — audience age/segments, proposal overview, 4 strategic insights.

@@ -142,6 +142,81 @@ public class AnthropicMessagesClient {
 	}
 
 	/**
+	 * Sends a prompt expecting a bare top-level JSON array reply and returns the parsed array node, or
+	 * {@code null} on any failure. The per-section pilot calls ask for exactly this — a keyless array of a
+	 * fixed length — so there is no object key the model can drift on: the reply is either a usable array or
+	 * discarded. A reply truncated by {@code max_tokens} is rejected outright (a half-written array cannot be
+	 * trusted to have all its items), so the caller retries rather than accepting a short array.
+	 *
+	 * @param prompt     the full user prompt sent as the single message to Claude
+	 * @param maxTokens  cap on tokens the model may generate in its reply
+	 * @param timeoutSec per-request HTTP timeout in seconds
+	 * @param label      short tag identifying this call in log messages
+	 * @return the parsed array node, or {@code null} when no usable array could be recovered
+	 */
+	public JsonNode callJsonArray(String prompt, int maxTokens, int timeoutSec, String label) {
+		JsonNode resp = callRaw(prompt, maxTokens, timeoutSec, label);
+		if (resp == null) {
+			return null;
+		}
+		if ("max_tokens".equals(resp.path("stop_reason").asText(""))) {
+			log.warn("[claude:{}] truncated by max_tokens", label);
+			return null;
+		}
+		String text = normalizer.extractText(resp);
+		if (text == null || text.isBlank()) {
+			return null;
+		}
+		text = FENCE_OPEN.matcher(text.trim()).replaceFirst("");
+		text = FENCE_CLOSE.matcher(text).replaceFirst("").trim();
+		JsonNode node = parseJsonArray(text);
+		if (node != null) {
+			return node;
+		}
+		log.warn("[claude:{}] JSON array parse failed; reply began: {}", label, snippet(text));
+		return null;
+	}
+
+	/**
+	 * Parses the model's JSON array out of the reply text, tolerating prose wrapped around it by parsing from
+	 * the first <code>[</code> to the last <code>]</code>. A reply that carries no array yields {@code null}.
+	 *
+	 * @param text the reply text, with any Markdown code fences already stripped
+	 * @return the parsed array node, or {@code null} when no usable array could be recovered
+	 */
+	JsonNode parseJsonArray(String text) {
+		JsonNode node = readArray(text);
+		if (node != null) {
+			return node;
+		}
+		int first = text.indexOf('[');
+		int last = text.lastIndexOf(']');
+		if (first < 0 || last <= first) {
+			return null;
+		}
+		return readArray(text.substring(first, last + 1));
+	}
+
+	/**
+	 * Reads one JSON array from text, returning {@code null} rather than throwing when the text is blank,
+	 * unparseable, or parses to something that is not an array.
+	 *
+	 * @param text candidate JSON text
+	 * @return the array node, or {@code null}
+	 */
+	JsonNode readArray(String text) {
+		if (text == null || text.isBlank()) {
+			return null;
+		}
+		try {
+			JsonNode node = json.readTree(text);
+			return node != null && node.isArray() ? node : null;
+		} catch (Exception ignored) {
+			return null;
+		}
+	}
+
+	/**
 	 * Parses the model's JSON object out of the reply text, tolerating the ways a reply can carry a complete
 	 * object that a plain parse still rejects: a tail truncated by {@code max_tokens} (repaired by
 	 * {@link #repairTruncatedJson}) and prose wrapped around the object — a preamble such as "Here are the

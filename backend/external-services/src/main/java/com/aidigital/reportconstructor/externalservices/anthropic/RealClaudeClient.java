@@ -1,6 +1,11 @@
 package com.aidigital.reportconstructor.externalservices.anthropic;
 
+import com.aidigital.reportconstructor.service.reports.dto.AudienceInsightInput;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
+import com.aidigital.reportconstructor.service.reports.dto.CreativeTakeawayInput;
+import com.aidigital.reportconstructor.service.reports.dto.DeviceInsightInput;
+import com.aidigital.reportconstructor.service.reports.dto.GeoInsightInput;
+import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationInput;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeNarrative;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
@@ -124,6 +129,13 @@ public class RealClaudeClient implements ClaudeClient {
 	private static final int AUDIENCE_FIELD_COUNT = 4;
 
 	/**
+	 * Output budget for one per-section call. The largest section output is geo's five ~140-char strings (~700
+	 * characters) and audience/device's ~256+3×120 (~616), both well under this budget as a bare JSON array, so
+	 * with generous head-room a reply never truncates before its last string closes.
+	 */
+	private static final int SECTION_MAX_TOKENS = 800;
+
+	/**
 	 * Character budget of the "Device breakdown" slide's key takeaway ({@code {{dev_N_takeaway}}}), the
 	 * widest of the four device fields.
 	 */
@@ -220,6 +232,10 @@ public class RealClaudeClient implements ClaudeClient {
 	private final PromptTokenEstimator tokenEstimator;
 	/** Tactics per Step-2 combined conclusions call; bound from config, clamped to at least 1. */
 	private final int breakdownChunkSize;
+	/** Whether each breakdown section is produced by its own dedicated per-tactic call; bound from config. */
+	private final boolean perSectionCallsEnabled;
+	/** Extra attempts a per-section call makes on a contract failure; bound from config, clamped to ≥ 0. */
+	private final int sectionRetries;
 
 	public RealClaudeClient(
 			AnthropicMessagesClient messagesClient,
@@ -238,11 +254,145 @@ public class RealClaudeClient implements ClaudeClient {
 		this.geoFilter = geoFilter;
 		this.tokenEstimator = tokenEstimator;
 		this.breakdownChunkSize = Math.max(1, anthropicProperties.getBreakdownChunkSize());
+		this.perSectionCallsEnabled = anthropicProperties.isPerSectionCallsEnabled();
+		this.sectionRetries = Math.max(0, anthropicProperties.getSectionRetries());
 	}
 
 	@Override
 	public boolean isLive() {
 		return true;
+	}
+
+	@Override
+	public boolean perSectionCallsEnabled() {
+		return perSectionCallsEnabled;
+	}
+
+	@Override
+	public List<String> publisherSection(CampaignData data, PublisherObservationInput input, String brief) {
+		if (input == null) {
+			return List.of();
+		}
+		return runSection("PublisherSection", input.tacticNum(),
+				promptBuilder.buildPublisherSectionPrompt(input, data, brief, PUBLISHER_OBSERVATION_LIMIT),
+				PUBLISHER_OBSERVATION_COUNT, i -> PUBLISHER_OBSERVATION_LIMIT);
+	}
+
+	@Override
+	public List<String> creativeSection(CampaignData data, CreativeTakeawayInput input, String brief) {
+		if (input == null) {
+			return List.of();
+		}
+		return runSection("CreativeSection", input.tacticNum(),
+				promptBuilder.buildCreativeSectionPrompt(input, data, brief, CREATIVE_TAKEAWAY_LIMIT, CREATIVE_RECO_LIMIT),
+				CREATIVE_TAKEAWAY_COUNT,
+				i -> i == CREATIVE_TAKEAWAY_COUNT - 1 ? CREATIVE_RECO_LIMIT : CREATIVE_TAKEAWAY_LIMIT);
+	}
+
+	@Override
+	public List<String> geoSection(CampaignData data, GeoInsightInput input, String brief) {
+		if (input == null) {
+			return List.of();
+		}
+		return runSection("GeoSection", input.tacticNum(),
+				promptBuilder.buildGeoSectionPrompt(input, data, brief, GEO_INSIGHT_LIMIT),
+				GEO_BULLET_COUNT, i -> GEO_INSIGHT_LIMIT);
+	}
+
+	@Override
+	public List<String> audienceSection(CampaignData data, AudienceInsightInput input, String brief) {
+		if (input == null) {
+			return List.of();
+		}
+		return runSection("AudienceSection", input.tacticNum(),
+				promptBuilder.buildAudienceSectionPrompt(input, data, brief, AUDIENCE_TAKEAWAY_LIMIT, AUDIENCE_SHORT_LIMIT),
+				AUDIENCE_FIELD_COUNT, i -> i == 0 ? AUDIENCE_TAKEAWAY_LIMIT : AUDIENCE_SHORT_LIMIT);
+	}
+
+	@Override
+	public List<String> deviceSection(CampaignData data, DeviceInsightInput input, String brief) {
+		if (input == null) {
+			return List.of();
+		}
+		return runSection("DeviceSection", input.tacticNum(),
+				promptBuilder.buildDeviceSectionPrompt(input, data, brief, DEVICE_TAKEAWAY_LIMIT, DEVICE_SHORT_LIMIT),
+				DEVICE_FIELD_COUNT, i -> i == 0 ? DEVICE_TAKEAWAY_LIMIT : DEVICE_SHORT_LIMIT);
+	}
+
+	/**
+	 * Runs one section's dedicated per-tactic call with the shared accept/retry contract used by every
+	 * per-section method. It sends the prompt, accepts the reply only when {@link #sectionOnce} returns the
+	 * full set of strings (a JSON array of exactly {@code count} non-blank items), and otherwise retries up to
+	 * {@link #sectionRetries} times before giving up and returning an empty list so the tactic's section ships
+	 * blank (and the caller surfaces that) rather than carrying a partial or invented reply.
+	 *
+	 * @param label     short tag identifying the section in log messages (e.g. {@code "GeoSection"})
+	 * @param tacticNum the tactic number, for log messages and compression-field keys
+	 * @param prompt    the built section prompt, or empty when the tactic has no data to reason over
+	 * @param count     the exact number of non-blank strings the reply must carry
+	 * @param limitAt   the character budget for the field at a given index (sections vary which index is widest)
+	 * @return the {@code count} normalized strings in slide order, or an empty list when no attempt satisfied the contract
+	 */
+	List<String> runSection(
+			String label, int tacticNum, java.util.Optional<String> prompt, int count,
+			java.util.function.IntUnaryOperator limitAt) {
+		if (prompt.isEmpty()) {
+			return List.of();
+		}
+		int attempts = sectionRetries + 1;
+		for (int attempt = 1; attempt <= attempts; attempt++) {
+			List<String> res = sectionOnce(label, tacticNum, prompt.get(), count, limitAt);
+			if (!res.isEmpty()) {
+				return res;
+			}
+			if (attempt < attempts) {
+				log.warn("[claude:{}] tactic {} reply failed the {}-string contract — retry {}/{}",
+						label, tacticNum, count, attempt, sectionRetries);
+			}
+		}
+		log.warn("[claude:{}] tactic {} produced no usable copy after {} attempt(s) — its fields ship blank",
+				label, tacticNum, attempts);
+		return List.of();
+	}
+
+	/**
+	 * Runs one section call once and enforces the positional contract: the reply is accepted only when it parses
+	 * as a JSON array of exactly {@code count} non-blank strings. Anything else — a short array, a non-array, a
+	 * blank field, or a failed call — returns an empty list so {@link #runSection} retries rather than accepting
+	 * a partial reply. Accepted strings are compressed and normalized to the same per-index budgets the combined
+	 * path uses, so the per-section and combined paths yield identical field shapes.
+	 *
+	 * @param label     short tag identifying the section in log/compression messages
+	 * @param tacticNum the tactic number, used to key the compression fields
+	 * @param prompt    the built section prompt text
+	 * @param count     the exact number of non-blank strings the reply must carry
+	 * @param limitAt   the character budget for the field at a given index
+	 * @return the {@code count} normalized strings, or an empty list when the reply did not satisfy the contract
+	 */
+	List<String> sectionOnce(
+			String label, int tacticNum, String prompt, int count, java.util.function.IntUnaryOperator limitAt) {
+		JsonNode arr = messagesClient.callJsonArray(prompt, SECTION_MAX_TOKENS, BREAKDOWN_TIMEOUT_SEC, label);
+		if (arr == null || !arr.isArray() || arr.size() != count) {
+			return List.of();
+		}
+		List<String> raw = new ArrayList<>(count);
+		for (int i = 0; i < count; i++) {
+			String value = arr.get(i).asText("").trim();
+			if (value.isBlank()) {
+				return List.of();
+			}
+			raw.add(value);
+		}
+		List<ClaudeCompressionField> fields = new ArrayList<>(count);
+		for (int i = 0; i < count; i++) {
+			fields.add(new ClaudeCompressionField(tacticNum + "_" + i, raw.get(i), limitAt.applyAsInt(i)));
+		}
+		Map<String, String> compressed = compressionService.compress(fields, label);
+		List<String> out = new ArrayList<>(count);
+		for (int i = 0; i < count; i++) {
+			out.add(normalizer.normalizeC(compressed.get(tacticNum + "_" + i), limitAt.applyAsInt(i)));
+		}
+		return out;
 	}
 
 	@Override

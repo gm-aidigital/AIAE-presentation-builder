@@ -1203,6 +1203,233 @@ public class ClaudeBatchPromptBuilder {
 	}
 
 	/**
+	 * Builds the per-tactic audience-section pilot prompt: a small, self-contained call that asks for ONLY the
+	 * four "Audience analysis" slide strings as a bare JSON array of exactly four items, in slide order. Unlike
+	 * the combined conclusions prompt it carries a single tactic's audience block and demands a keyless array,
+	 * so there is no object key the model can drift on and the reply is validated purely by position and length.
+	 * The instruction/context prefix is stable per run and marked cacheable, so each tactic re-reads it cheaply.
+	 *
+	 * @param input         the tactic's audience input (name + table); empty output when its table is blank
+	 * @param data          parsed campaign data supplying the shared campaign context block
+	 * @param brief         free-text campaign brief the copy must stay faithful to
+	 * @param takeawayLimit character budget of the first string (the key takeaway)
+	 * @param shortLimit    character budget of the remaining three strings
+	 * @return the audience-section prompt, or empty when the tactic carries no audience table to reason over
+	 */
+	public Optional<String> buildAudienceSectionPrompt(
+			AudienceInsightInput input, CampaignData data, String brief, int takeawayLimit, int shortLimit) {
+		if (input == null || input.table() == null || input.table().isEmpty() || data == null) {
+			return Optional.empty();
+		}
+		int takeawayPrompt = Math.max(1, (int) (takeawayLimit * COMPRESSION_PROMPT_BUFFER_RATIO));
+		int shortPrompt = Math.max(1, (int) (shortLimit * COMPRESSION_PROMPT_BUFFER_RATIO));
+		String prompt =
+				"You are a senior digital media analyst writing the 'Audience analysis' slide for ONE tactic in a "
+						+ "post-campaign report.\n\n"
+						+ sectionPrinciples()
+						+ "Ground in real age groups and top segments with affinity indexes (100 = campaign average); "
+						+ "treat high-affinity low-volume segments as noise.\n\n"
+						+ "Return the four strings in THIS order:\n"
+						+ "1) KEY TAKEAWAY (who this tactic reached), at most " + takeawayPrompt + " characters;\n"
+						+ "2) WHAT WORKED, at most " + shortPrompt + " characters;\n"
+						+ "3) WATCH-OUT, at most " + shortPrompt + " characters;\n"
+						+ "4) RECOMMENDED ACTION — FORWARD-LOOKING, which age groups and segments to lean into next, at "
+						+ "most " + shortPrompt + " characters.\n\n"
+						+ sectionArrayRules(4)
+						+ campaignContextForConclusions(data, brief) + "\n\n"
+						+ AnthropicMessagesClient.CACHE_BREAKPOINT + "=== TACTIC: " + input.tacticName() + " ===\n"
+						+ "[AUDIENCE ANALYSIS]\n" + audienceContextBlock(input);
+		return Optional.of(prompt);
+	}
+
+	/**
+	 * Builds the per-tactic publisher-section prompt: a small, self-contained call that asks for ONLY the four
+	 * "Top Publishers" slide observations as a bare JSON array of exactly four items. Keyless and single-tactic
+	 * like {@link #buildAudienceSectionPrompt}, so the reply is validated purely by position and length.
+	 *
+	 * @param input  the tactic's publisher input (name + rows); empty output when it has no rows
+	 * @param data   parsed campaign data supplying the shared campaign context block
+	 * @param brief  free-text campaign brief the copy must stay faithful to
+	 * @param limit  character budget of each of the four observations
+	 * @return the publisher-section prompt, or empty when the tactic carries no publisher rows
+	 */
+	public Optional<String> buildPublisherSectionPrompt(
+			PublisherObservationInput input, CampaignData data, String brief, int limit) {
+		if (input == null || input.rows() == null || input.rows().isEmpty() || data == null) {
+			return Optional.empty();
+		}
+		int prompt = Math.max(1, (int) (limit * COMPRESSION_PROMPT_BUFFER_RATIO));
+		String text =
+				"You are a senior digital media analyst writing the 'Top Publishers' slide for ONE tactic in a "
+						+ "post-campaign report, on behalf of the team that ran the campaign (confident, complimentary "
+						+ "of our own delivery).\n\n"
+						+ sectionPrinciples()
+						+ "Return FOUR key observations, each ONE complete sentence, at most " + prompt + " characters. "
+						+ "The table lists only the TOP ~15 publishers over a long tail of thousands more. We run an "
+						+ "AUDIENCE-FIRST approach: we chase the audience, not sites. Ground each in the numbers (name "
+						+ "real publishers, cite real shares/impressions, head vs long tail). At most ~20% may go beyond "
+						+ "the table and never as measured fact. Any optimisation is phrased as something WE ALREADY DID "
+						+ "(e.g. 'we shifted weight toward stronger publishers'); never say we blacklisted or paused a "
+						+ "TACTIC (say we REDUCED ITS WEIGHT). One of the 4 notes that we blacklisted a large number of "
+						+ "PUBLISHERS (hundreds to a few thousand, kept qualitative) to hold delivery on premium, "
+						+ "brand-safe inventory. Vary the 4 angles: volume/reach + long tail, audience-fit, "
+						+ "premium/brand-suitability incl. blacklisting, and steering weight to the strongest "
+						+ "publishers.\n\n"
+						+ sectionArrayRules(4)
+						+ campaignContextForConclusions(data, brief) + "\n\n"
+						+ AnthropicMessagesClient.CACHE_BREAKPOINT + "=== TACTIC: " + input.tacticName() + " ===\n"
+						+ "[TOP PUBLISHERS]\n" + publisherContextBlock(input);
+		return Optional.of(text);
+	}
+
+	/**
+	 * Builds the per-tactic creative-section prompt: a bare JSON array of exactly four "Creative analysis"
+	 * strings — three reads of the creative mix plus one optimisation already made. Keyless and single-tactic.
+	 *
+	 * @param input     the tactic's creative input (name + KPI type + table); empty output when the table is blank
+	 * @param data      parsed campaign data supplying the shared campaign context block
+	 * @param brief     free-text campaign brief the copy must stay faithful to
+	 * @param limit     character budget of the first three takeaways
+	 * @param recoLimit character budget of the fourth (optimisation) string
+	 * @return the creative-section prompt, or empty when the tactic carries no creative table
+	 */
+	public Optional<String> buildCreativeSectionPrompt(
+			CreativeTakeawayInput input, CampaignData data, String brief, int limit, int recoLimit) {
+		if (input == null || input.table() == null || input.table().isEmpty() || data == null) {
+			return Optional.empty();
+		}
+		int prompt = Math.max(1, (int) (limit * COMPRESSION_PROMPT_BUFFER_RATIO));
+		int recoPrompt = Math.max(1, (int) (recoLimit * COMPRESSION_PROMPT_BUFFER_RATIO));
+		String text =
+				"You are a senior digital media analyst writing the 'Creative analysis' slide for ONE tactic in a "
+						+ "post-campaign report.\n\n"
+						+ sectionPrinciples()
+						+ "Return the four strings in THIS order. Takeaways 1-3 read the creative mix: ONE sentence "
+						+ "each, at most " + prompt + " characters, grounded in the numbers (name real creatives, cite "
+						+ "impressions shares, CTR/VCR, spend). Vary angles: delivery/completion anchor, engagement "
+						+ "leader, and a read on creative format/size. " + CREATIVE_SMALL_SAMPLE_RULE
+						+ "String 4 states an optimisation ALREADY MADE on creative during the flight and its result, "
+						+ "at most " + recoPrompt + " characters. Use the tactic's own KPI type for its lead metric.\n\n"
+						+ sectionArrayRules(4)
+						+ campaignContextForConclusions(data, brief) + "\n\n"
+						+ AnthropicMessagesClient.CACHE_BREAKPOINT + "=== TACTIC: " + input.tacticName()
+						+ kpiSuffix(input.kpiType()) + " ===\n"
+						+ "[CREATIVE ANALYSIS]\n" + creativeContextBlock(input);
+		return Optional.of(text);
+	}
+
+	/**
+	 * Builds the per-tactic geo-section prompt: a bare JSON array of exactly five "Geo analysis" strings — four
+	 * insights plus one forward-looking recommendation. Keyless and single-tactic.
+	 *
+	 * @param input the tactic's geo input (name + KPI type + table); empty output when the table is blank
+	 * @param data  parsed campaign data supplying the shared campaign context block
+	 * @param brief free-text campaign brief the copy must stay faithful to
+	 * @param limit character budget of each of the five strings
+	 * @return the geo-section prompt, or empty when the tactic carries no geo table
+	 */
+	public Optional<String> buildGeoSectionPrompt(
+			GeoInsightInput input, CampaignData data, String brief, int limit) {
+		if (input == null || input.table() == null || input.table().isEmpty() || data == null) {
+			return Optional.empty();
+		}
+		int prompt = Math.max(1, (int) (limit * COMPRESSION_PROMPT_BUFFER_RATIO));
+		String text =
+				"You are a senior digital media analyst writing 'WHAT THE MAP TELLS US' for the 'Geo analysis' "
+						+ "slide of ONE tactic in a post-campaign report.\n\n"
+						+ sectionPrinciples()
+						+ "Return the five strings in THIS order. Strings 1-4 are insights: ONE sentence each, at most "
+						+ prompt + " characters, grounded in real markets/geos and the lead KPI; vary angles: "
+						+ "concentration across top geos, efficient (over-indexing) markets, reach with softer "
+						+ "engagement, and audience/market fit. Treat high-KPI low-volume markets as noise. String 5 is "
+						+ "DIFFERENT — a FORWARD-LOOKING recommendation (where to open budget, which markets to scale), "
+						+ "at most " + prompt + " characters, still grounded in the table.\n\n"
+						+ sectionArrayRules(5)
+						+ campaignContextForConclusions(data, brief) + "\n\n"
+						+ AnthropicMessagesClient.CACHE_BREAKPOINT + "=== TACTIC: " + input.tacticName()
+						+ kpiSuffix(input.kpiType()) + " ===\n"
+						+ "[GEO ANALYSIS]\n" + geoContextBlock(input);
+		return Optional.of(text);
+	}
+
+	/**
+	 * Builds the per-tactic device-section prompt: a bare JSON array of exactly four "Device breakdown" strings,
+	 * in the same takeaway/what-worked/watch-out/recommendation order as audience. Keyless and single-tactic.
+	 *
+	 * @param input         the tactic's device input (name + table); empty output when the table is blank
+	 * @param data          parsed campaign data supplying the shared campaign context block
+	 * @param brief         free-text campaign brief the copy must stay faithful to
+	 * @param takeawayLimit character budget of the first string (the key takeaway)
+	 * @param shortLimit    character budget of the remaining three strings
+	 * @return the device-section prompt, or empty when the tactic carries no device table
+	 */
+	public Optional<String> buildDeviceSectionPrompt(
+			DeviceInsightInput input, CampaignData data, String brief, int takeawayLimit, int shortLimit) {
+		if (input == null || input.table() == null || input.table().isEmpty() || data == null) {
+			return Optional.empty();
+		}
+		int takeawayPrompt = Math.max(1, (int) (takeawayLimit * COMPRESSION_PROMPT_BUFFER_RATIO));
+		int shortPrompt = Math.max(1, (int) (shortLimit * COMPRESSION_PROMPT_BUFFER_RATIO));
+		String text =
+				"You are a senior digital media analyst writing the 'Device breakdown' slide for ONE tactic in a "
+						+ "post-campaign report.\n\n"
+						+ sectionPrinciples()
+						+ "Return the four strings in THIS order:\n"
+						+ "1) KEY TAKEAWAY (performance across devices), at most " + takeawayPrompt + " characters;\n"
+						+ "2) WHAT WORKED, at most " + shortPrompt + " characters;\n"
+						+ "3) WATCH-OUT, at most " + shortPrompt + " characters;\n"
+						+ "4) RECOMMENDED ACTION — FORWARD-LOOKING, which devices to lean into next, at most "
+						+ shortPrompt + " characters.\n"
+						+ "Ground in real devices (impressions, CTR, VCR, spend). CTR does not apply to Connected TV — "
+						+ "never treat a missing CTV CTR as a zero or weakness. Treat high-rate low-volume devices as "
+						+ "noise.\n\n"
+						+ sectionArrayRules(4)
+						+ campaignContextForConclusions(data, brief) + "\n\n"
+						+ AnthropicMessagesClient.CACHE_BREAKPOINT + "=== TACTIC: " + input.tacticName() + " ===\n"
+						+ "[DEVICE BREAKDOWN]\n" + deviceContextBlock(input);
+		return Optional.of(text);
+	}
+
+	/**
+	 * The shared analytical-principles block prepended to every per-section prompt, kept identical across
+	 * sections so the copy reads consistently and each section re-uses the same cached instruction guidance.
+	 *
+	 * @return the analytical-principles block, newline-terminated
+	 */
+	String sectionPrinciples() {
+		return "ANALYTICAL PRINCIPLES — apply to every string:\n"
+				+ "1. OBSERVATION → EXPLANATION → RECOMMENDATION as one flowing statement, never labelled.\n"
+				+ "2. INTERPRET, NEVER ENUMERATE. Explain what the numbers mean.\n"
+				+ "3. 'SO WHAT' IS MANDATORY: every metric cited is followed by its business consequence.\n"
+				+ "4. NO GENERIC LANGUAGE: every sentence is specific to THIS tactic's data.\n\n";
+	}
+
+	/**
+	 * The shared closing rules block for a per-section prompt: demand ONLY a bare JSON array of exactly the
+	 * given count of non-empty strings and nothing else, so the reply carries no object key the model can drift
+	 * on and can be validated by position and length alone.
+	 *
+	 * @param count the exact number of strings the array must carry
+	 * @return the closing rules block, newline-terminated
+	 */
+	String sectionArrayRules(int count) {
+		return "Return ONLY a JSON array of EXACTLY " + count + " non-empty strings, in that order (no "
+				+ "markdown/backticks, no object, no keys); analyst tone, no bullet characters; do NOT invent "
+				+ "metrics; every string ends on a complete sentence within its limit; English.\n\n";
+	}
+
+	/**
+	 * Renders a tactic's KPI type as a short parenthetical suffix for the tactic header (e.g. {@code " (KPI:
+	 * CTR)"}), so a section whose copy leans on the lead metric always sees it; blank when no KPI type is known.
+	 *
+	 * @param kpiType the tactic's KPI type as the deck spells it, or blank/null when unknown
+	 * @return the parenthetical KPI suffix, or an empty string when no KPI type is present
+	 */
+	String kpiSuffix(String kpiType) {
+		return normalizer.notBlank(kpiType) ? " (KPI: " + kpiType + ")" : "";
+	}
+
+	/**
 	 * Renders one tactic's combined data block for {@link #buildTacticConclusionsPrompt}: the tactic header,
 	 * its performance metrics for the overview, then each enabled section's context block reusing the same
 	 * renderers the standalone per-section prompts use. A section whose input is null or empty is omitted.

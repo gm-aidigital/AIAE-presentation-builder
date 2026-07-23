@@ -434,3 +434,11 @@ external:
     breakdown-chunk-size: ${CLAUDE_BREAKDOWN_CHUNK_SIZE:1}
     # Max Claude HTTP calls in flight at once across a run (rate-limit guard for the per-tactic fan-out).
     max-concurrent-calls: ${CLAUDE_MAX_CONCURRENT_CALLS:6}
+    # When true, EACH breakdown section (publishers, creative, geo, audience, device) is produced by its own
+    # small dedicated per-tactic call — a keyless fixed-length JSON array with a strict positional accept +
+    # retry — fanned out in parallel, instead of all sections coming from the big combined conclusions call.
+    # The combined call then only writes each tactic's overview. Off by default.
+    per-section-calls-enabled: ${CLAUDE_PER_SECTION_CALLS:true}
+    # Extra attempts a per-section call makes when its reply fails the positional contract before the tactic's
+    # section ships blank. Default 2 means up to three sends in total.
+    section-retries: ${CLAUDE_SECTION_RETRIES:2}

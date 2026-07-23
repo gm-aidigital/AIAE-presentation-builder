@@ -1,7 +1,12 @@
 package com.aidigital.reportconstructor.externalservices.anthropic;
 
+import com.aidigital.reportconstructor.service.reports.dto.AudienceInsightInput;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
+import com.aidigital.reportconstructor.service.reports.dto.CreativeTakeawayInput;
+import com.aidigital.reportconstructor.service.reports.dto.DeviceInsightInput;
+import com.aidigital.reportconstructor.service.reports.dto.GeoInsightInput;
+import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationInput;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeNarrative;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeSheetBatch;
@@ -38,6 +43,41 @@ public class StubClaudeClient implements ClaudeClient {
 	@Override
 	public boolean isLive() {
 		return false;
+	}
+
+	@Override
+	public boolean perSectionCallsEnabled() {
+		return false;
+	}
+
+	@Override
+	public List<String> publisherSection(CampaignData data, PublisherObservationInput input, String brief) {
+		// No live model: no publisher copy to generate, so the tactic falls back to blank fields.
+		return List.of();
+	}
+
+	@Override
+	public List<String> creativeSection(CampaignData data, CreativeTakeawayInput input, String brief) {
+		// No live model: no creative copy to generate, so the tactic falls back to blank fields.
+		return List.of();
+	}
+
+	@Override
+	public List<String> geoSection(CampaignData data, GeoInsightInput input, String brief) {
+		// No live model: no geo copy to generate, so the tactic falls back to blank fields.
+		return List.of();
+	}
+
+	@Override
+	public List<String> audienceSection(CampaignData data, AudienceInsightInput input, String brief) {
+		// No live model: no audience copy to generate, so the tactic falls back to blank fields.
+		return List.of();
+	}
+
+	@Override
+	public List<String> deviceSection(CampaignData data, DeviceInsightInput input, String brief) {
+		// No live model: no device copy to generate, so the tactic falls back to blank fields.
+		return List.of();
 	}
 
 	@Override

@@ -53,6 +53,22 @@ public class AnthropicProperties {
 	 */
 	private long retryBackoffMillis = 1000;
 
+	/**
+	 * When true, EACH breakdown section (publishers, creative, geo, audience, device) is produced by its own
+	 * small dedicated per-tactic call — a keyless fixed-length JSON array validated by position with its own
+	 * retry — fanned out in parallel, instead of all sections coming from the big combined per-tactic
+	 * conclusions call (which then only writes each tactic's overview). Off by default so the combined path
+	 * stays the behaviour until the per-section path proves out on a real campaign.
+	 */
+	private boolean perSectionCallsEnabled = false;
+
+	/**
+	 * Extra attempts a per-section pilot call makes when its reply fails the positional contract (not a JSON
+	 * array of exactly the expected count of non-blank strings) before the tactic's section ships blank.
+	 * Default 2 means up to three sends in total. Clamped to at least 0 (no retry) at use.
+	 */
+	private int sectionRetries = 2;
+
 	public String getApiKey() {
 		return apiKey;
 	}
@@ -99,5 +115,21 @@ public class AnthropicProperties {
 
 	public void setRetryBackoffMillis(long retryBackoffMillis) {
 		this.retryBackoffMillis = retryBackoffMillis;
+	}
+
+	public boolean isPerSectionCallsEnabled() {
+		return perSectionCallsEnabled;
+	}
+
+	public void setPerSectionCallsEnabled(boolean perSectionCallsEnabled) {
+		this.perSectionCallsEnabled = perSectionCallsEnabled;
+	}
+
+	public int getSectionRetries() {
+		return sectionRetries;
+	}
+
+	public void setSectionRetries(int sectionRetries) {
+		this.sectionRetries = sectionRetries;
 	}
 }

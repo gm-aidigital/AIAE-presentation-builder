@@ -400,9 +400,44 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		// breakdown sections, replacing the old five separate section batches. Every tactic on the reviewed
 		// sheet is included so its overview (and the whole downstream results narrative) is always written from
 		// the EOC sheet figures + brief; the breakdown sections are attached only when present, as enrichment.
+		// When per-section calls are on, EVERY breakdown section is produced by its own dedicated per-tactic call
+		// (fanned out below), so all sections are stripped out of the big combined call — it then only writes each
+		// tactic's overview — to avoid asking for (and paying for) the same copy twice.
+		boolean perSection = live && claude.perSectionCallsEnabled();
 		List<TacticConclusionInput> conclusionInputs = assembleConclusionInputs(data, pub, cre, geo, aud, dev);
+		if (perSection) {
+			conclusionInputs = conclusionInputs.stream()
+					.map(i -> new TacticConclusionInput(i.tacticNum(), null, null, null, null, null))
+					.toList();
+		}
 		List<TacticConclusion> conclusions = live && !conclusionInputs.isEmpty()
 				? claude.batchTacticConclusions(data, conclusionInputs, brief) : List.of();
+		// Section copy source: the dedicated per-section fan-out when enabled, otherwise the combined call's
+		// bullets. In the per-section branch every section's calls are dispatched up front (across all sections
+		// and tactics) so they run maximally in parallel under the shared Claude concurrency limit, then joined.
+		Map<Integer, List<String>> pubInsights;
+		Map<Integer, List<String>> creInsights;
+		Map<Integer, List<String>> geoInsights;
+		Map<Integer, List<String>> audienceInsights;
+		Map<Integer, List<String>> devInsights;
+		if (perSection) {
+			var pubC = dispatchSection(pub.inputs(), usageScope, in -> claude.publisherSection(data, in, brief));
+			var creC = dispatchSection(cre.inputs(), usageScope, in -> claude.creativeSection(data, in, brief));
+			var geoC = dispatchSection(geo.inputs(), usageScope, in -> claude.geoSection(data, in, brief));
+			var audC = dispatchSection(aud.inputs(), usageScope, in -> claude.audienceSection(data, in, brief));
+			var devC = dispatchSection(dev.inputs(), usageScope, in -> claude.deviceSection(data, in, brief));
+			pubInsights = joinSection(pubC);
+			creInsights = joinSection(creC);
+			geoInsights = joinSection(geoC);
+			audienceInsights = joinSection(audC);
+			devInsights = joinSection(devC);
+		} else {
+			pubInsights = sectionBullets(conclusions, TacticConclusion::publisherBullets);
+			creInsights = sectionBullets(conclusions, TacticConclusion::creativeBullets);
+			geoInsights = sectionBullets(conclusions, TacticConclusion::geoBullets);
+			audienceInsights = sectionBullets(conclusions, TacticConclusion::audienceFields);
+			devInsights = sectionBullets(conclusions, TacticConclusion::deviceFields);
+		}
 
 		// Breakdown token map: the section data tokens first, then the Claude section tokens written from the
 		// combined call's conclusions. Each section only emits tokens for its own tactics, so the merge cannot
@@ -415,15 +450,15 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		breakdownValues.putAll(dev.dataValues());
 		List<String> jobWarnings = new ArrayList<>();
 		jobWarnings.addAll(publisherBreakdown.writePublisherObservations(breakdownValues, pub.tactics(),
-				pub.inputs().keySet(), sectionBullets(conclusions, TacticConclusion::publisherBullets), prelim));
+				pub.inputs().keySet(), pubInsights, prelim));
 		jobWarnings.addAll(creativeBreakdown.writeCreativeTakeaways(breakdownValues, cre.tactics(),
-				cre.inputs().keySet(), sectionBullets(conclusions, TacticConclusion::creativeBullets), prelim));
+				cre.inputs().keySet(), creInsights, prelim));
 		jobWarnings.addAll(geoBreakdown.writeGeoInsights(breakdownValues, geo.tactics(),
-				geo.inputs().keySet(), sectionBullets(conclusions, TacticConclusion::geoBullets), prelim));
+				geo.inputs().keySet(), geoInsights, prelim));
 		jobWarnings.addAll(audienceBreakdown.writeAudienceInsights(breakdownValues, aud.tactics(),
-				aud.inputs().keySet(), sectionBullets(conclusions, TacticConclusion::audienceFields), prelim));
+				aud.inputs().keySet(), audienceInsights, prelim));
 		jobWarnings.addAll(deviceBreakdown.writeDeviceInsights(breakdownValues, dev.tactics(),
-				dev.inputs().keySet(), sectionBullets(conclusions, TacticConclusion::deviceFields), prelim));
+				dev.inputs().keySet(), devInsights, prelim));
 
 		// Step 3 — per-tactic "thoughts on tactic performance" for the tactics with more than two breakdowns
 		// (the same gate the thoughts slide uses). Written into the breakdown token map so the slide picks
@@ -545,6 +580,46 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 					aud.inputs().get(n), dev.inputs().get(n)));
 		}
 		return inputs;
+	}
+
+	/**
+	 * Dispatches one breakdown section's dedicated per-tactic calls — one call per tactic that enabled the
+	 * section — on the shared virtual-thread executor and under the same usage scope the sheet reads use, so each
+	 * call's tokens are still billed to this job even though it runs off the request thread. It returns the
+	 * still-running futures without joining, so the caller can dispatch every section up front and let them all
+	 * run in parallel (bounded by the transport's shared Claude concurrency limit) before joining any of them.
+	 *
+	 * @param inputs     the section's per-tactic inputs (tactic number → the tactic's section input)
+	 * @param usageScope the usage scope to run each call under so its tokens are billed to this job
+	 * @param call       invokes the section's Claude call for one tactic's input, returning its validated strings
+	 * @param <T>        the section's per-tactic input type
+	 * @return tactic number → the running future of its section call
+	 */
+	<T> Map<Integer, CompletableFuture<List<String>>> dispatchSection(
+			Map<Integer, T> inputs, ClaudeUsageScope usageScope, Function<T, List<String>> call) {
+		Map<Integer, CompletableFuture<List<String>>> futures = new LinkedHashMap<>();
+		inputs.forEach((tacticNum, input) -> futures.put(tacticNum, CompletableFuture.supplyAsync(
+				usageTracker.inScope(usageScope, () -> call.apply(input)), applicationTaskExecutor)));
+		return futures;
+	}
+
+	/**
+	 * Joins one section's dispatched futures into the {@code tactic → bullets} map the section write helpers
+	 * expect. A tactic whose call returned no usable reply (an empty list) is left out, so its slide ships blank
+	 * (and the write helper surfaces that as a warning) rather than carrying invented copy.
+	 *
+	 * @param futures tactic number → the running future of its section call, from {@link #dispatchSection}
+	 * @return tactic number → its validated strings, only for tactics that returned a usable reply
+	 */
+	Map<Integer, List<String>> joinSection(Map<Integer, CompletableFuture<List<String>>> futures) {
+		Map<Integer, List<String>> out = new LinkedHashMap<>();
+		futures.forEach((tacticNum, future) -> {
+			List<String> value = future.join();
+			if (value != null && !value.isEmpty()) {
+				out.put(tacticNum, value);
+			}
+		});
+		return out;
 	}
 
 	/**
