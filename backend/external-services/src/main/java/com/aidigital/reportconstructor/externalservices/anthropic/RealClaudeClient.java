@@ -129,11 +129,12 @@ public class RealClaudeClient implements ClaudeClient {
 	private static final int AUDIENCE_FIELD_COUNT = 4;
 
 	/**
-	 * Output budget for one per-section call. The largest section output is geo's five ~140-char strings (~700
-	 * characters) and audience/device's ~256+3×120 (~616), both well under this budget as a bare JSON array, so
-	 * with generous head-room a reply never truncates before its last string closes.
+	 * Output budget for one per-section call. The valid output is small — geo's five ~140-char strings or
+	 * audience/device's ~256+3×120, a few hundred tokens as a bare JSON array — but the budget is set well above
+	 * that so a reply the model opens with a little extra text (which the prompt forbids but a model may still
+	 * add) still closes its last string instead of truncating mid-array and being rejected by {@code max_tokens}.
 	 */
-	private static final int SECTION_MAX_TOKENS = 800;
+	private static final int SECTION_MAX_TOKENS = 1500;
 
 	/**
 	 * Character budget of the "Device breakdown" slide's key takeaway ({@code {{dev_N_takeaway}}}), the

@@ -1413,9 +1413,16 @@ public class ClaudeBatchPromptBuilder {
 	 * @return the closing rules block, newline-terminated
 	 */
 	String sectionArrayRules(int count) {
-		return "Return ONLY a JSON array of EXACTLY " + count + " non-empty strings, in that order (no "
-				+ "markdown/backticks, no object, no keys); analyst tone, no bullet characters; do NOT invent "
-				+ "metrics; every string ends on a complete sentence within its limit; English.\n\n";
+		return "OUTPUT FORMAT — follow exactly:\n"
+				+ "- Your reply MUST begin with '[' and be ONLY a JSON array of EXACTLY " + count + " non-empty "
+				+ "strings, in the order above (no markdown, no backticks, no object, no keys).\n"
+				+ "- Write NO preamble, explanation, reasoning, or commentary before or after the array — the array "
+				+ "is the entire reply.\n"
+				+ "- Do NOT refuse and do NOT flag data problems. If the data looks unusual, mislabelled, incomplete "
+				+ "or inconsistent, still write the best analyst copy you can from whatever is given; never replace a "
+				+ "string with a complaint about the data.\n"
+				+ "- Analyst tone, no bullet characters; do NOT invent metrics; every string ends on a complete "
+				+ "sentence within its limit; English.\n\n";
 	}
 
 	/**
