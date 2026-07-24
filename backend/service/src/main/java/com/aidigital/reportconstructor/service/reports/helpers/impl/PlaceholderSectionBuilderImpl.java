@@ -104,6 +104,23 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		totals.put("{{total ctr}}", campaignResolvers.resolveTotalCtr(sheet, adj, data));
 		totals.put("{{total vcr}}", campaignResolvers.resolveTotalVcr(sheet, adj, data));
 		totals.put("{{total spend}}", campaignResolvers.resolveTotalInvestment(sheet, adj, data));
+
+		// EOM-only pacing: only meaningful once the collector has re-aggregated actuals over a reporting
+		// period, so an EOC report (or an EOM request with no period selected) never picks up these tokens.
+		boolean eomPeriod = "EOM".equals(reportType) && data != null && data.periodTactics() != null;
+		if (eomPeriod) {
+			totals.put("{{total imps plan ctd}}", campaignResolvers.resolveTotalImpsPlanCtd(sheet, adj, data));
+			totals.put("{{total imps pace}}", campaignResolvers.resolveTotalImpsPace(sheet, adj, data));
+			totals.put("{{total_investment_plan_ctd}}",
+					campaignResolvers.resolveTotalInvestmentPlanCtd(sheet, adj, data));
+			totals.put("{{total_investment_pace}}", campaignResolvers.resolveTotalInvestmentPace(sheet, adj, data));
+			totals.put("{{campaign pace status}}", campaignResolvers.resolveCampaignPaceStatus(sheet, adj, data));
+			totals.put("{{eom_month_number}}", campaignResolvers.resolveEomMonthNumber(sheet, adj, data));
+			totals.put("{{eom_flight_months_total}}", campaignResolvers.resolveEomFlightMonthsTotal(sheet, adj, data));
+			totals.put("{{eom_report_month}}", campaignResolvers.resolveEomReportMonth(sheet, adj, data));
+			totals.put("{{eom_next_month_number}}", campaignResolvers.resolveEomNextMonthNumber(sheet, adj, data));
+			totals.put("{{eom_next_report_month}}", campaignResolvers.resolveEomNextReportMonth(sheet, adj, data));
+		}
 		sections.add(buildPreviewSection("Summary Metrics", totals));
 
 		// A null flag means the caller predates the toggle, so the AI estimate stays on; only an explicit
@@ -113,7 +130,7 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		for (int n = 1; n <= tacticLimit; n++) {
 			sections.add(buildPreviewSection("Tactic " + n,
 					buildFullTacticSection(n, sheet, adj, data, ccB, ccC, mediaTactics, payload.marketVolume(),
-							estimateDaypartGender)));
+							estimateDaypartGender, eomPeriod)));
 		}
 
 		sections.add(buildPreviewSection("Optimization Recommendations",
@@ -143,12 +160,15 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 	 * @param marketVolume          raw market-volume string used to derive tactic volume
 	 * @param estimateDaypartGender whether the dayparting/gender tokens may be estimated ({@code false}
 	 *                              forces them to a dash)
+	 * @param eomPeriod             whether the EOM pacing tokens (plan ctd / proj / vs goal / cpm) should be
+	 *                              resolved for this tactic, i.e. the collector re-aggregated actuals over a
+	 *                              reporting period
 	 * @return the token-to-{@link Resolved} map for this tactic slide
 	 */
 	Map<String, Resolved> buildFullTacticSection(
 			int n, List<List<String>> sheet, List<List<String>> adj, CampaignData data,
 			ClaudeTactical ccB, ClaudeResults ccC, List<String> mediaTactics, String marketVolume,
-			boolean estimateDaypartGender
+			boolean estimateDaypartGender, boolean eomPeriod
 	) {
 		Resolved info = resolveTacticName(n, sheet, adj, mediaTactics);
 		String tacticName = info.value() == null ? "" : info.value();
@@ -195,6 +215,49 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 				data));
 		m.put("{{tactic " + n + " top creative clicks}}", tacticResolvers.resolveTacticTopCreativeClicks(n, sheet, adj
 				, data));
+		if (eomPeriod) {
+			m.putAll(buildTacticPacingSection(n, sheet, adj, data));
+		}
+		return m;
+	}
+
+	/**
+	 * Builds the EOM-only pacing tokens for tactic {@code n}: the prorated to-date goal, pace-based
+	 * projection and variance for each metric, plus the actual CPM (a metric that never existed in EOC).
+	 *
+	 * @param n     one-based tactic index
+	 * @param sheet Media Plan grid rows
+	 * @param adj   manual Adjustments grid rows
+	 * @param data  aggregated campaign data carrying the reporting-period/flight window and re-aggregated actuals
+	 * @return the pacing token-to-{@link Resolved} map for this tactic
+	 */
+	Map<String, Resolved> buildTacticPacingSection(int n, List<List<String>> sheet, List<List<String>> adj,
+	                                               CampaignData data) {
+		Map<String, Resolved> m = new LinkedHashMap<>();
+		m.put("{{tactic " + n + " imps plan ctd}}", tacticResolvers.resolveTacticImpsPlanCtd(n, sheet, adj, data));
+		m.put("{{tactic " + n + " imps proj}}", tacticResolvers.resolveTacticImpsProj(n, sheet, adj, data));
+		m.put("{{tactic " + n + " imps vs goal}}", tacticResolvers.resolveTacticImpsVsGoal(n, sheet, adj, data));
+		m.put("{{tactic " + n + " ctr plan ctd}}", tacticResolvers.resolveTacticCtrPlanCtd(n, sheet, adj, data));
+		m.put("{{tactic " + n + " ctr proj}}", tacticResolvers.resolveTacticCtrProj(n, sheet, adj, data));
+		m.put("{{tactic " + n + " ctr vs goal}}", tacticResolvers.resolveTacticCtrVsGoal(n, sheet, adj, data));
+		m.put("{{tactic " + n + " vcr plan ctd}}", tacticResolvers.resolveTacticVcrPlanCtd(n, sheet, adj, data));
+		m.put("{{tactic " + n + " vcr proj}}", tacticResolvers.resolveTacticVcrProj(n, sheet, adj, data));
+		m.put("{{tactic " + n + " vcr vs goal}}", tacticResolvers.resolveTacticVcrVsGoal(n, sheet, adj, data));
+		m.put("{{tactic " + n + " completions plan ctd}}",
+				tacticResolvers.resolveTacticCompletionsPlanCtd(n, sheet, adj, data));
+		m.put("{{tactic " + n + " completions proj}}",
+				tacticResolvers.resolveTacticCompletionsProj(n, sheet, adj, data));
+		m.put("{{tactic " + n + " completions vs goal}}",
+				tacticResolvers.resolveTacticCompletionsVsGoal(n, sheet, adj, data));
+		m.put("{{tactic " + n + " reach plan ctd}}", tacticResolvers.resolveTacticReachPlanCtd(n, sheet, adj, data));
+		m.put("{{tactic " + n + " reach proj}}", tacticResolvers.resolveTacticReachProj(n, sheet, adj, data));
+		m.put("{{tactic " + n + " reach vs goal}}", tacticResolvers.resolveTacticReachVsGoal(n, sheet, adj, data));
+		m.put("{{tactic " + n + " spend plan ctd}}", tacticResolvers.resolveTacticSpendPlanCtd(n, sheet, adj, data));
+		m.put("{{tactic " + n + " spend pace}}", tacticResolvers.resolveTacticSpendPace(n, sheet, adj, data));
+		m.put("{{tactic " + n + " cpm}}", tacticResolvers.resolveTacticCpm(n, sheet, adj, data));
+		m.put("{{tactic " + n + " cpm plan ctd}}", tacticResolvers.resolveTacticCpmPlanCtd(n, sheet, adj, data));
+		m.put("{{tactic " + n + " cpm proj}}", tacticResolvers.resolveTacticCpmProj(n, sheet, adj, data));
+		m.put("{{tactic " + n + " cpm vs goal}}", tacticResolvers.resolveTacticCpmVsGoal(n, sheet, adj, data));
 		return m;
 	}
 

@@ -661,8 +661,10 @@ components:
     ReportTypeV1:
       type: string
       description: |
-        Report type. COSMETIC ONLY — fills the single `{{report_type}}` placeholder;
-        the section/placeholder catalog is identical for both values.
+        Report type. Fills the single `{{report_type}}` placeholder in both cases.
+        For EOM, pairing this with `reportPeriod` on GenerateRequestV1 additionally
+        restricts actuals to that period and recomputes plan/pacing tokens for it
+        (see ReportPeriodV1); without a reportPeriod, EOM behaves like EOC.
       enum: [ EOC, EOM ]
 
     GenerationTargetV1:
@@ -703,6 +705,28 @@ components:
           type: string
           format: date
           description: "Last day to include (inclusive). Required when mode = RANGE; ignored when mode = ALL."
+
+    ReportPeriodV1:
+      type: object
+      description: |
+        EOM-only reporting period: the explicit date range the user picked to report on.
+        Drives two things: (1) which raw-data delivery rows are aggregated into the
+        report's "actual" figures (in place of the full flight window used elsewhere),
+        and (2) the proration base for the "plan ctd" / "proj" pacing tokens, which
+        scale the full-campaign plan by periodDays / flightDays. Passing the campaign's
+        own flight start as `start` yields a cumulative to-date window; passing a single
+        calendar month's first/last day yields an isolated-month window — the server
+        applies the same math either way. Ignored for reportType=EOC.
+      required: [ start, end ]
+      properties:
+        start:
+          type: string
+          format: date
+          description: "First day of the reporting period (inclusive)."
+        end:
+          type: string
+          format: date
+          description: "Last day of the reporting period (inclusive)."
 
     DateRangeRequestV1:
       type: object
@@ -1032,6 +1056,7 @@ components:
             Spreadsheet id of the Elevate/BQ sheet. PRESENCE-GATE ONLY — gates the
             chart step; the server does NOT re-read it (BQ pivots read adjRows).
         dateFilter: { $ref: "#/components/schemas/DateFilterV1" }
+        reportPeriod: { $ref: "#/components/schemas/ReportPeriodV1" }
         sheetUrl:
           type: string
           description: |

@@ -28,6 +28,13 @@ public class GoogleProperties {
 	private String slidesTemplateId = "";
 
 	/**
+	 * Source deck copied for EOM reports. Blank falls back to {@link #slidesTemplateId} (safe no-op
+	 * until the EOM deck template is configured), same convention as the other blank-disables-feature
+	 * template ids in this class.
+	 */
+	private String eomSlidesTemplateId = "";
+
+	/**
 	 * Optional Drive folder the generated deck + chart copies are placed in.
 	 */
 	private String slidesTargetFolderId = "";
@@ -82,6 +89,12 @@ public class GoogleProperties {
 	private String sheetsTemplateId = "";
 
 	/**
+	 * Source Sheets workbook copied for EOM reports in the "Generate Sheet" flow. Blank falls back to
+	 * {@link #sheetsTemplateId} (safe no-op until the EOM sheet template is configured).
+	 */
+	private String eomSheetsTemplateId = "";
+
+	/**
 	 * Optional Drive folder the generated Sheet copy is placed in. Falls back to
 	 * the copy's default location (the user's My Drive or the service account)
 	 * when blank.
@@ -111,6 +124,25 @@ public class GoogleProperties {
 
 	public void setSlidesTemplateId(String slidesTemplateId) {
 		this.slidesTemplateId = slidesTemplateId;
+	}
+
+	/**
+	 * Returns the EOM deck template id, or a blank string when unconfigured (callers fall back to
+	 * {@link #getSlidesTemplateId()}).
+	 *
+	 * @return the EOM Google Slides template id, or blank when unconfigured
+	 */
+	public String getEomSlidesTemplateId() {
+		return eomSlidesTemplateId;
+	}
+
+	/**
+	 * Sets the EOM deck template id, defaulting to a blank string when null.
+	 *
+	 * @param eomSlidesTemplateId the EOM Google Slides template id (may be null)
+	 */
+	public void setEomSlidesTemplateId(String eomSlidesTemplateId) {
+		this.eomSlidesTemplateId = eomSlidesTemplateId == null ? "" : eomSlidesTemplateId;
 	}
 
 	public String getSlidesTargetFolderId() {
@@ -230,6 +262,25 @@ public class GoogleProperties {
 
 	public void setSheetsTemplateId(String sheetsTemplateId) {
 		this.sheetsTemplateId = sheetsTemplateId;
+	}
+
+	/**
+	 * Returns the EOM sheet template id, or a blank string when unconfigured (callers fall back to
+	 * {@link #getSheetsTemplateId()}).
+	 *
+	 * @return the EOM Google Sheets template id, or blank when unconfigured
+	 */
+	public String getEomSheetsTemplateId() {
+		return eomSheetsTemplateId;
+	}
+
+	/**
+	 * Sets the EOM sheet template id, defaulting to a blank string when null.
+	 *
+	 * @param eomSheetsTemplateId the EOM Google Sheets template id (may be null)
+	 */
+	public void setEomSheetsTemplateId(String eomSheetsTemplateId) {
+		this.eomSheetsTemplateId = eomSheetsTemplateId == null ? "" : eomSheetsTemplateId;
 	}
 
 	public String getSheetsTargetFolderId() {

@@ -6,6 +6,7 @@ import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
 import com.aidigital.reportconstructor.service.reports.dto.LineItemMapping;
 import com.aidigital.reportconstructor.service.reports.dto.Tactic;
 import com.aidigital.reportconstructor.service.reports.dto.Totals;
+import com.aidigital.reportconstructor.service.reports.dto.WindowMetrics;
 import com.aidigital.reportconstructor.service.reports.helpers.SheetRowHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.TacticExtractionHelper;
 import org.springframework.stereotype.Component;
@@ -63,6 +64,18 @@ public class CampaignDataCollector {
 		boolean hasCompletions;
 	}
 
+	/**
+	 * Backward-compatible overload for callers that predate the EOM reporting-period parameter; collects
+	 * with no period, so only the full-flight totals/tactics are populated (plain EOC-equivalent behaviour).
+	 *
+	 * @param sheetRows       Media Plan grid rows
+	 * @param adjRows         raw delivery/Adjustments grid rows
+	 * @param audienceRows    audience-breakdown grid rows
+	 * @param estimatesRows   Estimates tab grid rows
+	 * @param lineItemMapping tactic-to-line-item mapping
+	 * @param dateFilter      user-confirmed raw-data date window
+	 * @return the aggregated campaign data, with {@code reportPeriod}/{@code periodTotals}/{@code periodTactics} null
+	 */
 	public CampaignData collect(
 			List<List<String>> sheetRows,
 			List<List<String>> adjRows,
@@ -70,6 +83,33 @@ public class CampaignDataCollector {
 			List<List<String>> estimatesRows,
 			List<LineItemMapping> lineItemMapping,
 			DateFilter dateFilter
+	) {
+		return collect(sheetRows, adjRows, audienceRows, estimatesRows, lineItemMapping, dateFilter, null);
+	}
+
+	/**
+	 * Collects campaign totals and per-tactic metrics, optionally re-aggregating actuals over a narrower
+	 * EOM reporting period alongside the full-flight numbers.
+	 *
+	 * @param sheetRows       Media Plan grid rows
+	 * @param adjRows         raw delivery/Adjustments grid rows
+	 * @param audienceRows    audience-breakdown grid rows
+	 * @param estimatesRows   Estimates tab grid rows
+	 * @param lineItemMapping tactic-to-line-item mapping
+	 * @param dateFilter      user-confirmed raw-data date window (the flight window)
+	 * @param reportPeriod    EOM-only reporting period to re-aggregate actuals over, clamped into the flight
+	 *                        window; {@code null} to skip (plain EOC-equivalent behaviour)
+	 * @return the aggregated campaign data, with {@code periodTotals}/{@code periodTactics} populated only
+	 * when {@code reportPeriod} is non-null
+	 */
+	public CampaignData collect(
+			List<List<String>> sheetRows,
+			List<List<String>> adjRows,
+			List<List<String>> audienceRows,
+			List<List<String>> estimatesRows,
+			List<LineItemMapping> lineItemMapping,
+			DateFilter dateFilter,
+			FlightDates reportPeriod
 	) {
 		if (sheetRows == null) {
 			sheetRows = List.of();
@@ -154,13 +194,7 @@ public class CampaignDataCollector {
 			}
 		}
 
-		// ── 6b. Single pass over adjRows ──────────────────────────────────────
-		Agg totals = new Agg();
-		double[] impsWithCompletions = {0.0};
-		Map<String, Agg> byChannel = new LinkedHashMap<>();
-		Map<String, Agg> byLineItemId = new LinkedHashMap<>();
-		Map<String, Map<String, double[]>> byCreative = new LinkedHashMap<>(); // liId -> creative -> {imps, clicks}
-
+		// ── 6b. Column detection (window-independent, done once) ──────────────
 		int hIdx = -1;
 		int colDt = -1;
 		int colCh = -1;
@@ -227,10 +261,151 @@ public class CampaignDataCollector {
 			}
 		}
 
-		if (hIdx >= 0) {
-			LocalDate dayStart = flightTs != null ? flightTs.start() : null;
-			LocalDate dayEnd = flightTs != null ? flightTs.end() : null;
+		// ── 6c/7/8: aggregate once for the flight window (unchanged EOC behaviour), then again for the
+		// EOM reporting period when one is set. Plan figures are window-independent, so they're resolved
+		// once (draining the FIFO queues) and reused by both windows instead of being re-polled.
+		Map<Integer, double[]> planByTacticNum = resolvePlanByTacticNum(tacticMap, estimatesByTactic);
 
+		LocalDate flightStart = flightTs != null ? flightTs.start() : null;
+		LocalDate flightEnd = flightTs != null ? flightTs.end() : null;
+		WindowMetrics flightMetrics = aggregateWindow(adjRows, hIdx, colDt, colCh, colCo, colIm, colCl, colCmp,
+				colDow, colLi, colCr, colL1Naming, liToTacticNum, tacticMap, numToLiId, planByTacticNum,
+				flightStart, flightEnd);
+		Totals totals = flightMetrics.totals();
+		Map<Integer, Tactic> tacticsData = flightMetrics.tactics();
+
+		FlightDates clampedPeriod = clampToFlight(reportPeriod, flightTs);
+		WindowMetrics periodMetrics = clampedPeriod == null ? null : aggregateWindow(adjRows, hIdx, colDt, colCh,
+				colCo, colIm, colCl, colCmp, colDow, colLi, colCr, colL1Naming, liToTacticNum, tacticMap, numToLiId,
+				planByTacticNum, clampedPeriod.start(), clampedPeriod.end());
+
+		// ── 9. Audience tab text (Batch A) ────────────────────────────────────
+		List<String> audLines = new ArrayList<>();
+		int aLimit = Math.min(200, audienceRows.size());
+		for (int i = 0; i < aLimit; i++) {
+			List<String> row = audienceRows.get(i);
+			if (row == null) {
+				continue;
+			}
+			List<String> cells = new ArrayList<>();
+			for (String c : row) {
+				String t = c == null ? "" : c.trim();
+				if (!t.isEmpty()) {
+					cells.add(t);
+				}
+			}
+			if (!cells.isEmpty()) {
+				audLines.add(String.join(" | ", cells));
+			}
+		}
+		String audienceTabText = String.join("\n", audLines);
+
+		return new CampaignData(
+				client, campaign, geo, goal, flightDates, flightTs, budget, kpis, tacticsList,
+				audienceAge, audienceSegs,
+				totals,
+				tacticsData,
+				clampedPeriod,
+				periodMetrics != null ? periodMetrics.totals() : null,
+				periodMetrics != null ? periodMetrics.tactics() : null,
+				audienceTabText
+		);
+	}
+
+	/**
+	 * Resolves each tactic's planned Estimates-tab row once, draining the FIFO queues built by
+	 * {@link #parseEstimates}, so the flight-window and period-window per-tactic builds in
+	 * {@link #aggregateWindow} both read the same window-independent plan figures instead of re-polling
+	 * (which would silently shift a repeated tactic name onto the wrong line item's numbers on the
+	 * second call).
+	 *
+	 * @param tacticMap         tactic number to {@code [name, channel]} mapping
+	 * @param estimatesByTactic Estimates-tab rows queued by lowercased tactic name
+	 * @return tactic number to its planned {@code {spend, imps, ctr, vcr, maxFreq}} row, omitting tactics
+	 * with no matching Estimates row
+	 */
+	Map<Integer, double[]> resolvePlanByTacticNum(Map<Integer, String[]> tacticMap,
+	                                              Map<String, Deque<double[]>> estimatesByTactic) {
+		Map<Integer, double[]> out = new LinkedHashMap<>();
+		for (Map.Entry<Integer, String[]> e : tacticMap.entrySet()) {
+			String name = e.getValue()[0];
+			Deque<double[]> queue = estimatesByTactic.get(name.trim().toLowerCase(Locale.ROOT));
+			double[] plan = queue == null ? null : queue.poll();
+			if (plan != null) {
+				out.put(e.getKey(), plan);
+			}
+		}
+		return out;
+	}
+
+	/**
+	 * Clamps the EOM reporting period into the flight window so an out-of-range selection never
+	 * aggregates data outside the actual campaign or yields a proration fraction above 100%.
+	 *
+	 * @param reportPeriod user-selected period, or {@code null} for EOC / an EOM request with no period
+	 * @param flightTs     the full flight window, or {@code null} when no flight window could be detected
+	 * @return the clamped period, or {@code null} when either input is missing or the clamped range is inverted
+	 */
+	FlightDates clampToFlight(FlightDates reportPeriod, FlightDates flightTs) {
+		if (reportPeriod == null || flightTs == null) {
+			return null;
+		}
+		LocalDate start = clampDate(reportPeriod.start(), flightTs.start(), flightTs.end());
+		LocalDate end = clampDate(reportPeriod.end(), flightTs.start(), flightTs.end());
+		return start.isAfter(end) ? null : new FlightDates(start, end);
+	}
+
+	LocalDate clampDate(LocalDate date, LocalDate min, LocalDate max) {
+		if (date.isBefore(min)) {
+			return min;
+		}
+		if (date.isAfter(max)) {
+			return max;
+		}
+		return date;
+	}
+
+	/**
+	 * Aggregates one date window's delivery rows into campaign totals and per-tactic metrics, reusing
+	 * the column layout, tactic/line-item wiring and window-independent plan figures resolved once by
+	 * the caller. Called once for the flight window and, when an EOM reporting period is set, a second
+	 * time for that narrower window, so EOM plan proration has actuals scoped to the same period.
+	 *
+	 * @param adjRows         raw delivery rows
+	 * @param hIdx            header row index (-1 when no delivery header was found)
+	 * @param colDt           date column index
+	 * @param colCh           channel column index
+	 * @param colCo           cost column index
+	 * @param colIm           impressions column index
+	 * @param colCl           clicks column index (-1 when absent)
+	 * @param colCmp          completions column index (-1 when absent)
+	 * @param colDow          day-of-week column index (-1 when absent)
+	 * @param colLi           line-item id column index (-1 when absent)
+	 * @param colCr           creative column index (-1 when absent)
+	 * @param colL1Naming     "Level 1 Naming" fallback column index, used only when {@code colLi < 0}
+	 * @param liToTacticNum   line-item id to tactic-number mapping, gating which rows aggregate by line item
+	 * @param tacticMap       tactic number to {@code [name, channel]} mapping
+	 * @param numToLiId       tactic number to its line-item id
+	 * @param planByTacticNum tactic number to its window-independent planned figures
+	 * @param windowStart     first day to include (inclusive), or {@code null} to include every row
+	 * @param windowEnd       last day to include (inclusive); required when {@code windowStart} is non-null
+	 * @return the window's campaign totals and per-tactic metrics
+	 */
+	WindowMetrics aggregateWindow(
+			List<List<String>> adjRows,
+			int hIdx, int colDt, int colCh, int colCo, int colIm, int colCl, int colCmp, int colDow, int colLi,
+			int colCr, int colL1Naming,
+			Map<String, Integer> liToTacticNum, Map<Integer, String[]> tacticMap, Map<Integer, String> numToLiId,
+			Map<Integer, double[]> planByTacticNum,
+			LocalDate windowStart, LocalDate windowEnd
+	) {
+		Agg totals = new Agg();
+		double[] impsWithCompletions = {0.0};
+		Map<String, Agg> byChannel = new LinkedHashMap<>();
+		Map<String, Agg> byLineItemId = new LinkedHashMap<>();
+		Map<String, Map<String, double[]>> byCreative = new LinkedHashMap<>(); // liId -> creative -> {imps, clicks}
+
+		if (hIdx >= 0) {
 			for (int i = hIdx + 1; i < adjRows.size(); i++) {
 				List<String> row = adjRows.get(i);
 				if (row == null) {
@@ -245,7 +420,7 @@ public class CampaignDataCollector {
 				if (ts == null) {
 					continue;
 				}
-				if (dayStart != null && (ts.isBefore(dayStart) || ts.isAfter(dayEnd))) {
+				if (windowStart != null && (ts.isBefore(windowStart) || ts.isAfter(windowEnd))) {
 					continue;
 				}
 
@@ -341,7 +516,6 @@ public class CampaignDataCollector {
 			}
 		}
 
-		// ── 6c. Top creative per line item ────────────────────────────────────
 		Map<String, double[]> topCreativeByLi = new LinkedHashMap<>(); // liId -> {imps, clicks}
 		Map<String, String> topCreativeName = new LinkedHashMap<>();
 		for (Map.Entry<String, Map<String, double[]>> e : byCreative.entrySet()) {
@@ -361,12 +535,10 @@ public class CampaignDataCollector {
 			}
 		}
 
-		// ── 7. Totals CTR/VCR ─────────────────────────────────────────────────
 		Double totalCtr = totals.imps > 0 ? totals.clicks / totals.imps * 100 : null;
 		Double totalVcr = (totals.hasCompletions && impsWithCompletions[0] > 0)
 				? totals.completions / impsWithCompletions[0] * 100 : null;
 
-		// ── 8. Per-tactic metrics ─────────────────────────────────────────────
 		Map<Integer, Tactic> tacticsData = new LinkedHashMap<>();
 		for (Map.Entry<Integer, String[]> e : tacticMap.entrySet()) {
 			int n = e.getKey();
@@ -398,10 +570,7 @@ public class CampaignDataCollector {
 			Integer weekdaysPct = totalDayImps > 0 ? (int) Math.round(wdi / totalDayImps * 100) : null;
 			Integer weekendsPct = weekdaysPct != null ? 100 - weekdaysPct : null;
 
-			// Consume this tactic's own line item from the queue: the N-th occurrence of a repeated name takes the
-			// N-th planned row for it, so duplicated channels no longer all collapse onto one line item's figures.
-			Deque<double[]> planQueue = estimatesByTactic.get(name.trim().toLowerCase(Locale.ROOT));
-			double[] plan = planQueue == null ? null : planQueue.poll();
+			double[] plan = planByTacticNum.get(n);
 
 			String topName = liIdForTactic != null ? topCreativeName.get(liIdForTactic) : null;
 			double[] topCr = liIdForTactic != null ? topCreativeByLi.get(liIdForTactic) : null;
@@ -424,33 +593,9 @@ public class CampaignDataCollector {
 			));
 		}
 
-		// ── 9. Audience tab text (Batch A) ────────────────────────────────────
-		List<String> audLines = new ArrayList<>();
-		int aLimit = Math.min(200, audienceRows.size());
-		for (int i = 0; i < aLimit; i++) {
-			List<String> row = audienceRows.get(i);
-			if (row == null) {
-				continue;
-			}
-			List<String> cells = new ArrayList<>();
-			for (String c : row) {
-				String t = c == null ? "" : c.trim();
-				if (!t.isEmpty()) {
-					cells.add(t);
-				}
-			}
-			if (!cells.isEmpty()) {
-				audLines.add(String.join(" | ", cells));
-			}
-		}
-		String audienceTabText = String.join("\n", audLines);
-
-		return new CampaignData(
-				client, campaign, geo, goal, flightDates, flightTs, budget, kpis, tacticsList,
-				audienceAge, audienceSegs,
+		return new WindowMetrics(
 				new Totals(totals.spend, totals.imps, totals.clicks, totals.completions, totalCtr, totalVcr),
-				tacticsData,
-				audienceTabText
+				tacticsData
 		);
 	}
 

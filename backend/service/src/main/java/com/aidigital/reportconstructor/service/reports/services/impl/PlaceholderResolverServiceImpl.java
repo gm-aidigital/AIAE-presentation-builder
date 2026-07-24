@@ -120,7 +120,7 @@ public class PlaceholderResolverServiceImpl implements PlaceholderResolverServic
 	public CampaignData collectData(GeneratePayload payload) {
 		return campaignDataCollector.collect(
 				payload.sheetRows(), payload.adjRows(), payload.audienceRows(),
-				payload.estimatesRows(), payload.lineItemMapping(), payload.dateFilter()
+				payload.estimatesRows(), payload.lineItemMapping(), payload.dateFilter(), payload.reportPeriod()
 		);
 	}
 

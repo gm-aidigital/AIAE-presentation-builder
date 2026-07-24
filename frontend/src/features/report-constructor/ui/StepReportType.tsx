@@ -10,12 +10,12 @@ interface TypeCard {
     desc: string;
 }
 
-// Only EOC is active right now (backend supports EOC/EOM; Agenda & Excel don't
-// exist server-side). The other three are shown disabled with a "Soon" marker.
+// EOC and EOM are active (backend supports both); Agenda & Excel don't exist
+// server-side yet and are shown disabled with a "Soon" marker.
 const CARDS: TypeCard[] = [
     { id: null, name: "Agenda", tag: "Document", desc: "Kickoff agenda — objectives, timeline, owners and next steps." },
     { id: null, name: "Excel", tag: "Spreadsheet", desc: "Formatted performance workbook with raw pivots per tactic." },
-    { id: null, name: "EOM", tag: "Slides", desc: "End-of-month performance review across every active tactic." },
+    { id: "EOM", name: "EOM", tag: "Slides", desc: "End-of-month performance review across every active tactic." },
     { id: "EOC", name: "EOC", tag: "Slides", desc: "End-of-campaign wrap — full results, insights and learnings." },
 ];
 

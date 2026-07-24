@@ -1,9 +1,12 @@
 package com.aidigital.reportconstructor.service.reports.engine;
 
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
+import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
 import com.aidigital.reportconstructor.service.reports.dto.LineItemMapping;
 import org.junit.jupiter.api.Test;
 
+import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -81,5 +84,45 @@ class CampaignDataCollectorTest {
 
 		assertThat(data.tactics()).containsKey(1);
 		assertThat(data.tactics().get(1).name()).contains("Display");
+	}
+
+	@Test
+	void collectWithReportPeriodShouldReAggregateActualsOverTheNarrowerWindowTest() {
+		// Given: 10 days of delivery (Jan 1–10, 100 imps/day), a reporting period covering only the
+		// first 5 days
+		List<List<String>> sheet = List.of(
+				List.of("Media"),
+				List.of("programmatic display")
+		);
+		List<List<String>> bq = new ArrayList<>();
+		bq.add(List.of("Date", "Channel", "Cost", "Impressions", "Clicks"));
+		for (int day = 1; day <= 10; day++) {
+			bq.add(List.of("2026-01-%02d".formatted(day), "Display", "10", "100", "1"));
+		}
+		FlightDates reportPeriod = new FlightDates(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 5));
+
+		// When:
+		CampaignData data = collector.collect(sheet, bq, List.of(), List.of(), List.of(), null, reportPeriod);
+
+		// Then: the full-flight totals still cover all 10 days (EOC behaviour unchanged)...
+		assertThat(data.totals().imps()).isEqualTo(1000);
+		// ...while the period totals cover only the first 5
+		assertThat(data.periodTotals()).isNotNull();
+		assertThat(data.periodTotals().imps()).isEqualTo(500);
+		assertThat(data.reportPeriod()).isEqualTo(reportPeriod);
+	}
+
+	@Test
+	void collectWithoutReportPeriodShouldLeavePeriodFieldsNullTest() {
+		// Given/When: the plain EOC-equivalent overload
+		List<List<String>> bq = List.of(
+				List.of("Date", "Channel", "Cost", "Impressions", "Clicks"),
+				List.of("2026-03-01", "Display", "50", "1000", "10"));
+		CampaignData data = collector.collect(List.of(), bq, List.of(), List.of(), List.of(), null);
+
+		// Then:
+		assertThat(data.reportPeriod()).isNull();
+		assertThat(data.periodTotals()).isNull();
+		assertThat(data.periodTactics()).isNull();
 	}
 }

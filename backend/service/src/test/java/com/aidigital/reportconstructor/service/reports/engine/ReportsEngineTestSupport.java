@@ -49,12 +49,17 @@ public final class ReportsEngineTestSupport {
 		return new Fmt();
 	}
 
+	static PacingCalculator pacingCalculator() {
+		return new PacingCalculator();
+	}
+
 	static CampaignResolvers campaignResolvers() {
-		return new CampaignResolvers(sheetRowHelper(), fmt(), tacticExtractionHelper());
+		return new CampaignResolvers(sheetRowHelper(), fmt(), tacticExtractionHelper(), pacingCalculator());
 	}
 
 	static TacticResolvers tacticResolvers() {
-		return new TacticResolvers(sheetRowHelper(), fmt(), tacticExtractionHelper(), campaignResolvers());
+		return new TacticResolvers(sheetRowHelper(), fmt(), tacticExtractionHelper(), campaignResolvers(),
+				pacingCalculator());
 	}
 
 	public static PlaceholderSectionBuilderImpl placeholderSectionBuilder() {

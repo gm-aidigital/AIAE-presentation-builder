@@ -24,7 +24,14 @@ import { ToastProvider, useToast } from "./ToastContext";
 import "./report-constructor.css";
 
 const DEFAULT_BREAKDOWNS: BreakdownState = { tp: false, ca: false, geo: false, aud: false, dev: false };
-const NO_ERRORS: InputErrors = { brief: false, marketVolume: false, sheet: false, adj: false, dates: false };
+const NO_ERRORS: InputErrors = {
+    brief: false,
+    marketVolume: false,
+    sheet: false,
+    adj: false,
+    dates: false,
+    reportPeriod: false,
+};
 const JOB_TOTAL = 7;
 // Step numbers the SLIDES_FROM_SHEET job reports, in order (ReportGenerationServiceImpl
 // #runSlidesFromSheet emits 1, 3, 6, 7 — not a dense 1..7 run). Each checkpoint maps to one
@@ -317,9 +324,10 @@ function PageInner() {
             sheet: !w.mediaPlan,
             adj: !w.elevate,
             dates: !(w.dateStart && w.dateEnd),
+            reportPeriod: w.reportType === "EOM" && !(w.reportPeriodStart && w.reportPeriodEnd),
         };
         setErrors(errs);
-        if (errs.brief || errs.marketVolume || errs.sheet || errs.adj || errs.dates) {
+        if (errs.brief || errs.marketVolume || errs.sheet || errs.adj || errs.dates || errs.reportPeriod) {
             showToast("Please complete all required fields", true);
             return;
         }
@@ -425,6 +433,11 @@ function PageInner() {
                 w.dateStart && w.dateEnd
                     ? { mode: "RANGE", start: w.dateStart, end: w.dateEnd }
                     : { mode: "ALL" },
+            // EOM-only: restricts actuals to this window and prorates the plan against it.
+            reportPeriod:
+                w.reportType === "EOM" && w.reportPeriodStart && w.reportPeriodEnd
+                    ? { start: w.reportPeriodStart, end: w.reportPeriodEnd }
+                    : undefined,
         };
     }
 

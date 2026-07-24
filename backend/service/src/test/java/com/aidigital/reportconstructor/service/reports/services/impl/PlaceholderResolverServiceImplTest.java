@@ -104,14 +104,14 @@ class PlaceholderResolverServiceImplTest {
 	void shouldDelegateCollectDataToCollectorTest() {
 		GeneratePayload payload = payload(List.of(List.of("r")), List.of());
 		CampaignData data = emptyData();
-		when(campaignDataCollector.collect(any(), any(), any(), any(), any(), any())).thenReturn(data);
+		when(campaignDataCollector.collect(any(), any(), any(), any(), any(), any(), any())).thenReturn(data);
 
 		CampaignData result = service.collectData(payload);
 
 		assertThat(result).isSameAs(data);
 		verify(campaignDataCollector).collect(
 				payload.sheetRows(), payload.adjRows(), payload.audienceRows(),
-				payload.estimatesRows(), payload.lineItemMapping(), payload.dateFilter());
+				payload.estimatesRows(), payload.lineItemMapping(), payload.dateFilter(), payload.reportPeriod());
 	}
 
 	@Test

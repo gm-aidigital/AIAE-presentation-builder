@@ -148,6 +148,9 @@ external:
     # an empty template id is what caused C000 "deck creation failed". Override
     # per-environment via env vars; the defaults keep generation working.
     slides-template-id: ${SLIDES_TEMPLATE_ID:11qzOC7mdbajjlrrVrC8Zv7W5P_SOHpgMV_eWSW56WI0}
+    # EOM (Tier 1&2) deck template. Blank falls back to slides-template-id (the EOC deck) — set
+    # EOM_SLIDES_TEMPLATE_ID once the EOM deck is uploaded to Google Slides.
+    eom-slides-template-id: ${EOM_SLIDES_TEMPLATE_ID:}
     slides-target-folder-id: ${SLIDES_TARGET_FOLDER_ID:}
     # Every generated file (deck AND EOC sheet) is auto-shared as a writer with
     # these emails, so an owner/admin keeps access even when a report is created
@@ -249,6 +252,9 @@ external:
     # located by content (header labels / anchor cells) at trim time — see
     # RealSheetDeckProvider — so no per-slot range config is needed here.
     sheets-template-id: ${SHEETS_TEMPLATE_ID:1aRNqq-vxDZEgA75-rGQL04uGezGGIksB4fqEe21E8aU}
+    # EOM sheet template, used by the "Generate Sheet" step of the two-step EOM flow. Blank falls
+    # back to sheets-template-id (the EOC sheet) — set EOM_SHEETS_TEMPLATE_ID once configured.
+    eom-sheets-template-id: ${EOM_SHEETS_TEMPLATE_ID:}
     sheets-target-folder-id: ${SHEETS_TARGET_FOLDER_ID:}
     charts:
       chart-id-in-sheet: ${GOOGLE_CHART_ID_IN_SHEET:1087145314}
