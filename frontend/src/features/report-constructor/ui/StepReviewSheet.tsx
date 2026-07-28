@@ -106,8 +106,12 @@ export function StepReviewSheet({
                     <div className="rc-sheet__head">Line ID</div>
                     <div className="rc-sheet__head">Spend (Plan)</div>
                     <div className="rc-sheet__head">Spend (Fact)</div>
-                    <div className="rc-sheet__head">Impressions (Plan)</div>
-                    <div className="rc-sheet__head">Impressions (Fact)</div>
+                    <div className="rc-sheet__head" title="Impressions for CPM, Clicks for CPC, Views for CPV">
+                        Units (Plan)
+                    </div>
+                    <div className="rc-sheet__head" title="Impressions for CPM, Clicks for CPC, Views for CPV">
+                        Units (Fact)
+                    </div>
 
                     {rows.map((r, i) => (
                         // Cells are direct grid children so columns line up; tactic labels repeat
