@@ -148,9 +148,9 @@ external:
     # an empty template id is what caused C000 "deck creation failed". Override
     # per-environment via env vars; the defaults keep generation working.
     slides-template-id: ${SLIDES_TEMPLATE_ID:11qzOC7mdbajjlrrVrC8Zv7W5P_SOHpgMV_eWSW56WI0}
-    # EOM (Tier 1&2) deck template. Blank falls back to slides-template-id (the EOC deck) — set
-    # EOM_SLIDES_TEMPLATE_ID once the EOM deck is uploaded to Google Slides.
-    eom-slides-template-id: ${EOM_SLIDES_TEMPLATE_ID:}
+    # EOM (Tier 1&2) deck template. Falls back to slides-template-id (the EOC deck) only if
+    # this default is ever blanked out via an empty EOM_SLIDES_TEMPLATE_ID override.
+    eom-slides-template-id: ${EOM_SLIDES_TEMPLATE_ID:1Twb8J_beR4iwwuB3AC7bf-GnsJEOMsy5yfIvLy9gL-A}
     slides-target-folder-id: ${SLIDES_TARGET_FOLDER_ID:}
     # Every generated file (deck AND EOC sheet) is auto-shared as a writer with
     # these emails, so an owner/admin keeps access even when a report is created
