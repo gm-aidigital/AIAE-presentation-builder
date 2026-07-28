@@ -53,6 +53,38 @@ export function MatchModal({ open, matchData, running, onClose, onRun, onConfirm
         [mediaPlan, mapping]
     );
 
+    // Writes the media-plan rate/price into real mapping state for any row that doesn't have its own
+    // yet. The <select>/<input> `value`s below fall back to the same numbers for *display*, but a
+    // fallback shown in a controlled input is never actually submitted unless the user touches the
+    // control — so without this, a row whose rate type already looks right would silently send
+    // rateType/unitPrice as undefined.
+    useEffect(() => {
+        if (!isEom || !mapping || mapping.length === 0) {
+            return;
+        }
+        let changed = false;
+        const next = mapping.map((m, i) => {
+            const patch: Partial<Pick<MappingEntry, "rateType" | "unitPrice">> = {};
+            if (m.rateType === undefined) {
+                const rateType = normalizeRateType(budgets[i]?.rateType);
+                if (rateType) {
+                    patch.rateType = rateType;
+                }
+            }
+            if (m.unitPrice === undefined && budgets[i]?.unitPrice) {
+                patch.unitPrice = budgets[i]!.unitPrice;
+            }
+            if (Object.keys(patch).length === 0) {
+                return m;
+            }
+            changed = true;
+            return { ...m, ...patch };
+        });
+        if (changed) {
+            setMapping(next);
+        }
+    }, [isEom, budgets, mapping, setMapping]);
+
     useEffect(() => {
         document.body.style.overflow = open ? "hidden" : "";
         return () => {
