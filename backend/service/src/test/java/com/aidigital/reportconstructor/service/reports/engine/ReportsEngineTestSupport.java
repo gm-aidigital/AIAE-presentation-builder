@@ -49,17 +49,16 @@ public final class ReportsEngineTestSupport {
 		return new Fmt();
 	}
 
-	static PacingCalculator pacingCalculator() {
-		return new PacingCalculator();
+	static RatePlanCalculator ratePlanCalculator() {
+		return new RatePlanCalculator();
 	}
 
 	static CampaignResolvers campaignResolvers() {
-		return new CampaignResolvers(sheetRowHelper(), fmt(), tacticExtractionHelper(), pacingCalculator());
+		return new CampaignResolvers(sheetRowHelper(), fmt(), tacticExtractionHelper());
 	}
 
 	static TacticResolvers tacticResolvers() {
-		return new TacticResolvers(sheetRowHelper(), fmt(), tacticExtractionHelper(), campaignResolvers(),
-				pacingCalculator());
+		return new TacticResolvers(sheetRowHelper(), fmt(), tacticExtractionHelper(), campaignResolvers());
 	}
 
 	public static PlaceholderSectionBuilderImpl placeholderSectionBuilder() {
@@ -71,7 +70,8 @@ public final class ReportsEngineTestSupport {
 	}
 
 	public static CampaignDataCollector campaignDataCollector() {
-		return new CampaignDataCollector(sheetRowHelper(), tacticExtractionHelper(), campaignResolvers());
+		return new CampaignDataCollector(sheetRowHelper(), tacticExtractionHelper(), campaignResolvers(),
+				ratePlanCalculator());
 	}
 
 	public static ChartPivot chartPivot() {

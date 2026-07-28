@@ -30,7 +30,6 @@ const NO_ERRORS: InputErrors = {
     sheet: false,
     adj: false,
     dates: false,
-    reportPeriod: false,
 };
 const JOB_TOTAL = 7;
 // Step numbers the SLIDES_FROM_SHEET job reports, in order (ReportGenerationServiceImpl
@@ -324,10 +323,9 @@ function PageInner() {
             sheet: !w.mediaPlan,
             adj: !w.elevate,
             dates: !(w.dateStart && w.dateEnd),
-            reportPeriod: w.reportType === "EOM" && !(w.reportPeriodStart && w.reportPeriodEnd),
         };
         setErrors(errs);
-        if (errs.brief || errs.marketVolume || errs.sheet || errs.adj || errs.dates || errs.reportPeriod) {
+        if (errs.brief || errs.marketVolume || errs.sheet || errs.adj || errs.dates) {
             showToast("Please complete all required fields", true);
             return;
         }
@@ -433,11 +431,6 @@ function PageInner() {
                 w.dateStart && w.dateEnd
                     ? { mode: "RANGE", start: w.dateStart, end: w.dateEnd }
                     : { mode: "ALL" },
-            // EOM-only: restricts actuals to this window and prorates the plan against it.
-            reportPeriod:
-                w.reportType === "EOM" && w.reportPeriodStart && w.reportPeriodEnd
-                    ? { start: w.reportPeriodStart, end: w.reportPeriodEnd }
-                    : undefined,
         };
     }
 

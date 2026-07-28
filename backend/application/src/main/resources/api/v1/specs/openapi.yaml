@@ -658,13 +658,22 @@ components:
       description: Lifecycle of a report-generation job (mirrors the report_job_status dictionary table).
       enum: [ queued, running, done, error ]
 
+    RateTypeV1:
+      type: string
+      description: |
+        How a matched line item's cost is bought. CPM = cost per 1000 impressions,
+        CPC = cost per click, CPV = cost per view. Chosen by the user per tactic while
+        matching the media plan against Elevate raw data; drives which Plan Units
+        figure (impressions/clicks/views) is computed from unitPrice and monthlyBudget.
+      enum: [ CPM, CPC, CPV ]
+
     ReportTypeV1:
       type: string
       description: |
         Report type. Fills the single `{{report_type}}` placeholder in both cases.
-        For EOM, pairing this with `reportPeriod` on GenerateRequestV1 additionally
-        restricts actuals to that period and recomputes plan/pacing tokens for it
-        (see ReportPeriodV1); without a reportPeriod, EOM behaves like EOC.
+        For EOM, per-tactic plan figures come from the rate/budget fields entered on
+        each MappingEntryV1 during line-item matching rather than the Estimates tab,
+        and `dateFilter` on GenerateRequestV1 doubles as the reporting month.
       enum: [ EOC, EOM ]
 
     GenerationTargetV1:
@@ -705,28 +714,6 @@ components:
           type: string
           format: date
           description: "Last day to include (inclusive). Required when mode = RANGE; ignored when mode = ALL."
-
-    ReportPeriodV1:
-      type: object
-      description: |
-        EOM-only reporting period: the explicit date range the user picked to report on.
-        Drives two things: (1) which raw-data delivery rows are aggregated into the
-        report's "actual" figures (in place of the full flight window used elsewhere),
-        and (2) the proration base for the "plan ctd" / "proj" pacing tokens, which
-        scale the full-campaign plan by periodDays / flightDays. Passing the campaign's
-        own flight start as `start` yields a cumulative to-date window; passing a single
-        calendar month's first/last day yields an isolated-month window — the server
-        applies the same math either way. Ignored for reportType=EOC.
-      required: [ start, end ]
-      properties:
-        start:
-          type: string
-          format: date
-          description: "First day of the reporting period (inclusive)."
-        end:
-          type: string
-          format: date
-          description: "Last day of the reporting period (inclusive)."
 
     DateRangeRequestV1:
       type: object
@@ -878,6 +865,13 @@ components:
         namingSample: { type: string, description: "Sample Level-1 naming for the matched id (display only)." }
         autoMatched: { type: boolean }
         expectedChannel: { type: string, description: "Channel that needs manual assignment (when ambiguous)." }
+        rateType: { $ref: "#/components/schemas/RateTypeV1" }
+        unitPrice:
+          type: number
+          description: "Final unit price entered by the user (cost per 1000 impressions/click/view, per rateType). EOM only."
+        monthlyBudget:
+          type: number
+          description: "Monthly budget entered by the user for this tactic; prorated onto the reporting month. EOM only."
 
     BreakdownSelectionV1:
       type: object
@@ -1056,7 +1050,6 @@ components:
             Spreadsheet id of the Elevate/BQ sheet. PRESENCE-GATE ONLY — gates the
             chart step; the server does NOT re-read it (BQ pivots read adjRows).
         dateFilter: { $ref: "#/components/schemas/DateFilterV1" }
-        reportPeriod: { $ref: "#/components/schemas/ReportPeriodV1" }
         sheetUrl:
           type: string
           description: |

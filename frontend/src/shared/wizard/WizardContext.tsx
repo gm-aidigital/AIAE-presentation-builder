@@ -54,13 +54,6 @@ interface WizardContextValue {
     dateStart: string;
     dateEnd: string;
     dateConfirmed: boolean;
-    // EOM-only reporting period: the window actuals are restricted to and the plan is prorated
-    // against. Distinct from dateStart/dateEnd (the flight window) — picking reportPeriodStart
-    // equal to the flight start gives a cumulative to-date reading; picking both bounds inside one
-    // calendar month gives an isolated-month reading. Ignored for reportType === "EOC".
-    reportPeriodStart: string;
-    reportPeriodEnd: string;
-    reportPeriodConfirmed: boolean;
 
     setBrief(value: string): void;
     setChangeLog(value: string): void;
@@ -78,9 +71,6 @@ interface WizardContextValue {
     setDateWindow(start: string, end: string): void;
     confirmDates(): void;
     resetDates(): void;
-    setReportPeriod(start: string, end: string): void;
-    confirmReportPeriod(): void;
-    resetReportPeriod(): void;
 }
 
 const WizardContext = createContext<WizardContextValue | null>(null);
@@ -98,9 +88,6 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     const [dateStart, setDateStart] = useState("");
     const [dateEnd, setDateEnd] = useState("");
     const [dateConfirmed, setDateConfirmed] = useState(false);
-    const [reportPeriodStart, setReportPeriodStart] = useState("");
-    const [reportPeriodEnd, setReportPeriodEnd] = useState("");
-    const [reportPeriodConfirmed, setReportPeriodConfirmed] = useState(false);
 
     const invalidateMatch = useCallback(() => {
         setMappingState(null);
@@ -113,12 +100,6 @@ export function WizardProvider({ children }: { children: ReactNode }) {
         setDateStart("");
         setDateEnd("");
         setDateConfirmed(false);
-    }, []);
-
-    const invalidateReportPeriod = useCallback(() => {
-        setReportPeriodStart("");
-        setReportPeriodEnd("");
-        setReportPeriodConfirmed(false);
     }, []);
 
     const value = useMemo<WizardContextValue>(
@@ -135,9 +116,6 @@ export function WizardProvider({ children }: { children: ReactNode }) {
             dateStart,
             dateEnd,
             dateConfirmed,
-            reportPeriodStart,
-            reportPeriodEnd,
-            reportPeriodConfirmed,
             setBrief: setBriefState,
             setChangeLog: setChangeLogState,
             setReportType: setReportTypeState,
@@ -157,13 +135,11 @@ export function WizardProvider({ children }: { children: ReactNode }) {
                 setElevate(v);
                 invalidateMatch();
                 invalidateDates();
-                invalidateReportPeriod();
             },
             disconnectElevate: () => {
                 setElevate(null);
                 invalidateMatch();
                 invalidateDates();
-                invalidateReportPeriod();
             },
             setMapping: (m) => {
                 setMappingState(m);
@@ -178,13 +154,6 @@ export function WizardProvider({ children }: { children: ReactNode }) {
             },
             confirmDates: () => setDateConfirmed(true),
             resetDates: invalidateDates,
-            setReportPeriod: (start, end) => {
-                setReportPeriodStart(start);
-                setReportPeriodEnd(end);
-                setReportPeriodConfirmed(false);
-            },
-            confirmReportPeriod: () => setReportPeriodConfirmed(true),
-            resetReportPeriod: invalidateReportPeriod,
         }),
         [
             brief,
@@ -199,12 +168,8 @@ export function WizardProvider({ children }: { children: ReactNode }) {
             dateStart,
             dateEnd,
             dateConfirmed,
-            reportPeriodStart,
-            reportPeriodEnd,
-            reportPeriodConfirmed,
             invalidateMatch,
             invalidateDates,
-            invalidateReportPeriod,
         ]
     );
 

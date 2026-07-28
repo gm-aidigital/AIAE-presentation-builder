@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { deriveAmount, extractTacticBudgets, looksLikeMediaPlan, namingTail, parseNumber } from "./mediaPlanBudget";
+import {
+    deriveAmount,
+    extractTacticBudgets,
+    looksLikeMediaPlan,
+    namingTail,
+    normalizeRateType,
+    parseNumber,
+} from "./mediaPlanBudget";
 
 // A trimmed Proposal grid: header row with "Media", then two Programmatic
 // Display rows that differ only by units/price, then a section label and a
@@ -104,6 +111,22 @@ describe("looksLikeMediaPlan", () => {
         // Given / When / Then
         expect(looksLikeMediaPlan([["Segment", "Reach"], ["A18-34", "1,200,000"]])).toBe(false);
         expect(looksLikeMediaPlan(null)).toBe(false);
+    });
+});
+
+describe("normalizeRateType", () => {
+    it("should uppercase a recognized rate type test", () => {
+        // Given / When / Then
+        expect(normalizeRateType("cpm")).toBe("CPM");
+        expect(normalizeRateType(" Cpc ")).toBe("CPC");
+        expect(normalizeRateType("CPV")).toBe("CPV");
+    });
+
+    it("should return undefined for an unrecognized or missing rate type test", () => {
+        // Given / When / Then
+        expect(normalizeRateType("Flat Fee")).toBeUndefined();
+        expect(normalizeRateType("")).toBeUndefined();
+        expect(normalizeRateType(undefined)).toBeUndefined();
     });
 });
 

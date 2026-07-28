@@ -1,7 +1,6 @@
 package com.aidigital.reportconstructor.service.reports.engine;
 
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
-import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
 import com.aidigital.reportconstructor.service.reports.dto.Tactic;
 import com.aidigital.reportconstructor.service.reports.dto.Totals;
 import com.aidigital.reportconstructor.service.reports.helpers.SheetRowHelper;
@@ -9,7 +8,6 @@ import com.aidigital.reportconstructor.service.reports.helpers.TacticExtractionH
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -26,8 +24,8 @@ class TacticResolversTest {
 	void setUp() {
 		SheetRowHelper sheetUtils = ReportsEngineTestSupport.sheetRowHelper();
 		tacticUtils = ReportsEngineTestSupport.tacticExtractionHelper();
-		resolvers = new TacticResolvers(sheetUtils, new Fmt(), tacticUtils, new CampaignResolvers(sheetUtils,
-				new Fmt(), tacticUtils, new PacingCalculator()), new PacingCalculator());
+		resolvers = new TacticResolvers(sheetUtils, new Fmt(), tacticUtils,
+				new CampaignResolvers(sheetUtils, new Fmt(), tacticUtils));
 	}
 
 	@Test
@@ -312,112 +310,4 @@ class TacticResolversTest {
 		assertThat(tacticUtils.volumeCoefficient("Totally Unknown Channel")).isEqualTo(0.50); // default
 	}
 
-	// ── EOM pacing resolvers ──────────────────────────────────────────────
-
-	private CampaignData eomData(Tactic flightTactic, Tactic periodTactic) {
-		return new CampaignData(
-				null, null, null, null, null,
-				new FlightDates(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 3, 31)), // 90-day flight
-				null, null, null, null, null,
-				new Totals(0, 0, 0, 0, null, null),
-				Map.of(1, flightTactic),
-				new FlightDates(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 30)), // 30-day period
-				new Totals(0, 0, 0, 0, null, null),
-				Map.of(1, periodTactic),
-				null
-		);
-	}
-
-	@Test
-	void resolveTacticImpsPlanCtdShouldProrateFullPlanByPeriodShareOfFlightTest() {
-		// Given: a 300,000-impression full-campaign plan, reporting on the first third of the flight
-		Tactic flightTactic = new Tactic("Display", "Display", null, 0, 0, 0, 0, null, null, null, null,
-				null, 300_000.0, null, null, null, null, null, null);
-		Tactic periodTactic = new Tactic("Display", "Display", null, 0, 111_000, 0, 0, null, null, null, null,
-				null, null, null, null, null, null, null, null);
-		CampaignData data = eomData(flightTactic, periodTactic);
-
-		// When:
-		Resolved r = resolvers.resolveTacticImpsPlanCtd(1, List.of(), List.of(), data);
-
-		// Then: 300,000 * 30/90 = 100,000
-		assertThat(r.source()).isEqualTo("adj");
-		assertThat(r.value()).isEqualTo("100,000");
-	}
-
-	@Test
-	void resolveTacticImpsVsGoalShouldCompareThePeriodActualAgainstTheProratedGoalTest() {
-		// Given: the same 100,000 prorated goal, with 111,000 actually delivered in the period
-		Tactic flightTactic = new Tactic("Display", "Display", null, 0, 0, 0, 0, null, null, null, null,
-				null, 300_000.0, null, null, null, null, null, null);
-		Tactic periodTactic = new Tactic("Display", "Display", null, 0, 111_000, 0, 0, null, null, null, null,
-				null, null, null, null, null, null, null, null);
-		CampaignData data = eomData(flightTactic, periodTactic);
-
-		// When:
-		Resolved r = resolvers.resolveTacticImpsVsGoal(1, List.of(), List.of(), data);
-
-		// Then: (111,000 - 100,000) / 100,000 = +11%
-		assertThat(r.value()).isEqualTo("+11%");
-	}
-
-	@Test
-	void resolveTacticImpsPlanCtdShouldPreferManualAdjustmentOverrideTest() {
-		List<List<String>> adj = List.of(List.of("Tactic 1 imps plan ctd:", "42"));
-		Resolved r = resolvers.resolveTacticImpsPlanCtd(1, List.of(), adj, eomData(
-				new Tactic("Display", "Display", null, 0, 0, 0, 0, null, null, null, null,
-						null, 300_000.0, null, null, null, null, null, null),
-				new Tactic("Display", "Display", null, 0, 0, 0, 0, null, null, null, null,
-						null, null, null, null, null, null, null, null)));
-		assertThat(r.source()).isEqualTo("adj");
-		assertThat(r.value()).isEqualTo("42");
-	}
-
-	@Test
-	void resolveTacticImpsPlanCtdShouldBeNotFoundWithoutAReportingPeriodTest() {
-		CampaignData data = new CampaignData(
-				null, null, null, null, null,
-				new FlightDates(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 3, 31)),
-				null, null, null, null, null,
-				new Totals(0, 0, 0, 0, null, null),
-				Map.of(1, new Tactic("Display", "Display", null, 0, 0, 0, 0, null, null, null, null,
-						null, 300_000.0, null, null, null, null, null, null)),
-				null
-		);
-		Resolved r = resolvers.resolveTacticImpsPlanCtd(1, List.of(), List.of(), data);
-		assertThat(r.source()).isEqualTo("not_found");
-		assertThat(r.value()).isNull();
-	}
-
-	@Test
-	void resolveTacticCpmShouldComputePeriodSpendOverImpsTest() {
-		// Given: $1,110 spent for 111,000 period impressions → $10 CPM
-		Tactic flightTactic = new Tactic("Display", "Display", null, 0, 0, 0, 0, null, null, null, null,
-				null, 300_000.0, null, null, null, null, null, null);
-		Tactic periodTactic = new Tactic("Display", "Display", null, 1_110, 111_000, 0, 0, null, null, null, null,
-				null, null, null, null, null, null, null, null);
-		CampaignData data = eomData(flightTactic, periodTactic);
-
-		// When:
-		Resolved r = resolvers.resolveTacticCpm(1, List.of(), List.of(), data);
-
-		// Then:
-		assertThat(r.value()).isEqualTo("$10");
-	}
-
-	@Test
-	void resolveTacticCtrPlanCtdShouldNotProrateARateTargetTest() {
-		// Given: CTR is a rate target, not a volume — the to-date goal equals the full-campaign plan
-		Tactic flightTactic = new Tactic("Display", "Display", null, 0, 0, 0, 0, null, null, null, null,
-				null, null, 2.50, null, null, null, null, null);
-		Tactic periodTactic = new Tactic("Display", "Display", null, 0, 0, 0, 0, null, null, null, null,
-				null, null, null, null, null, null, null, null);
-		CampaignData data = eomData(flightTactic, periodTactic);
-
-		// When:
-		Resolved r = resolvers.resolveTacticCtrPlanCtd(1, List.of(), List.of(), data);
-
-		// Then:
-		assertThat(r.value()).isEqualTo("2.50%");
-	}
 }

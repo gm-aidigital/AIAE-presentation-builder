@@ -111,7 +111,7 @@ class PlaceholderResolverServiceImplTest {
 		assertThat(result).isSameAs(data);
 		verify(campaignDataCollector).collect(
 				payload.sheetRows(), payload.adjRows(), payload.audienceRows(),
-				payload.estimatesRows(), payload.lineItemMapping(), payload.dateFilter(), payload.reportPeriod());
+				payload.estimatesRows(), payload.lineItemMapping(), payload.dateFilter(), payload.reportType());
 	}
 
 	@Test

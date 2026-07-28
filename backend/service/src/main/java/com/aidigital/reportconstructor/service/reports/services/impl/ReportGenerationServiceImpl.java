@@ -794,10 +794,10 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	}
 
 	/**
-	 * Returns a copy of the payload with every raw source grid stripped (brief, report type, date filter,
-	 * reporting period and sheet URL are kept). The slides-from-sheet flow feeds this to the placeholder
-	 * builder so the Claude-authored narrative still resolves while no per-tactic or total number can be
-	 * recomputed from the raw media plan — the sheet overlay is the sole source of numeric placeholders.
+	 * Returns a copy of the payload with every raw source grid stripped (brief, report type, date filter
+	 * and sheet URL are kept). The slides-from-sheet flow feeds this to the placeholder builder so the
+	 * Claude-authored narrative still resolves while no per-tactic or total number can be recomputed from
+	 * the raw media plan — the sheet overlay is the sole source of numeric placeholders.
 	 *
 	 * @param payload the inbound generation payload
 	 * @return a narrative-only payload carrying no raw media-plan/adjustment/estimate grids
@@ -806,7 +806,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		return new GeneratePayload(
 				payload.brief(), payload.reportType(), null,
 				List.of(), List.of(), List.of(), List.of(), List.of(),
-				null, null, null, payload.dateFilter(), payload.reportPeriod(), payload.sheetUrl(),
+				null, null, null, payload.dateFilter(), payload.sheetUrl(),
 				payload.changeLog(), payload.estimateDaypartGender());
 	}
 

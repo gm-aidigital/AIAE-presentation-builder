@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import type { LineItemMatchResult, MappingEntry } from "@/shared/api/types";
 import { useWizard } from "@/shared/wizard/WizardContext";
-import { extractTacticBudgets, namingTail, type TacticBudget } from "../lib/mediaPlanBudget";
+import { extractTacticBudgets, namingTail, normalizeRateType, type TacticBudget } from "../lib/mediaPlanBudget";
 import { IconCheck, IconInfo, IconLink2, IconRefresh, IconSpinner } from "./icons";
+
+const RATE_TYPES = ["CPM", "CPC", "CPV"] as const;
 
 interface Props {
     open: boolean;
@@ -40,7 +42,8 @@ function budgetLine(b: TacticBudget): string {
 }
 
 export function MatchModal({ open, matchData, running, onClose, onRun, onConfirm }: Props) {
-    const { mapping, setMapping, mediaPlan } = useWizard();
+    const { mapping, setMapping, mediaPlan, reportType } = useWizard();
+    const isEom = reportType === "EOM";
     const [dragOver, setDragOver] = useState<number | null>(null);
 
     // Budget/volume per tactic, aligned to the mapping order so duplicated
@@ -84,6 +87,9 @@ export function MatchModal({ open, matchData, running, onClose, onRun, onConfirm
                 i === idx ? { ...m, lineItemId: undefined, namingSample: undefined, autoMatched: false } : m
             )
         );
+    }
+    function updateRate(idx: number, patch: Partial<Pick<MappingEntry, "rateType" | "unitPrice" | "monthlyBudget">>) {
+        setMapping(rows.map((m, i) => (i === idx ? { ...m, ...patch } : m)));
     }
 
     return (
@@ -164,6 +170,53 @@ export function MatchModal({ open, matchData, running, onClose, onRun, onConfirm
                                                         title="Planned budget · volume from the media plan"
                                                     >
                                                         {budgetLine(budgets[idx] as TacticBudget)}
+                                                    </div>
+                                                )}
+                                                {isEom && (
+                                                    <div className="match-rate-row">
+                                                        <select
+                                                            className="match-rate-row__select"
+                                                            title="Rate type"
+                                                            value={row.rateType ?? normalizeRateType(budgets[idx]?.rateType) ?? ""}
+                                                            onChange={(e) =>
+                                                                updateRate(idx, {
+                                                                    rateType: (e.target.value || undefined) as
+                                                                        | MappingEntry["rateType"]
+                                                                        | undefined,
+                                                                })
+                                                            }
+                                                        >
+                                                            <option value="">Rate…</option>
+                                                            {RATE_TYPES.map((rt) => (
+                                                                <option key={rt} value={rt}>
+                                                                    {rt}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                        <input
+                                                            type="number"
+                                                            className="match-rate-row__input"
+                                                            title="Monthly budget"
+                                                            placeholder="Monthly budget"
+                                                            value={row.monthlyBudget ?? ""}
+                                                            onChange={(e) =>
+                                                                updateRate(idx, {
+                                                                    monthlyBudget: e.target.value === "" ? undefined : Number(e.target.value),
+                                                                })
+                                                            }
+                                                        />
+                                                        <input
+                                                            type="number"
+                                                            className="match-rate-row__input"
+                                                            title="Final unit price"
+                                                            placeholder="Final unit price"
+                                                            value={row.unitPrice ?? budgets[idx]?.unitPrice ?? ""}
+                                                            onChange={(e) =>
+                                                                updateRate(idx, {
+                                                                    unitPrice: e.target.value === "" ? undefined : Number(e.target.value),
+                                                                })
+                                                            }
+                                                        />
                                                     </div>
                                                 )}
                                                 {hasId && naming && (

@@ -4,6 +4,7 @@ import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.DateFilter;
 import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
 import com.aidigital.reportconstructor.service.reports.dto.LineItemMapping;
+import com.aidigital.reportconstructor.service.reports.dto.RateType;
 import com.aidigital.reportconstructor.service.reports.dto.Tactic;
 import com.aidigital.reportconstructor.service.reports.dto.Totals;
 import com.aidigital.reportconstructor.service.reports.dto.WindowMetrics;
@@ -37,12 +38,23 @@ public class CampaignDataCollector {
 	private final SheetRowHelper sheetUtils;
 	private final TacticExtractionHelper tacticExtraction;
 	private final CampaignResolvers campaignResolvers;
+	private final RatePlanCalculator ratePlanCalculator;
 
+	/**
+	 * Wires the collaborators used to scan the raw grids and resolve plan figures.
+	 *
+	 * @param sheetUtils         label/value lookups against Media Plan / Adjustments grids
+	 * @param tacticExtraction   tactic-name extraction and channel/KPI-type lookups
+	 * @param campaignResolvers  shared resolver used to build the tactics-list summary
+	 * @param ratePlanCalculator EOM rate/budget-to-Plan-Units math
+	 */
 	public CampaignDataCollector(
-			SheetRowHelper sheetUtils, TacticExtractionHelper tacticExtraction, CampaignResolvers campaignResolvers) {
+			SheetRowHelper sheetUtils, TacticExtractionHelper tacticExtraction, CampaignResolvers campaignResolvers,
+			RatePlanCalculator ratePlanCalculator) {
 		this.sheetUtils = sheetUtils;
 		this.tacticExtraction = tacticExtraction;
 		this.campaignResolvers = campaignResolvers;
+		this.ratePlanCalculator = ratePlanCalculator;
 	}
 
 	private static final String[] STOP_WORDS = {"added value", "totals", "please note", "total:"};
@@ -65,42 +77,20 @@ public class CampaignDataCollector {
 	}
 
 	/**
-	 * Backward-compatible overload for callers that predate the EOM reporting-period parameter; collects
-	 * with no period, so only the full-flight totals/tactics are populated (plain EOC-equivalent behaviour).
+	 * Collects campaign totals and per-tactic metrics from the raw grids.
 	 *
 	 * @param sheetRows       Media Plan grid rows
 	 * @param adjRows         raw delivery/Adjustments grid rows
 	 * @param audienceRows    audience-breakdown grid rows
 	 * @param estimatesRows   Estimates tab grid rows
-	 * @param lineItemMapping tactic-to-line-item mapping
-	 * @param dateFilter      user-confirmed raw-data date window
-	 * @return the aggregated campaign data, with {@code reportPeriod}/{@code periodTotals}/{@code periodTactics} null
-	 */
-	public CampaignData collect(
-			List<List<String>> sheetRows,
-			List<List<String>> adjRows,
-			List<List<String>> audienceRows,
-			List<List<String>> estimatesRows,
-			List<LineItemMapping> lineItemMapping,
-			DateFilter dateFilter
-	) {
-		return collect(sheetRows, adjRows, audienceRows, estimatesRows, lineItemMapping, dateFilter, null);
-	}
-
-	/**
-	 * Collects campaign totals and per-tactic metrics, optionally re-aggregating actuals over a narrower
-	 * EOM reporting period alongside the full-flight numbers.
-	 *
-	 * @param sheetRows       Media Plan grid rows
-	 * @param adjRows         raw delivery/Adjustments grid rows
-	 * @param audienceRows    audience-breakdown grid rows
-	 * @param estimatesRows   Estimates tab grid rows
-	 * @param lineItemMapping tactic-to-line-item mapping
-	 * @param dateFilter      user-confirmed raw-data date window (the flight window)
-	 * @param reportPeriod    EOM-only reporting period to re-aggregate actuals over, clamped into the flight
-	 *                        window; {@code null} to skip (plain EOC-equivalent behaviour)
-	 * @return the aggregated campaign data, with {@code periodTotals}/{@code periodTactics} populated only
-	 * when {@code reportPeriod} is non-null
+	 * @param lineItemMapping tactic-to-line-item mapping; for EOM this also carries each tactic's
+	 *                        rate/budget economics entered at matching time
+	 * @param dateFilter      user-confirmed raw-data date window (the flight window; for EOM this also
+	 *                        doubles as the reporting period the rate/budget plan figures are prorated onto)
+	 * @param reportType      report template code; {@code "EOM"} resolves plan figures from
+	 *                        {@code lineItemMapping}'s rate/budget fields, anything else keeps resolving
+	 *                        them from the Estimates tab
+	 * @return the aggregated campaign data
 	 */
 	public CampaignData collect(
 			List<List<String>> sheetRows,
@@ -109,7 +99,7 @@ public class CampaignDataCollector {
 			List<List<String>> estimatesRows,
 			List<LineItemMapping> lineItemMapping,
 			DateFilter dateFilter,
-			FlightDates reportPeriod
+			String reportType
 	) {
 		if (sheetRows == null) {
 			sheetRows = List.of();
@@ -261,10 +251,10 @@ public class CampaignDataCollector {
 			}
 		}
 
-		// ── 6c/7/8: aggregate once for the flight window (unchanged EOC behaviour), then again for the
-		// EOM reporting period when one is set. Plan figures are window-independent, so they're resolved
-		// once (draining the FIFO queues) and reused by both windows instead of being re-polled.
-		Map<Integer, double[]> planByTacticNum = resolvePlanByTacticNum(tacticMap, estimatesByTactic);
+		// ── 6c/7/8: aggregate delivery rows over the flight window ─────────────
+		Map<Integer, double[]> planByTacticNum = "EOM".equals(reportType)
+				? resolveEomPlanByTacticNum(lineItemMapping, flightTs)
+				: resolvePlanByTacticNum(tacticMap, estimatesByTactic);
 
 		LocalDate flightStart = flightTs != null ? flightTs.start() : null;
 		LocalDate flightEnd = flightTs != null ? flightTs.end() : null;
@@ -273,11 +263,6 @@ public class CampaignDataCollector {
 				flightStart, flightEnd);
 		Totals totals = flightMetrics.totals();
 		Map<Integer, Tactic> tacticsData = flightMetrics.tactics();
-
-		FlightDates clampedPeriod = clampToFlight(reportPeriod, flightTs);
-		WindowMetrics periodMetrics = clampedPeriod == null ? null : aggregateWindow(adjRows, hIdx, colDt, colCh,
-				colCo, colIm, colCl, colCmp, colDow, colLi, colCr, colL1Naming, liToTacticNum, tacticMap, numToLiId,
-				planByTacticNum, clampedPeriod.start(), clampedPeriod.end());
 
 		// ── 9. Audience tab text (Batch A) ────────────────────────────────────
 		List<String> audLines = new ArrayList<>();
@@ -305,19 +290,13 @@ public class CampaignDataCollector {
 				audienceAge, audienceSegs,
 				totals,
 				tacticsData,
-				clampedPeriod,
-				periodMetrics != null ? periodMetrics.totals() : null,
-				periodMetrics != null ? periodMetrics.tactics() : null,
 				audienceTabText
 		);
 	}
 
 	/**
 	 * Resolves each tactic's planned Estimates-tab row once, draining the FIFO queues built by
-	 * {@link #parseEstimates}, so the flight-window and period-window per-tactic builds in
-	 * {@link #aggregateWindow} both read the same window-independent plan figures instead of re-polling
-	 * (which would silently shift a repeated tactic name onto the wrong line item's numbers on the
-	 * second call).
+	 * {@link #parseEstimates}.
 	 *
 	 * @param tacticMap         tactic number to {@code [name, channel]} mapping
 	 * @param estimatesByTactic Estimates-tab rows queued by lowercased tactic name
@@ -339,37 +318,42 @@ public class CampaignDataCollector {
 	}
 
 	/**
-	 * Clamps the EOM reporting period into the flight window so an out-of-range selection never
-	 * aggregates data outside the actual campaign or yields a proration fraction above 100%.
+	 * Resolves each EOM tactic's planned figures from the rate/budget economics entered by the user at
+	 * matching time (joined by {@code tacticNum}, never by name), instead of the Estimates tab. The
+	 * monthly budget is prorated onto the flight window (which doubles as the EOM reporting period for
+	 * a single-month request) and converted to Plan Units by rate type.
 	 *
-	 * @param reportPeriod user-selected period, or {@code null} for EOC / an EOM request with no period
-	 * @param flightTs     the full flight window, or {@code null} when no flight window could be detected
-	 * @return the clamped period, or {@code null} when either input is missing or the clamped range is inverted
+	 * @param lineItemMapping tactic-to-line-item mapping carrying each tactic's rateType/unitPrice/monthlyBudget
+	 * @param flightTs        the flight window the plan figures are prorated onto
+	 * @return tactic number to its planned {@code {spend, imps, ctr, vcr, maxFreq, clicks, views}} row (the
+	 * rate/goal fields are always {@code NaN}; exactly one of imps/clicks/views is populated per rateType),
+	 * omitting tactics with no mapping entry or no flight window to prorate onto
 	 */
-	FlightDates clampToFlight(FlightDates reportPeriod, FlightDates flightTs) {
-		if (reportPeriod == null || flightTs == null) {
-			return null;
+	Map<Integer, double[]> resolveEomPlanByTacticNum(List<LineItemMapping> lineItemMapping, FlightDates flightTs) {
+		Map<Integer, double[]> out = new LinkedHashMap<>();
+		if (flightTs == null) {
+			return out;
 		}
-		LocalDate start = clampDate(reportPeriod.start(), flightTs.start(), flightTs.end());
-		LocalDate end = clampDate(reportPeriod.end(), flightTs.start(), flightTs.end());
-		return start.isAfter(end) ? null : new FlightDates(start, end);
-	}
-
-	LocalDate clampDate(LocalDate date, LocalDate min, LocalDate max) {
-		if (date.isBefore(min)) {
-			return min;
+		for (LineItemMapping m : lineItemMapping) {
+			Integer num = m.tacticNum();
+			if (num == null || num <= 0) {
+				continue;
+			}
+			Double proratedSpend = ratePlanCalculator.proratedBudget(m.monthlyBudget(), flightTs.start(),
+					flightTs.end());
+			Double units = ratePlanCalculator.planUnits(proratedSpend, m.unitPrice(), m.rateType());
+			double spend = proratedSpend == null ? Double.NaN : proratedSpend;
+			double imps = units != null && m.rateType() == RateType.CPM ? units : Double.NaN;
+			double clicks = units != null && m.rateType() == RateType.CPC ? units : Double.NaN;
+			double views = units != null && m.rateType() == RateType.CPV ? units : Double.NaN;
+			out.putIfAbsent(num, new double[]{spend, imps, Double.NaN, Double.NaN, Double.NaN, clicks, views});
 		}
-		if (date.isAfter(max)) {
-			return max;
-		}
-		return date;
+		return out;
 	}
 
 	/**
-	 * Aggregates one date window's delivery rows into campaign totals and per-tactic metrics, reusing
-	 * the column layout, tactic/line-item wiring and window-independent plan figures resolved once by
-	 * the caller. Called once for the flight window and, when an EOM reporting period is set, a second
-	 * time for that narrower window, so EOM plan proration has actuals scoped to the same period.
+	 * Aggregates the flight window's delivery rows into campaign totals and per-tactic metrics, reusing
+	 * the column layout, tactic/line-item wiring and plan figures resolved once by the caller.
 	 *
 	 * @param adjRows         raw delivery rows
 	 * @param hIdx            header row index (-1 when no delivery header was found)
@@ -589,7 +573,9 @@ public class CampaignDataCollector {
 					plan != null ? nan(plan[4]) : null,
 					topName,
 					topCr != null ? topCr[0] : null,
-					topCr != null ? topCr[1] : null
+					topCr != null ? topCr[1] : null,
+					plan != null && plan.length > 5 ? nan(plan[5]) : null,
+					plan != null && plan.length > 6 ? nan(plan[6]) : null
 			));
 		}
 

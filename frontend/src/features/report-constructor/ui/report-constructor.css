@@ -520,6 +520,15 @@
   font-size: 11px; color: var(--text-muted); font-family: var(--rc-mono);
   margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+.match-rate-row { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+.match-rate-row__select, .match-rate-row__input {
+  font-family: var(--rc-mono); font-size: 11px; color: var(--black);
+  border: 1px solid var(--border); border-radius: 5px; background: var(--white);
+  padding: 3px 6px; outline: none;
+}
+.match-rate-row__select { flex: 0 0 auto; }
+.match-rate-row__input { flex: 1 1 0; min-width: 0; }
+.match-rate-row__select:focus, .match-rate-row__input:focus { border-color: var(--blue); }
 .match-tactic-badge { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .match-id-pill {
   font-family: var(--rc-mono); font-size: 11px; font-weight: 600;

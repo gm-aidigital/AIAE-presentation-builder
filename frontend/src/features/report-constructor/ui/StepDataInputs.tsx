@@ -9,7 +9,6 @@ export interface InputErrors {
     sheet: boolean;
     adj: boolean;
     dates: boolean;
-    reportPeriod: boolean;
 }
 
 interface Props {
@@ -178,8 +177,6 @@ export function StepDataInputs({
     const changeLogDone = w.changeLog.trim().length > 0;
     const marketDone = w.marketVolume.trim().length > 0;
     const datesDone = !!w.dateStart && !!w.dateEnd;
-    const isEom = w.reportType === "EOM";
-    const reportPeriodDone = !!w.reportPeriodStart && !!w.reportPeriodEnd;
     const bothConnected = !!w.mediaPlan && !!w.elevate;
     const matched = (w.mapping ?? []).filter((m) => m.lineItemId).length;
     const matchTotal = (w.mapping ?? []).length;
@@ -324,42 +321,6 @@ export function StepDataInputs({
                         {errors.dates && <div className="rc-field__error">Flight dates are required.</div>}
                     </div>
 
-                    {isEom && (
-                        <div className="rc-field">
-                            <label className="rc-field__label">Reporting period</label>
-                            <div className="rc-daterange">
-                                <input
-                                    type="date"
-                                    className="rc-input"
-                                    value={w.reportPeriodStart}
-                                    onChange={(e) => {
-                                        w.setReportPeriod(e.target.value, w.reportPeriodEnd);
-                                        clearError("reportPeriod");
-                                    }}
-                                />
-                                <span className="rc-daterange__sep">→</span>
-                                <input
-                                    type="date"
-                                    className="rc-input"
-                                    value={w.reportPeriodEnd}
-                                    onChange={(e) => {
-                                        w.setReportPeriod(w.reportPeriodStart, e.target.value);
-                                        clearError("reportPeriod");
-                                    }}
-                                />
-                            </div>
-                            <div className="rc-field__hint">
-                                Which window this report covers — actuals are restricted to it and the plan is
-                                scaled to match. Pick a single calendar month's first/last day for an isolated
-                                monthly view, or the campaign's own start through a cutoff day for a cumulative
-                                to-date view.
-                            </div>
-                            {errors.reportPeriod && (
-                                <div className="rc-field__error">Reporting period is required for EOM.</div>
-                            )}
-                        </div>
-                    )}
-
                     {bothConnected && (
                         <div className={`rc-match${w.matchConfirmed ? " rc-match--done" : ""}`}>
                             <div className="rc-match__text">
@@ -421,13 +382,6 @@ export function StepDataInputs({
                             value={w.elevate ? "Connected" : "Waiting"}
                         />
                         <StatusRow label="Flight dates" done={datesDone} value={datesDone ? "Set" : "Waiting"} />
-                        {isEom && (
-                            <StatusRow
-                                label="Reporting period"
-                                done={reportPeriodDone}
-                                value={reportPeriodDone ? "Set" : "Waiting"}
-                            />
-                        )}
                     </div>
                 </aside>
             </div>

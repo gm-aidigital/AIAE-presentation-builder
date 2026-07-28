@@ -32,11 +32,8 @@ import java.util.List;
  * @param dateFilter      user-confirmed raw-data date window (ALL or an inclusive RANGE); when {@code null} or ALL the
  *                        full date range present in the raw data ("Basic" tab) is used. This is the sole source of the
  *                        report flight window: it gates which delivery rows contribute and fills {@code {{flight_dates}}}.
- *                        The media plan is never consulted for dates.
- * @param reportPeriod    EOM-only reporting period (start/end); restricts actuals to this window and prorates the
- *                        full-campaign plan by periodDays / flightDays for the "plan ctd" / "proj" pacing tokens.
- *                        {@code null} for EOC, and for EOM requests with no period selected (plain EOC-equivalent
- *                        behaviour).
+ *                        The media plan is never consulted for dates. For EOM reports, this same window doubles as the
+ *                        reporting period the plan figures in {@code lineItemMapping} are prorated onto.
  * @param sheetUrl        URL of a previously generated (and user-edited) Google Sheet; the sole input when the target is
  *                        {@code SLIDES_FROM_SHEET}, where the deck is filled from this sheet's values instead of the raw
  *                        grids. {@code null}/blank for the SLIDES and SHEET flows.
@@ -58,58 +55,14 @@ public record GeneratePayload(
 		List<BreakdownSelection> breakdownSelections,
 		String bqSheetId,
 		DateFilter dateFilter,
-		FlightDates reportPeriod,
 		String sheetUrl,
 		String changeLog,
 		Boolean estimateDaypartGender
 ) {
 
 	/**
-	 * Backward-compatible constructor for callers that predate the reporting-period field; defaults it to
-	 * {@code null} (no period, plain EOC-equivalent behaviour) so their behaviour is unchanged.
-	 *
-	 * @param brief               free-text campaign brief
-	 * @param reportType          report template code
-	 * @param marketVolume        maximum addressable audience volume entered in the UI
-	 * @param sheetRows           raw Media Plan grid rows
-	 * @param adjRows             manual Adjustments grid rows
-	 * @param audienceRows        raw audience-breakdown grid rows
-	 * @param estimatesRows       raw per-tactic estimates grid rows
-	 * @param geoRows             every workbook tab flattened into one grid
-	 * @param lineItemMapping     media-plan tactic to BigQuery line-item mapping
-	 * @param breakdownSelections per-tactic Step-3 breakdown toggle state
-	 * @param bqSheetId           Google Sheet ID backing the BigQuery export
-	 * @param dateFilter          user-confirmed raw-data date window
-	 * @param sheetUrl            URL of a previously generated sheet (slides-from-sheet only)
-	 * @param changeLog           optional free-text log of mid-flight changes
-	 * @param estimateDaypartGender whether Claude may estimate dayparting/gender when no manual value exists
-	 */
-	public GeneratePayload(
-			String brief,
-			String reportType,
-			String marketVolume,
-			List<List<String>> sheetRows,
-			List<List<String>> adjRows,
-			List<List<String>> audienceRows,
-			List<List<String>> estimatesRows,
-			List<List<String>> geoRows,
-			List<LineItemMapping> lineItemMapping,
-			List<BreakdownSelection> breakdownSelections,
-			String bqSheetId,
-			DateFilter dateFilter,
-			String sheetUrl,
-			String changeLog,
-			Boolean estimateDaypartGender
-	) {
-		this(brief, reportType, marketVolume, sheetRows, adjRows, audienceRows, estimatesRows, geoRows,
-				lineItemMapping, breakdownSelections, bqSheetId, dateFilter, null, sheetUrl, changeLog,
-				estimateDaypartGender);
-	}
-
-	/**
-	 * Backward-compatible constructor for callers that predate the dayparting/gender toggle and the
-	 * reporting-period field; keeps the AI estimate on by default and leaves the period unset so their
-	 * behaviour is unchanged.
+	 * Backward-compatible constructor for callers that predate the dayparting/gender toggle; keeps the AI
+	 * estimate on by default so their behaviour is unchanged.
 	 *
 	 * @param brief               free-text campaign brief
 	 * @param reportType          report template code
@@ -143,6 +96,6 @@ public record GeneratePayload(
 			String changeLog
 	) {
 		this(brief, reportType, marketVolume, sheetRows, adjRows, audienceRows, estimatesRows, geoRows,
-				lineItemMapping, breakdownSelections, bqSheetId, dateFilter, null, sheetUrl, changeLog, Boolean.TRUE);
+				lineItemMapping, breakdownSelections, bqSheetId, dateFilter, sheetUrl, changeLog, Boolean.TRUE);
 	}
 }

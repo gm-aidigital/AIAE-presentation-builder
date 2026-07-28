@@ -67,6 +67,16 @@ export function deriveAmount(units: number, unitPrice: number, rateType: string)
     return units * unitPrice;
 }
 
+/**
+ * Normalizes the media plan's free-text "Rate Type" cell to one of the EOM rate types
+ * (CPM/CPC/CPV), or undefined when it's blank or doesn't match one — the matching-time
+ * dropdown pre-fills from this but never guesses a value the sheet didn't actually carry.
+ */
+export function normalizeRateType(rateType: string | undefined): "CPM" | "CPC" | "CPV" | undefined {
+    const upper = (rateType ?? "").trim().toUpperCase();
+    return upper === "CPM" || upper === "CPC" || upper === "CPV" ? upper : undefined;
+}
+
 function headerIndex(header: string[], predicate: (h: string) => boolean): number {
     return header.findIndex((h) => predicate(normName(h ?? "")));
 }

@@ -2,14 +2,11 @@ package com.aidigital.reportconstructor.service.reports.engine;
 
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
-import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
 import com.aidigital.reportconstructor.service.reports.dto.Recommendation;
-import com.aidigital.reportconstructor.service.reports.dto.Tactic;
 import com.aidigital.reportconstructor.service.reports.dto.Totals;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -510,34 +507,5 @@ class CampaignResolversTest {
 
 	private static List<List<String>> labelRow(String label, String value) {
 		return List.of(List.of(label, value, "", ""));
-	}
-
-	@Test
-	void resolveTotalImpsPlanCtdShouldProrateTheSummedTacticPlansTest() {
-		// Given: two tactics planning 200,000 and 100,000 impressions (300,000 total), reporting on a
-		// 30-day period out of a 90-day flight
-		Tactic tacticA = new Tactic("Display", "Display", null, 0, 0, 0, 0, null, null, null, null,
-				null, 200_000.0, null, null, null, null, null, null);
-		Tactic tacticB = new Tactic("Video", "Video", null, 0, 0, 0, 0, null, null, null, null,
-				null, 100_000.0, null, null, null, null, null, null);
-		CampaignData data = new CampaignData(
-				null, null, null, null, null,
-				new FlightDates(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 3, 31)),
-				null, null, null, null, null,
-				new Totals(0, 0, 0, 0, null, null),
-				Map.of(1, tacticA, 2, tacticB),
-				new FlightDates(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 30)),
-				new Totals(0, 111_000, 0, 0, null, null),
-				Map.of(),
-				null
-		);
-
-		// When:
-		Resolved planCtd = resolvers.resolveTotalImpsPlanCtd(List.of(), List.of(), data);
-		Resolved pace = resolvers.resolveTotalImpsPace(List.of(), List.of(), data);
-
-		// Then: 300,000 * 30/90 = 100,000, and 111,000 actual vs 100,000 goal is +11%
-		assertThat(planCtd.value()).isEqualTo("100,000");
-		assertThat(pace.value()).isEqualTo("+11%");
 	}
 }
