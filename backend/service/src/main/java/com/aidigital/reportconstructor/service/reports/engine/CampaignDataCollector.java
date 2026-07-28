@@ -10,6 +10,7 @@ import com.aidigital.reportconstructor.service.reports.dto.Totals;
 import com.aidigital.reportconstructor.service.reports.dto.WindowMetrics;
 import com.aidigital.reportconstructor.service.reports.helpers.SheetRowHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.TacticExtractionHelper;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.time.DayOfWeek;
@@ -32,6 +33,7 @@ import java.util.regex.Pattern;
  * top delivery creative; plus a parse of the Estimates tab for planned KPIs. The
  * result is consumed by the resolvers and Claude batches.
  */
+@Slf4j
 @Component
 public class CampaignDataCollector {
 
@@ -346,6 +348,10 @@ public class CampaignDataCollector {
 			double imps = units != null && m.rateType() == RateType.CPM ? units : Double.NaN;
 			double clicks = units != null && m.rateType() == RateType.CPC ? units : Double.NaN;
 			double views = units != null && m.rateType() == RateType.CPV ? units : Double.NaN;
+			log.info("[eom-plan] tacticNum={} rateType={} unitPrice={} monthlyBudget={} "
+							+ "flightTs=[{}..{}] proratedSpend={} units={}",
+					num, m.rateType(), m.unitPrice(), m.monthlyBudget(), flightTs.start(), flightTs.end(),
+					proratedSpend, units);
 			out.putIfAbsent(num, new double[]{spend, imps, Double.NaN, Double.NaN, Double.NaN, clicks, views});
 		}
 		return out;
