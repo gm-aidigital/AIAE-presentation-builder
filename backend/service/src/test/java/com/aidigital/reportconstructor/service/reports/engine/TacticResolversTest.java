@@ -221,6 +221,57 @@ class TacticResolversTest {
 	}
 
 	@Test
+	void resolveTacticImpsAndImpsPlanShouldReadClicksForACpcTacticTest() {
+		// Given: an EOM tactic whose plan was entered as CPC (planClicks set, planImps null)
+		Tactic tactic = new Tactic(
+				"Google SEM", "Search", null,
+				0, 0, 3_429, 0, null, null, null, null,
+				null, null, null, null, null,
+				null, null, null,
+				12_000.0, null
+		);
+		CampaignData data = new CampaignData(
+				null, null, null, null, null, null, null, null, null, null, null,
+				new Totals(0, 0, 0, 0, null, null),
+				Map.of(1, tactic), null
+		);
+
+		// When:
+		Resolved plan = resolvers.resolveTacticImpsPlan(1, "Google SEM", List.of(), List.of(), data);
+		Resolved fact = resolvers.resolveTacticImps(1, "Google SEM", List.of(), List.of(), data);
+
+		// Then: both read the click figures, not impressions
+		assertThat(plan.value()).isEqualTo("12,000");
+		assertThat(fact.value()).isEqualTo("3,429");
+	}
+
+	@Test
+	void resolveTacticImpsAndImpsPlanShouldReadViewsForACpvTacticTest() {
+		// Given: an EOM tactic whose plan was entered as CPV (planViews set, planImps null); completions
+		// carries the actual delivered views
+		Tactic tactic = new Tactic(
+				"YouTube", "Video", null,
+				0, 0, 0, 6_000, null, null, null, null,
+				null, null, null, null, null,
+				null, null, null,
+				null, 5_800.0
+		);
+		CampaignData data = new CampaignData(
+				null, null, null, null, null, null, null, null, null, null, null,
+				new Totals(0, 0, 0, 0, null, null),
+				Map.of(1, tactic), null
+		);
+
+		// When:
+		Resolved plan = resolvers.resolveTacticImpsPlan(1, "YouTube", List.of(), List.of(), data);
+		Resolved fact = resolvers.resolveTacticImps(1, "YouTube", List.of(), List.of(), data);
+
+		// Then: both read the view/completion figures, not impressions
+		assertThat(plan.value()).isEqualTo("5,800");
+		assertThat(fact.value()).isEqualTo("6,000");
+	}
+
+	@Test
 	void resolveTacticCtrPlan_formatsEstimatesCtrAsTwoDecimalPercent() {
 		Tactic tactic = new Tactic(
 				"Display", "Display", null,

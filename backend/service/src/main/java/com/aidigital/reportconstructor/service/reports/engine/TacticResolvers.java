@@ -79,15 +79,16 @@ public class TacticResolvers {
 	}
 
 	/**
-	 * Resolves the impressions value for tactic {@code n}, preferring a manual Adjustments override,
-	 * then the Media Plan sheet, then the grouped BigQuery impression count.
+	 * Resolves the delivered-units value for tactic {@code n} — impressions, or clicks/completions when
+	 * the tactic's EOM plan was entered as CPC/CPV (see {@link #unitsKind}) — preferring a manual
+	 * Adjustments override, then the Media Plan sheet, then the matching grouped BigQuery count.
 	 *
 	 * @param n          one-based tactic index used to build the {@code "Tactic N imps:"} lookup label
-	 * @param tacticName display name of the tactic (unused for impressions; kept for resolver-signature parity)
+	 * @param tacticName display name of the tactic (unused for units; kept for resolver-signature parity)
 	 * @param sheetRows  Media Plan grid rows searched for the labelled value
 	 * @param adjRows    manual Adjustments grid rows that take precedence over the sheet
-	 * @param data       campaign data providing the BigQuery-derived impression count fallback
-	 * @return the resolved impressions with its source tag, or a {@code not_found} placeholder when no value exists
+	 * @param data       campaign data providing the BigQuery-derived delivered-units fallback
+	 * @return the resolved units with its source tag, or a {@code not_found} placeholder when no value exists
 	 */
 	public Resolved resolveTacticImps(int n, String tacticName, List<List<String>> sheetRows,
 	                                  List<List<String>> adjRows, CampaignData data) {
@@ -101,10 +102,66 @@ public class TacticResolvers {
 			return new Resolved(label, fromSheet, "sheet");
 		}
 		Tactic t = tactic(data, n);
-		if (t != null && t.imps() > 0) {
-			return new Resolved(label + " (auto: BQ Impressions)", fmt.intGroup(t.imps()), "adj");
+		double units = actualUnits(t);
+		if (t != null && units > 0) {
+			return new Resolved(label + " (auto: BQ " + unitsKind(t) + ")", fmt.intGroup(units), "adj");
 		}
 		return new Resolved(label, null, "not_found");
+	}
+
+	/**
+	 * Determines which delivered metric doubles as tactic {@code n}'s "Plan Units" figure: clicks when
+	 * its EOM plan was entered as CPC, video views (completions) when entered as CPV, otherwise
+	 * impressions — the CPM case, and the only case an EOC/Estimates-sourced plan ever populates.
+	 *
+	 * @param t the tactic's aggregated data, or {@code null}
+	 * @return {@code "clicks"}, {@code "views"}, or {@code "imps"}
+	 */
+	String unitsKind(Tactic t) {
+		if (t == null) {
+			return "imps";
+		}
+		if (t.planClicks() != null) {
+			return "clicks";
+		}
+		if (t.planViews() != null) {
+			return "views";
+		}
+		return "imps";
+	}
+
+	/**
+	 * Reads tactic {@code t}'s planned Units figure for whichever metric {@link #unitsKind} selected.
+	 *
+	 * @param t the tactic's aggregated data, or {@code null}
+	 * @return the planned Units figure, or {@code null} when {@code t} is {@code null} or has none
+	 */
+	Double planUnits(Tactic t) {
+		if (t == null) {
+			return null;
+		}
+		return switch (unitsKind(t)) {
+			case "clicks" -> t.planClicks();
+			case "views" -> t.planViews();
+			default -> t.planImps();
+		};
+	}
+
+	/**
+	 * Reads tactic {@code t}'s delivered Units figure for whichever metric {@link #unitsKind} selected.
+	 *
+	 * @param t the tactic's aggregated data, or {@code null}
+	 * @return the delivered Units figure, or {@code 0} when {@code t} is {@code null}
+	 */
+	double actualUnits(Tactic t) {
+		if (t == null) {
+			return 0;
+		}
+		return switch (unitsKind(t)) {
+			case "clicks" -> t.clicks();
+			case "views" -> t.completions();
+			default -> t.imps();
+		};
 	}
 
 	/**
@@ -138,15 +195,16 @@ public class TacticResolvers {
 	}
 
 	/**
-	 * Resolves the planned impressions target for tactic {@code n}, preferring a manual Adjustments
-	 * override, then the Media Plan sheet, then the Estimates "Impressions" figure joined onto the tactic.
+	 * Resolves the planned Units target for tactic {@code n} — impressions, or clicks/views when the
+	 * tactic's EOM plan was entered as CPC/CPV (see {@link #unitsKind}) — preferring a manual
+	 * Adjustments override, then the Media Plan sheet, then the Estimates-tab/rate-derived plan.
 	 *
 	 * @param n          one-based tactic index used to build the {@code "Tactic N imps plan:"} lookup label
-	 * @param tacticName display name of the tactic (unused for imps plan; kept for resolver-signature parity)
+	 * @param tacticName display name of the tactic (unused for plan units; kept for resolver-signature parity)
 	 * @param sheetRows  Media Plan grid rows searched for the labelled value
 	 * @param adjRows    manual Adjustments grid rows that take precedence over the sheet
-	 * @param data       campaign data providing the Estimates-derived planned impressions fallback
-	 * @return the resolved planned impressions with its source tag, or a {@code not_found} placeholder
+	 * @param data       campaign data providing the planned-Units fallback
+	 * @return the resolved planned Units with its source tag, or a {@code not_found} placeholder
 	 * when no value exists
 	 */
 	public Resolved resolveTacticImpsPlan(int n, String tacticName, List<List<String>> sheetRows,
@@ -161,9 +219,9 @@ public class TacticResolvers {
 			return new Resolved(label, fromSheet, "sheet");
 		}
 		Tactic t = tactic(data, n);
-		Double planImps = t == null ? null : t.planImps();
-		if (planImps != null && planImps > 0) {
-			return new Resolved(label + " (auto: Estimates Impressions)", fmt.intGroup(planImps), "adj");
+		Double planUnits = planUnits(t);
+		if (planUnits != null && planUnits > 0) {
+			return new Resolved(label + " (auto: plan " + unitsKind(t) + ")", fmt.intGroup(planUnits), "adj");
 		}
 		return new Resolved(label, null, "not_found");
 	}
