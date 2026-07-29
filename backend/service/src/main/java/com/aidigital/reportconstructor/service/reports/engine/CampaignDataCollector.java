@@ -93,10 +93,10 @@ public class CampaignDataCollector {
 	 * @param reportType      report template code; {@code "EOM"} resolves plan figures from
 	 *                        {@code lineItemMapping}'s rate/budget fields (plus CTR/VCR/max-frequency
 	 *                        benchmarks still read from the Estimates tab), anything else keeps resolving
-	 *                        every plan figure from the Estimates tab
-	 * @param eomFlightMonthsTotal EOM-only: total months the flight spans, entered by the user once per
-	 *                        report; multiplied by each tactic's monthly budget for the full-flight plan
-	 *                        target. Ignored for any other report type.
+	 *                        every plan figure from the Estimates tab. For EOM, the total flight length
+	 *                        ({@code eom_flight_months_total}) is derived from the Media Plan's per-line-item
+	 *                        "Flight Start"/"Flight End" columns (see {@link #mediaPlanFlightWindow}) — never
+	 *                        entered manually.
 	 * @return the aggregated campaign data
 	 */
 	public CampaignData collect(
@@ -106,8 +106,7 @@ public class CampaignDataCollector {
 			List<List<String>> estimatesRows,
 			List<LineItemMapping> lineItemMapping,
 			DateFilter dateFilter,
-			String reportType,
-			Integer eomFlightMonthsTotal
+			String reportType
 	) {
 		if (sheetRows == null) {
 			sheetRows = List.of();
@@ -261,6 +260,13 @@ public class CampaignDataCollector {
 
 		// ── 6c/7/8: aggregate delivery rows over the flight window ─────────────
 		boolean isEom = "EOM".equals(reportType);
+		// EOM-only: the whole campaign's planned flight length, read from the media plan's own
+		// per-line-item Flight Start/Flight End columns rather than entered by hand — the raw-data
+		// delivery window only covers what's happened so far and can't tell us how long the campaign
+		// is meant to run in total.
+		FlightDates mediaPlanFlight = isEom ? mediaPlanFlightWindow(sheetRows) : null;
+		Integer eomFlightMonthsTotal = mediaPlanFlight != null
+				? ratePlanCalculator.monthsSpanned(mediaPlanFlight.start(), mediaPlanFlight.end()) : null;
 		Map<Integer, double[]> estimatesPlan = resolvePlanByTacticNum(tacticMap, estimatesByTactic);
 		Map<Integer, double[]> planByTacticNum = isEom
 				? resolveEomPlanByTacticNum(lineItemMapping, eomFlightMonthsTotal, estimatesPlan)
@@ -274,8 +280,7 @@ public class CampaignDataCollector {
 		Totals totals = flightMetrics.totals();
 		Map<Integer, Tactic> tacticsData = flightMetrics.tactics();
 
-		// EOM-only: months elapsed so far, derived from the currently selected flight window (see
-		// eomFlightMonthsTotal javadoc for why the total can't be derived the same way).
+		// EOM-only: months elapsed so far, derived from the currently selected flight (to-date) window.
 		Integer eomMonthNumber = isEom && flightTs != null
 				? ratePlanCalculator.monthsSpanned(flightTs.start(), flightTs.end()) : null;
 
@@ -335,10 +340,41 @@ public class CampaignDataCollector {
 	}
 
 	/**
+	 * Derives the whole campaign's planned flight window from the Media Plan's per-line-item
+	 * "Flight Start" / "Flight End" columns: the earliest start and the latest end across every line
+	 * item. This is the only source for the EOM full-flight length ({@code eom_flight_months_total}) —
+	 * the raw-data delivery window only covers what's been delivered so far and can never reveal a
+	 * campaign's planned end date.
+	 *
+	 * @param sheetRows Media Plan grid rows
+	 * @return the inclusive campaign flight window, or {@code null} when either column is missing or no
+	 * cell in it parses as a date
+	 */
+	FlightDates mediaPlanFlightWindow(List<List<String>> sheetRows) {
+		List<String> starts = sheetUtils.collectColumnValuesBelow(sheetRows, MediaPlanColumn.FLIGHT_START.getSynonyms());
+		List<String> ends = sheetUtils.collectColumnValuesBelow(sheetRows, MediaPlanColumn.FLIGHT_END.getSynonyms());
+		LocalDate min = null;
+		for (String s : starts) {
+			LocalDate d = sheetUtils.parseDate(s);
+			if (d != null && (min == null || d.isBefore(min))) {
+				min = d;
+			}
+		}
+		LocalDate max = null;
+		for (String s : ends) {
+			LocalDate d = sheetUtils.parseDate(s);
+			if (d != null && (max == null || d.isAfter(max))) {
+				max = d;
+			}
+		}
+		return min == null || max == null ? null : new FlightDates(min, max);
+	}
+
+	/**
 	 * Resolves each EOM tactic's full-flight planned figures from the rate/budget economics entered by
 	 * the user at matching time (joined by {@code tacticNum}, never by name): the monthly budget times
-	 * the user-entered flight-months total gives the full-flight spend target, converted to Plan Units
-	 * by rate type. The per-tactic {@code plan ctd} / {@code proj} pacing resolvers prorate this
+	 * the media-plan-derived flight-months total gives the full-flight spend target, converted to Plan
+	 * Units by rate type. The per-tactic {@code plan ctd} / {@code proj} pacing resolvers prorate this
 	 * full-flight figure down to the elapsed months themselves (see {@link TacticResolvers}) — this
 	 * method resolves the un-prorated, whole-flight target only, mirroring the role
 	 * {@link #resolvePlanByTacticNum} plays for EOC. CTR/VCR/max-frequency benchmarks have no rate/budget
@@ -347,8 +383,9 @@ public class CampaignDataCollector {
 	 *
 	 * @param lineItemMapping         tactic-to-line-item mapping carrying each tactic's
 	 *                                rateType/unitPrice/monthlyBudget
-	 * @param eomFlightMonthsTotal    total months the flight spans, entered by the user once per report;
-	 *                                {@code null} or non-positive yields no plan figures at all
+	 * @param eomFlightMonthsTotal    total months the flight spans, derived from the Media Plan's Flight
+	 *                                Start/Flight End columns (see {@link #mediaPlanFlightWindow}); {@code null}
+	 *                                or non-positive yields no plan figures at all
 	 * @param estimatesPlanByTacticNum tactic number to its Estimates-tab row, used only for the
 	 *                                CTR/VCR/max-frequency benchmarks (indices 2-4)
 	 * @return tactic number to its planned {@code {spend, imps, ctr, vcr, maxFreq, clicks, views}} row

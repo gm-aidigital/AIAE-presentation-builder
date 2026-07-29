@@ -1050,15 +1050,6 @@ components:
             Spreadsheet id of the Elevate/BQ sheet. PRESENCE-GATE ONLY — gates the
             chart step; the server does NOT re-read it (BQ pivots read adjRows).
         dateFilter: { $ref: "#/components/schemas/DateFilterV1" }
-        eomFlightMonthsTotal:
-          type: integer
-          format: int32
-          minimum: 1
-          description: |
-            EOM-only: total months the flight spans, entered by the user once per
-            report (not derivable from the raw data). Multiplied by each tactic's
-            monthlyBudget (see MappingEntryV1) to get the full-flight plan target
-            the "plan ctd" / "proj" pacing tokens prorate from. Ignored for EOC.
         sheetUrl:
           type: string
           description: |

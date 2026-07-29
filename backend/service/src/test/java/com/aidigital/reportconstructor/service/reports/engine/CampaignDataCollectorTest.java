@@ -3,6 +3,7 @@ package com.aidigital.reportconstructor.service.reports.engine;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.DateFilter;
 import com.aidigital.reportconstructor.service.reports.dto.DateFilterMode;
+import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
 import com.aidigital.reportconstructor.service.reports.dto.LineItemMapping;
 import com.aidigital.reportconstructor.service.reports.dto.RateType;
 import org.junit.jupiter.api.Test;
@@ -33,12 +34,12 @@ class CampaignDataCollectorTest {
 				List.of("2026-03-01", "Display", "50", "1000", "10")
 		);
 
-		CampaignData data = collector.collect(sheet, adj, List.of(), List.of(), List.of(), null, "EOC", null);
+		CampaignData data = collector.collect(sheet, adj, List.of(), List.of(), List.of(), null, "EOC");
 
 		assertThat(data.client()).isEqualTo("Adj Client");
 		assertThat(data.campaign()).isEqualTo("Adj Campaign");
 
-		CampaignData bqOnly = collector.collect(List.of(), bq, List.of(), List.of(), List.of(), null, "EOC", null);
+		CampaignData bqOnly = collector.collect(List.of(), bq, List.of(), List.of(), List.of(), null, "EOC");
 		assertThat(bqOnly.totals()).isNotNull();
 		assertThat(bqOnly.totals().imps()).isEqualTo(1000);
 	}
@@ -61,7 +62,7 @@ class CampaignDataCollectorTest {
 		);
 
 		// When:
-		CampaignData data = collector.collect(sheet, List.of(), List.of(), estimates, List.of(), null, "EOC", null);
+		CampaignData data = collector.collect(sheet, List.of(), List.of(), estimates, List.of(), null, "EOC");
 
 		// Then: each occurrence keeps its own line item's figures rather than all Displays collapsing onto one
 		assertThat(data.tactics().get(1).planSpend()).isEqualTo(100000.0);
@@ -81,7 +82,7 @@ class CampaignDataCollectorTest {
 		);
 		CampaignData data = collector.collect(
 				sheet, List.of(), List.of(), List.of(),
-				List.of(new LineItemMapping("Display Tactic", "111", 1)), null, "EOC", null);
+				List.of(new LineItemMapping("Display Tactic", "111", 1)), null, "EOC");
 
 		assertThat(data.tactics()).containsKey(1);
 		assertThat(data.tactics().get(1).name()).contains("Display");
@@ -89,11 +90,12 @@ class CampaignDataCollectorTest {
 
 	@Test
 	void collectForEomShouldResolvePlanFromRateAndMonthlyBudgetInsteadOfEstimatesTest() {
-		// Given: a CPM tactic with a $3,100 monthly budget and $10 unit price, and a 3-month flight
-		// total — the full-flight target is monthlyBudget × flightMonthsTotal, converted to imps
+		// Given: a CPM tactic with a $3,100 monthly budget and $10 unit price. The media plan's own
+		// Flight Start/Flight End columns span Jan 1 – Mar 31, 2026 (3 calendar months) — the full-flight
+		// target is monthlyBudget × flightMonthsTotal, converted to imps
 		List<List<String>> sheet = List.of(
-				List.of("Media"),
-				List.of("programmatic display")
+				List.of("Media", "Flight Start", "Flight End"),
+				List.of("programmatic display", "January 1, 2026", "March 31, 2026")
 		);
 		DateFilter dateFilter = new DateFilter(DateFilterMode.RANGE, LocalDate.of(2026, 1, 1),
 				LocalDate.of(2026, 1, 31));
@@ -101,7 +103,7 @@ class CampaignDataCollectorTest {
 
 		// When:
 		CampaignData data = collector.collect(sheet, List.of(), List.of(), List.of(), List.of(mapping), dateFilter,
-				"EOM", 3);
+				"EOM");
 
 		// Then: Estimates-sourced fields stay null, and the rate/budget-derived spend/imps are set
 		// to the full-flight target: 3100 * 3 = 9300 spend, 9300 / 10 * 1000 = 930,000 impressions
@@ -114,11 +116,31 @@ class CampaignDataCollectorTest {
 	}
 
 	@Test
-	void collectForEocShouldIgnoreLineItemMappingRateFieldsTest() {
-		// Given: the same rate/budget fields as the EOM case, but reportType is EOC
+	void collectForEomShouldLeavePlanUnresolvedWhenMediaPlanHasNoFlightDatesColumnsTest() {
+		// Given: the same rate/budget mapping, but the media plan carries no Flight Start/End columns at
+		// all — there is no way to derive the full-flight length, so no plan can be resolved
 		List<List<String>> sheet = List.of(
 				List.of("Media"),
 				List.of("programmatic display")
+		);
+		LineItemMapping mapping = new LineItemMapping("Programmatic Display", null, 1, RateType.CPM, 10.0, 3100.0);
+
+		// When:
+		CampaignData data = collector.collect(sheet, List.of(), List.of(), List.of(), List.of(mapping), null, "EOM");
+
+		// Then:
+		assertThat(data.tactics().get(1).planSpend()).isNull();
+		assertThat(data.tactics().get(1).planImps()).isNull();
+		assertThat(data.eomFlightMonthsTotal()).isNull();
+	}
+
+	@Test
+	void collectForEocShouldIgnoreLineItemMappingRateFieldsTest() {
+		// Given: the same rate/budget fields and Flight Start/End columns as the EOM case, but
+		// reportType is EOC
+		List<List<String>> sheet = List.of(
+				List.of("Media", "Flight Start", "Flight End"),
+				List.of("programmatic display", "January 1, 2026", "March 31, 2026")
 		);
 		DateFilter dateFilter = new DateFilter(DateFilterMode.RANGE, LocalDate.of(2026, 1, 1),
 				LocalDate.of(2026, 1, 31));
@@ -126,7 +148,7 @@ class CampaignDataCollectorTest {
 
 		// When:
 		CampaignData data = collector.collect(sheet, List.of(), List.of(), List.of(), List.of(mapping), dateFilter,
-				"EOC", 3);
+				"EOC");
 
 		// Then: no Estimates row exists for this tactic, so plan stays unresolved — the rate/budget
 		// fields on the mapping are never consulted for EOC
@@ -134,5 +156,38 @@ class CampaignDataCollectorTest {
 		assertThat(data.tactics().get(1).planImps()).isNull();
 		assertThat(data.eomMonthNumber()).isNull();
 		assertThat(data.eomFlightMonthsTotal()).isNull();
+	}
+
+	@Test
+	void mediaPlanFlightWindowShouldSpanTheEarliestStartAndLatestEndAcrossLineItemsTest() {
+		// Given: three line items with staggered flight windows
+		List<List<String>> sheet = List.of(
+				List.of("Media", "Flight Start", "Flight End"),
+				List.of("programmatic display", "February 9, 2026", "May 3, 2026"),
+				List.of("programmatic video", "January 1, 2026", "April 1, 2026"),
+				List.of("programmatic audio", "March 1, 2026", "June 15, 2026")
+		);
+
+		// When:
+		FlightDates result = collector.mediaPlanFlightWindow(sheet);
+
+		// Then: earliest start (Jan 1) to latest end (Jun 15)
+		assertThat(result.start()).isEqualTo(LocalDate.of(2026, 1, 1));
+		assertThat(result.end()).isEqualTo(LocalDate.of(2026, 6, 15));
+	}
+
+	@Test
+	void mediaPlanFlightWindowShouldReturnNullWhenEitherColumnIsMissingTest() {
+		// Given: only a Flight Start column, no Flight End
+		List<List<String>> sheet = List.of(
+				List.of("Media", "Flight Start"),
+				List.of("programmatic display", "January 1, 2026")
+		);
+
+		// When:
+		FlightDates result = collector.mediaPlanFlightWindow(sheet);
+
+		// Then:
+		assertThat(result).isNull();
 	}
 }

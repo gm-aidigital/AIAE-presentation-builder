@@ -1059,9 +1059,9 @@ public class CampaignResolvers {
 			return new Resolved("Eom flight months total:", fromSheet, "sheet");
 		}
 		if (data == null || data.eomFlightMonthsTotal() == null) {
-			return new Resolved("Eom flight months total (auto: user-entered flight length)", null, "not_found");
+			return new Resolved("Eom flight months total (auto: Media Plan Flight Start/Flight End columns)", null, "not_found");
 		}
-		return new Resolved("Eom flight months total (auto: user-entered flight length)",
+		return new Resolved("Eom flight months total (auto: Media Plan Flight Start/Flight End columns)",
 				String.valueOf(data.eomFlightMonthsTotal()), "adj");
 	}
 

@@ -10,7 +10,7 @@ import java.util.List;
  * @param brief           free-text campaign brief used as the prompt for Claude-generated narrative copy
  * @param reportType      report template code selecting which slide layout and sections to render
  * @param marketVolume    maximum addressable audience volume entered in the UI (DV360 estimate); parsed and rendered
- *                        compact (e.g. 74k, 1.2M) into {@code {{market volume}}}
+ *                        compact (e.g. 74k, 1.2M) into {{market volume}}
  * @param sheetRows       raw Media Plan grid rows (label/value cells) searched for tactic spend, impressions and
  *                        benchmarks
  * @param adjRows         manual Adjustments grid rows whose labelled values override the corresponding Media Plan
@@ -35,9 +35,6 @@ import java.util.List;
  *                        The media plan is never consulted for dates. For EOM reports, this same window doubles as the
  *                        campaign-to-date reporting window: how far it spans in calendar months is
  *                        {@code eom_month_number}.
- * @param eomFlightMonthsTotal EOM-only: total months the flight spans, entered by the user once per report (not
- *                        derivable from the raw data). Multiplied by each tactic's monthly budget to get the
- *                        full-flight plan target. {@code null} for EOC.
  * @param sheetUrl        URL of a previously generated (and user-edited) Google Sheet; the sole input when the target is
  *                        {@code SLIDES_FROM_SHEET}, where the deck is filled from this sheet's values instead of the raw
  *                        grids. {@code null}/blank for the SLIDES and SHEET flows.
@@ -59,57 +56,14 @@ public record GeneratePayload(
 		List<BreakdownSelection> breakdownSelections,
 		String bqSheetId,
 		DateFilter dateFilter,
-		Integer eomFlightMonthsTotal,
 		String sheetUrl,
 		String changeLog,
 		Boolean estimateDaypartGender
 ) {
 
 	/**
-	 * Backward-compatible constructor for callers that predate the EOM flight-months-total field;
-	 * defaults it to {@code null} (EOC-equivalent behaviour) so their behaviour is unchanged.
-	 *
-	 * @param brief               free-text campaign brief
-	 * @param reportType          report template code
-	 * @param marketVolume        maximum addressable audience volume entered in the UI
-	 * @param sheetRows           raw Media Plan grid rows
-	 * @param adjRows             manual Adjustments grid rows
-	 * @param audienceRows        raw audience-breakdown grid rows
-	 * @param estimatesRows       raw per-tactic estimates grid rows
-	 * @param geoRows             every workbook tab flattened into one grid
-	 * @param lineItemMapping     media-plan tactic to BigQuery line-item mapping
-	 * @param breakdownSelections per-tactic Step-3 breakdown toggle state
-	 * @param bqSheetId           Google Sheet ID backing the BigQuery export
-	 * @param dateFilter          user-confirmed raw-data date window
-	 * @param sheetUrl            URL of a previously generated sheet (slides-from-sheet only)
-	 * @param changeLog           optional free-text log of mid-flight changes
-	 * @param estimateDaypartGender whether Claude may estimate dayparting/gender when no manual value exists
-	 */
-	public GeneratePayload(
-			String brief,
-			String reportType,
-			String marketVolume,
-			List<List<String>> sheetRows,
-			List<List<String>> adjRows,
-			List<List<String>> audienceRows,
-			List<List<String>> estimatesRows,
-			List<List<String>> geoRows,
-			List<LineItemMapping> lineItemMapping,
-			List<BreakdownSelection> breakdownSelections,
-			String bqSheetId,
-			DateFilter dateFilter,
-			String sheetUrl,
-			String changeLog,
-			Boolean estimateDaypartGender
-	) {
-		this(brief, reportType, marketVolume, sheetRows, adjRows, audienceRows, estimatesRows, geoRows,
-				lineItemMapping, breakdownSelections, bqSheetId, dateFilter, null, sheetUrl, changeLog,
-				estimateDaypartGender);
-	}
-
-	/**
-	 * Backward-compatible constructor for callers that predate the dayparting/gender toggle and the EOM
-	 * flight-months-total field; keeps the AI estimate on by default so their behaviour is unchanged.
+	 * Backward-compatible constructor for callers that predate the dayparting/gender toggle; keeps the
+	 * AI estimate on by default so their behaviour is unchanged.
 	 *
 	 * @param brief               free-text campaign brief
 	 * @param reportType          report template code
@@ -143,6 +97,6 @@ public record GeneratePayload(
 			String changeLog
 	) {
 		this(brief, reportType, marketVolume, sheetRows, adjRows, audienceRows, estimatesRows, geoRows,
-				lineItemMapping, breakdownSelections, bqSheetId, dateFilter, null, sheetUrl, changeLog, Boolean.TRUE);
+				lineItemMapping, breakdownSelections, bqSheetId, dateFilter, sheetUrl, changeLog, Boolean.TRUE);
 	}
 }

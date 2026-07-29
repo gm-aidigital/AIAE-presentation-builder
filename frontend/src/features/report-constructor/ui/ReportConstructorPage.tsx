@@ -30,7 +30,6 @@ const NO_ERRORS: InputErrors = {
     sheet: false,
     adj: false,
     dates: false,
-    eomFlightMonthsTotal: false,
 };
 const JOB_TOTAL = 7;
 // Step numbers the SLIDES_FROM_SHEET job reports, in order (ReportGenerationServiceImpl
@@ -324,10 +323,9 @@ function PageInner() {
             sheet: !w.mediaPlan,
             adj: !w.elevate,
             dates: !(w.dateStart && w.dateEnd),
-            eomFlightMonthsTotal: w.reportType === "EOM" && !(Number(w.eomFlightMonthsTotal) > 0),
         };
         setErrors(errs);
-        if (errs.brief || errs.marketVolume || errs.sheet || errs.adj || errs.dates || errs.eomFlightMonthsTotal) {
+        if (errs.brief || errs.marketVolume || errs.sheet || errs.adj || errs.dates) {
             showToast("Please complete all required fields", true);
             return;
         }
@@ -433,10 +431,6 @@ function PageInner() {
                 w.dateStart && w.dateEnd
                     ? { mode: "RANGE", start: w.dateStart, end: w.dateEnd }
                     : { mode: "ALL" },
-            eomFlightMonthsTotal:
-                w.reportType === "EOM" && Number(w.eomFlightMonthsTotal) > 0
-                    ? Number(w.eomFlightMonthsTotal)
-                    : undefined,
         };
     }
 
