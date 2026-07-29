@@ -152,21 +152,25 @@ public class AnthropicMessagesClient {
 	 * Sends a prompt expecting a bare top-level JSON array reply and returns the parsed array node, or
 	 * {@code null} on any failure. The per-section pilot calls ask for exactly this — a keyless array of a
 	 * fixed length — so there is no object key the model can drift on: the reply is either a usable array or
-	 * discarded. A reply truncated by {@code max_tokens} is rejected outright (a half-written array cannot be
-	 * trusted to have all its items), so the caller retries rather than accepting a short array.
+	 * discarded. The caller still enforces the item count on what comes back, so a repaired array that lost its
+	 * unfinished last item is rejected there and retried rather than shipped short.
 	 *
-	 * @param prompt     the full user prompt sent as the single message to Claude
-	 * @param maxTokens  cap on tokens the model may generate in its reply
-	 * @param timeoutSec per-request HTTP timeout in seconds
-	 * @param label      short tag identifying this call in log messages
+	 * @param prompt       the full user prompt sent as the single message to Claude
+	 * @param maxTokens    cap on tokens the model may generate in its reply
+	 * @param timeoutSec   per-request HTTP timeout in seconds
+	 * @param label        short tag identifying this call in log messages
+	 * @param allowPartial when {@code true}, accepts {@code max_tokens}-truncated output and tries to repair the
+	 *                     trailing JSON by closing open brackets — the same salvage the object path has always
+	 *                     had, and the only way a reply that merely forgot its final {@code ]} survives
 	 * @return the parsed array node, or {@code null} when no usable array could be recovered
 	 */
-	public JsonNode callJsonArray(String prompt, int maxTokens, int timeoutSec, String label) {
+	public JsonNode callJsonArray(
+			String prompt, int maxTokens, int timeoutSec, String label, boolean allowPartial) {
 		JsonNode resp = callRaw(prompt, maxTokens, timeoutSec, label);
 		if (resp == null) {
 			return null;
 		}
-		if ("max_tokens".equals(resp.path("stop_reason").asText(""))) {
+		if ("max_tokens".equals(resp.path("stop_reason").asText("")) && !allowPartial) {
 			log.warn("[claude:{}] truncated by max_tokens", label);
 			return null;
 		}
@@ -176,7 +180,7 @@ public class AnthropicMessagesClient {
 		}
 		text = FENCE_OPEN.matcher(text.trim()).replaceFirst("");
 		text = FENCE_CLOSE.matcher(text).replaceFirst("").trim();
-		JsonNode node = parseJsonArray(text);
+		JsonNode node = parseJsonArray(text, allowPartial);
 		if (node != null) {
 			return node;
 		}
@@ -185,23 +189,41 @@ public class AnthropicMessagesClient {
 	}
 
 	/**
-	 * Parses the model's JSON array out of the reply text, tolerating prose wrapped around it by parsing from
-	 * the first <code>[</code> to the last <code>]</code>. A reply that carries no array yields {@code null}.
+	 * Parses the model's JSON array out of the reply text, tolerating the same ways a reply can carry usable
+	 * items that a plain parse still rejects as {@link #parseJsonObject} does: a tail the model never closed —
+	 * a run into {@code max_tokens}, or the missing final <code>]</code> of an accidentally nested
+	 * <code>[[…]]</code> reply — repaired by {@link #repairTruncatedJson}, and prose wrapped around the array,
+	 * salvaged by parsing from the first <code>[</code> to the last <code>]</code>. A reply that carries no
+	 * array yields {@code null}.
 	 *
-	 * @param text the reply text, with any Markdown code fences already stripped
+	 * @param text         the reply text, with any Markdown code fences already stripped
+	 * @param allowPartial whether to attempt truncation repair as well as a clean parse
 	 * @return the parsed array node, or {@code null} when no usable array could be recovered
 	 */
-	JsonNode parseJsonArray(String text) {
+	JsonNode parseJsonArray(String text, boolean allowPartial) {
 		JsonNode node = readArray(text);
 		if (node != null) {
 			return node;
 		}
+		if (allowPartial) {
+			node = readArray(repairTruncatedJson(text));
+			if (node != null) {
+				return node;
+			}
+		}
 		int first = text.indexOf('[');
-		int last = text.lastIndexOf(']');
-		if (first < 0 || last <= first) {
+		if (first < 0) {
 			return null;
 		}
-		return readArray(text.substring(first, last + 1));
+		String fromFirst = text.substring(first);
+		int last = fromFirst.lastIndexOf(']');
+		if (last > 0) {
+			node = readArray(fromFirst.substring(0, last + 1));
+			if (node != null) {
+				return node;
+			}
+		}
+		return allowPartial ? readArray(repairTruncatedJson(fromFirst)) : null;
 	}
 
 	/**

@@ -170,6 +170,73 @@ class AnthropicMessagesClientTest {
 	}
 
 	@Test
+	void shouldRecoverASectionArrayThatNeverGotItsClosingBracketTest() {
+		// Given: the shape that blanked three breakdown sections on job 184 — a section reply nested one level
+		// deep that closed the inner array and stopped, leaving the outer one open
+		AnthropicProperties props = new AnthropicProperties();
+		props.setApiKey("key");
+		AnthropicMessagesClient client = new AnthropicMessagesClient(
+				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator());
+		String unclosed = "[[\"Modrinth anchored reach.\", \"Five destinations held 25%.\", "
+				+ "\"Brand-safe gaming mix.\", \"We steered weight to strong publishers.\"]";
+
+		// When:
+		JsonNode parsed = client.parseJsonArray(unclosed, true);
+
+		// Then: the bullets survive as the wrapper array the caller then unwraps, instead of the whole reply
+		// being thrown away and re-sent
+		assertThat(parsed).isNotNull();
+		assertThat(parsed.isArray()).isTrue();
+		assertThat(parsed.size()).isEqualTo(1);
+		assertThat(parsed.get(0).size()).isEqualTo(4);
+		assertThat(parsed.get(0).get(0).asText()).isEqualTo("Modrinth anchored reach.");
+	}
+
+	@Test
+	void shouldKeepTheCompleteItemsOfAnArrayCutMidItemTest() {
+		// Given: a section reply the model stopped writing part-way through its last bullet
+		AnthropicProperties props = new AnthropicProperties();
+		props.setApiKey("key");
+		AnthropicMessagesClient client = new AnthropicMessagesClient(
+				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator());
+
+		// When:
+		JsonNode parsed = client.parseJsonArray("[\"First.\", \"Second.\", \"Thi", true);
+
+		// Then: the finished items are recovered; the caller's exact-count check is what decides to retry
+		assertThat(parsed).isNotNull();
+		assertThat(parsed.size()).isEqualTo(2);
+	}
+
+	@Test
+	void shouldNotRepairAnArrayWhenPartialsAreNotAllowedTest() {
+		// Given: the same unclosed reply, on a caller that has not opted into salvage
+		AnthropicProperties props = new AnthropicProperties();
+		props.setApiKey("key");
+		AnthropicMessagesClient client = new AnthropicMessagesClient(
+				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator());
+
+		// When-Then: strict parsing is unchanged — nothing repaired slips into a caller that did not ask for it
+		assertThat(client.parseJsonArray("[\"First.\", \"Second.\", \"Thi", false)).isNull();
+	}
+
+	@Test
+	void shouldStillReadAnArrayWrappedInProseTest() {
+		// Given: a reply with a preamble and a trailing comment around the array
+		AnthropicProperties props = new AnthropicProperties();
+		props.setApiKey("key");
+		AnthropicMessagesClient client = new AnthropicMessagesClient(
+				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator());
+
+		// When:
+		JsonNode parsed = client.parseJsonArray("Here you go:\n[\"First.\", \"Second.\"]\nLet me know.", true);
+
+		// Then: the array is still found either side of the prose
+		assertThat(parsed).isNotNull();
+		assertThat(parsed.size()).isEqualTo(2);
+	}
+
+	@Test
 	void shouldWidenTheReplySnippetWhenConfiguredToTest() {
 		// Given: a client configured to log a wider head of a failed reply — the setting used to reach a parse
 		// defect that sits past the default 400 characters on a deployed run

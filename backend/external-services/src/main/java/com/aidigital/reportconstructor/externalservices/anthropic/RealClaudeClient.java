@@ -372,7 +372,11 @@ public class RealClaudeClient implements ClaudeClient {
 	 */
 	List<String> sectionOnce(
 			String label, int tacticNum, String prompt, int count, java.util.function.IntUnaryOperator limitAt) {
-		JsonNode arr = messagesClient.callJsonArray(prompt, SECTION_MAX_TOKENS, BREAKDOWN_TIMEOUT_SEC, label);
+		// allowPartial lets the transport repair a reply the model never closed — the same salvage every other
+		// batch already gets. Nothing partial slips through: the exact-count check below still rejects an array
+		// that lost an item to the repair, so the attempt is retried rather than shipped short.
+		JsonNode arr = messagesClient.callJsonArray(
+				prompt, SECTION_MAX_TOKENS, BREAKDOWN_TIMEOUT_SEC, label, true);
 		if (arr == null || !arr.isArray()) {
 			// The call itself failed or the reply was not an array; the transport already logged the cause, so
 			// this line only ties that cause to the section and tactic whose fields are about to ship blank.

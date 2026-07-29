@@ -268,6 +268,88 @@ class RealClaudeClientTest {
 	}
 
 	@Test
+	void publisherSectionAcceptsAWrapperArrayOnItsFirstAttemptTest() throws Exception {
+		// Given: a per-section publisher call whose reply arrived nested one level deep — the job 184 shape that
+		// used to be discarded three times over and ship the slide blank
+		ClaudeResponseNormalizer normalizer = new ClaudeResponseNormalizer();
+		ClaudeBatchPromptBuilder promptBuilder = new ClaudeBatchPromptBuilder(normalizer, new Fmt());
+		ReportClaudeDefaults defaults = new ReportClaudeDefaults();
+		RealClaudeClient client = new RealClaudeClient(
+				messagesClient, promptBuilder, normalizer, compressionService, defaults,
+				new WorkbookGeoFilter(), new PromptTokenEstimator(), new AnthropicProperties());
+
+		Tactic ctv = new Tactic(
+				"CTV", "CTV", null,
+				5000.0, 1_000_000.0, 0.0, 980_000.0, null, 98.0, null, null,
+				null, null, null, null, null, null, null, null);
+		CampaignData data = new CampaignData(
+				"Acme", "Spring Launch", "US", "Awareness", "Jan 1 - Mar 31",
+				null, "$500,000", "Reach", "CTV", "25-44", "Auto intenders",
+				new Totals(0, 0, 0, 0, null, null), Map.of(1, ctv), null);
+		String brief = "Drive awareness for the Spring Launch.";
+		PublisherObservationInput input = new PublisherObservationInput(
+				1, "CTV", List.of(new PublisherRow("Hulu", "400,000", "40%")));
+		JsonNode wrapped = json.readTree("""
+				[["Hulu led delivery.", "Long tail carried reach.",
+				  "Premium brand-safe mix.", "We steered weight to strong publishers."]]
+				""");
+		when(messagesClient.callJsonArray(any(), eq(1500), eq(90), eq("PublisherSection"), eq(true)))
+				.thenReturn(wrapped);
+		when(compressionService.compress(any(), eq("PublisherSection")))
+				.thenAnswer(invocation -> {
+					List<ClaudeCompressionField> fields = invocation.getArgument(0);
+					Map<String, String> out = new LinkedHashMap<>();
+					for (ClaudeCompressionField field : fields) {
+						out.put(field.key(), field.text());
+					}
+					return out;
+				});
+
+		// When:
+		List<String> bullets = client.publisherSection(data, input, brief);
+
+		// Then: the four bullets ship, and the call was made once — no retry was spent on a usable reply
+		assertThat(bullets).containsExactly(
+				"Hulu led delivery.", "Long tail carried reach.",
+				"Premium brand-safe mix.", "We steered weight to strong publishers.");
+		verify(messagesClient, times(1))
+				.callJsonArray(any(), eq(1500), eq(90), eq("PublisherSection"), eq(true));
+	}
+
+	@Test
+	void publisherSectionRetriesAShortArrayAndGivesUpBlankTest() {
+		// Given: a per-section publisher call whose reply is a well-formed array of the wrong length
+		ClaudeResponseNormalizer normalizer = new ClaudeResponseNormalizer();
+		ClaudeBatchPromptBuilder promptBuilder = new ClaudeBatchPromptBuilder(normalizer, new Fmt());
+		ReportClaudeDefaults defaults = new ReportClaudeDefaults();
+		RealClaudeClient client = new RealClaudeClient(
+				messagesClient, promptBuilder, normalizer, compressionService, defaults,
+				new WorkbookGeoFilter(), new PromptTokenEstimator(), new AnthropicProperties());
+
+		Tactic ctv = new Tactic(
+				"CTV", "CTV", null,
+				5000.0, 1_000_000.0, 0.0, 980_000.0, null, 98.0, null, null,
+				null, null, null, null, null, null, null, null);
+		CampaignData data = new CampaignData(
+				"Acme", "Spring Launch", "US", "Awareness", "Jan 1 - Mar 31",
+				null, "$500,000", "Reach", "CTV", "25-44", "Auto intenders",
+				new Totals(0, 0, 0, 0, null, null), Map.of(1, ctv), null);
+		PublisherObservationInput input = new PublisherObservationInput(
+				1, "CTV", List.of(new PublisherRow("Hulu", "400,000", "40%")));
+		when(messagesClient.callJsonArray(any(), eq(1500), eq(90), eq("PublisherSection"), eq(true)))
+				.thenReturn(json.createArrayNode().add("Only one bullet."));
+
+		// When:
+		List<String> bullets = client.publisherSection(data, input, "Drive awareness.");
+
+		// Then: nothing partial is shipped, and the contract is retried the configured number of times
+		assertThat(bullets).isEmpty();
+		verify(messagesClient, times(3))
+				.callJsonArray(any(), eq(1500), eq(90), eq("PublisherSection"), eq(true));
+		verifyNoInteractions(compressionService);
+	}
+
+	@Test
 	void batchTacticThoughtsParsesFourThoughtsForOneTacticTest() throws Exception {
 		// Given: a real prompt builder/normalizer, identity compression, and one tactic's assembled conclusions
 		ClaudeResponseNormalizer normalizer = new ClaudeResponseNormalizer();
