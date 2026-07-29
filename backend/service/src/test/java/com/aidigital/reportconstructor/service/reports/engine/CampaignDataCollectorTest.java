@@ -33,12 +33,12 @@ class CampaignDataCollectorTest {
 				List.of("2026-03-01", "Display", "50", "1000", "10")
 		);
 
-		CampaignData data = collector.collect(sheet, adj, List.of(), List.of(), List.of(), null, "EOC");
+		CampaignData data = collector.collect(sheet, adj, List.of(), List.of(), List.of(), null, "EOC", null);
 
 		assertThat(data.client()).isEqualTo("Adj Client");
 		assertThat(data.campaign()).isEqualTo("Adj Campaign");
 
-		CampaignData bqOnly = collector.collect(List.of(), bq, List.of(), List.of(), List.of(), null, "EOC");
+		CampaignData bqOnly = collector.collect(List.of(), bq, List.of(), List.of(), List.of(), null, "EOC", null);
 		assertThat(bqOnly.totals()).isNotNull();
 		assertThat(bqOnly.totals().imps()).isEqualTo(1000);
 	}
@@ -61,7 +61,7 @@ class CampaignDataCollectorTest {
 		);
 
 		// When:
-		CampaignData data = collector.collect(sheet, List.of(), List.of(), estimates, List.of(), null, "EOC");
+		CampaignData data = collector.collect(sheet, List.of(), List.of(), estimates, List.of(), null, "EOC", null);
 
 		// Then: each occurrence keeps its own line item's figures rather than all Displays collapsing onto one
 		assertThat(data.tactics().get(1).planSpend()).isEqualTo(100000.0);
@@ -81,7 +81,7 @@ class CampaignDataCollectorTest {
 		);
 		CampaignData data = collector.collect(
 				sheet, List.of(), List.of(), List.of(),
-				List.of(new LineItemMapping("Display Tactic", "111", 1)), null, "EOC");
+				List.of(new LineItemMapping("Display Tactic", "111", 1)), null, "EOC", null);
 
 		assertThat(data.tactics()).containsKey(1);
 		assertThat(data.tactics().get(1).name()).contains("Display");
@@ -89,8 +89,8 @@ class CampaignDataCollectorTest {
 
 	@Test
 	void collectForEomShouldResolvePlanFromRateAndMonthlyBudgetInsteadOfEstimatesTest() {
-		// Given: a CPM tactic with a $3,100 monthly budget and $10 unit price, reported over all of
-		// January 2026 (31 days) — the full monthly budget applies, prorated to 310,000 impressions
+		// Given: a CPM tactic with a $3,100 monthly budget and $10 unit price, and a 3-month flight
+		// total — the full-flight target is monthlyBudget × flightMonthsTotal, converted to imps
 		List<List<String>> sheet = List.of(
 				List.of("Media"),
 				List.of("programmatic display")
@@ -101,13 +101,16 @@ class CampaignDataCollectorTest {
 
 		// When:
 		CampaignData data = collector.collect(sheet, List.of(), List.of(), List.of(), List.of(mapping), dateFilter,
-				"EOM");
+				"EOM", 3);
 
 		// Then: Estimates-sourced fields stay null, and the rate/budget-derived spend/imps are set
-		assertThat(data.tactics().get(1).planSpend()).isEqualTo(3100.0);
-		assertThat(data.tactics().get(1).planImps()).isEqualTo(310_000.0);
+		// to the full-flight target: 3100 * 3 = 9300 spend, 9300 / 10 * 1000 = 930,000 impressions
+		assertThat(data.tactics().get(1).planSpend()).isEqualTo(9300.0);
+		assertThat(data.tactics().get(1).planImps()).isEqualTo(930_000.0);
 		assertThat(data.tactics().get(1).planCtr()).isNull();
 		assertThat(data.tactics().get(1).planVcr()).isNull();
+		assertThat(data.eomMonthNumber()).isEqualTo(1);
+		assertThat(data.eomFlightMonthsTotal()).isEqualTo(3);
 	}
 
 	@Test
@@ -123,11 +126,13 @@ class CampaignDataCollectorTest {
 
 		// When:
 		CampaignData data = collector.collect(sheet, List.of(), List.of(), List.of(), List.of(mapping), dateFilter,
-				"EOC");
+				"EOC", 3);
 
 		// Then: no Estimates row exists for this tactic, so plan stays unresolved — the rate/budget
 		// fields on the mapping are never consulted for EOC
 		assertThat(data.tactics().get(1).planSpend()).isNull();
 		assertThat(data.tactics().get(1).planImps()).isNull();
+		assertThat(data.eomMonthNumber()).isNull();
+		assertThat(data.eomFlightMonthsTotal()).isNull();
 	}
 }

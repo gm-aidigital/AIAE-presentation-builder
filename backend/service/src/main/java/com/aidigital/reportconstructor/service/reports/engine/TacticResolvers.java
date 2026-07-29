@@ -26,6 +26,7 @@ public class TacticResolvers {
 	private final Fmt fmt;
 	private final TacticExtractionHelper tacticExtraction;
 	private final CampaignResolvers campaignResolvers;
+	private final RatePlanCalculator pacing;
 
 	/**
 	 * Creates the resolver wiring the collaborators used to look up, format and auto-derive
@@ -35,14 +36,16 @@ public class TacticResolvers {
 	 * @param fmt               number/percentage formatter for report display values
 	 * @param tacticExtraction  tactic-specific helpers (KPI-type lookup, frequency math)
 	 * @param campaignResolvers shared adj-then-sheet manual resolver reused for gender/daypart rows
+	 * @param pacing            EOM proration/projection math shared by the "plan ctd" / "proj" / "vs goal" resolvers
 	 */
 	public TacticResolvers(
 			SheetRowHelper sheetUtils, Fmt fmt,
-			TacticExtractionHelper tacticExtraction, CampaignResolvers campaignResolvers) {
+			TacticExtractionHelper tacticExtraction, CampaignResolvers campaignResolvers, RatePlanCalculator pacing) {
 		this.sheetUtils = sheetUtils;
 		this.fmt = fmt;
 		this.tacticExtraction = tacticExtraction;
 		this.campaignResolvers = campaignResolvers;
+		this.pacing = pacing;
 	}
 
 	private static final String DASH = "\u2014"; // —
@@ -945,6 +948,772 @@ public class TacticResolvers {
 
 		Map<Integer, Tactic> tactics = data == null ? null : data.tactics();
 		return tactics == null ? null : tactics.get(n);
+	}
+
+	/**
+	 * Reads the {@code [elapsedMonths, totalMonths]} pair EOM pacing prorates by, shared by every
+	 * "plan ctd" / "proj" / "vs goal" resolver below.
+	 *
+	 * @param data campaign data whose {@code eomMonthNumber()}/{@code eomFlightMonthsTotal()} carry the pair
+	 * @return {@code [elapsedMonths, totalMonths]}, or {@code null} for EOC (or an EOM report with no
+	 * flight-months-total entered)
+	 */
+	int[] elapsedAndTotalMonths(CampaignData data) {
+		if (data == null || data.eomMonthNumber() == null || data.eomFlightMonthsTotal() == null) {
+			return null;
+		}
+		return new int[]{data.eomMonthNumber(), data.eomFlightMonthsTotal()};
+	}
+
+	/**
+	 * Resolves the prorated to-date Units goal for tactic {@code n} — impressions, or clicks/views when
+	 * the tactic's EOM plan was entered as CPC/CPV (see {@link #unitsKind}) — scaled by elapsedMonths /
+	 * totalMonths, preferring a manual override.
+	 *
+	 * @param n         one-based tactic index used to build the {@code "Tactic N imps plan ctd:"} lookup label
+	 * @param sheetRows Media Plan grid rows searched for the labelled value
+	 * @param adjRows   manual Adjustments grid rows that take precedence over the sheet
+	 * @param data      campaign data providing the full-flight plan and the elapsed/total month counts
+	 * @return the resolved prorated goal with its source tag, or a {@code not_found} placeholder when EOC,
+	 * no flight-months-total was entered, or no planned Units figure is available
+	 */
+	public Resolved resolveTacticImpsPlanCtd(int n, List<List<String>> sheetRows, List<List<String>> adjRows,
+	                                         CampaignData data) {
+		String label = "Tactic " + n + " imps plan ctd:";
+		String fromAdj = sheetUtils.findLabelValue(adjRows, label);
+		if (fromAdj != null) {
+			return new Resolved(label, fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, label);
+		if (fromSheet != null) {
+			return new Resolved(label, fromSheet, "sheet");
+		}
+		int[] months = elapsedAndTotalMonths(data);
+		Tactic t = tactic(data, n);
+		Double planUnits = planUnits(t);
+		if (months == null || planUnits == null) {
+			return new Resolved(label, null, "not_found");
+		}
+		double planCtd = pacing.planCtd(planUnits, months[0], months[1]);
+		return new Resolved(label + " (auto: plan " + unitsKind(t) + " × elapsed/total months)",
+				fmt.intGroup(planCtd), "adj");
+	}
+
+	/**
+	 * Resolves the pace-based end-of-flight Units projection for tactic {@code n}: the to-date actual
+	 * Units run-rate ({@link #unitsKind}) extrapolated across the whole flight, preferring a manual
+	 * override.
+	 *
+	 * @param n         one-based tactic index used to build the {@code "Tactic N imps proj:"} lookup label
+	 * @param sheetRows Media Plan grid rows searched for the labelled value
+	 * @param adjRows   manual Adjustments grid rows that take precedence over the sheet
+	 * @param data      campaign data providing the to-date actual and the elapsed/total month counts
+	 * @return the resolved projection with its source tag, or a {@code not_found} placeholder when
+	 * unavailable
+	 */
+	public Resolved resolveTacticImpsProj(int n, List<List<String>> sheetRows, List<List<String>> adjRows,
+	                                      CampaignData data) {
+		String label = "Tactic " + n + " imps proj:";
+		String fromAdj = sheetUtils.findLabelValue(adjRows, label);
+		if (fromAdj != null) {
+			return new Resolved(label, fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, label);
+		if (fromSheet != null) {
+			return new Resolved(label, fromSheet, "sheet");
+		}
+		int[] months = elapsedAndTotalMonths(data);
+		Tactic t = tactic(data, n);
+		if (months == null || t == null) {
+			return new Resolved(label, null, "not_found");
+		}
+		double proj = pacing.projection(actualUnits(t), months[0], months[1]);
+		return new Resolved(label + " (auto: to-date run-rate × total months)", fmt.intGroup(proj), "adj");
+	}
+
+	/**
+	 * Resolves the Units variance of tactic {@code n}'s to-date actual against its prorated to-date
+	 * goal, preferring a manual override.
+	 *
+	 * @param n         one-based tactic index used to build the {@code "Tactic N imps vs goal:"} lookup label
+	 * @param sheetRows Media Plan grid rows searched for the labelled value
+	 * @param adjRows   manual Adjustments grid rows that take precedence over the sheet
+	 * @param data      campaign data providing the plan, the to-date actual and the elapsed/total month counts
+	 * @return the resolved variance with its source tag, or a {@code not_found} placeholder when the
+	 * goal or actual can't be computed
+	 */
+	public Resolved resolveTacticImpsVsGoal(int n, List<List<String>> sheetRows, List<List<String>> adjRows,
+	                                        CampaignData data) {
+		String label = "Tactic " + n + " imps vs goal:";
+		String fromAdj = sheetUtils.findLabelValue(adjRows, label);
+		if (fromAdj != null) {
+			return new Resolved(label, fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, label);
+		if (fromSheet != null) {
+			return new Resolved(label, fromSheet, "sheet");
+		}
+		int[] months = elapsedAndTotalMonths(data);
+		Tactic t = tactic(data, n);
+		Double planUnits = planUnits(t);
+		if (months == null || t == null || planUnits == null) {
+			return new Resolved(label, null, "not_found");
+		}
+		double planCtd = pacing.planCtd(planUnits, months[0], months[1]);
+		String variance = pacing.paceVariance(actualUnits(t), planCtd, false);
+		if (variance == null) {
+			return new Resolved(label, null, "not_found");
+		}
+		return new Resolved(label + " (auto: to-date actual vs prorated goal)", variance, "adj");
+	}
+
+	/**
+	 * Resolves the prorated to-date CTR goal for tactic {@code n}. Click-through rate is a target
+	 * percentage rather than a volume, so it does not scale with elapsed time: the to-date goal is the
+	 * same as the full-flight planned CTR, preferring a manual override.
+	 *
+	 * @param n         one-based tactic index used to build the {@code "Tactic N ctr plan ctd:"} lookup label
+	 * @param sheetRows Media Plan grid rows searched for the labelled value
+	 * @param adjRows   manual Adjustments grid rows that take precedence over the sheet
+	 * @param data      campaign data providing the full-flight planned CTR
+	 * @return the resolved goal with its source tag, or a {@code not_found} placeholder when no planned
+	 * CTR is available
+	 */
+	public Resolved resolveTacticCtrPlanCtd(int n, List<List<String>> sheetRows, List<List<String>> adjRows,
+	                                        CampaignData data) {
+		String label = "Tactic " + n + " ctr plan ctd:";
+		String fromAdj = sheetUtils.findLabelValue(adjRows, label);
+		if (fromAdj != null) {
+			return new Resolved(label, fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, label);
+		if (fromSheet != null) {
+			return new Resolved(label, fromSheet, "sheet");
+		}
+		Tactic t = tactic(data, n);
+		Double planCtr = t == null ? null : t.planCtr();
+		if (planCtr == null) {
+			return new Resolved(label, null, "not_found");
+		}
+		return new Resolved(label + " (auto: Estimates CTR, rate target unaffected by elapsed time)",
+				fmt.dec2(planCtr) + "%", "adj");
+	}
+
+	/**
+	 * Resolves the projected end-of-flight CTR for tactic {@code n}. A rate metric's projection is
+	 * simply the to-date observed rate carried forward (rates don't accumulate the way volumes do),
+	 * preferring a manual override.
+	 *
+	 * @param n         one-based tactic index used to build the {@code "Tactic N ctr proj:"} lookup label
+	 * @param sheetRows Media Plan grid rows searched for the labelled value
+	 * @param adjRows   manual Adjustments grid rows that take precedence over the sheet
+	 * @param data      campaign data providing the to-date actual CTR
+	 * @return the resolved projection with its source tag, or a {@code not_found} placeholder when no
+	 * to-date actual CTR is available
+	 */
+	public Resolved resolveTacticCtrProj(int n, List<List<String>> sheetRows, List<List<String>> adjRows,
+	                                     CampaignData data) {
+		String label = "Tactic " + n + " ctr proj:";
+		String fromAdj = sheetUtils.findLabelValue(adjRows, label);
+		if (fromAdj != null) {
+			return new Resolved(label, fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, label);
+		if (fromSheet != null) {
+			return new Resolved(label, fromSheet, "sheet");
+		}
+		Tactic t = tactic(data, n);
+		Double ctr = t == null ? null : t.ctr();
+		if (ctr == null) {
+			return new Resolved(label, null, "not_found");
+		}
+		return new Resolved(label + " (auto: to-date actual rate held flat)", fmt.dec2(ctr) + "%", "adj");
+	}
+
+	/**
+	 * Resolves the CTR variance of tactic {@code n}'s to-date actual against its planned CTR (in
+	 * percentage points), preferring a manual override.
+	 *
+	 * @param n         one-based tactic index used to build the {@code "Tactic N ctr vs goal:"} lookup label
+	 * @param sheetRows Media Plan grid rows searched for the labelled value
+	 * @param adjRows   manual Adjustments grid rows that take precedence over the sheet
+	 * @param data      campaign data providing the planned CTR and the to-date actual CTR
+	 * @return the resolved variance with its source tag, or a {@code not_found} placeholder when the
+	 * goal or actual can't be computed
+	 */
+	public Resolved resolveTacticCtrVsGoal(int n, List<List<String>> sheetRows, List<List<String>> adjRows,
+	                                       CampaignData data) {
+		String label = "Tactic " + n + " ctr vs goal:";
+		String fromAdj = sheetUtils.findLabelValue(adjRows, label);
+		if (fromAdj != null) {
+			return new Resolved(label, fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, label);
+		if (fromSheet != null) {
+			return new Resolved(label, fromSheet, "sheet");
+		}
+		Tactic t = tactic(data, n);
+		Double planCtr = t == null ? null : t.planCtr();
+		Double ctr = t == null ? null : t.ctr();
+		if (planCtr == null || ctr == null) {
+			return new Resolved(label, null, "not_found");
+		}
+		String variance = pacing.paceVariance(ctr, planCtr, true);
+		return new Resolved(label + " (auto: to-date actual vs planned rate)", variance, "adj");
+	}
+
+	/**
+	 * Resolves the prorated to-date VCR goal for tactic {@code n}; a rate target, unaffected by elapsed
+	 * time, preferring a manual override.
+	 *
+	 * @param n         one-based tactic index used to build the {@code "Tactic N vcr plan ctd:"} lookup label
+	 * @param sheetRows Media Plan grid rows searched for the labelled value
+	 * @param adjRows   manual Adjustments grid rows that take precedence over the sheet
+	 * @param data      campaign data providing the full-flight planned VCR
+	 * @return the resolved goal with its source tag, or a {@code not_found} placeholder when no planned
+	 * VCR is available
+	 */
+	public Resolved resolveTacticVcrPlanCtd(int n, List<List<String>> sheetRows, List<List<String>> adjRows,
+	                                        CampaignData data) {
+		String label = "Tactic " + n + " vcr plan ctd:";
+		String fromAdj = sheetUtils.findLabelValue(adjRows, label);
+		if (fromAdj != null) {
+			return new Resolved(label, fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, label);
+		if (fromSheet != null) {
+			return new Resolved(label, fromSheet, "sheet");
+		}
+		Tactic t = tactic(data, n);
+		Double planVcr = t == null ? null : t.planVcr();
+		if (planVcr == null) {
+			return new Resolved(label, null, "not_found");
+		}
+		return new Resolved(label + " (auto: Estimates VCR, rate target unaffected by elapsed time)",
+				Math.round(planVcr) + "%", "adj");
+	}
+
+	/**
+	 * Resolves the projected end-of-flight VCR for tactic {@code n}, carrying the to-date observed rate
+	 * forward, preferring a manual override.
+	 *
+	 * @param n         one-based tactic index used to build the {@code "Tactic N vcr proj:"} lookup label
+	 * @param sheetRows Media Plan grid rows searched for the labelled value
+	 * @param adjRows   manual Adjustments grid rows that take precedence over the sheet
+	 * @param data      campaign data providing the to-date actual VCR
+	 * @return the resolved projection with its source tag, or a {@code not_found} placeholder when no
+	 * to-date actual VCR is available
+	 */
+	public Resolved resolveTacticVcrProj(int n, List<List<String>> sheetRows, List<List<String>> adjRows,
+	                                     CampaignData data) {
+		String label = "Tactic " + n + " vcr proj:";
+		String fromAdj = sheetUtils.findLabelValue(adjRows, label);
+		if (fromAdj != null) {
+			return new Resolved(label, fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, label);
+		if (fromSheet != null) {
+			return new Resolved(label, fromSheet, "sheet");
+		}
+		Tactic t = tactic(data, n);
+		Double vcr = t == null ? null : t.vcr();
+		if (vcr == null) {
+			return new Resolved(label, null, "not_found");
+		}
+		return new Resolved(label + " (auto: to-date actual rate held flat)", Math.round(vcr) + "%", "adj");
+	}
+
+	/**
+	 * Resolves the VCR variance of tactic {@code n}'s to-date actual against its planned VCR (in
+	 * percentage points), preferring a manual override.
+	 *
+	 * @param n         one-based tactic index used to build the {@code "Tactic N vcr vs goal:"} lookup label
+	 * @param sheetRows Media Plan grid rows searched for the labelled value
+	 * @param adjRows   manual Adjustments grid rows that take precedence over the sheet
+	 * @param data      campaign data providing the planned VCR and the to-date actual VCR
+	 * @return the resolved variance with its source tag, or a {@code not_found} placeholder when the
+	 * goal or actual can't be computed
+	 */
+	public Resolved resolveTacticVcrVsGoal(int n, List<List<String>> sheetRows, List<List<String>> adjRows,
+	                                       CampaignData data) {
+		String label = "Tactic " + n + " vcr vs goal:";
+		String fromAdj = sheetUtils.findLabelValue(adjRows, label);
+		if (fromAdj != null) {
+			return new Resolved(label, fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, label);
+		if (fromSheet != null) {
+			return new Resolved(label, fromSheet, "sheet");
+		}
+		Tactic t = tactic(data, n);
+		Double planVcr = t == null ? null : t.planVcr();
+		Double vcr = t == null ? null : t.vcr();
+		if (planVcr == null || vcr == null) {
+			return new Resolved(label, null, "not_found");
+		}
+		String variance = pacing.paceVariance(vcr, planVcr, true);
+		return new Resolved(label + " (auto: to-date actual vs planned rate)", variance, "adj");
+	}
+
+	/**
+	 * Resolves the prorated to-date completions goal for tactic {@code n}, derived as planned
+	 * impressions × planned VCR (no direct Estimates-tab completions figure exists), scaled by
+	 * elapsedMonths / totalMonths, preferring a manual override.
+	 *
+	 * @param n         one-based tactic index used to build the {@code "Tactic N completions plan ctd:"} lookup label
+	 * @param sheetRows Media Plan grid rows searched for the labelled value
+	 * @param adjRows   manual Adjustments grid rows that take precedence over the sheet
+	 * @param data      campaign data providing the planned impressions/VCR and the elapsed/total month counts
+	 * @return the resolved prorated goal with its source tag, or a {@code not_found} placeholder when the
+	 * inputs are unavailable
+	 */
+	public Resolved resolveTacticCompletionsPlanCtd(int n, List<List<String>> sheetRows, List<List<String>> adjRows,
+	                                                CampaignData data) {
+		String label = "Tactic " + n + " completions plan ctd:";
+		String fromAdj = sheetUtils.findLabelValue(adjRows, label);
+		if (fromAdj != null) {
+			return new Resolved(label, fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, label);
+		if (fromSheet != null) {
+			return new Resolved(label, fromSheet, "sheet");
+		}
+		int[] months = elapsedAndTotalMonths(data);
+		Double planCompletions = planCompletions(data, n);
+		if (months == null || planCompletions == null) {
+			return new Resolved(label, null, "not_found");
+		}
+		double planCtd = pacing.planCtd(planCompletions, months[0], months[1]);
+		return new Resolved(label + " (auto: planned imps × VCR, prorated)", fmt.intGroup(planCtd), "adj");
+	}
+
+	/**
+	 * Resolves the pace-based end-of-flight completions projection for tactic {@code n}, preferring a
+	 * manual override.
+	 *
+	 * @param n         one-based tactic index used to build the {@code "Tactic N completions proj:"} lookup label
+	 * @param sheetRows Media Plan grid rows searched for the labelled value
+	 * @param adjRows   manual Adjustments grid rows that take precedence over the sheet
+	 * @param data      campaign data providing the to-date actual completions and the elapsed/total month counts
+	 * @return the resolved projection with its source tag, or a {@code not_found} placeholder when
+	 * unavailable
+	 */
+	public Resolved resolveTacticCompletionsProj(int n, List<List<String>> sheetRows, List<List<String>> adjRows,
+	                                             CampaignData data) {
+		String label = "Tactic " + n + " completions proj:";
+		String fromAdj = sheetUtils.findLabelValue(adjRows, label);
+		if (fromAdj != null) {
+			return new Resolved(label, fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, label);
+		if (fromSheet != null) {
+			return new Resolved(label, fromSheet, "sheet");
+		}
+		int[] months = elapsedAndTotalMonths(data);
+		Tactic t = tactic(data, n);
+		if (months == null || t == null) {
+			return new Resolved(label, null, "not_found");
+		}
+		double proj = pacing.projection(t.completions(), months[0], months[1]);
+		return new Resolved(label + " (auto: to-date run-rate × total months)", fmt.intGroup(proj), "adj");
+	}
+
+	/**
+	 * Resolves the completions variance of tactic {@code n}'s to-date actual against its prorated
+	 * to-date goal, preferring a manual override.
+	 *
+	 * @param n         one-based tactic index used to build the {@code "Tactic N completions vs goal:"} lookup label
+	 * @param sheetRows Media Plan grid rows searched for the labelled value
+	 * @param adjRows   manual Adjustments grid rows that take precedence over the sheet
+	 * @param data      campaign data providing the plan inputs, the to-date actual and the elapsed/total month counts
+	 * @return the resolved variance with its source tag, or a {@code not_found} placeholder when the
+	 * goal or actual can't be computed
+	 */
+	public Resolved resolveTacticCompletionsVsGoal(int n, List<List<String>> sheetRows, List<List<String>> adjRows,
+	                                               CampaignData data) {
+		String label = "Tactic " + n + " completions vs goal:";
+		String fromAdj = sheetUtils.findLabelValue(adjRows, label);
+		if (fromAdj != null) {
+			return new Resolved(label, fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, label);
+		if (fromSheet != null) {
+			return new Resolved(label, fromSheet, "sheet");
+		}
+		int[] months = elapsedAndTotalMonths(data);
+		Tactic t = tactic(data, n);
+		Double planCompletions = planCompletions(data, n);
+		if (months == null || t == null || planCompletions == null) {
+			return new Resolved(label, null, "not_found");
+		}
+		double planCtd = pacing.planCtd(planCompletions, months[0], months[1]);
+		String variance = pacing.paceVariance(t.completions(), planCtd, false);
+		if (variance == null) {
+			return new Resolved(label, null, "not_found");
+		}
+		return new Resolved(label + " (auto: to-date actual vs prorated goal)", variance, "adj");
+	}
+
+	/**
+	 * Resolves the prorated to-date reach goal for tactic {@code n}, derived as planned impressions
+	 * ÷ the same derived frequency {@link #resolveTacticReach} uses for the actual figure, scaled
+	 * by elapsedMonths / totalMonths, preferring a manual override.
+	 *
+	 * @param n         one-based tactic index used to build the {@code "Tactic N reach plan ctd:"} lookup label
+	 * @param sheetRows Media Plan grid rows searched for the labelled value
+	 * @param adjRows   manual Adjustments grid rows that take precedence over the sheet
+	 * @param data      campaign data providing the planned impressions/frequency and the elapsed/total month counts
+	 * @return the resolved prorated goal with its source tag, or a {@code not_found} placeholder when the
+	 * inputs are unavailable
+	 */
+	public Resolved resolveTacticReachPlanCtd(int n, List<List<String>> sheetRows, List<List<String>> adjRows,
+	                                          CampaignData data) {
+		String label = "Tactic " + n + " reach plan ctd:";
+		String fromAdj = sheetUtils.findLabelValue(adjRows, label);
+		if (fromAdj != null) {
+			return new Resolved(label, fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, label);
+		if (fromSheet != null) {
+			return new Resolved(label, fromSheet, "sheet");
+		}
+		int[] months = elapsedAndTotalMonths(data);
+		Double planReach = planReach(data, n);
+		if (months == null || planReach == null) {
+			return new Resolved(label, null, "not_found");
+		}
+		double planCtd = pacing.planCtd(planReach, months[0], months[1]);
+		return new Resolved(label + " (auto: planned imps ÷ freq, prorated)", fmt.intGroup(planCtd), "adj");
+	}
+
+	/**
+	 * Resolves the pace-based end-of-flight reach projection for tactic {@code n}, using the same
+	 * imps ÷ freq derivation as the actual reach figure, preferring a manual override.
+	 *
+	 * @param n         one-based tactic index used to build the {@code "Tactic N reach proj:"} lookup label
+	 * @param sheetRows Media Plan grid rows searched for the labelled value
+	 * @param adjRows   manual Adjustments grid rows that take precedence over the sheet
+	 * @param data      campaign data providing the to-date actual impressions/frequency and the elapsed/total month counts
+	 * @return the resolved projection with its source tag, or a {@code not_found} placeholder when
+	 * unavailable
+	 */
+	public Resolved resolveTacticReachProj(int n, List<List<String>> sheetRows, List<List<String>> adjRows,
+	                                       CampaignData data) {
+		String label = "Tactic " + n + " reach proj:";
+		String fromAdj = sheetUtils.findLabelValue(adjRows, label);
+		if (fromAdj != null) {
+			return new Resolved(label, fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, label);
+		if (fromSheet != null) {
+			return new Resolved(label, fromSheet, "sheet");
+		}
+		int[] months = elapsedAndTotalMonths(data);
+		Double actualReach = actualReach(data, n);
+		if (months == null || actualReach == null) {
+			return new Resolved(label, null, "not_found");
+		}
+		double proj = pacing.projection(actualReach, months[0], months[1]);
+		return new Resolved(label + " (auto: to-date run-rate × total months)", fmt.intGroup(proj), "adj");
+	}
+
+	/**
+	 * Resolves the reach variance of tactic {@code n}'s to-date actual against its prorated to-date
+	 * goal, preferring a manual override.
+	 *
+	 * @param n         one-based tactic index used to build the {@code "Tactic N reach vs goal:"} lookup label
+	 * @param sheetRows Media Plan grid rows searched for the labelled value
+	 * @param adjRows   manual Adjustments grid rows that take precedence over the sheet
+	 * @param data      campaign data providing the plan inputs, the to-date actual and the elapsed/total month counts
+	 * @return the resolved variance with its source tag, or a {@code not_found} placeholder when the
+	 * goal or actual can't be computed
+	 */
+	public Resolved resolveTacticReachVsGoal(int n, List<List<String>> sheetRows, List<List<String>> adjRows,
+	                                         CampaignData data) {
+		String label = "Tactic " + n + " reach vs goal:";
+		String fromAdj = sheetUtils.findLabelValue(adjRows, label);
+		if (fromAdj != null) {
+			return new Resolved(label, fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, label);
+		if (fromSheet != null) {
+			return new Resolved(label, fromSheet, "sheet");
+		}
+		int[] months = elapsedAndTotalMonths(data);
+		Double planReach = planReach(data, n);
+		Double actualReach = actualReach(data, n);
+		if (months == null || planReach == null || actualReach == null) {
+			return new Resolved(label, null, "not_found");
+		}
+		double planCtd = pacing.planCtd(planReach, months[0], months[1]);
+		String variance = pacing.paceVariance(actualReach, planCtd, false);
+		if (variance == null) {
+			return new Resolved(label, null, "not_found");
+		}
+		return new Resolved(label + " (auto: to-date actual vs prorated goal)", variance, "adj");
+	}
+
+	/**
+	 * Resolves the prorated to-date spend goal for tactic {@code n}, preferring a manual override.
+	 *
+	 * @param n         one-based tactic index used to build the {@code "Tactic N spend plan ctd:"} lookup label
+	 * @param sheetRows Media Plan grid rows searched for the labelled value
+	 * @param adjRows   manual Adjustments grid rows that take precedence over the sheet
+	 * @param data      campaign data providing the full-flight planned spend and the elapsed/total month counts
+	 * @return the resolved prorated goal with its source tag, or a {@code not_found} placeholder when
+	 * unavailable
+	 */
+	public Resolved resolveTacticSpendPlanCtd(int n, List<List<String>> sheetRows, List<List<String>> adjRows,
+	                                          CampaignData data) {
+		String label = "Tactic " + n + " spend plan ctd:";
+		String fromAdj = sheetUtils.findLabelValue(adjRows, label);
+		if (fromAdj != null) {
+			return new Resolved(label, fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, label);
+		if (fromSheet != null) {
+			return new Resolved(label, fromSheet, "sheet");
+		}
+		int[] months = elapsedAndTotalMonths(data);
+		Tactic t = tactic(data, n);
+		Double planSpend = t == null ? null : t.planSpend();
+		if (months == null || planSpend == null) {
+			return new Resolved(label, null, "not_found");
+		}
+		double planCtd = pacing.planCtd(planSpend, months[0], months[1]);
+		return new Resolved(label + " (auto: plan × elapsed/total months)", fmt.moneyExact(planCtd), "adj");
+	}
+
+	/**
+	 * Resolves the spend pacing percentage of tactic {@code n}'s to-date actual against its prorated
+	 * to-date budget goal, preferring a manual override.
+	 *
+	 * @param n         one-based tactic index used to build the {@code "Tactic N spend pace:"} lookup label
+	 * @param sheetRows Media Plan grid rows searched for the labelled value
+	 * @param adjRows   manual Adjustments grid rows that take precedence over the sheet
+	 * @param data      campaign data providing the plan inputs, the to-date actual spend and the elapsed/total month counts
+	 * @return the resolved pacing percentage with its source tag, or a {@code not_found} placeholder when
+	 * the goal or actual can't be computed
+	 */
+	public Resolved resolveTacticSpendPace(int n, List<List<String>> sheetRows, List<List<String>> adjRows,
+	                                       CampaignData data) {
+		String label = "Tactic " + n + " spend pace:";
+		String fromAdj = sheetUtils.findLabelValue(adjRows, label);
+		if (fromAdj != null) {
+			return new Resolved(label, fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, label);
+		if (fromSheet != null) {
+			return new Resolved(label, fromSheet, "sheet");
+		}
+		int[] months = elapsedAndTotalMonths(data);
+		Tactic t = tactic(data, n);
+		Double planSpend = t == null ? null : t.planSpend();
+		if (months == null || t == null || planSpend == null) {
+			return new Resolved(label, null, "not_found");
+		}
+		double planCtd = pacing.planCtd(planSpend, months[0], months[1]);
+		String variance = pacing.paceVariance(t.spend(), planCtd, false);
+		if (variance == null) {
+			return new Resolved(label, null, "not_found");
+		}
+		return new Resolved(label + " (auto: to-date actual vs prorated goal)", variance, "adj");
+	}
+
+	/**
+	 * Resolves the actual cost-per-thousand-impressions for tactic {@code n}, a metric that never
+	 * existed in EOC, preferring a manual override.
+	 *
+	 * @param n         one-based tactic index used to build the {@code "Tactic N cpm:"} lookup label
+	 * @param sheetRows Media Plan grid rows searched for the labelled value
+	 * @param adjRows   manual Adjustments grid rows that take precedence over the sheet
+	 * @param data      campaign data providing the to-date actual spend/impressions
+	 * @return the resolved CPM with its source tag, or a {@code not_found} placeholder when actuals are
+	 * unavailable
+	 */
+	public Resolved resolveTacticCpm(int n, List<List<String>> sheetRows, List<List<String>> adjRows,
+	                                 CampaignData data) {
+		String label = "Tactic " + n + " cpm:";
+		String fromAdj = sheetUtils.findLabelValue(adjRows, label);
+		if (fromAdj != null) {
+			return new Resolved(label, fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, label);
+		if (fromSheet != null) {
+			return new Resolved(label, fromSheet, "sheet");
+		}
+		Tactic t = tactic(data, n);
+		if (t == null || t.imps() <= 0) {
+			return new Resolved(label, null, "not_found");
+		}
+		double cpm = t.spend() / t.imps() * 1000;
+		return new Resolved(label + " (auto: to-date spend / imps × 1000)", fmt.moneyExact(cpm), "adj");
+	}
+
+	/**
+	 * Resolves the prorated to-date CPM goal for tactic {@code n}: the full-flight planned
+	 * spend/impressions ratio, a cost-efficiency target unaffected by elapsed time, preferring a manual
+	 * override.
+	 *
+	 * @param n         one-based tactic index used to build the {@code "Tactic N cpm plan ctd:"} lookup label
+	 * @param sheetRows Media Plan grid rows searched for the labelled value
+	 * @param adjRows   manual Adjustments grid rows that take precedence over the sheet
+	 * @param data      campaign data providing the full-flight planned spend/impressions
+	 * @return the resolved goal with its source tag, or a {@code not_found} placeholder when the planned
+	 * spend/impressions can't be computed
+	 */
+	public Resolved resolveTacticCpmPlanCtd(int n, List<List<String>> sheetRows, List<List<String>> adjRows,
+	                                        CampaignData data) {
+		String label = "Tactic " + n + " cpm plan ctd:";
+		String fromAdj = sheetUtils.findLabelValue(adjRows, label);
+		if (fromAdj != null) {
+			return new Resolved(label, fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, label);
+		if (fromSheet != null) {
+			return new Resolved(label, fromSheet, "sheet");
+		}
+		Double planCpm = planCpm(data, n);
+		if (planCpm == null) {
+			return new Resolved(label, null, "not_found");
+		}
+		return new Resolved(label + " (auto: planned spend / imps × 1000, rate target unaffected by elapsed time)",
+				fmt.moneyExact(planCpm), "adj");
+	}
+
+	/**
+	 * Resolves the projected end-of-flight CPM for tactic {@code n}, carrying the to-date observed cost
+	 * efficiency forward, preferring a manual override.
+	 *
+	 * @param n         one-based tactic index used to build the {@code "Tactic N cpm proj:"} lookup label
+	 * @param sheetRows Media Plan grid rows searched for the labelled value
+	 * @param adjRows   manual Adjustments grid rows that take precedence over the sheet
+	 * @param data      campaign data providing the to-date actual spend/impressions
+	 * @return the resolved projection with its source tag, or a {@code not_found} placeholder when
+	 * actuals are unavailable
+	 */
+	public Resolved resolveTacticCpmProj(int n, List<List<String>> sheetRows, List<List<String>> adjRows,
+	                                     CampaignData data) {
+		String label = "Tactic " + n + " cpm proj:";
+		String fromAdj = sheetUtils.findLabelValue(adjRows, label);
+		if (fromAdj != null) {
+			return new Resolved(label, fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, label);
+		if (fromSheet != null) {
+			return new Resolved(label, fromSheet, "sheet");
+		}
+		Tactic t = tactic(data, n);
+		if (t == null || t.imps() <= 0) {
+			return new Resolved(label, null, "not_found");
+		}
+		double cpm = t.spend() / t.imps() * 1000;
+		return new Resolved(label + " (auto: to-date actual rate held flat)", fmt.moneyExact(cpm), "adj");
+	}
+
+	/**
+	 * Resolves the CPM variance of tactic {@code n}'s to-date actual against its planned CPM, preferring
+	 * a manual override.
+	 *
+	 * @param n         one-based tactic index used to build the {@code "Tactic N cpm vs goal:"} lookup label
+	 * @param sheetRows Media Plan grid rows searched for the labelled value
+	 * @param adjRows   manual Adjustments grid rows that take precedence over the sheet
+	 * @param data      campaign data providing the planned and to-date actual spend/impressions
+	 * @return the resolved variance with its source tag, or a {@code not_found} placeholder when the
+	 * goal or actual can't be computed
+	 */
+	public Resolved resolveTacticCpmVsGoal(int n, List<List<String>> sheetRows, List<List<String>> adjRows,
+	                                       CampaignData data) {
+		String label = "Tactic " + n + " cpm vs goal:";
+		String fromAdj = sheetUtils.findLabelValue(adjRows, label);
+		if (fromAdj != null) {
+			return new Resolved(label, fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, label);
+		if (fromSheet != null) {
+			return new Resolved(label, fromSheet, "sheet");
+		}
+		Double planCpm = planCpm(data, n);
+		Tactic t = tactic(data, n);
+		if (planCpm == null || t == null || t.imps() <= 0) {
+			return new Resolved(label, null, "not_found");
+		}
+		double cpm = t.spend() / t.imps() * 1000;
+		String variance = pacing.paceVariance(cpm, planCpm, true);
+		return new Resolved(label + " (auto: to-date actual vs planned rate)", variance, "adj");
+	}
+
+	/**
+	 * Derives tactic {@code n}'s planned completions as planned impressions × planned VCR: the
+	 * Estimates tab carries no direct completions figure, but this combination of two plan fields it
+	 * does carry gives an honest estimate rather than fabricating a number with no basis.
+	 *
+	 * @param data campaign data supplying the planned impressions/VCR
+	 * @param n    one-based tactic index
+	 * @return the derived planned completions, or {@code null} when either input is missing
+	 */
+	Double planCompletions(CampaignData data, int n) {
+
+		Tactic t = tactic(data, n);
+		if (t == null || t.planImps() == null || t.planVcr() == null) {
+			return null;
+		}
+		return t.planImps() * t.planVcr() / 100;
+	}
+
+	/**
+	 * Derives tactic {@code n}'s planned reach as planned impressions ÷ the same derived frequency
+	 * {@link #resolveTacticFreq} uses for the actual figure, so plan and actual reach share one
+	 * frequency assumption.
+	 *
+	 * @param data campaign data supplying the planned impressions/max frequency
+	 * @param n    one-based tactic index
+	 * @return the derived planned reach, or {@code null} when the inputs are missing or non-positive
+	 */
+	Double planReach(CampaignData data, int n) {
+
+		Tactic t = tactic(data, n);
+		if (t == null || t.planImps() == null || t.planMaxFreq() == null || t.planMaxFreq() <= 0) {
+			return null;
+		}
+		double freq = tacticExtraction.freqFromMax(n, t.planMaxFreq());
+		return freq > 0 ? t.planImps() / freq : null;
+	}
+
+	/**
+	 * Derives tactic {@code n}'s to-date actual reach as to-date impressions ÷ the same derived
+	 * frequency {@link #resolveTacticFreq} uses for the actual figure.
+	 *
+	 * @param data campaign data supplying the to-date impressions and the planned max frequency
+	 * @param n    one-based tactic index
+	 * @return the derived actual reach, or {@code null} when the inputs are missing or non-positive
+	 */
+	Double actualReach(CampaignData data, int n) {
+
+		Tactic t = tactic(data, n);
+		if (t == null || t.planMaxFreq() == null || t.planMaxFreq() <= 0 || t.imps() <= 0) {
+			return null;
+		}
+		double freq = tacticExtraction.freqFromMax(n, t.planMaxFreq());
+		return freq > 0 ? t.imps() / freq : null;
+	}
+
+	/**
+	 * Derives tactic {@code n}'s planned CPM as planned spend ÷ planned impressions × 1000: the
+	 * Estimates tab carries no direct CPM figure, but plan spend/impressions already exist.
+	 *
+	 * @param data campaign data supplying the planned spend/impressions
+	 * @param n    one-based tactic index
+	 * @return the derived planned CPM, or {@code null} when either input is missing or impressions is
+	 * non-positive
+	 */
+	Double planCpm(CampaignData data, int n) {
+
+		Tactic t = tactic(data, n);
+		if (t == null || t.planSpend() == null || t.planImps() == null || t.planImps() <= 0) {
+			return null;
+		}
+		return t.planSpend() / t.planImps() * 1000;
 	}
 
 	String cell(List<String> row, int idx) {

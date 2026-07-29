@@ -12,64 +12,6 @@ class RatePlanCalculatorTest {
 	private final RatePlanCalculator calculator = new RatePlanCalculator();
 
 	@Test
-	void proratedBudgetShouldReturnFullMonthlyBudgetForAWholeCalendarMonthTest() {
-		// Given: a period spanning exactly January 2026 (31 days)
-		LocalDate start = LocalDate.of(2026, 1, 1);
-		LocalDate end = LocalDate.of(2026, 1, 31);
-
-		// When:
-		Double result = calculator.proratedBudget(3100.0, start, end);
-
-		// Then: the full monthly budget applies unchanged
-		assertThat(result).isEqualTo(3100.0);
-	}
-
-	@Test
-	void proratedBudgetShouldScaleByDayShareForAPartialMonthTest() {
-		// Given: only the last 10 days of a 31-day January are in the period
-		LocalDate start = LocalDate.of(2026, 1, 22);
-		LocalDate end = LocalDate.of(2026, 1, 31);
-
-		// When:
-		Double result = calculator.proratedBudget(3100.0, start, end);
-
-		// Then: 3100 * 10/31 = 1000
-		assertThat(result).isEqualTo(1000.0);
-	}
-
-	@Test
-	void proratedBudgetShouldSumEachOverlappingCalendarMonthsShareTest() {
-		// Given: a period spanning the last day of January and all of February (2026, 28 days)
-		LocalDate start = LocalDate.of(2026, 1, 31);
-		LocalDate end = LocalDate.of(2026, 2, 28);
-
-		// When:
-		Double result = calculator.proratedBudget(2800.0, start, end);
-
-		// Then: January contributes 1/31 of a month, February contributes the full month:
-		// 2800 * 1/31 + 2800 = 2890.32...
-		assertThat(result).isEqualTo(2800.0 * 1 / 31 + 2800.0);
-	}
-
-	@Test
-	void proratedBudgetShouldReturnNullWhenMonthlyBudgetIsMissingTest() {
-		// Given/When:
-		Double result = calculator.proratedBudget(null, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 31));
-
-		// Then:
-		assertThat(result).isNull();
-	}
-
-	@Test
-	void proratedBudgetShouldReturnNullWhenThePeriodIsInvertedTest() {
-		// Given/When: end before start
-		Double result = calculator.proratedBudget(1000.0, LocalDate.of(2026, 1, 31), LocalDate.of(2026, 1, 1));
-
-		// Then:
-		assertThat(result).isNull();
-	}
-
-	@Test
 	void planUnitsShouldComputeImpressionsForCpmTest() {
 		// Given: $5,000 spend at a $10 CPM
 		// When:
@@ -119,5 +61,140 @@ class RatePlanCalculatorTest {
 		// Then:
 		assertThat(noRateType).isNull();
 		assertThat(noSpend).isNull();
+	}
+
+	@Test
+	void monthsSpannedShouldCountOneForASingleCalendarMonthTest() {
+		// Given: a window entirely within January 2026
+		LocalDate start = LocalDate.of(2026, 1, 1);
+		LocalDate end = LocalDate.of(2026, 1, 31);
+
+		// When:
+		int result = calculator.monthsSpanned(start, end);
+
+		// Then:
+		assertThat(result).isEqualTo(1);
+	}
+
+	@Test
+	void monthsSpannedShouldCountEachCalendarMonthTouchedTest() {
+		// Given: a window spanning the last day of January through the first day of March
+		LocalDate start = LocalDate.of(2026, 1, 31);
+		LocalDate end = LocalDate.of(2026, 3, 1);
+
+		// When:
+		int result = calculator.monthsSpanned(start, end);
+
+		// Then: January, February, March
+		assertThat(result).isEqualTo(3);
+	}
+
+	@Test
+	void planCtdShouldScaleFullPlanByElapsedOverTotalMonthsTest() {
+		// Given: a full-flight plan of 600,000 with 2 of 6 months elapsed
+		// When:
+		Double result = calculator.planCtd(600_000.0, 2, 6);
+
+		// Then: 600,000 * 2/6 = 200,000
+		assertThat(result).isEqualTo(200_000.0);
+	}
+
+	@Test
+	void planCtdShouldReturnNullWhenFullPlanOrTotalMonthsIsMissingTest() {
+		// Given/When:
+		Double nullPlan = calculator.planCtd(null, 2, 6);
+		Double zeroTotal = calculator.planCtd(600_000.0, 2, 0);
+
+		// Then:
+		assertThat(nullPlan).isNull();
+		assertThat(zeroTotal).isNull();
+	}
+
+	@Test
+	void projectionShouldExtrapolateToDateRunRateAcrossTotalMonthsTest() {
+		// Given: 100,000 delivered after 2 of 6 months
+		// When:
+		Double result = calculator.projection(100_000.0, 2, 6);
+
+		// Then: 100,000 / 2 * 6 = 300,000
+		assertThat(result).isEqualTo(300_000.0);
+	}
+
+	@Test
+	void projectionShouldReturnNullWhenActualOrElapsedMonthsIsMissingTest() {
+		// Given/When:
+		Double nullActual = calculator.projection(null, 2, 6);
+		Double zeroElapsed = calculator.projection(100_000.0, 0, 6);
+
+		// Then:
+		assertThat(nullActual).isNull();
+		assertThat(zeroElapsed).isNull();
+	}
+
+	@Test
+	void paceVarianceShouldReturnOnPlanWhenCountIsWithinOnePercentTest() {
+		// Given: actual is 0.5% above the to-date goal
+		// When:
+		String result = calculator.paceVariance(1005.0, 1000.0, false);
+
+		// Then:
+		assertThat(result).isEqualTo("on plan");
+	}
+
+	@Test
+	void paceVarianceShouldReturnSignedPercentForACountMetricTest() {
+		// Given: actual is 10% above the to-date goal
+		// When:
+		String result = calculator.paceVariance(1100.0, 1000.0, false);
+
+		// Then:
+		assertThat(result).isEqualTo("+10%");
+	}
+
+	@Test
+	void paceVarianceShouldReturnSignedPercentagePointsForARateMetricTest() {
+		// Given: actual CTR is 0.3pp above the to-date goal
+		// When:
+		String result = calculator.paceVariance(2.3, 2.0, true);
+
+		// Then:
+		assertThat(result).isEqualTo("+0.3pp");
+	}
+
+	@Test
+	void paceVarianceShouldReturnOnPlanForARateMetricWithinThresholdTest() {
+		// Given: actual CTR is 0.02pp above the to-date goal
+		// When:
+		String result = calculator.paceVariance(2.02, 2.0, true);
+
+		// Then:
+		assertThat(result).isEqualTo("on plan");
+	}
+
+	@Test
+	void paceVarianceShouldReturnNullWhenCountGoalIsNonPositiveTest() {
+		// Given/When:
+		String result = calculator.paceVariance(100.0, 0.0, false);
+
+		// Then:
+		assertThat(result).isNull();
+	}
+
+	@Test
+	void monthLabelShouldFormatMonthAndYearTest() {
+		// Given/When:
+		String result = calculator.monthLabel(LocalDate.of(2026, 3, 15));
+
+		// Then:
+		assertThat(result).isEqualTo("March 2026");
+	}
+
+	@Test
+	void monthNameOnlyShouldFormatMonthWithoutYearTest() {
+		// Given/When:
+		String result = calculator.monthNameOnly(LocalDate.of(2026, 3, 15));
+
+		// Then:
+		assertThat(result).isEqualTo("March");
 	}
 }

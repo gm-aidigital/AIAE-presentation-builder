@@ -88,10 +88,15 @@ public class CampaignDataCollector {
 	 * @param lineItemMapping tactic-to-line-item mapping; for EOM this also carries each tactic's
 	 *                        rate/budget economics entered at matching time
 	 * @param dateFilter      user-confirmed raw-data date window (the flight window; for EOM this also
-	 *                        doubles as the reporting period the rate/budget plan figures are prorated onto)
+	 *                        doubles as the campaign-to-date reporting window — how many calendar months it
+	 *                        spans becomes {@code eom_month_number})
 	 * @param reportType      report template code; {@code "EOM"} resolves plan figures from
-	 *                        {@code lineItemMapping}'s rate/budget fields, anything else keeps resolving
-	 *                        them from the Estimates tab
+	 *                        {@code lineItemMapping}'s rate/budget fields (plus CTR/VCR/max-frequency
+	 *                        benchmarks still read from the Estimates tab), anything else keeps resolving
+	 *                        every plan figure from the Estimates tab
+	 * @param eomFlightMonthsTotal EOM-only: total months the flight spans, entered by the user once per
+	 *                        report; multiplied by each tactic's monthly budget for the full-flight plan
+	 *                        target. Ignored for any other report type.
 	 * @return the aggregated campaign data
 	 */
 	public CampaignData collect(
@@ -101,7 +106,8 @@ public class CampaignDataCollector {
 			List<List<String>> estimatesRows,
 			List<LineItemMapping> lineItemMapping,
 			DateFilter dateFilter,
-			String reportType
+			String reportType,
+			Integer eomFlightMonthsTotal
 	) {
 		if (sheetRows == null) {
 			sheetRows = List.of();
@@ -254,9 +260,11 @@ public class CampaignDataCollector {
 		}
 
 		// ── 6c/7/8: aggregate delivery rows over the flight window ─────────────
-		Map<Integer, double[]> planByTacticNum = "EOM".equals(reportType)
-				? resolveEomPlanByTacticNum(lineItemMapping, flightTs)
-				: resolvePlanByTacticNum(tacticMap, estimatesByTactic);
+		boolean isEom = "EOM".equals(reportType);
+		Map<Integer, double[]> estimatesPlan = resolvePlanByTacticNum(tacticMap, estimatesByTactic);
+		Map<Integer, double[]> planByTacticNum = isEom
+				? resolveEomPlanByTacticNum(lineItemMapping, eomFlightMonthsTotal, estimatesPlan)
+				: estimatesPlan;
 
 		LocalDate flightStart = flightTs != null ? flightTs.start() : null;
 		LocalDate flightEnd = flightTs != null ? flightTs.end() : null;
@@ -265,6 +273,11 @@ public class CampaignDataCollector {
 				flightStart, flightEnd);
 		Totals totals = flightMetrics.totals();
 		Map<Integer, Tactic> tacticsData = flightMetrics.tactics();
+
+		// EOM-only: months elapsed so far, derived from the currently selected flight window (see
+		// eomFlightMonthsTotal javadoc for why the total can't be derived the same way).
+		Integer eomMonthNumber = isEom && flightTs != null
+				? ratePlanCalculator.monthsSpanned(flightTs.start(), flightTs.end()) : null;
 
 		// ── 9. Audience tab text (Batch A) ────────────────────────────────────
 		List<String> audLines = new ArrayList<>();
@@ -292,6 +305,8 @@ public class CampaignDataCollector {
 				audienceAge, audienceSegs,
 				totals,
 				tacticsData,
+				eomMonthNumber,
+				isEom ? eomFlightMonthsTotal : null,
 				audienceTabText
 		);
 	}
@@ -320,20 +335,30 @@ public class CampaignDataCollector {
 	}
 
 	/**
-	 * Resolves each EOM tactic's planned figures from the rate/budget economics entered by the user at
-	 * matching time (joined by {@code tacticNum}, never by name), instead of the Estimates tab. The
-	 * monthly budget is prorated onto the flight window (which doubles as the EOM reporting period for
-	 * a single-month request) and converted to Plan Units by rate type.
+	 * Resolves each EOM tactic's full-flight planned figures from the rate/budget economics entered by
+	 * the user at matching time (joined by {@code tacticNum}, never by name): the monthly budget times
+	 * the user-entered flight-months total gives the full-flight spend target, converted to Plan Units
+	 * by rate type. The per-tactic {@code plan ctd} / {@code proj} pacing resolvers prorate this
+	 * full-flight figure down to the elapsed months themselves (see {@link TacticResolvers}) — this
+	 * method resolves the un-prorated, whole-flight target only, mirroring the role
+	 * {@link #resolvePlanByTacticNum} plays for EOC. CTR/VCR/max-frequency benchmarks have no rate/budget
+	 * equivalent, so they still come from {@code estimatesPlanByTacticNum} (the Estimates tab) even
+	 * for EOM.
 	 *
-	 * @param lineItemMapping tactic-to-line-item mapping carrying each tactic's rateType/unitPrice/monthlyBudget
-	 * @param flightTs        the flight window the plan figures are prorated onto
-	 * @return tactic number to its planned {@code {spend, imps, ctr, vcr, maxFreq, clicks, views}} row (the
-	 * rate/goal fields are always {@code NaN}; exactly one of imps/clicks/views is populated per rateType),
-	 * omitting tactics with no mapping entry or no flight window to prorate onto
+	 * @param lineItemMapping         tactic-to-line-item mapping carrying each tactic's
+	 *                                rateType/unitPrice/monthlyBudget
+	 * @param eomFlightMonthsTotal    total months the flight spans, entered by the user once per report;
+	 *                                {@code null} or non-positive yields no plan figures at all
+	 * @param estimatesPlanByTacticNum tactic number to its Estimates-tab row, used only for the
+	 *                                CTR/VCR/max-frequency benchmarks (indices 2-4)
+	 * @return tactic number to its planned {@code {spend, imps, ctr, vcr, maxFreq, clicks, views}} row
+	 * (exactly one of imps/clicks/views is populated per rateType), omitting tactics with no mapping entry
 	 */
-	Map<Integer, double[]> resolveEomPlanByTacticNum(List<LineItemMapping> lineItemMapping, FlightDates flightTs) {
+	Map<Integer, double[]> resolveEomPlanByTacticNum(
+			List<LineItemMapping> lineItemMapping, Integer eomFlightMonthsTotal,
+			Map<Integer, double[]> estimatesPlanByTacticNum) {
 		Map<Integer, double[]> out = new LinkedHashMap<>();
-		if (flightTs == null) {
+		if (eomFlightMonthsTotal == null || eomFlightMonthsTotal <= 0) {
 			return out;
 		}
 		for (LineItemMapping m : lineItemMapping) {
@@ -341,18 +366,20 @@ public class CampaignDataCollector {
 			if (num == null || num <= 0) {
 				continue;
 			}
-			Double proratedSpend = ratePlanCalculator.proratedBudget(m.monthlyBudget(), flightTs.start(),
-					flightTs.end());
-			Double units = ratePlanCalculator.planUnits(proratedSpend, m.unitPrice(), m.rateType());
-			double spend = proratedSpend == null ? Double.NaN : proratedSpend;
+			Double fullBudget = m.monthlyBudget() == null ? null : m.monthlyBudget() * eomFlightMonthsTotal;
+			Double units = ratePlanCalculator.planUnits(fullBudget, m.unitPrice(), m.rateType());
+			double spend = fullBudget == null ? Double.NaN : fullBudget;
 			double imps = units != null && m.rateType() == RateType.CPM ? units : Double.NaN;
 			double clicks = units != null && m.rateType() == RateType.CPC ? units : Double.NaN;
 			double views = units != null && m.rateType() == RateType.CPV ? units : Double.NaN;
+			double[] estimates = estimatesPlanByTacticNum.get(num);
+			double ctr = estimates != null ? estimates[2] : Double.NaN;
+			double vcr = estimates != null ? estimates[3] : Double.NaN;
+			double maxFreq = estimates != null ? estimates[4] : Double.NaN;
 			log.info("[eom-plan] tacticNum={} rateType={} unitPrice={} monthlyBudget={} "
-							+ "flightTs=[{}..{}] proratedSpend={} units={}",
-					num, m.rateType(), m.unitPrice(), m.monthlyBudget(), flightTs.start(), flightTs.end(),
-					proratedSpend, units);
-			out.putIfAbsent(num, new double[]{spend, imps, Double.NaN, Double.NaN, Double.NaN, clicks, views});
+							+ "flightMonthsTotal={} fullBudget={} units={}",
+					num, m.rateType(), m.unitPrice(), m.monthlyBudget(), eomFlightMonthsTotal, fullBudget, units);
+			out.putIfAbsent(num, new double[]{spend, imps, ctr, vcr, maxFreq, clicks, views});
 		}
 		return out;
 	}

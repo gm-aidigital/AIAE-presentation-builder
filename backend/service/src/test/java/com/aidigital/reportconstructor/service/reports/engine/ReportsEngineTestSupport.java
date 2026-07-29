@@ -54,11 +54,12 @@ public final class ReportsEngineTestSupport {
 	}
 
 	static CampaignResolvers campaignResolvers() {
-		return new CampaignResolvers(sheetRowHelper(), fmt(), tacticExtractionHelper());
+		return new CampaignResolvers(sheetRowHelper(), fmt(), tacticExtractionHelper(), ratePlanCalculator());
 	}
 
 	static TacticResolvers tacticResolvers() {
-		return new TacticResolvers(sheetRowHelper(), fmt(), tacticExtractionHelper(), campaignResolvers());
+		return new TacticResolvers(sheetRowHelper(), fmt(), tacticExtractionHelper(), campaignResolvers(),
+				ratePlanCalculator());
 	}
 
 	public static PlaceholderSectionBuilderImpl placeholderSectionBuilder() {

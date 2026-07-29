@@ -25,7 +25,8 @@ class TacticResolversTest {
 		SheetRowHelper sheetUtils = ReportsEngineTestSupport.sheetRowHelper();
 		tacticUtils = ReportsEngineTestSupport.tacticExtractionHelper();
 		resolvers = new TacticResolvers(sheetUtils, new Fmt(), tacticUtils,
-				new CampaignResolvers(sheetUtils, new Fmt(), tacticUtils));
+				new CampaignResolvers(sheetUtils, new Fmt(), tacticUtils, new RatePlanCalculator()),
+				new RatePlanCalculator());
 	}
 
 	@Test

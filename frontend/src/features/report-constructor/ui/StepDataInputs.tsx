@@ -9,6 +9,7 @@ export interface InputErrors {
     sheet: boolean;
     adj: boolean;
     dates: boolean;
+    eomFlightMonthsTotal: boolean;
 }
 
 interface Props {
@@ -177,6 +178,7 @@ export function StepDataInputs({
     const changeLogDone = w.changeLog.trim().length > 0;
     const marketDone = w.marketVolume.trim().length > 0;
     const datesDone = !!w.dateStart && !!w.dateEnd;
+    const flightMonthsDone = Number(w.eomFlightMonthsTotal) > 0;
     const bothConnected = !!w.mediaPlan && !!w.elevate;
     const matched = (w.mapping ?? []).filter((m) => m.lineItemId).length;
     const matchTotal = (w.mapping ?? []).length;
@@ -321,6 +323,33 @@ export function StepDataInputs({
                         {errors.dates && <div className="rc-field__error">Flight dates are required.</div>}
                     </div>
 
+                    {w.reportType === "EOM" && (
+                        <div className="rc-field">
+                            <label className="rc-field__label">Total months in flight</label>
+                            <input
+                                type="number"
+                                inputMode="numeric"
+                                min={1}
+                                step={1}
+                                className="rc-input"
+                                placeholder="e.g. 3"
+                                value={w.eomFlightMonthsTotal}
+                                onChange={(e) => {
+                                    w.setEomFlightMonthsTotal(e.target.value);
+                                    clearError("eomFlightMonthsTotal");
+                                }}
+                            />
+                            <div className="rc-field__hint">
+                                How many calendar months the full campaign flight spans. Multiplied by each
+                                tactic's monthly budget (entered while matching line items) to get the
+                                full-flight goal this report's pacing is measured against.
+                            </div>
+                            {errors.eomFlightMonthsTotal && (
+                                <div className="rc-field__error">Total months in flight is required for EOM reports.</div>
+                            )}
+                        </div>
+                    )}
+
                     {bothConnected && (
                         <div className={`rc-match${w.matchConfirmed ? " rc-match--done" : ""}`}>
                             <div className="rc-match__text">
@@ -382,6 +411,13 @@ export function StepDataInputs({
                             value={w.elevate ? "Connected" : "Waiting"}
                         />
                         <StatusRow label="Flight dates" done={datesDone} value={datesDone ? "Set" : "Waiting"} />
+                        {w.reportType === "EOM" && (
+                            <StatusRow
+                                label="Months in flight"
+                                done={flightMonthsDone}
+                                value={flightMonthsDone ? w.eomFlightMonthsTotal : "Waiting"}
+                            />
+                        )}
                     </div>
                 </aside>
             </div>

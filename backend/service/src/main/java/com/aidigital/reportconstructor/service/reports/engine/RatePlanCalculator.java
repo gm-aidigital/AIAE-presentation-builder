@@ -4,64 +4,143 @@ import com.aidigital.reportconstructor.service.reports.dto.RateType;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
-import java.time.YearMonth;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.util.Locale;
 
 /**
- * Pure EOM plan-value math: prorates a tactic's monthly budget onto the reporting period, then
- * converts the prorated spend into Plan Units (impressions/clicks/views) per its rate type.
+ * Pure math behind EOM plan values: converting a tactic's rate/budget into Plan Units, prorating a
+ * full-flight plan down to the elapsed months (campaign-to-date), extrapolating the to-date actual
+ * back up to the full flight, and the calendar labels ({@code eom_month_number},
+ * {@code eom_report_month}, ...) shown alongside them. Holds no campaign data itself — every method
+ * takes its inputs explicitly, so it stays trivial to unit-test.
  */
 @Component
 public class RatePlanCalculator {
 
-	/**
-	 * Prorates a tactic's monthly budget onto {@code [periodStart, periodEnd]}, summing each
-	 * overlapping calendar month's share by day count. Collapses to {@code monthlyBudget}
-	 * unchanged when the period is exactly one full calendar month (the normal "one report = one
-	 * month" case); a period covering only part of a month at either edge gets only that month's
-	 * day share.
-	 *
-	 * @param monthlyBudget the tactic's monthly budget entered at matching time
-	 * @param periodStart   first day of the reporting period (inclusive)
-	 * @param periodEnd     last day of the reporting period (inclusive)
-	 * @return the prorated spend for the period, or {@code null} when any input is missing or the
-	 * range is inverted
-	 */
-	Double proratedBudget(Double monthlyBudget, LocalDate periodStart, LocalDate periodEnd) {
-		if (monthlyBudget == null || periodStart == null || periodEnd == null || periodStart.isAfter(periodEnd)) {
-			return null;
-		}
-		double total = 0;
-		LocalDate cursor = periodStart;
-		while (!cursor.isAfter(periodEnd)) {
-			YearMonth month = YearMonth.from(cursor);
-			LocalDate monthEnd = month.atEndOfMonth();
-			LocalDate sliceEnd = monthEnd.isBefore(periodEnd) ? monthEnd : periodEnd;
-			long daysInSlice = ChronoUnit.DAYS.between(cursor, sliceEnd) + 1;
-			total += monthlyBudget * daysInSlice / month.lengthOfMonth();
-			cursor = sliceEnd.plusDays(1);
-		}
-		return total;
-	}
+	private static final DateTimeFormatter MONTH_YEAR = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.US);
+	private static final DateTimeFormatter MONTH_ONLY = DateTimeFormatter.ofPattern("MMMM", Locale.US);
+	private static final double RATE_ON_PLAN_THRESHOLD_PP = 0.05;
+	private static final double COUNT_ON_PLAN_THRESHOLD_PCT = 1.0;
 
 	/**
-	 * Converts a prorated spend figure into Plan Units for the given rate type: planned
-	 * impressions for CPM ({@code spend / price × 1000}), planned clicks for CPC, planned views
-	 * for CPV (both {@code spend / price}).
+	 * Converts a spend amount into Plan Units for the given rate type: planned impressions for CPM
+	 * ({@code spend / price × 1000}), planned clicks for CPC, planned views for CPV (both
+	 * {@code spend / price}).
 	 *
-	 * @param proratedSpend the period's prorated spend, see {@link #proratedBudget}
-	 * @param unitPrice     the final unit price entered at matching time
-	 * @param rateType      how the tactic's cost is bought
+	 * @param spendAmount the spend figure to convert (e.g. a full-flight or to-date budget)
+	 * @param unitPrice   the final unit price entered at matching time
+	 * @param rateType    how the tactic's cost is bought
 	 * @return the Plan Units figure, or {@code null} when any input is missing, {@code rateType} is
 	 * {@code null}, or {@code unitPrice} is not positive
 	 */
-	Double planUnits(Double proratedSpend, Double unitPrice, RateType rateType) {
-		if (proratedSpend == null || unitPrice == null || unitPrice <= 0 || rateType == null) {
+	Double planUnits(Double spendAmount, Double unitPrice, RateType rateType) {
+		if (spendAmount == null || unitPrice == null || unitPrice <= 0 || rateType == null) {
 			return null;
 		}
 		return switch (rateType) {
-			case CPM -> proratedSpend / unitPrice * 1000;
-			case CPC, CPV -> proratedSpend / unitPrice;
+			case CPM -> spendAmount / unitPrice * 1000;
+			case CPC, CPV -> spendAmount / unitPrice;
 		};
+	}
+
+	/**
+	 * Counts the calendar months a date range spans (e.g. Feb 9 – Mar 15 spans 2: February and March),
+	 * regardless of exact day-of-month alignment. Used for {@code eom_month_number} (months elapsed
+	 * so far, from the currently selected Flight dates window).
+	 *
+	 * @param start first day of the range (inclusive)
+	 * @param end   last day of the range (inclusive)
+	 * @return the number of distinct calendar months the range touches, at least 1
+	 */
+	int monthsSpanned(LocalDate start, LocalDate end) {
+		return (int) ChronoUnit.MONTHS.between(start.withDayOfMonth(1), end.withDayOfMonth(1)) + 1;
+	}
+
+	/**
+	 * Prorates a full-flight plan figure down to the months elapsed so far: {@code fullPlan *
+	 * elapsedMonths / totalMonths}. Passing {@code elapsedMonths == totalMonths} returns
+	 * {@code fullPlan} unchanged (the last reporting month).
+	 *
+	 * @param fullPlan      the whole-flight planned target
+	 * @param elapsedMonths months elapsed so far (see {@link #monthsSpanned})
+	 * @param totalMonths   total months the flight spans
+	 * @return the prorated to-date goal, or {@code null} when {@code fullPlan} is {@code null} or
+	 * {@code totalMonths} is not positive
+	 */
+	Double planCtd(Double fullPlan, int elapsedMonths, int totalMonths) {
+		if (fullPlan == null || totalMonths <= 0) {
+			return null;
+		}
+		return fullPlan * elapsedMonths / (double) totalMonths;
+	}
+
+	/**
+	 * Extrapolates the to-date actual's run-rate across the whole flight: {@code actual /
+	 * elapsedMonths * totalMonths}. This is the "where will we land if the current pace holds" figure.
+	 *
+	 * @param actual        the actual metric value observed so far (campaign-to-date)
+	 * @param elapsedMonths months elapsed so far (see {@link #monthsSpanned})
+	 * @param totalMonths   total months the flight spans
+	 * @return the pace-based projection across the full flight, or {@code null} when {@code actual} is
+	 * {@code null} or {@code elapsedMonths} is not positive
+	 */
+	Double projection(Double actual, int elapsedMonths, int totalMonths) {
+		if (actual == null || elapsedMonths <= 0) {
+			return null;
+		}
+		return actual / elapsedMonths * totalMonths;
+	}
+
+	/**
+	 * Formats the variance of the to-date actual against its prorated goal: a signed percentage-point
+	 * delta for rate metrics (CTR/VCR, already expressed as percentages) or a signed relative
+	 * percentage for count/currency metrics (impressions, spend, ...), collapsing to {@code "on plan"}
+	 * within a small tolerance band.
+	 *
+	 * @param actual  the to-date actual metric value
+	 * @param planCtd the to-date prorated goal for the same metric
+	 * @param isRate  {@code true} for a rate metric (CTR/VCR: variance in percentage points),
+	 *                {@code false} for a count/currency metric (variance as a relative percentage)
+	 * @return the formatted variance (e.g. {@code "+11%"}, {@code "+0.3pp"}, {@code "on plan"}), or
+	 * {@code null} when a relative percentage can't be computed ({@code planCtd <= 0})
+	 */
+	String paceVariance(double actual, double planCtd, boolean isRate) {
+		if (isRate) {
+			double diffPp = actual - planCtd;
+			if (Math.abs(diffPp) < RATE_ON_PLAN_THRESHOLD_PP) {
+				return "on plan";
+			}
+			return (diffPp > 0 ? "+" : "") + String.format(Locale.US, "%.1f", diffPp) + "pp";
+		}
+		if (planCtd <= 0) {
+			return null;
+		}
+		double pct = (actual - planCtd) / planCtd * 100;
+		if (Math.abs(pct) < COUNT_ON_PLAN_THRESHOLD_PCT) {
+			return "on plan";
+		}
+		return (pct > 0 ? "+" : "") + Math.round(pct) + "%";
+	}
+
+	/**
+	 * Formats a date's calendar month and year, e.g. {@code "October 2025"}.
+	 *
+	 * @param date the date whose month/year to format
+	 * @return the {@code "MMMM yyyy"} label
+	 */
+	String monthLabel(LocalDate date) {
+		return date.format(MONTH_YEAR);
+	}
+
+	/**
+	 * Formats a date's calendar month name only (no year), e.g. {@code "November"} — used for the
+	 * "next month" focus slide, which names the upcoming month without restating the year.
+	 *
+	 * @param date the date whose month to format
+	 * @return the {@code "MMMM"} label
+	 */
+	String monthNameOnly(LocalDate date) {
+		return date.format(MONTH_ONLY);
 	}
 }
