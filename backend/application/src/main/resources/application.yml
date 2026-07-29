@@ -60,6 +60,9 @@ logging:
   level:
     root: INFO
     org.zalando.logbook: TRACE   # TRACE on the logbook logger → emit req/resp lines
+    # DEBUG here dumps the full text of any Claude reply that failed to parse, so a section failure can be
+    # diagnosed on a deployed run without widening every other logger.
+    com.aidigital.reportconstructor.externalservices.anthropic: ${CLAUDE_LOG_LEVEL:INFO}
 
 # App-specific config — these become AuthProperties / UsageLoggingProperties
 # via @ConfigurationProperties("app.auth") and ("app.usage-logging").
