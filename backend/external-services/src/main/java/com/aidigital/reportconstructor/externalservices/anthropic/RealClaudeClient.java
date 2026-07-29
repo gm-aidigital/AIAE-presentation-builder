@@ -1,5 +1,6 @@
 package com.aidigital.reportconstructor.externalservices.anthropic;
 
+import com.aidigital.reportconstructor.service.reports.diagnostics.ClaudeFailureLog;
 import com.aidigital.reportconstructor.service.reports.dto.AudienceInsightInput;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTakeawayInput;
@@ -231,6 +232,8 @@ public class RealClaudeClient implements ClaudeClient {
 	private final ReportClaudeDefaults claudeDefaults;
 	private final WorkbookGeoFilter geoFilter;
 	private final PromptTokenEstimator tokenEstimator;
+	/** Run-scoped sink the reasons rejected replies were thrown away go to, for the report's own card. */
+	private final ClaudeFailureLog failureLog;
 	/** Tactics per Step-2 combined conclusions call; bound from config, clamped to at least 1. */
 	private final int breakdownChunkSize;
 	/** Whether each breakdown section is produced by its own dedicated per-tactic call; bound from config. */
@@ -246,6 +249,7 @@ public class RealClaudeClient implements ClaudeClient {
 			ReportClaudeDefaults claudeDefaults,
 			WorkbookGeoFilter geoFilter,
 			PromptTokenEstimator tokenEstimator,
+			ClaudeFailureLog failureLog,
 			AnthropicProperties anthropicProperties) {
 		this.messagesClient = messagesClient;
 		this.promptBuilder = promptBuilder;
@@ -254,6 +258,7 @@ public class RealClaudeClient implements ClaudeClient {
 		this.claudeDefaults = claudeDefaults;
 		this.geoFilter = geoFilter;
 		this.tokenEstimator = tokenEstimator;
+		this.failureLog = failureLog;
 		this.breakdownChunkSize = Math.max(1, anthropicProperties.getBreakdownChunkSize());
 		this.perSectionCallsEnabled = anthropicProperties.isPerSectionCallsEnabled();
 		this.sectionRetries = Math.max(0, anthropicProperties.getSectionRetries());
@@ -353,7 +358,23 @@ public class RealClaudeClient implements ClaudeClient {
 		}
 		log.warn("[claude:{}] tactic {} produced no usable copy after {} attempt(s) — its fields ship blank",
 				label, tacticNum, attempts);
+		failureLog.record(label, "tactic " + tacticNum + " gave up after " + attempts
+				+ " attempt(s); its slide fields ship blank.");
 		return List.of();
+	}
+
+	/**
+	 * Reports one rejected section reply to both audiences at once: the server log, and the run's failure
+	 * scope so the reason reaches the "Report ready" card of the person who ran the report — who, on a hosted
+	 * deployment, is the one person who cannot read the log.
+	 *
+	 * @param label     short tag identifying the section, e.g. {@code "PublisherSection"}
+	 * @param tacticNum the tactic whose section reply was rejected
+	 * @param reason    what was wrong with the reply, in words that survive being shown to a user
+	 */
+	void rejectSection(String label, int tacticNum, String reason) {
+		log.warn("[claude:{}] tactic {} rejected: {}", label, tacticNum, reason);
+		failureLog.record(label, "tactic " + tacticNum + " — " + reason + ".");
 	}
 
 	/**
@@ -380,7 +401,7 @@ public class RealClaudeClient implements ClaudeClient {
 		if (arr == null || !arr.isArray()) {
 			// The call itself failed or the reply was not an array; the transport already logged the cause, so
 			// this line only ties that cause to the section and tactic whose fields are about to ship blank.
-			log.warn("[claude:{}] tactic {} rejected: no JSON array in the reply", label, tacticNum);
+			rejectSection(label, tacticNum, "no JSON array in the reply");
 			return List.of();
 		}
 		// Tolerate an accidental one-level wrapper array — the model sometimes returns [[...]] (an array whose
@@ -390,16 +411,16 @@ public class RealClaudeClient implements ClaudeClient {
 			arr = arr.get(0);
 		}
 		if (arr.size() != count) {
-			log.warn("[claude:{}] tactic {} rejected: array holds {} item(s), expected {}",
-					label, tacticNum, arr.size(), count);
+			rejectSection(label, tacticNum,
+					"the reply held " + arr.size() + " item(s), expected " + count);
 			return List.of();
 		}
 		List<String> raw = new ArrayList<>(count);
 		for (int i = 0; i < count; i++) {
 			String value = arr.get(i).asText("").trim();
 			if (value.isBlank()) {
-				log.warn("[claude:{}] tactic {} rejected: item {} of {} is blank (node type {})",
-						label, tacticNum, i, count, arr.get(i).getNodeType());
+				rejectSection(label, tacticNum,
+						"item " + i + " of " + count + " was blank (a " + arr.get(i).getNodeType() + " node)");
 				return List.of();
 			}
 			raw.add(value);

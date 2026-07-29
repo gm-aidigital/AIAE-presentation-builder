@@ -1,5 +1,6 @@
 package com.aidigital.reportconstructor.externalservices.anthropic;
 
+import com.aidigital.reportconstructor.service.reports.diagnostics.ClaudeFailureLog;
 import com.aidigital.reportconstructor.service.reports.usage.ClaudeUsageTracker;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -64,6 +65,9 @@ public class AnthropicMessagesClient {
 	private final ClaudeUsageTracker usageTracker;
 	private final PromptTokenEstimator tokenEstimator;
 
+	/** Run-scoped sink an unparseable reply's head goes to, so the report's own card can explain itself. */
+	private final ClaudeFailureLog failureLog;
+
 	/** Extra attempts after the first send when a transient upstream failure is retryable; at least 0. */
 	private final int maxRetries;
 
@@ -91,17 +95,20 @@ public class AnthropicMessagesClient {
 	 * @param normalizer   helper that extracts the assistant text content from a Messages API response
 	 * @param usageTracker   token accounting every call is reported to
 	 * @param tokenEstimator local prompt-size estimate, used to book a call whose reply never arrived
+	 * @param failureLog     run-scoped sink the reasons replies were rejected are collected in
 	 */
 	public AnthropicMessagesClient(
 			AnthropicProperties props,
 			ClaudeResponseNormalizer normalizer,
 			ClaudeUsageTracker usageTracker,
-			PromptTokenEstimator tokenEstimator) {
+			PromptTokenEstimator tokenEstimator,
+			ClaudeFailureLog failureLog) {
 		this.apiKey = props.getApiKey();
 		this.model = props.getModel();
 		this.normalizer = normalizer;
 		this.usageTracker = usageTracker;
 		this.tokenEstimator = tokenEstimator;
+		this.failureLog = failureLog;
 		this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
 		this.callLimiter = new Semaphore(Math.max(1, props.getMaxConcurrentCalls()));
 		this.maxRetries = Math.max(0, props.getMaxRetries());
@@ -327,6 +334,10 @@ public class AnthropicMessagesClient {
 		log.warn("[claude:{}] JSON {} parse failed ({} chars); reply began: {}",
 				label, shape, text.length(), snippet(text));
 		log.debug("[claude:{}] full unparseable reply:\n{}", label, text);
+		// The head of the reply is the one piece of evidence that says what actually broke the parse, and the
+		// person whose report degraded cannot open the server log — so it goes on their result card too.
+		failureLog.record(label, "reply was not valid JSON (" + shape + ", " + text.length()
+				+ " chars); it began: " + snippet(text));
 	}
 
 	/**

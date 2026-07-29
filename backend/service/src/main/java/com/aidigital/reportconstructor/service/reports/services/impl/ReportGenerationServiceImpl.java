@@ -50,6 +50,8 @@ import com.aidigital.reportconstructor.service.reports.ports.SlidesProvider;
 import com.aidigital.reportconstructor.service.reports.ports.UserGoogleTokenProvider;
 import com.aidigital.reportconstructor.service.reports.services.PlaceholderResolverService;
 import com.aidigital.reportconstructor.service.reports.services.ReportGenerationService;
+import com.aidigital.reportconstructor.service.reports.diagnostics.ClaudeFailureLog;
+import com.aidigital.reportconstructor.service.reports.diagnostics.ClaudeFailureScope;
 import com.aidigital.reportconstructor.service.reports.usage.ClaudeUsageScope;
 import com.aidigital.reportconstructor.service.reports.usage.ClaudeUsageTracker;
 import lombok.RequiredArgsConstructor;
@@ -130,6 +132,8 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	private final AsyncTaskExecutor applicationTaskExecutor;
 	/** Per-run Claude token accounting, opened in {@link #run} and stamped onto the job when it ends. */
 	private final ClaudeUsageTracker usageTracker;
+
+	private final ClaudeFailureLog failureLog;
 	/** Reduces the request's per-tactic breakdown selections into the typed enabled-sections map. */
 	private final BreakdownSelectionResolver breakdownResolver;
 	/** The shared "&gt; 2 breakdowns" gate deciding which tactics get Step-3 thoughts and the thoughts slide. */
@@ -178,6 +182,10 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		// still reports the tokens it burned — those are billed either way, and a failed expensive run is
 		// exactly what the admin token dashboard exists to make visible.
 		ClaudeUsageScope usageScope = usageTracker.begin(jobId, null, userEmail);
+		// Opened alongside it for the same reason, on the other axis: a reply Claude sent but the pipeline
+		// rejected only shows up in the server log, which the person who ran the report cannot read. Collecting
+		// the reasons here puts them on the result card next to the blank slide they produced.
+		failureLog.begin();
 		try {
 			if (target == GenerationTarget.SLIDES_FROM_SHEET) {
 				// Step 2 of the sheet-as-source flow: the user-reviewed sheet is the only input, so
@@ -290,6 +298,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		} finally {
 			recordUsage(jobId, usageScope);
 			usageTracker.clear();
+			failureLog.clear();
 		}
 	}
 
@@ -538,6 +547,13 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		jobWarnings.addAll(breakdownChartWarnings);
 		jobWarnings.addAll(chartWarnings);
 
+		// Every reply Claude sent that the pipeline could not use, in the order it happened: the parse failure
+		// or the wrong item count that left a slide blank, verbatim enough to act on without the server log.
+		ClaudeFailureScope failures = failureLog.current();
+		if (failures != null) {
+			jobWarnings.addAll(failures.snapshot());
+		}
+
 		jobProgress.recordArtifact(jobId, fileName, payload.sheetUrl());
 		jobProgress.markJobDone(jobId, slideUrl, warnings.serializeWarnings(jobWarnings));
 	}
@@ -598,8 +614,12 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	<T> Map<Integer, CompletableFuture<List<String>>> dispatchSection(
 			Map<Integer, T> inputs, ClaudeUsageScope usageScope, Function<T, List<String>> call) {
 		Map<Integer, CompletableFuture<List<String>>> futures = new LinkedHashMap<>();
+		// Both scopes are read here, on the run's own thread, and bound around each call on its worker thread —
+		// otherwise a section rejected off-thread would leave neither its tokens nor its reason behind.
+		ClaudeFailureScope failureScope = failureLog.current();
 		inputs.forEach((tacticNum, input) -> futures.put(tacticNum, CompletableFuture.supplyAsync(
-				usageTracker.inScope(usageScope, () -> call.apply(input)), applicationTaskExecutor)));
+				usageTracker.inScope(usageScope, failureLog.inScope(failureScope, () -> call.apply(input))),
+				applicationTaskExecutor)));
 		return futures;
 	}
 

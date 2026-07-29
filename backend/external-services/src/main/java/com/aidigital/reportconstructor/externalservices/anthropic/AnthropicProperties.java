@@ -65,9 +65,10 @@ public class AnthropicProperties {
 	/**
 	 * Extra attempts a per-section pilot call makes when its reply fails the positional contract (not a JSON
 	 * array of exactly the expected count of non-blank strings) before the tactic's section ships blank.
-	 * Default 2 means up to three sends in total. Clamped to at least 0 (no retry) at use.
+	 * Default 1 means one retry, two sends in total: a deterministic rejection reproduces on the re-send, so a
+	 * third identical prompt mostly burns tokens. Clamped to at least 0 (no retry) at use.
 	 */
-	private int sectionRetries = 2;
+	private int sectionRetries = 1;
 
 	/**
 	 * Characters of an unparseable reply written to the WARN line that reports the parse failure. The default

@@ -3,6 +3,7 @@ package com.aidigital.reportconstructor.service.reports.services.impl;
 import com.aidigital.reportconstructor.domain.reports.entities.ReportJobEntity;
 import com.aidigital.reportconstructor.service.common.error.AppException;
 import com.aidigital.reportconstructor.service.common.error.ErrorReason;
+import com.aidigital.reportconstructor.service.reports.diagnostics.impl.ClaudeFailureLogImpl;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeSheetBatch;
 import com.aidigital.reportconstructor.service.reports.dto.GenerationTarget;
@@ -108,7 +109,7 @@ class ReportGenerationServiceImplTest {
 				jobProgress, warnings, chartHelper, sheetHelper, publisherBreakdown, creativeBreakdown, geoBreakdown, audienceBreakdown, deviceBreakdown, placeholderReader, sheetCampaign, placeholders,
 				claude, slides, userGoogleTokens, self, claudeDefaults, fileNamer,
 				new ReportNumberParserImpl(), new Fmt(), new SimpleAsyncTaskExecutor(),
-				new ClaudeUsageTrackerImpl(new NoOpClaudeUsageEventService()),
+				new ClaudeUsageTrackerImpl(new NoOpClaudeUsageEventService()), new ClaudeFailureLogImpl(),
 				new BreakdownSelectionResolverImpl(), new BreakdownThoughtsGateImpl(),
 				new TacticConclusionAssemblerImpl());
 	}

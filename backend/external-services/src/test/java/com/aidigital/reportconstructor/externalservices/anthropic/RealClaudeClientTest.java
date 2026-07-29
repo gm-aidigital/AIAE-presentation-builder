@@ -1,5 +1,7 @@
 package com.aidigital.reportconstructor.externalservices.anthropic;
 
+import com.aidigital.reportconstructor.service.reports.diagnostics.ClaudeFailureScope;
+import com.aidigital.reportconstructor.service.reports.diagnostics.impl.ClaudeFailureLogImpl;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeNarrative;
@@ -60,7 +62,8 @@ class RealClaudeClientTest {
 		ReportClaudeDefaults defaults = new ReportClaudeDefaults();
 		RealClaudeClient client = new RealClaudeClient(
 				messagesClient, promptBuilder, normalizer, compressionService, defaults,
-				new WorkbookGeoFilter(), new PromptTokenEstimator(), new AnthropicProperties());
+				new WorkbookGeoFilter(), new PromptTokenEstimator(), new ClaudeFailureLogImpl(),
+				new AnthropicProperties());
 
 		CampaignData data = new CampaignData(
 				"Acme", "Spring Launch", "US", "Awareness", "Jan 1 - Mar 31",
@@ -137,7 +140,8 @@ class RealClaudeClientTest {
 		ReportClaudeDefaults defaults = new ReportClaudeDefaults();
 		RealClaudeClient client = new RealClaudeClient(
 				messagesClient, promptBuilder, normalizer, compressionService, defaults,
-				new WorkbookGeoFilter(), new PromptTokenEstimator(), new AnthropicProperties());
+				new WorkbookGeoFilter(), new PromptTokenEstimator(), new ClaudeFailureLogImpl(),
+				new AnthropicProperties());
 
 		Tactic ctv = new Tactic(
 				"CTV", "CTV", null,
@@ -210,7 +214,8 @@ class RealClaudeClientTest {
 		ReportClaudeDefaults defaults = new ReportClaudeDefaults();
 		RealClaudeClient client = new RealClaudeClient(
 				messagesClient, promptBuilder, normalizer, compressionService, defaults,
-				new WorkbookGeoFilter(), new PromptTokenEstimator(), new AnthropicProperties());
+				new WorkbookGeoFilter(), new PromptTokenEstimator(), new ClaudeFailureLogImpl(),
+				new AnthropicProperties());
 
 		Tactic ctv = new Tactic(
 				"CTV", "CTV", null,
@@ -276,7 +281,8 @@ class RealClaudeClientTest {
 		ReportClaudeDefaults defaults = new ReportClaudeDefaults();
 		RealClaudeClient client = new RealClaudeClient(
 				messagesClient, promptBuilder, normalizer, compressionService, defaults,
-				new WorkbookGeoFilter(), new PromptTokenEstimator(), new AnthropicProperties());
+				new WorkbookGeoFilter(), new PromptTokenEstimator(), new ClaudeFailureLogImpl(),
+				new AnthropicProperties());
 
 		Tactic ctv = new Tactic(
 				"CTV", "CTV", null,
@@ -293,9 +299,15 @@ class RealClaudeClientTest {
 				[["Hulu led delivery.", "Long tail carried reach.",
 				  "Premium brand-safe mix.", "We steered weight to strong publishers."]]
 				""");
-		when(messagesClient.callJsonArray(any(), eq(1500), eq(90), eq("PublisherSection"), eq(true)))
+		String expectedPrompt = promptBuilder.buildPublisherSectionPrompt(input, data, brief, 155).orElseThrow();
+		List<ClaudeCompressionField> expectedFields = List.of(
+				new ClaudeCompressionField("1_0", "Hulu led delivery.", 155),
+				new ClaudeCompressionField("1_1", "Long tail carried reach.", 155),
+				new ClaudeCompressionField("1_2", "Premium brand-safe mix.", 155),
+				new ClaudeCompressionField("1_3", "We steered weight to strong publishers.", 155));
+		when(messagesClient.callJsonArray(eq(expectedPrompt), eq(1500), eq(90), eq("PublisherSection"), eq(true)))
 				.thenReturn(wrapped);
-		when(compressionService.compress(any(), eq("PublisherSection")))
+		when(compressionService.compress(eq(expectedFields), eq("PublisherSection")))
 				.thenAnswer(invocation -> {
 					List<ClaudeCompressionField> fields = invocation.getArgument(0);
 					Map<String, String> out = new LinkedHashMap<>();
@@ -313,7 +325,7 @@ class RealClaudeClientTest {
 				"Hulu led delivery.", "Long tail carried reach.",
 				"Premium brand-safe mix.", "We steered weight to strong publishers.");
 		verify(messagesClient, times(1))
-				.callJsonArray(any(), eq(1500), eq(90), eq("PublisherSection"), eq(true));
+				.callJsonArray(eq(expectedPrompt), eq(1500), eq(90), eq("PublisherSection"), eq(true));
 	}
 
 	@Test
@@ -324,7 +336,8 @@ class RealClaudeClientTest {
 		ReportClaudeDefaults defaults = new ReportClaudeDefaults();
 		RealClaudeClient client = new RealClaudeClient(
 				messagesClient, promptBuilder, normalizer, compressionService, defaults,
-				new WorkbookGeoFilter(), new PromptTokenEstimator(), new AnthropicProperties());
+				new WorkbookGeoFilter(), new PromptTokenEstimator(), new ClaudeFailureLogImpl(),
+				new AnthropicProperties());
 
 		Tactic ctv = new Tactic(
 				"CTV", "CTV", null,
@@ -336,17 +349,59 @@ class RealClaudeClientTest {
 				new Totals(0, 0, 0, 0, null, null), Map.of(1, ctv), null);
 		PublisherObservationInput input = new PublisherObservationInput(
 				1, "CTV", List.of(new PublisherRow("Hulu", "400,000", "40%")));
-		when(messagesClient.callJsonArray(any(), eq(1500), eq(90), eq("PublisherSection"), eq(true)))
+		String brief = "Drive awareness.";
+		String expectedPrompt = promptBuilder.buildPublisherSectionPrompt(input, data, brief, 155).orElseThrow();
+		when(messagesClient.callJsonArray(eq(expectedPrompt), eq(1500), eq(90), eq("PublisherSection"), eq(true)))
 				.thenReturn(json.createArrayNode().add("Only one bullet."));
 
 		// When:
-		List<String> bullets = client.publisherSection(data, input, "Drive awareness.");
+		List<String> bullets = client.publisherSection(data, input, brief);
 
-		// Then: nothing partial is shipped, and the contract is retried the configured number of times
+		// Then: nothing partial is shipped, and the section is sent twice in all — the configured one retry
 		assertThat(bullets).isEmpty();
-		verify(messagesClient, times(3))
-				.callJsonArray(any(), eq(1500), eq(90), eq("PublisherSection"), eq(true));
+		verify(messagesClient, times(2))
+				.callJsonArray(eq(expectedPrompt), eq(1500), eq(90), eq("PublisherSection"), eq(true));
 		verifyNoInteractions(compressionService);
+	}
+
+	@Test
+	void publisherSectionRecordsItsRejectionReasonOnTheRunsFailureScopeTest() {
+		// Given: a run whose failure scope is open — the report card's only source for why a slide is blank,
+		// since the person who ran the report cannot read the server log
+		ClaudeResponseNormalizer normalizer = new ClaudeResponseNormalizer();
+		ClaudeBatchPromptBuilder promptBuilder = new ClaudeBatchPromptBuilder(normalizer, new Fmt());
+		ReportClaudeDefaults defaults = new ReportClaudeDefaults();
+		ClaudeFailureLogImpl failureLog = new ClaudeFailureLogImpl();
+		ClaudeFailureScope failures = failureLog.begin();
+		RealClaudeClient client = new RealClaudeClient(
+				messagesClient, promptBuilder, normalizer, compressionService, defaults,
+				new WorkbookGeoFilter(), new PromptTokenEstimator(), failureLog,
+				new AnthropicProperties());
+
+		Tactic ctv = new Tactic(
+				"CTV", "CTV", null,
+				5000.0, 1_000_000.0, 0.0, 980_000.0, null, 98.0, null, null,
+				null, null, null, null, null, null, null, null);
+		CampaignData data = new CampaignData(
+				"Acme", "Spring Launch", "US", "Awareness", "Jan 1 - Mar 31",
+				null, "$500,000", "Reach", "CTV", "25-44", "Auto intenders",
+				new Totals(0, 0, 0, 0, null, null), Map.of(1, ctv), null);
+		PublisherObservationInput input = new PublisherObservationInput(
+				1, "CTV", List.of(new PublisherRow("Hulu", "400,000", "40%")));
+		String brief = "Drive awareness.";
+		String expectedPrompt = promptBuilder.buildPublisherSectionPrompt(input, data, brief, 155).orElseThrow();
+		when(messagesClient.callJsonArray(eq(expectedPrompt), eq(1500), eq(90), eq("PublisherSection"), eq(true)))
+				.thenReturn(json.createArrayNode().add("Only one bullet."));
+
+		// When:
+		client.publisherSection(data, input, brief);
+
+		// Then: the scope carries the section, the tactic and what was wrong, plus the final give-up line
+		assertThat(failures.snapshot()).isNotEmpty();
+		assertThat(failures.snapshot().getFirst())
+				.contains("PublisherSection", "tactic 1", "1 item(s), expected 4");
+		assertThat(failures.snapshot().getLast()).contains("gave up after 2 attempt(s)");
+		failureLog.clear();
 	}
 
 	@Test
@@ -357,7 +412,8 @@ class RealClaudeClientTest {
 		ReportClaudeDefaults defaults = new ReportClaudeDefaults();
 		RealClaudeClient client = new RealClaudeClient(
 				messagesClient, promptBuilder, normalizer, compressionService, defaults,
-				new WorkbookGeoFilter(), new PromptTokenEstimator(), new AnthropicProperties());
+				new WorkbookGeoFilter(), new PromptTokenEstimator(), new ClaudeFailureLogImpl(),
+				new AnthropicProperties());
 
 		String brief = "Drive awareness for the Spring Launch.";
 		TacticThoughtsInput input = new TacticThoughtsInput(
@@ -405,7 +461,8 @@ class RealClaudeClientTest {
 		ReportClaudeDefaults defaults = new ReportClaudeDefaults();
 		RealClaudeClient client = new RealClaudeClient(
 				messagesClient, promptBuilder, normalizer, compressionService, defaults,
-				new WorkbookGeoFilter(), new PromptTokenEstimator(), new AnthropicProperties());
+				new WorkbookGeoFilter(), new PromptTokenEstimator(), new ClaudeFailureLogImpl(),
+				new AnthropicProperties());
 
 		Tactic ctv = new Tactic(
 				"CTV", "CTV", null,
@@ -483,7 +540,8 @@ class RealClaudeClientTest {
 		ReportClaudeDefaults defaults = new ReportClaudeDefaults();
 		RealClaudeClient client = new RealClaudeClient(
 				messagesClient, promptBuilder, normalizer, compressionService, defaults,
-				new WorkbookGeoFilter(), new PromptTokenEstimator(), new AnthropicProperties());
+				new WorkbookGeoFilter(), new PromptTokenEstimator(), new ClaudeFailureLogImpl(),
+				new AnthropicProperties());
 
 		JsonNode node = json.readTree("""
 				{"G": "First group narrative.", "group 2": "Second.", "Group 3": "Third."}
@@ -507,7 +565,8 @@ class RealClaudeClientTest {
 		ReportClaudeDefaults defaults = new ReportClaudeDefaults();
 		RealClaudeClient client = new RealClaudeClient(
 				messagesClient, promptBuilder, normalizer, compressionService, defaults,
-				new WorkbookGeoFilter(), new PromptTokenEstimator(), new AnthropicProperties());
+				new WorkbookGeoFilter(), new PromptTokenEstimator(), new ClaudeFailureLogImpl(),
+				new AnthropicProperties());
 
 		// When-Then: a null node and a non-object node both yield an empty map
 		assertThat(client.parseNumberedTextMap(null)).isEmpty();
@@ -523,7 +582,8 @@ class RealClaudeClientTest {
 		ReportClaudeDefaults defaults = new ReportClaudeDefaults();
 		RealClaudeClient client = new RealClaudeClient(
 				messagesClient, promptBuilder, normalizer, compressionService, defaults,
-				new WorkbookGeoFilter(), new PromptTokenEstimator(), new AnthropicProperties());
+				new WorkbookGeoFilter(), new PromptTokenEstimator(), new ClaudeFailureLogImpl(),
+				new AnthropicProperties());
 
 		CampaignData data = new CampaignData(
 				"Acme", "Spring Launch", "US", "Awareness", "Jan 1 - Mar 31",
@@ -585,7 +645,8 @@ class RealClaudeClientTest {
 		ReportClaudeDefaults defaults = new ReportClaudeDefaults();
 		RealClaudeClient client = new RealClaudeClient(
 				messagesClient, promptBuilder, normalizer, compressionService, defaults,
-				new WorkbookGeoFilter(), new PromptTokenEstimator(), new AnthropicProperties());
+				new WorkbookGeoFilter(), new PromptTokenEstimator(), new ClaudeFailureLogImpl(),
+				new AnthropicProperties());
 
 		ClaudeStrategic strategic = new ClaudeStrategic(
 				"25-44", "Auto intenders", "Old proposal.",
@@ -651,7 +712,8 @@ class RealClaudeClientTest {
 		ReportClaudeDefaults defaults = new ReportClaudeDefaults();
 		RealClaudeClient client = new RealClaudeClient(
 				messagesClient, promptBuilder, normalizer, compressionService, defaults,
-				new WorkbookGeoFilter(), new PromptTokenEstimator(), new AnthropicProperties());
+				new WorkbookGeoFilter(), new PromptTokenEstimator(), new ClaudeFailureLogImpl(),
+				new AnthropicProperties());
 
 		ClaudeStrategic strategic = new ClaudeStrategic(
 				"25-44", "Auto intenders", "Original proposal.",
@@ -680,7 +742,8 @@ class RealClaudeClientTest {
 		ClaudeBatchPromptBuilder promptBuilder = new ClaudeBatchPromptBuilder(normalizer, new Fmt());
 		RealClaudeClient client = new RealClaudeClient(
 				messagesClient, promptBuilder, normalizer, compressionService, new ReportClaudeDefaults(),
-				new WorkbookGeoFilter(), new PromptTokenEstimator(), new AnthropicProperties());
+				new WorkbookGeoFilter(), new PromptTokenEstimator(), new ClaudeFailureLogImpl(),
+				new AnthropicProperties());
 		List<List<String>> workbook = List.of(
 				List.of("### TAB: Proposal ###"),
 				List.of("Budget", "$500,000"),
@@ -705,7 +768,8 @@ class RealClaudeClientTest {
 		ClaudeBatchPromptBuilder promptBuilder = new ClaudeBatchPromptBuilder(normalizer, new Fmt());
 		RealClaudeClient client = new RealClaudeClient(
 				messagesClient, promptBuilder, normalizer, compressionService, new ReportClaudeDefaults(),
-				new WorkbookGeoFilter(), new PromptTokenEstimator(), new AnthropicProperties());
+				new WorkbookGeoFilter(), new PromptTokenEstimator(), new ClaudeFailureLogImpl(),
+				new AnthropicProperties());
 		List<List<String>> workbook = new java.util.ArrayList<>();
 		for (int i = 0; i < 2000; i++) {
 			workbook.add(List.of("Market " + i, "impressions", "12345"));
@@ -726,7 +790,8 @@ class RealClaudeClientTest {
 		ClaudeBatchPromptBuilder promptBuilder = new ClaudeBatchPromptBuilder(normalizer, new Fmt());
 		RealClaudeClient client = new RealClaudeClient(
 				messagesClient, promptBuilder, normalizer, compressionService, new ReportClaudeDefaults(),
-				new WorkbookGeoFilter(), new PromptTokenEstimator(), new AnthropicProperties());
+				new WorkbookGeoFilter(), new PromptTokenEstimator(), new ClaudeFailureLogImpl(),
+				new AnthropicProperties());
 		List<String> goals = List.of("Build awareness", "  ", "Drive site visits");
 		String expectedPrompt = promptBuilder.buildFunnelFromGoalsPrompt(goals).orElseThrow();
 		when(messagesClient.callRaw(eq(expectedPrompt), eq(60), eq(30), eq("Funnel")))
@@ -748,7 +813,8 @@ class RealClaudeClientTest {
 		ClaudeBatchPromptBuilder promptBuilder = new ClaudeBatchPromptBuilder(normalizer, new Fmt());
 		RealClaudeClient client = new RealClaudeClient(
 				messagesClient, promptBuilder, normalizer, compressionService, new ReportClaudeDefaults(),
-				new WorkbookGeoFilter(), new PromptTokenEstimator(), new AnthropicProperties());
+				new WorkbookGeoFilter(), new PromptTokenEstimator(), new ClaudeFailureLogImpl(),
+				new AnthropicProperties());
 
 		// When:
 		String stages = client.summarizeFunnelStages(List.of("", "   "));
@@ -765,7 +831,8 @@ class RealClaudeClientTest {
 		ClaudeBatchPromptBuilder promptBuilder = new ClaudeBatchPromptBuilder(normalizer, new Fmt());
 		RealClaudeClient client = new RealClaudeClient(
 				messagesClient, promptBuilder, normalizer, compressionService, new ReportClaudeDefaults(),
-				new WorkbookGeoFilter(), new PromptTokenEstimator(), new AnthropicProperties());
+				new WorkbookGeoFilter(), new PromptTokenEstimator(), new ClaudeFailureLogImpl(),
+				new AnthropicProperties());
 		String brief = "Acme wants awareness among auto intenders in Texas over Q1 on a $500,000 budget.";
 		String expectedPrompt = promptBuilder.buildBriefDigestPrompt(brief, 2000).orElseThrow();
 		when(messagesClient.callRaw(eq(expectedPrompt), eq(1200), eq(60), eq("BriefDigest")))

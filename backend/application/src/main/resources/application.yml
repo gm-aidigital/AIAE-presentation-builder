@@ -443,8 +443,9 @@ external:
     # The combined call then only writes each tactic's overview. Off by default.
     per-section-calls-enabled: ${CLAUDE_PER_SECTION_CALLS:true}
     # Extra attempts a per-section call makes when its reply fails the positional contract before the tactic's
-    # section ships blank. Default 2 means up to three sends in total.
-    section-retries: ${CLAUDE_SECTION_RETRIES:2}
+    # section ships blank. Default 1 means one retry, two sends in total — a third send costs a third of the
+    # section budget and, on the failures seen so far, repeats the same rejection.
+    section-retries: ${CLAUDE_SECTION_RETRIES:1}
     # Characters of an unparseable reply written to its WARN line. Raise temporarily when a parse failure has
     # to be diagnosed on a deployed run and 400 chars stop short of the defect; the full reply is on DEBUG.
     reply-snippet-limit: ${CLAUDE_REPLY_SNIPPET_LIMIT:400}
