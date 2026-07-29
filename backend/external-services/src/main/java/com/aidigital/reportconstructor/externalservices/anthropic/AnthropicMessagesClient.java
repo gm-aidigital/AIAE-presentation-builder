@@ -60,18 +60,6 @@ public class AnthropicMessagesClient {
 	 */
 	public static final String CACHE_BREAKPOINT = "\u0000CACHE_BREAKPOINT\u0000";
 
-	/**
-	 * Opening bracket sent as a pre-filled assistant turn on every array call, so the model continues an array
-	 * that has already begun rather than choosing how to open its reply.
-	 *
-	 * <p>The commonest way an array reply died was prose around it — a "Here are the observations:" preamble, a
-	 * closing remark, a fenced block — none of which the model can write once its turn starts mid-array. Asking
-	 * for bare JSON in the prompt only makes that unlikely; starting the turn with the bracket makes it
-	 * impossible. The response body then carries only the continuation, so the bracket is prepended back onto
-	 * the reply text before it is parsed.
-	 */
-	static final String ARRAY_PREFILL = "[";
-
 	private final String apiKey;
 	private final String model;
 	private final HttpClient http;
@@ -199,7 +187,7 @@ public class AnthropicMessagesClient {
 	 */
 	public JsonNode callJsonArray(
 			String prompt, int maxTokens, int timeoutSec, String label, boolean allowPartial) {
-		JsonNode resp = callRaw(prompt, maxTokens, timeoutSec, label, ARRAY_PREFILL);
+		JsonNode resp = callRaw(prompt, maxTokens, timeoutSec, label);
 		if (resp == null) {
 			return null;
 		}
@@ -215,10 +203,6 @@ public class AnthropicMessagesClient {
 		if (text == null || text.isBlank()) {
 			return null;
 		}
-		// The assistant turn was started with the opening bracket, so the reply body picks up inside the array.
-		// Putting the bracket back is what makes the continuation a complete array again — and it happens here,
-		// in the one method that sends the prefill, so the two can never drift apart.
-		text = ARRAY_PREFILL + text;
 		text = FENCE_OPEN.matcher(text.trim()).replaceFirst("");
 		text = FENCE_CLOSE.matcher(text).replaceFirst("").trim();
 		JsonNode node = parseJsonArray(text, allowPartial);
@@ -497,19 +481,18 @@ public class AnthropicMessagesClient {
 	}
 
 	/**
-	 * Builds the request's message list: the user turn carrying the prompt, plus a pre-filled assistant turn
-	 * when one was asked for.
+	 * Builds the request's message list: the single user turn carrying the prompt.
 	 *
-	 * @param prompt           the full user prompt, cache marker included
-	 * @param assistantPrefill text to start the assistant's turn with, or {@code null}/blank for none
+	 * <p>A pre-filled assistant turn is deliberately never sent. Assistant-turn prefill is rejected with a 400
+	 * by every current Claude model (Sonnet 4.6 included), so a prefilled request never reaches the model at
+	 * all — the reply shape is fixed by the prompt's output rules instead.
+	 *
+	 * @param prompt the full user prompt, cache marker included
 	 * @return the messages array in the shape the Messages API expects
 	 */
-	List<Map<String, Object>> buildMessages(String prompt, String assistantPrefill) {
-		List<Map<String, Object>> messages = new ArrayList<>(2);
+	List<Map<String, Object>> buildMessages(String prompt) {
+		List<Map<String, Object>> messages = new ArrayList<>(1);
 		messages.add(Map.of("role", "user", "content", buildUserContent(prompt)));
-		if (assistantPrefill != null && !assistantPrefill.isBlank()) {
-			messages.add(Map.of("role", "assistant", "content", assistantPrefill));
-		}
 		return messages;
 	}
 
@@ -524,33 +507,13 @@ public class AnthropicMessagesClient {
 	 * @return the full Messages API response as a JSON tree, or {@code null} on failure
 	 */
 	public JsonNode callRaw(String prompt, int maxTokens, int timeoutSec, String label) {
-		return callRaw(prompt, maxTokens, timeoutSec, label, null);
-	}
-
-	/**
-	 * Sends a prompt as a single user message, optionally pre-filling the start of the assistant's reply, and
-	 * returns the raw parsed JSON response body or {@code null} on a non-200 status or transport failure.
-	 *
-	 * <p>A pre-filled assistant turn is the API's way of fixing how a reply opens: the model continues the text
-	 * it is handed instead of deciding for itself, which is how {@link #ARRAY_PREFILL} rules out a prose
-	 * preamble. The response then carries only the continuation — the caller is responsible for putting the
-	 * pre-filled text back in front of it.
-	 *
-	 * @param prompt          the full user prompt sent as the single user message to Claude
-	 * @param maxTokens       cap on tokens the model may generate in its reply
-	 * @param timeoutSec      per-request HTTP timeout in seconds
-	 * @param label           short tag identifying this call in log messages
-	 * @param assistantPrefill text the assistant's turn is started with, or {@code null}/blank for none
-	 * @return the full Messages API response as a JSON tree, or {@code null} on failure
-	 */
-	public JsonNode callRaw(String prompt, int maxTokens, int timeoutSec, String label, String assistantPrefill) {
 		HttpRequest req;
 		try {
 			Map<String, Object> body = Map.of(
 					"model", model,
 					"max_tokens", maxTokens,
 					"temperature", temperature,
-					"messages", buildMessages(prompt, assistantPrefill)
+					"messages", buildMessages(prompt)
 			);
 			req = HttpRequest.newBuilder()
 					.uri(URI.create(ENDPOINT))

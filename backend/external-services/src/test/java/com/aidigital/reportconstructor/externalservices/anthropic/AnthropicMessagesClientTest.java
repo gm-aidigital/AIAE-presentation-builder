@@ -332,8 +332,8 @@ class AnthropicMessagesClientTest {
 	}
 
 	@Test
-	void shouldStartTheAssistantTurnWithTheOpeningBracketOnArrayCallsTest() {
-		// Given: a prompt with no cache marker, sent the way an array call sends it
+	void shouldSendOnlyTheUserTurnAndNeverAnAssistantPrefillTest() {
+		// Given: a prompt with no cache marker, sent the way any call sends it
 		AnthropicProperties props = new AnthropicProperties();
 		props.setApiKey("key");
 		AnthropicMessagesClient client = new AnthropicMessagesClient(
@@ -341,18 +341,12 @@ class AnthropicMessagesClientTest {
 				new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator(),
 				new ClaudeFailureLogImpl());
 
-		// When: the messages are built with the array prefill, and without any prefill
-		var prefilled = client.buildMessages("Return four observations.", AnthropicMessagesClient.ARRAY_PREFILL);
-		var plain = client.buildMessages("Return four observations.", null);
+		// When: the request's message list is built
+		var messages = client.buildMessages("Return four observations.");
 
-		// Then: the array call hands the model a reply that has already begun, so it cannot open with prose
-		assertThat(prefilled).hasSize(2);
-		assertThat(prefilled.getFirst()).containsEntry("role", "user");
-		assertThat(prefilled.getLast()).containsEntry("role", "assistant").containsEntry("content", "[");
-
-		// Then: an object call is untouched — it still sends the single user turn
-		assertThat(plain).hasSize(1);
-		assertThat(plain.getFirst()).containsEntry("role", "user");
+		// Then: exactly one user turn goes out — an assistant prefill would be rejected with a 400 by the model
+		assertThat(messages).hasSize(1);
+		assertThat(messages.getFirst()).containsEntry("role", "user");
 	}
 
 	@Test
