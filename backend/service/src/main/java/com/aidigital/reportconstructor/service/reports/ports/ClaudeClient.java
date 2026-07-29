@@ -47,11 +47,13 @@ public interface ClaudeClient {
 
 	/**
 	 * One tactic's "Top Publishers" slide copy, produced by a small dedicated call. Common contract for every
-	 * per-section method: the call asks for exactly the section's fixed number of slide strings as a bare JSON
-	 * array and accepts the reply only when it carries that many non-blank strings, retrying a bounded number of
-	 * times before giving up; the smaller request and strict positional contract make a malformed or partial
-	 * reply far less likely and, when it still happens, visible rather than silently blank. The caller fans these
-	 * calls out across tactics on its own executor (bounded by the shared Claude concurrency limit).
+	 * per-section method: the call asks for the section's fixed number of slide strings as a bare JSON array and
+	 * accepts the reply once it carries at least that many, using the first of them in slide order — a reply
+	 * that came back short, blank or unparseable is retried a bounded number of times, each retry told what the
+	 * last one got wrong, before the section gives up and ships blank. The smaller request and positional
+	 * contract make a malformed or partial reply far less likely and, when it still happens, visible rather than
+	 * silently blank. The caller fans these calls out across tactics on its own executor (bounded by the shared
+	 * Claude concurrency limit).
 	 *
 	 * @param data  parsed campaign data supplying the shared campaign context
 	 * @param input the tactic's publisher input (name + rows)
@@ -187,19 +189,21 @@ public interface ClaudeClient {
 			CampaignData data, List<TacticConclusionInput> inputs, String brief);
 
 	/**
-	 * Step 3 of the restructured slides-from-sheet flow — the per-tactic "thoughts on tactic performance" call.
-	 * Runs only for tactics that passed the shared "> 2 breakdowns" gate; the caller builds one input per such
-	 * tactic from that tactic's in-memory Step-2 conclusions. Each call reasons over one tactic's own overview and
-	 * breakdown conclusions and returns up to four length-capped thought strings.
+	 * Step 3 of the restructured slides-from-sheet flow — the per-tactic "thoughts on tactic performance" call,
+	 * for ONE tactic. Runs only for tactics that passed the shared "> 2 breakdowns" gate; the caller builds one
+	 * input per such tactic from that tactic's in-memory Step-2 conclusions. The call reasons over that tactic's
+	 * own overview and breakdown conclusions and returns up to four length-capped thought strings.
 	 *
-	 * <p>Calls run in parallel behind the same global concurrency semaphore as Step 2. A tactic whose call fails
-	 * or fails to parse is omitted from the result, so its slide renders those tokens blank rather than invented.
+	 * <p>One tactic per call so the caller can dispatch every tactic at once — the calls then run in parallel
+	 * behind the same global concurrency semaphore as Step 2. A reply that fills fewer than four thoughts is
+	 * retried once; a tactic whose call fails, fails to parse, or comes back with nothing usable returns
+	 * {@code null}, so its slide renders those tokens blank rather than invented.
 	 *
-	 * @param inputs one entry per qualifying tactic, carrying its overview and breakdown conclusions
-	 * @param brief  free-text campaign brief the thoughts must stay faithful to
-	 * @return one {@link TacticThoughts} per tactic that produced a usable reply, in input order
+	 * @param input the tactic's overview and breakdown conclusions
+	 * @param brief free-text campaign brief the thoughts must stay faithful to
+	 * @return the tactic's thoughts, or {@code null} when the call produced no usable reply
 	 */
-	List<TacticThoughts> batchTacticThoughts(List<TacticThoughtsInput> inputs, String brief);
+	TacticThoughts tacticThoughts(TacticThoughtsInput input, String brief);
 
 	/**
 	 * Step 4 of the restructured slides-from-sheet flow — the campaign-level results call. It fills the
@@ -270,6 +274,22 @@ public interface ClaudeClient {
 	 * @return the digest, or {@code null} when the caller should fall back to the raw brief
 	 */
 	String digestBrief(String brief);
+
+	/**
+	 * Bounds a brief before it becomes prompt context: text already inside the digest budget is returned
+	 * unchanged, anything longer is digested by {@link #digestBrief}.
+	 *
+	 * <p>Step 1 digests the brief and writes the digest into the sheet, so the slides step normally reads back
+	 * something already compact. Normally — not always: the sheet's {@code {{RFP info}}} cell is user-editable
+	 * and could hold a pasted wall of text, the change log is appended raw and unbounded, and an older sheet
+	 * (or a run where Claude was stubbed) carries no digest at all and falls back to the raw brief. Every one of
+	 * those paths puts the full text into the cached prefix of every call the run makes, which is exactly what
+	 * digesting was meant to avoid — so the slides step re-bounds the text here rather than trusting it.
+	 *
+	 * @param brief the brief context assembled for the run, optionally with its change log appended
+	 * @return text within the digest budget: the input unchanged, its digest, or the input when digesting failed
+	 */
+	String digestBriefIfOversized(String brief);
 
 	/**
 	 * Media plan → single-line primary-KPIs string (e.g. {@code "Imps, CTR, VCR, R&F"}) reflecting the KPIs

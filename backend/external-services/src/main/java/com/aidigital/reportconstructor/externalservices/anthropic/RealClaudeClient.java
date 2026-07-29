@@ -176,6 +176,8 @@ public class RealClaudeClient implements ClaudeClient {
 
 	/** The per-tactic "thoughts on tactic performance" slide holds exactly four thought strings. */
 	private static final int TACTIC_THOUGHTS_COUNT = 4;
+	/** Short tag identifying the Step-3 per-tactic thoughts call in logs and on the report's failure card. */
+	private static final String THOUGHTS_LABEL = "BatchTacticThoughts";
 	/** Output budget for one tactic's thoughts call: four ~220-char thoughts plus JSON overhead. */
 	private static final int TACTIC_THOUGHTS_MAX_TOKENS = 900;
 
@@ -188,12 +190,39 @@ public class RealClaudeClient implements ClaudeClient {
 	private static final int CAMPAIGN_RESULTS_TOKENS_PER_TACTIC = 80;
 	private static final int CAMPAIGN_RESULTS_MAX_TOKENS_CAP = 6000;
 
-	// Batch D (narrative alignment) only ever rewrites the bounded campaign-level copy — the proposal, four
-	// strategic insights, up to four group results overviews, up to four thoughts and three frequency strings —
-	// never the per-tactic overviews or breakdown bullets. Its output therefore does not scale with tactic
-	// count, so a fixed budget is safe and cannot hit Batch C's truncation-at-scale failure mode.
-	private static final int ALIGN_MAX_TOKENS = 3000;
+	// Batch D (narrative alignment) rewrites the campaign-level copy — the proposal, the strategic insights,
+	// one results overview per tactic group, the performance thoughts and three frequency strings — and never
+	// the per-tactic overviews or breakdown bullets. That is bounded, but not fixed: a deck with many tactic
+	// groups asks the model to re-emit far more overviews than the four a flat 3000-token budget was sized for,
+	// and because this call salvages a truncated reply (allowPartial) the overrun is invisible — the trailing
+	// fields simply keep their un-aligned text. So the budget is derived from the fields the draft actually
+	// carries, each allowance sized off that field's own character limit at roughly two characters per token,
+	// which leaves head-room for a model that writes past the limit it was asked for.
+	private static final int ALIGN_BASE_TOKENS = 400;
+	private static final int ALIGN_TOKENS_PER_PROPOSAL = 220;
+	private static final int ALIGN_TOKENS_PER_INSIGHT = 160;
+	private static final int ALIGN_TOKENS_PER_OVERVIEW = 220;
+	private static final int ALIGN_TOKENS_PER_THOUGHT = 140;
+	private static final int ALIGN_TOKENS_PER_FREQUENCY_FIELD = 200;
+	private static final int ALIGN_MAX_TOKENS_CAP = 8000;
 	private static final int ALIGN_TIMEOUT_SEC = 90;
+
+	/**
+	 * Sends allowed for the alignment call, counting the first. Unlike every other batch, this pass has no
+	 * partial-failure mode a caller can repair: a rejected reply drops the whole alignment and every field
+	 * keeps its un-aligned text, so one re-ask is cheap insurance on a single call per report.
+	 */
+	private static final int ALIGN_ATTEMPTS = 2;
+
+	/**
+	 * Appended to the alignment prompt on the re-ask. The first attempt already asks for bare JSON, so the
+	 * retry does not restate the editorial brief — it only closes off the one failure this loop can see, a
+	 * reply that wrapped its object in prose or never produced an object at all.
+	 */
+	private static final String ALIGN_RETRY_SUFFIX =
+			"\n\nIMPORTANT: the previous reply could not be parsed. Return the JSON object and nothing else — "
+					+ "the first character must be { and the last must be }, with no prose, preamble or "
+					+ "backticks around it.";
 
 	/**
 	 * Per-request HTTP timeout for every per-tactic breakdown chunk (publishers, creatives, geo, audience,
@@ -346,11 +375,17 @@ public class RealClaudeClient implements ClaudeClient {
 			return List.of();
 		}
 		int attempts = sectionRetries + 1;
+		String rejection = null;
 		for (int attempt = 1; attempt <= attempts; attempt++) {
-			List<String> res = sectionOnce(label, tacticNum, prompt.get(), count, limitAt);
-			if (!res.isEmpty()) {
-				return res;
+			// The first attempt sends the prompt as built; every later one carries what the previous reply got
+			// wrong, so a deterministic rejection is not simply reproduced by an identical re-send.
+			String attemptPrompt =
+					rejection == null ? prompt.get() : prompt.get() + sectionRetrySuffix(rejection, count);
+			ClaudeSectionAttempt res = sectionOnce(label, tacticNum, attemptPrompt, count, limitAt);
+			if (!res.values().isEmpty()) {
+				return res.values();
 			}
+			rejection = res.rejection();
 			if (attempt < attempts) {
 				log.warn("[claude:{}] tactic {} reply failed the {}-string contract — retry {}/{}",
 						label, tacticNum, count, attempt, sectionRetries);
@@ -378,50 +413,88 @@ public class RealClaudeClient implements ClaudeClient {
 	}
 
 	/**
-	 * Runs one section call once and enforces the positional contract: the reply is accepted only when it parses
-	 * as a JSON array of exactly {@code count} non-blank strings. Anything else — a short array, a non-array, a
-	 * blank field, or a failed call — returns an empty list so {@link #runSection} retries rather than accepting
-	 * a partial reply. Accepted strings are compressed and normalized to the same per-index budgets the combined
-	 * path uses, so the per-section and combined paths yield identical field shapes.
+	 * Reports a rejected section reply and packages the reason as a failed attempt, so the reason reaches both
+	 * audiences and the retry at once.
+	 *
+	 * @param label     short tag identifying the section, e.g. {@code "PublisherSection"}
+	 * @param tacticNum the tactic whose section reply was rejected
+	 * @param reason    what was wrong with the reply, in words that survive being shown to a user
+	 * @return a failed attempt carrying the reason
+	 */
+	ClaudeSectionAttempt rejectedSection(String label, int tacticNum, String reason) {
+		rejectSection(label, tacticNum, reason);
+		return new ClaudeSectionAttempt(List.of(), reason);
+	}
+
+	/**
+	 * Builds the note appended to a section prompt on a retry: what the previous reply got wrong, plus the
+	 * output contract restated.
+	 *
+	 * <p>Without it the retry is the same prompt sent twice, which is how a rejected reply used to be rejected
+	 * again for the same reason — the failure mode measured on job 184, where nine attempts across three
+	 * sections all ended in blank slides. Naming the defect gives the model something to correct.
+	 *
+	 * @param rejection what was wrong with the previous reply
+	 * @param count     the exact number of strings the array must carry
+	 * @return the retry note, ready to append to the prompt
+	 */
+	String sectionRetrySuffix(String rejection, int count) {
+		return "\n\nIMPORTANT: your previous reply was rejected — " + rejection + ". Return ONLY a JSON array of "
+				+ count + " non-empty strings, in the order described above: the first character must be [ and the "
+				+ "last must be ], with no prose, no keys and no backticks.";
+	}
+
+	/**
+	 * Runs one section call once and enforces the positional contract: the reply is accepted when it parses as a
+	 * JSON array carrying at least {@code count} items whose first {@code count} are all non-blank, and the
+	 * first {@code count} are what ship. A short array, a non-array, a blank slot or a failed call is rejected
+	 * with its reason so {@link #runSection} can retry with that reason attached, rather than accepting a partial
+	 * reply. Accepted strings are compressed and normalized to the same per-index budgets the combined path
+	 * uses, so the per-section and combined paths yield identical field shapes.
 	 *
 	 * @param label     short tag identifying the section in log/compression messages
 	 * @param tacticNum the tactic number, used to key the compression fields
-	 * @param prompt    the built section prompt text
-	 * @param count     the exact number of non-blank strings the reply must carry
+	 * @param prompt    the built section prompt text, including any retry note
+	 * @param count     the number of non-blank strings the slide has slots for
 	 * @param limitAt   the character budget for the field at a given index
-	 * @return the {@code count} normalized strings, or an empty list when the reply did not satisfy the contract
+	 * @return the accepted attempt carrying {@code count} normalized strings, or a rejected one carrying the reason
 	 */
-	List<String> sectionOnce(
+	ClaudeSectionAttempt sectionOnce(
 			String label, int tacticNum, String prompt, int count, java.util.function.IntUnaryOperator limitAt) {
 		// allowPartial lets the transport repair a reply the model never closed — the same salvage every other
-		// batch already gets. Nothing partial slips through: the exact-count check below still rejects an array
+		// batch already gets. Nothing partial slips through: the shortfall check below still rejects an array
 		// that lost an item to the repair, so the attempt is retried rather than shipped short.
 		JsonNode arr = messagesClient.callJsonArray(
 				prompt, SECTION_MAX_TOKENS, BREAKDOWN_TIMEOUT_SEC, label, true);
 		if (arr == null || !arr.isArray()) {
 			// The call itself failed or the reply was not an array; the transport already logged the cause, so
 			// this line only ties that cause to the section and tactic whose fields are about to ship blank.
-			rejectSection(label, tacticNum, "no JSON array in the reply");
-			return List.of();
+			return rejectedSection(label, tacticNum, "no JSON array in the reply");
 		}
 		// Tolerate an accidental one-level wrapper array — the model sometimes returns [[...]] (an array whose
 		// only element is the real array of strings) instead of a flat [...]. Unwrap it before the count check;
-		// the strict "exactly count non-blank strings" contract still applies to the unwrapped array.
+		// the "count non-blank strings" contract still applies to the unwrapped array.
 		if (arr.size() == 1 && arr.get(0).isArray()) {
 			arr = arr.get(0);
 		}
-		if (arr.size() != count) {
-			rejectSection(label, tacticNum,
+		if (arr.size() < count) {
+			// Short is genuinely unusable — a slot would ship blank — so this is the one count that is retried.
+			return rejectedSection(label, tacticNum,
 					"the reply held " + arr.size() + " item(s), expected " + count);
-			return List.of();
+		}
+		if (arr.size() > count) {
+			// Over-long is not a defect worth a re-send: the slide has count slots, the strings are in the asked
+			// order, and the extras are surplus commentary. Rejecting the whole reply here used to cost a second
+			// call and often a blank slide, when the copy the slide needs had already arrived.
+			log.info("[claude:{}] tactic {} reply held {} items for {} slots — keeping the first {}",
+					label, tacticNum, arr.size(), count, count);
 		}
 		List<String> raw = new ArrayList<>(count);
 		for (int i = 0; i < count; i++) {
 			String value = arr.get(i).asText("").trim();
 			if (value.isBlank()) {
-				rejectSection(label, tacticNum,
+				return rejectedSection(label, tacticNum,
 						"item " + i + " of " + count + " was blank (a " + arr.get(i).getNodeType() + " node)");
-				return List.of();
 			}
 			raw.add(value);
 		}
@@ -434,7 +507,7 @@ public class RealClaudeClient implements ClaudeClient {
 		for (int i = 0; i < count; i++) {
 			out.add(normalizer.normalizeC(compressed.get(tacticNum + "_" + i), limitAt.applyAsInt(i)));
 		}
-		return out;
+		return new ClaudeSectionAttempt(out, null);
 	}
 
 	@Override
@@ -626,8 +699,7 @@ public class RealClaudeClient implements ClaudeClient {
 		if (prompt.isEmpty()) {
 			return original;
 		}
-		JsonNode parsed =
-				messagesClient.callJsonObject(prompt.get(), ALIGN_MAX_TOKENS, ALIGN_TIMEOUT_SEC, "AlignNarrative", true);
+		JsonNode parsed = callAlignWithRetry(prompt.get(), alignMaxTokens(strategic, results));
 		if (parsed == null) {
 			return original;
 		}
@@ -733,6 +805,84 @@ public class RealClaudeClient implements ClaudeClient {
 				alignedOverviews, alignedThoughts, results.tacticOverviews(), results.recommendations(),
 				fOpportunity, fFact, fStorytelling);
 		return new ClaudeNarrative(alignedStrategic, alignedResults);
+	}
+
+	/**
+	 * Derives the output budget for the alignment call from the copy the draft actually carries.
+	 *
+	 * <p>Every field in the draft is re-emitted by the model, so each one is given an allowance sized off its
+	 * own character limit rather than a share of one flat cap — that is what keeps a deck with many tactic
+	 * groups from having its trailing overviews cut off and silently left un-aligned. The total is bounded by
+	 * {@link #ALIGN_MAX_TOKENS_CAP} so a pathological draft cannot ask for an unbounded reply.
+	 *
+	 * @param strategic the Batch A copy whose proposal and insights are being aligned; not null
+	 * @param results   the Batch C copy whose overviews, thoughts and frequency strings are being aligned; not null
+	 * @return tokens the alignment reply may use
+	 */
+	int alignMaxTokens(ClaudeStrategic strategic, ClaudeResults results) {
+		int budget = ALIGN_BASE_TOKENS;
+		if (strategic.proposalOverview() != null && !strategic.proposalOverview().isBlank()) {
+			budget += ALIGN_TOKENS_PER_PROPOSAL;
+		}
+		if (strategic.strategicInsights() != null) {
+			budget += strategic.strategicInsights().size() * ALIGN_TOKENS_PER_INSIGHT;
+		}
+		if (results.resultsOverviews() != null) {
+			budget += results.resultsOverviews().size() * ALIGN_TOKENS_PER_OVERVIEW;
+		}
+		if (results.thoughtsOnPerformance() != null) {
+			budget += results.thoughtsOnPerformance().size() * ALIGN_TOKENS_PER_THOUGHT;
+		}
+		budget += ALIGN_TOKENS_PER_FREQUENCY_FIELD
+				* countNonBlank(results.fOpportunity(), results.fFact(), results.fStorytelling());
+		return Math.min(ALIGN_MAX_TOKENS_CAP, budget);
+	}
+
+	/**
+	 * Counts how many of the given strings carry text, treating null and whitespace-only alike.
+	 *
+	 * @param values the strings to weigh; may contain nulls
+	 * @return the number of values holding non-blank text
+	 */
+	int countNonBlank(String... values) {
+		int count = 0;
+		for (String value : values) {
+			if (value != null && !value.isBlank()) {
+				count++;
+			}
+		}
+		return count;
+	}
+
+	/**
+	 * Sends the alignment prompt, re-asking once when the reply comes back unusable.
+	 *
+	 * <p>Only the parse outcome is retried here: a transient upstream failure is already retried inside the
+	 * transport, so an unreachable API is not hammered by this loop, and the re-ask carries
+	 * {@link #ALIGN_RETRY_SUFFIX} because the failure this sees is almost always a reply that wrapped its
+	 * object in prose. Both sends share the transport's concurrency permit and the call is one per report, so
+	 * the worst case costs one extra alignment-sized request.
+	 *
+	 * @param prompt    the Batch D prompt as built
+	 * @param maxTokens output budget for the reply
+	 * @return the parsed reply object, or {@code null} when no attempt produced a usable one
+	 */
+	JsonNode callAlignWithRetry(String prompt, int maxTokens) {
+		for (int attempt = 1; attempt <= ALIGN_ATTEMPTS; attempt++) {
+			String attemptPrompt = attempt == 1 ? prompt : prompt + ALIGN_RETRY_SUFFIX;
+			JsonNode parsed = messagesClient.callJsonObject(
+					attemptPrompt, maxTokens, ALIGN_TIMEOUT_SEC, "AlignNarrative", true);
+			if (parsed != null) {
+				return parsed;
+			}
+			if (attempt < ALIGN_ATTEMPTS) {
+				log.warn("[claude:AlignNarrative] unusable reply on attempt {} of {}; re-asking with the "
+						+ "JSON-only demand restated", attempt, ALIGN_ATTEMPTS);
+			}
+		}
+		log.warn("[claude:AlignNarrative] no usable reply after {} attempts; keeping the un-aligned copy",
+				ALIGN_ATTEMPTS);
+		return null;
 	}
 
 	@Override
@@ -1021,45 +1171,53 @@ public class RealClaudeClient implements ClaudeClient {
 	}
 
 	@Override
-	public List<TacticThoughts> batchTacticThoughts(List<TacticThoughtsInput> inputs, String brief) {
-		List<TacticThoughts> out = new ArrayList<>();
-		if (inputs == null || inputs.isEmpty()) {
-			return out;
+	public TacticThoughts tacticThoughts(TacticThoughtsInput input, String brief) {
+		if (input == null) {
+			return null;
 		}
-		for (TacticThoughtsInput input : inputs) {
-			TacticThoughts thoughts = tacticThoughtsResilient(input, brief);
-			if (thoughts != null) {
-				out.add(thoughts);
-			}
-		}
-		return out;
+		return tacticThoughtsResilient(input, brief);
 	}
 
 	/**
-	 * Runs one tactic's thoughts call and retries once when it comes back with nothing, rather than shipping
-	 * the tactic's thoughts slide blank. A tactic whose retry also fails is dropped (returns {@code null}), so
-	 * the caller renders those tokens blank rather than invented.
+	 * Runs one tactic's thoughts call and retries once when the reply is not the full set of four thoughts,
+	 * rather than shipping a half-filled thoughts slide. When neither attempt is complete the fuller of the
+	 * two is still returned — a reply carrying three real thoughts beats blanking all four — and only a tactic
+	 * whose both attempts produced nothing usable is dropped ({@code null}), so its tokens render blank rather
+	 * than invented.
 	 *
 	 * @param input the tactic's assembled conclusions
 	 * @param brief free-text campaign brief passed through to the prompt
-	 * @return the tactic's four thoughts, or {@code null} when both attempts failed
+	 * @return the tactic's thoughts, or {@code null} when neither attempt produced a usable one
 	 */
 	TacticThoughts tacticThoughtsResilient(TacticThoughtsInput input, String brief) {
-		TacticThoughts thoughts = tacticThoughtsOne(input, brief);
-		if (thoughts != null) {
-			return thoughts;
+		TacticThoughts first = tacticThoughtsOne(input, brief);
+		if (isCompleteThoughts(first)) {
+			return first;
 		}
-		log.warn("[claude:BatchTacticThoughts] tactic {} came back empty — retrying once", input.tacticNum());
-		return tacticThoughtsOne(input, brief);
+		log.warn("[claude:{}] tactic {} came back {} — retrying once",
+				THOUGHTS_LABEL, input.tacticNum(), first == null ? "empty" : "incomplete");
+		TacticThoughts second = tacticThoughtsOne(input, brief);
+		if (isCompleteThoughts(second)) {
+			return second;
+		}
+		TacticThoughts best = fullerThoughts(first, second);
+		if (best == null) {
+			rejectSection(THOUGHTS_LABEL, input.tacticNum(),
+					"no usable thoughts after 2 attempts; its slide fields ship blank");
+		}
+		return best;
 	}
 
 	/**
 	 * Runs one tactic's thoughts call: build the prompt, parse the four thoughts, compress any over-budget
-	 * ones, and normalize. Returns {@code null} — never partial junk — when the call or parse fails.
+	 * ones, and normalize. A reply whose {@code thoughts} array is missing, is not an array, or holds nothing
+	 * but blanks is rejected outright ({@code null}) — a well-formed but empty array is exactly the shape that
+	 * used to pass as a success and blank the slide silently. A reply that fills some but not all four slots is
+	 * returned as-is for {@link #tacticThoughtsResilient} to retry on.
 	 *
 	 * @param input the tactic's assembled conclusions
 	 * @param brief free-text campaign brief passed through to the prompt
-	 * @return the tactic's four thoughts, or {@code null} when the call produced no usable reply
+	 * @return the tactic's thoughts, possibly with fewer than four filled, or {@code null} when unusable
 	 */
 	TacticThoughts tacticThoughtsOne(TacticThoughtsInput input, String brief) {
 		var prompt = promptBuilder.buildTacticThoughtsPrompt(input, brief, THOUGHT_LIMIT);
@@ -1067,18 +1225,32 @@ public class RealClaudeClient implements ClaudeClient {
 			return null;
 		}
 		JsonNode parsed = messagesClient.callJsonObject(
-				prompt.get(), TACTIC_THOUGHTS_MAX_TOKENS, BREAKDOWN_TIMEOUT_SEC, "BatchTacticThoughts", true);
+				prompt.get(), TACTIC_THOUGHTS_MAX_TOKENS, BREAKDOWN_TIMEOUT_SEC, THOUGHTS_LABEL, true);
 		if (parsed == null) {
 			return null;
 		}
 		JsonNode arr = parsed.get("thoughts");
 		if (arr == null || !arr.isArray()) {
+			rejectSection(THOUGHTS_LABEL, input.tacticNum(), "reply carried no \"thoughts\" array");
 			return null;
 		}
 		List<ClaudeCompressionField> fields = new ArrayList<>();
+		int filled = 0;
 		for (int i = 0; i < TACTIC_THOUGHTS_COUNT; i++) {
 			String raw = i < arr.size() ? arr.get(i).asText("").trim() : "";
+			if (!raw.isBlank()) {
+				filled++;
+			}
 			fields.add(new ClaudeCompressionField(input.tacticNum() + "_thought_" + i, raw, THOUGHT_LIMIT));
+		}
+		if (filled == 0) {
+			rejectSection(THOUGHTS_LABEL, input.tacticNum(),
+					"reply carried " + arr.size() + " item(s) but no non-blank thought");
+			return null;
+		}
+		if (filled < TACTIC_THOUGHTS_COUNT) {
+			rejectSection(THOUGHTS_LABEL, input.tacticNum(),
+					"reply filled only " + filled + " of " + TACTIC_THOUGHTS_COUNT + " thoughts");
 		}
 		Map<String, String> compressed = compressionService.compress(fields, "BatchD-TacticThoughts");
 		List<String> thoughts = new ArrayList<>(TACTIC_THOUGHTS_COUNT);
@@ -1086,6 +1258,56 @@ public class RealClaudeClient implements ClaudeClient {
 			thoughts.add(normalizer.normalizeC(compressed.get(input.tacticNum() + "_thought_" + i), THOUGHT_LIMIT));
 		}
 		return new TacticThoughts(input.tacticNum(), thoughts);
+	}
+
+	/**
+	 * Reports whether a thoughts reply filled every slot the slide carries, which is the only shape worth
+	 * accepting without a retry. Counted after normalization, so a thought that survived the call but was
+	 * dropped as blank by the length pass counts as missing.
+	 *
+	 * @param thoughts the parsed thoughts, or {@code null} when the call produced nothing usable
+	 * @return {@code true} when all {@link #TACTIC_THOUGHTS_COUNT} thoughts are present and non-blank
+	 */
+	boolean isCompleteThoughts(TacticThoughts thoughts) {
+		return countThoughts(thoughts) == TACTIC_THOUGHTS_COUNT;
+	}
+
+	/**
+	 * Counts the non-blank thoughts a reply carries, tolerating a {@code null} reply and the {@code null}
+	 * entries {@link ClaudeResponseNormalizer#normalizeC} leaves behind for blanks.
+	 *
+	 * @param thoughts the parsed thoughts, or {@code null}
+	 * @return how many slide-ready thoughts it holds
+	 */
+	int countThoughts(TacticThoughts thoughts) {
+		if (thoughts == null || thoughts.thoughts() == null) {
+			return 0;
+		}
+		int filled = 0;
+		for (String thought : thoughts.thoughts()) {
+			if (thought != null && !thought.isBlank()) {
+				filled++;
+			}
+		}
+		return filled;
+	}
+
+	/**
+	 * Picks the attempt that carries more slide-ready thoughts, so a partial reply is never thrown away in
+	 * favour of an emptier one. Ties go to the first attempt; {@code null} is returned only when neither
+	 * attempt carries a single thought.
+	 *
+	 * @param first  the first attempt's thoughts, or {@code null}
+	 * @param second the retry's thoughts, or {@code null}
+	 * @return the fuller of the two, or {@code null} when both are empty
+	 */
+	TacticThoughts fullerThoughts(TacticThoughts first, TacticThoughts second) {
+		int firstCount = countThoughts(first);
+		int secondCount = countThoughts(second);
+		if (firstCount == 0 && secondCount == 0) {
+			return null;
+		}
+		return secondCount > firstCount ? second : first;
 	}
 
 	@Override
@@ -1349,6 +1571,25 @@ public class RealClaudeClient implements ClaudeClient {
 			return null;
 		}
 		return normalizer.normalizeC(text.trim(), BRIEF_DIGEST_LIMIT);
+	}
+
+	@Override
+	public String digestBriefIfOversized(String brief) {
+		if (brief == null || brief.isBlank() || brief.length() <= BRIEF_DIGEST_LIMIT) {
+			// Already within the budget — a digest of a compact brief would cost a call and change nothing.
+			return brief;
+		}
+		String digest = digestBrief(brief);
+		if (digest == null || digest.isBlank()) {
+			// The digest call failed; the raw text is still better context than none, and the transport already
+			// logged why. This line names the consequence: every call this run makes carries the full brief.
+			log.warn("[claude:BriefDigest] {}-char brief could not be digested; every call this run carries it "
+					+ "in full", brief.length());
+			return brief;
+		}
+		log.info("[claude:BriefDigest] brief context digested for the prompts: {} chars -> {}",
+				brief.length(), digest.length());
+		return digest;
 	}
 
 	@Override

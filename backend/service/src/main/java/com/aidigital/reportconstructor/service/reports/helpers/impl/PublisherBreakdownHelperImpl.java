@@ -7,6 +7,7 @@ import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationI
 import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
 import com.aidigital.reportconstructor.service.reports.helpers.BreakdownSelectionResolver;
 import com.aidigital.reportconstructor.service.reports.helpers.PublisherBreakdownHelper;
+import com.aidigital.reportconstructor.service.reports.helpers.ReportNumberParser;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportSheetHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -49,8 +50,17 @@ public class PublisherBreakdownHelperImpl implements PublisherBreakdownHelper {
 	 */
 	private static final String NAME_SEPARATOR = " - ";
 
+	/**
+	 * Characters stripped from a publisher name before it reaches a prompt. A double quote or a backslash
+	 * inside a name comes back inside a JSON string in Claude's reply, where one unescaped occurrence makes the
+	 * whole array unparseable and blanks the slide; a pipe would collide with the context block's own column
+	 * separator. Control characters go for the same reason a raw newline breaks a JSON string.
+	 */
+	private static final String PROMPT_UNSAFE_CHARS = "[\"\\\\|\\p{Cntrl}]";
+
 	private final ReportSheetHelper sheetHelper;
 	private final BreakdownSelectionResolver breakdownResolver;
+	private final ReportNumberParser numbers;
 
 	@Override
 	public BreakdownSectionInputs<PublisherObservationInput> readPublisherInputs(
@@ -74,7 +84,9 @@ public class PublisherBreakdownHelperImpl implements PublisherBreakdownHelper {
 				continue;
 			}
 			String name = flatReplacements.getOrDefault("{{tactic " + tacticNum + "}}", "Tactic " + tacticNum);
-			inputs.put(tacticNum, new PublisherObservationInput(tacticNum, name, rows));
+			long tacticImps = impressions(flatReplacements.get("{{tactic " + tacticNum + " imps}}"));
+			inputs.put(tacticNum, new PublisherObservationInput(
+					tacticNum, name, promptRows(rows), headImpressions(rows), tacticImps));
 		}
 		return new BreakdownSectionInputs<>(tacticNums, inputs, values, List.of());
 	}
@@ -166,14 +178,80 @@ public class PublisherBreakdownHelperImpl implements PublisherBreakdownHelper {
 	}
 
 	/**
+	 * Rewrites the rows that go into the prompt so Claude reads exactly the names the slide shows.
+	 *
+	 * <p>The impressions and share strings are passed through untouched — the prompt quotes them back as the
+	 * figures the user signed off on — while each name goes through {@link #promptName}. Claude reading the
+	 * same short, quote-free names the table carries is what keeps a cited publisher recognisable on the slide
+	 * and keeps a stray quote in an exported app name from breaking the JSON reply.
+	 *
+	 * @param rows the tactic's rows as read back from the sheet
+	 * @return the same rows with prompt-safe names, in sheet order
+	 */
+	List<PublisherRow> promptRows(List<PublisherRow> rows) {
+		List<PublisherRow> out = new ArrayList<>(rows.size());
+		for (PublisherRow row : rows) {
+			out.add(new PublisherRow(promptName(row.name()), row.impressions(), row.shareOfVoice()));
+		}
+		return out;
+	}
+
+	/**
+	 * Renders one publisher name for a prompt: the slide's own display name with every character that could
+	 * break the reply's JSON removed and whitespace collapsed.
+	 *
+	 * <p>A name that scrubs away to nothing — a row whose name cell holds only punctuation — falls back to
+	 * {@link #DASH}, matching what that row shows on the slide, so the prompt never carries a nameless row.
+	 *
+	 * @param name the publisher name as typed in the sheet, possibly {@code null}
+	 * @return the prompt-safe name, never {@code null}
+	 */
+	String promptName(String name) {
+		String display = displayName(name);
+		if (display == null) {
+			return DASH;
+		}
+		String safe = display.replaceAll(PROMPT_UNSAFE_CHARS, " ").replaceAll("\\s+", " ").trim();
+		return safe.isEmpty() ? DASH : safe;
+	}
+
+	/**
+	 * Sums the impressions the listed rows carry, so the prompt can state what share of delivery the table
+	 * actually covers instead of guessing at it.
+	 *
+	 * @param rows the tactic's rows as read back from the sheet
+	 * @return the rows' total impressions, or {@code 0} when none of them held a parseable number
+	 */
+	long headImpressions(List<PublisherRow> rows) {
+		long total = 0;
+		for (PublisherRow row : rows) {
+			total += impressions(row.impressions());
+		}
+		return total;
+	}
+
+	/**
+	 * Parses one impressions cell the way the rest of the report reads its numbers, treating anything
+	 * unparseable or negative as unknown rather than as a real zero.
+	 *
+	 * @param raw the cell value as typed in the sheet, possibly {@code null}
+	 * @return the impressions, or {@code 0} when the cell carried no usable number
+	 */
+	long impressions(String raw) {
+		double parsed = numbers.parseReportNumber(raw);
+		return parsed > 0 ? Math.round(parsed) : 0;
+	}
+
+	/**
 	 * Shortens a publisher name to the part before its first {@link #NAME_SEPARATOR}, so the slide's
 	 * fixed-width table shows {@code "Chai"} rather than
 	 * {@code "Chai - Chat with AI bots - iOS (1544750895)"} wrapped across two colliding lines. Cutting on
 	 * the <em>first</em> separator drops both the descriptive tail and the platform/bundle-id suffix.
 	 *
-	 * <p>Display only — Claude still receives the full names, so it can tell one platform's listing from
-	 * another's when reasoning about the mix. Names with no separator ({@code "mail.yahoo.com"}) are left
-	 * alone, as is a name that would otherwise shorten to nothing.
+	 * <p>Used for the slide and, through {@link #promptName}, for the prompt as well: a publisher Claude
+	 * names in a bullet has to be findable in the table beside it, and the exported tails it used to see cost
+	 * tokens on every call without changing what the copy could say. Names with no separator
+	 * ({@code "mail.yahoo.com"}) are left alone, as is a name that would otherwise shorten to nothing.
 	 *
 	 * @param name the publisher name as typed in the sheet, possibly {@code null}
 	 * @return the leading display name, or {@code name} unchanged when it carries no separator

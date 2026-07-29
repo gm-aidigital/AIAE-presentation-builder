@@ -2,6 +2,8 @@ package com.aidigital.reportconstructor.externalservices.anthropic;
 
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
+import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationInput;
+import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
 import com.aidigital.reportconstructor.service.reports.dto.Tactic;
 import com.aidigital.reportconstructor.service.reports.dto.TacticNarrativeDigest;
 import com.aidigital.reportconstructor.service.reports.dto.Totals;
@@ -25,6 +27,58 @@ class ClaudeBatchPromptBuilderTest {
 		assertThat(builder.completionRateLabel("Amazon Podcast Ads")).isEqualTo("ACR");
 		assertThat(builder.completionRateLabel("Programmatic CTV")).isEqualTo("VCR");
 		assertThat(builder.completionRateLabel(null)).isEqualTo("VCR");
+	}
+
+	@Test
+	void shouldAskForPublisherObservationsAsFourNumberedSlotsWithTheRealCoverageShareTest() {
+		// Given: one tactic whose 2 listed publishers carry 600k of its 1M impressions
+		Tactic ctv = new Tactic(
+				"CTV", "CTV", null,
+				5000.0, 1_000_000.0, 0.0, 1_000_000.0, null, 98.0, null, null,
+				null, null, null, null, null, null, null, null);
+		CampaignData data = new CampaignData(
+				"Acme", "Spring Launch", "US", "Awareness", "Jan 1 - Mar 31",
+				null, "$500,000", "Reach", "CTV", "25-44", "Auto intenders",
+				new Totals(0, 0, 0, 0, null, null), Map.of(1, ctv), null);
+		PublisherObservationInput input = new PublisherObservationInput(
+				1, "CTV",
+				List.of(new PublisherRow("Hulu", "400,000", "40%"), new PublisherRow("Roku", "200,000", "20%")),
+				600_000, 1_000_000);
+
+		// When:
+		String prompt = builder.buildPublisherSectionPrompt(input, data, "Drive awareness.", 155).orElseThrow();
+
+		// Then: the four observations are asked for as numbered slots, so each maps to one array position the
+		// way every other section's prompt already does
+		assertThat(prompt).contains(
+				"1) VOLUME AND REACH", "2) AUDIENCE FIT",
+				"3) PREMIUM AND BRAND SUITABILITY", "4) STEERING WEIGHT");
+
+		// Then: the blacklisting claim and the complimentary framing are still asked for
+		assertThat(prompt).contains("WE BLACKLISTED a large number of PUBLISHERS", "complimentary");
+
+		// Then: coverage is a computed figure to cite, not a licence to estimate one
+		assertThat(prompt).contains(
+				"HEAD VS LONG TAIL: these 2 publishers carry 600,000 of the tactic's 1,000,000 impressions "
+						+ "(60% of its delivery); the remaining 40% sits in a long tail");
+		assertThat(prompt).doesNotContain("At most ~20%");
+	}
+
+	@Test
+	void shouldLeaveThePublisherCoverageLineOutWhenTheTotalsCannotSupportItTest() {
+		// Given: a tactic whose rows add up to more than the tactic delivered — a mistyped impressions cell
+		PublisherObservationInput mistyped = new PublisherObservationInput(
+				1, "CTV", List.of(new PublisherRow("Hulu", "9,000,000", "40%")), 9_000_000, 1_000_000);
+		PublisherObservationInput unknown = new PublisherObservationInput(
+				1, "CTV", List.of(new PublisherRow("Hulu", "400,000", "40%")), 400_000, 0);
+
+		// When:
+		String mistypedLine = builder.publisherCoverageLine(mistyped);
+		String unknownLine = builder.publisherCoverageLine(unknown);
+
+		// Then: neither states a share, so the copy is never told to cite arithmetic the sheet cannot back
+		assertThat(mistypedLine).isEmpty();
+		assertThat(unknownLine).isEmpty();
 	}
 
 	@Test

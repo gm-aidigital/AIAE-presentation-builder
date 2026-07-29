@@ -907,17 +907,24 @@ public class ClaudeBatchPromptBuilder {
 						+ "post-campaign report, on behalf of the team that ran the campaign (confident, complimentary "
 						+ "of our own delivery).\n\n"
 						+ sectionPrinciples()
-						+ "Return FOUR key observations, each ONE complete sentence, at most " + prompt + " characters. "
-						+ "The table lists only the TOP ~15 publishers over a long tail of thousands more. We run an "
-						+ "AUDIENCE-FIRST approach: we chase the audience, not sites. Ground each in the numbers (name "
-						+ "real publishers, cite real shares/impressions, head vs long tail). At most ~20% may go beyond "
-						+ "the table and never as measured fact. Any optimisation is phrased as something WE ALREADY DID "
-						+ "(e.g. 'we shifted weight toward stronger publishers'); never say we blacklisted or paused a "
-						+ "TACTIC (say we REDUCED ITS WEIGHT). One of the 4 notes that we blacklisted a large number of "
-						+ "PUBLISHERS (hundreds to a few thousand, kept qualitative) to hold delivery on premium, "
-						+ "brand-safe inventory. Vary the 4 angles: volume/reach + long tail, audience-fit, "
-						+ "premium/brand-suitability incl. blacklisting, and steering weight to the strongest "
-						+ "publishers.\n\n"
+						+ "Return the four observations in THIS order, each ONE complete sentence:\n"
+						+ "1) VOLUME AND REACH — where delivery concentrated across the named publishers and how that "
+						+ "head compares with the long tail, at most " + prompt + " characters;\n"
+						+ "2) AUDIENCE FIT — why these publishers matched the audience we were chasing (we run an "
+						+ "AUDIENCE-FIRST approach: we chase the audience, not sites), at most " + prompt
+						+ " characters;\n"
+						+ "3) PREMIUM AND BRAND SUITABILITY — state that WE BLACKLISTED a large number of PUBLISHERS "
+						+ "(hundreds to a few thousand, kept qualitative — never a precise count) to hold delivery on "
+						+ "premium, brand-safe inventory, at most " + prompt + " characters;\n"
+						+ "4) STEERING WEIGHT — an optimisation WE ALREADY MADE toward the strongest publishers and what "
+						+ "it produced, at most " + prompt + " characters.\n"
+						+ "Ground every observation in the numbers: name real publishers from the table and cite their "
+						+ "real shares/impressions. The table lists only this tactic's top publishers out of thousands; "
+						+ "the HEAD VS LONG TAIL line under it states the exact share of delivery they carry — cite that "
+						+ "share rather than estimating coverage, and never state anything the table does not show as a "
+						+ "measured fact. Every optimisation is phrased as something WE ALREADY DID (e.g. 'we shifted "
+						+ "weight toward stronger publishers'); never say we blacklisted or paused a TACTIC (say we "
+						+ "REDUCED ITS WEIGHT).\n\n"
 						+ sectionArrayRules(4)
 						+ campaignContextForConclusions(data, brief) + "\n\n"
 						+ AnthropicMessagesClient.CACHE_BREAKPOINT + "=== TACTIC: " + input.tacticName() + " ===\n"
@@ -1124,7 +1131,32 @@ public class ClaudeBatchPromptBuilder {
 			block.append(row.name()).append(" | ").append(row.impressions())
 					.append(" | ").append(row.shareOfVoice()).append('\n');
 		}
+		block.append(publisherCoverageLine(input));
 		return block.toString();
+	}
+
+	/**
+	 * Renders the head-vs-long-tail line that closes a publisher block: what the listed rows carry against the
+	 * tactic's whole delivery, as impressions and as a share.
+	 *
+	 * <p>This is the figure the prompt tells Claude to cite instead of estimating how much of the campaign the
+	 * table covers — a real number from the sheet rather than a licence to guess. It is omitted whenever the
+	 * arithmetic would be untrustworthy: either total is unknown, or the rows add up to more than the tactic
+	 * delivered (a mistyped cell), in which case the copy is better off saying nothing about coverage.
+	 *
+	 * @param input the tactic's publisher input carrying both impression totals
+	 * @return the coverage line, newline-terminated, or an empty string when it cannot be stated
+	 */
+	String publisherCoverageLine(PublisherObservationInput input) {
+		long head = input.headImpressions();
+		long total = input.tacticImpressions();
+		if (head <= 0 || total <= 0 || head > total) {
+			return "";
+		}
+		long share = Math.round(100.0 * head / total);
+		return "HEAD VS LONG TAIL: these " + input.rows().size() + " publishers carry " + fmt.intGroup(head)
+				+ " of the tactic's " + fmt.intGroup(total) + " impressions (" + share + "% of its delivery); "
+				+ "the remaining " + (100 - share) + "% sits in a long tail of thousands of unlisted publishers.\n";
 	}
 
 	/**

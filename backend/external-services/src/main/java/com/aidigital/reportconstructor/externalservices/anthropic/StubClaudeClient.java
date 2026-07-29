@@ -115,9 +115,9 @@ public class StubClaudeClient implements ClaudeClient {
 	}
 
 	@Override
-	public List<TacticThoughts> batchTacticThoughts(List<TacticThoughtsInput> inputs, String brief) {
-		// No live model: no thoughts to generate, so the thoughts slides render blank.
-		return List.of();
+	public TacticThoughts tacticThoughts(TacticThoughtsInput input, String brief) {
+		// No live model: no thoughts to generate, so the thoughts slide renders blank.
+		return null;
 	}
 
 	@Override
@@ -147,6 +147,12 @@ public class StubClaudeClient implements ClaudeClient {
 	public String digestBrief(String brief) {
 		// No live model: the caller falls back to the raw brief, exactly as it behaved before the digest step.
 		return null;
+	}
+
+	@Override
+	public String digestBriefIfOversized(String brief) {
+		// No live model to digest with, so the brief passes through unchanged.
+		return brief;
 	}
 
 	@Override

@@ -60,6 +60,18 @@ public class AnthropicMessagesClient {
 	 */
 	public static final String CACHE_BREAKPOINT = "\u0000CACHE_BREAKPOINT\u0000";
 
+	/**
+	 * Opening bracket sent as a pre-filled assistant turn on every array call, so the model continues an array
+	 * that has already begun rather than choosing how to open its reply.
+	 *
+	 * <p>The commonest way an array reply died was prose around it — a "Here are the observations:" preamble, a
+	 * closing remark, a fenced block — none of which the model can write once its turn starts mid-array. Asking
+	 * for bare JSON in the prompt only makes that unlikely; starting the turn with the bracket makes it
+	 * impossible. The response body then carries only the continuation, so the bracket is prepended back onto
+	 * the reply text before it is parsed.
+	 */
+	static final String ARRAY_PREFILL = "[";
+
 	private final String apiKey;
 	private final String model;
 	private final HttpClient http;
@@ -144,9 +156,13 @@ public class AnthropicMessagesClient {
 		if (resp == null) {
 			return null;
 		}
-		if ("max_tokens".equals(resp.path("stop_reason").asText("")) && !allowPartial) {
+		boolean truncated = "max_tokens".equals(resp.path("stop_reason").asText(""));
+		if (truncated && !allowPartial) {
 			log.warn("[claude:{}] truncated by max_tokens", label);
 			return null;
+		}
+		if (truncated) {
+			noteSalvagedTruncation(label, maxTokens);
 		}
 		String text = normalizer.extractText(resp);
 		if (text == null || text.isBlank()) {
@@ -183,18 +199,26 @@ public class AnthropicMessagesClient {
 	 */
 	public JsonNode callJsonArray(
 			String prompt, int maxTokens, int timeoutSec, String label, boolean allowPartial) {
-		JsonNode resp = callRaw(prompt, maxTokens, timeoutSec, label);
+		JsonNode resp = callRaw(prompt, maxTokens, timeoutSec, label, ARRAY_PREFILL);
 		if (resp == null) {
 			return null;
 		}
-		if ("max_tokens".equals(resp.path("stop_reason").asText("")) && !allowPartial) {
+		boolean truncated = "max_tokens".equals(resp.path("stop_reason").asText(""));
+		if (truncated && !allowPartial) {
 			log.warn("[claude:{}] truncated by max_tokens", label);
 			return null;
+		}
+		if (truncated) {
+			noteSalvagedTruncation(label, maxTokens);
 		}
 		String text = normalizer.extractText(resp);
 		if (text == null || text.isBlank()) {
 			return null;
 		}
+		// The assistant turn was started with the opening bracket, so the reply body picks up inside the array.
+		// Putting the bracket back is what makes the continuation a complete array again — and it happens here,
+		// in the one method that sends the prefill, so the two can never drift apart.
+		text = ARRAY_PREFILL + text;
 		text = FENCE_OPEN.matcher(text.trim()).replaceFirst("");
 		text = FENCE_CLOSE.matcher(text).replaceFirst("").trim();
 		JsonNode node = parseJsonArray(text, allowPartial);
@@ -351,6 +375,25 @@ public class AnthropicMessagesClient {
 	}
 
 	/**
+	 * Records a reply the model stopped writing because it ran out of its output budget but which
+	 * {@code allowPartial} salvaged anyway.
+	 *
+	 * <p>Worth its own line precisely because the salvage succeeds: the report still builds, so the only
+	 * symptom is that the fields the reply never reached silently kept their earlier values — indistinguishable
+	 * from Claude having decided they were already fine. Naming the budget it overran is what turns a puzzling
+	 * half-applied pass into "raise this call's max tokens".
+	 *
+	 * @param label     batch tag the call was logged under
+	 * @param maxTokens the output budget the reply ran out of
+	 */
+	void noteSalvagedTruncation(String label, int maxTokens) {
+		log.warn("[claude:{}] reply ran out of its {}-token output budget; salvaged the part that arrived, so "
+				+ "later fields kept their previous values", label, maxTokens);
+		failureLog.record(label, "reply ran out of its " + maxTokens + "-token output budget; the fields it "
+				+ "never reached kept their previous values");
+	}
+
+	/**
 	 * Rebuilds a parseable JSON object out of a reply the model stopped writing mid-way: drops the trailing
 	 * incomplete value and closes every structure still open, so the entries that did arrive survive instead
 	 * of the whole reply being thrown away.
@@ -454,6 +497,23 @@ public class AnthropicMessagesClient {
 	}
 
 	/**
+	 * Builds the request's message list: the user turn carrying the prompt, plus a pre-filled assistant turn
+	 * when one was asked for.
+	 *
+	 * @param prompt           the full user prompt, cache marker included
+	 * @param assistantPrefill text to start the assistant's turn with, or {@code null}/blank for none
+	 * @return the messages array in the shape the Messages API expects
+	 */
+	List<Map<String, Object>> buildMessages(String prompt, String assistantPrefill) {
+		List<Map<String, Object>> messages = new ArrayList<>(2);
+		messages.add(Map.of("role", "user", "content", buildUserContent(prompt)));
+		if (assistantPrefill != null && !assistantPrefill.isBlank()) {
+			messages.add(Map.of("role", "assistant", "content", assistantPrefill));
+		}
+		return messages;
+	}
+
+	/**
 	 * Sends a prompt as a single user message to the Anthropic Messages API and returns the raw
 	 * parsed JSON response body, or {@code null} on a non-200 status or transport failure.
 	 *
@@ -464,13 +524,33 @@ public class AnthropicMessagesClient {
 	 * @return the full Messages API response as a JSON tree, or {@code null} on failure
 	 */
 	public JsonNode callRaw(String prompt, int maxTokens, int timeoutSec, String label) {
+		return callRaw(prompt, maxTokens, timeoutSec, label, null);
+	}
+
+	/**
+	 * Sends a prompt as a single user message, optionally pre-filling the start of the assistant's reply, and
+	 * returns the raw parsed JSON response body or {@code null} on a non-200 status or transport failure.
+	 *
+	 * <p>A pre-filled assistant turn is the API's way of fixing how a reply opens: the model continues the text
+	 * it is handed instead of deciding for itself, which is how {@link #ARRAY_PREFILL} rules out a prose
+	 * preamble. The response then carries only the continuation — the caller is responsible for putting the
+	 * pre-filled text back in front of it.
+	 *
+	 * @param prompt          the full user prompt sent as the single user message to Claude
+	 * @param maxTokens       cap on tokens the model may generate in its reply
+	 * @param timeoutSec      per-request HTTP timeout in seconds
+	 * @param label           short tag identifying this call in log messages
+	 * @param assistantPrefill text the assistant's turn is started with, or {@code null}/blank for none
+	 * @return the full Messages API response as a JSON tree, or {@code null} on failure
+	 */
+	public JsonNode callRaw(String prompt, int maxTokens, int timeoutSec, String label, String assistantPrefill) {
 		HttpRequest req;
 		try {
 			Map<String, Object> body = Map.of(
 					"model", model,
 					"max_tokens", maxTokens,
 					"temperature", temperature,
-					"messages", List.of(Map.of("role", "user", "content", buildUserContent(prompt)))
+					"messages", buildMessages(prompt, assistantPrefill)
 			);
 			req = HttpRequest.newBuilder()
 					.uri(URI.create(ENDPOINT))
