@@ -69,6 +69,14 @@ public class AnthropicProperties {
 	 */
 	private int sectionRetries = 2;
 
+	/**
+	 * Characters of an unparseable reply written to the WARN line that reports the parse failure. The default
+	 * 400 keeps the log readable but truncates before the defect on a long reply, so this is raised
+	 * temporarily when a parse failure has to be diagnosed on a deployed environment. The full reply is
+	 * always available on DEBUG regardless of this value. Clamped to at least 80 at use.
+	 */
+	private int replySnippetLimit = 400;
+
 	public String getApiKey() {
 		return apiKey;
 	}
@@ -131,5 +139,13 @@ public class AnthropicProperties {
 
 	public void setSectionRetries(int sectionRetries) {
 		this.sectionRetries = sectionRetries;
+	}
+
+	public int getReplySnippetLimit() {
+		return replySnippetLimit;
+	}
+
+	public void setReplySnippetLimit(int replySnippetLimit) {
+		this.replySnippetLimit = replySnippetLimit;
 	}
 }

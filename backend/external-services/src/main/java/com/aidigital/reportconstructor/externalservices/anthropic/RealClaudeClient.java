@@ -373,13 +373,29 @@ public class RealClaudeClient implements ClaudeClient {
 	List<String> sectionOnce(
 			String label, int tacticNum, String prompt, int count, java.util.function.IntUnaryOperator limitAt) {
 		JsonNode arr = messagesClient.callJsonArray(prompt, SECTION_MAX_TOKENS, BREAKDOWN_TIMEOUT_SEC, label);
-		if (arr == null || !arr.isArray() || arr.size() != count) {
+		if (arr == null || !arr.isArray()) {
+			// The call itself failed or the reply was not an array; the transport already logged the cause, so
+			// this line only ties that cause to the section and tactic whose fields are about to ship blank.
+			log.warn("[claude:{}] tactic {} rejected: no JSON array in the reply", label, tacticNum);
+			return List.of();
+		}
+		// Tolerate an accidental one-level wrapper array — the model sometimes returns [[...]] (an array whose
+		// only element is the real array of strings) instead of a flat [...]. Unwrap it before the count check;
+		// the strict "exactly count non-blank strings" contract still applies to the unwrapped array.
+		if (arr.size() == 1 && arr.get(0).isArray()) {
+			arr = arr.get(0);
+		}
+		if (arr.size() != count) {
+			log.warn("[claude:{}] tactic {} rejected: array holds {} item(s), expected {}",
+					label, tacticNum, arr.size(), count);
 			return List.of();
 		}
 		List<String> raw = new ArrayList<>(count);
 		for (int i = 0; i < count; i++) {
 			String value = arr.get(i).asText("").trim();
 			if (value.isBlank()) {
+				log.warn("[claude:{}] tactic {} rejected: item {} of {} is blank (node type {})",
+						label, tacticNum, i, count, arr.get(i).getNodeType());
 				return List.of();
 			}
 			raw.add(value);

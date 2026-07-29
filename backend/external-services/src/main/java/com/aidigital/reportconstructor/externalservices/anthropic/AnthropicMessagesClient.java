@@ -34,8 +34,8 @@ public class AnthropicMessagesClient {
 	private static final Pattern FENCE_OPEN = Pattern.compile("^```(?:json)?\\s*", Pattern.CASE_INSENSITIVE);
 	private static final Pattern FENCE_CLOSE = Pattern.compile("\\s*```$");
 
-	/** Characters of a failed reply logged so a parse failure names its cause instead of being a dead end. */
-	private static final int REPLY_SNIPPET_LIMIT = 400;
+	/** Floor on the configured reply snippet length, so a misconfigured value still logs something usable. */
+	private static final int MIN_REPLY_SNIPPET_LIMIT = 80;
 
 	/**
 	 * HTTP statuses treated as transient and retried: 408 request timeout, 429 rate limit, 500/502/503/504
@@ -71,6 +71,12 @@ public class AnthropicMessagesClient {
 	private final long retryBackoffMillis;
 
 	/**
+	 * Characters of an unparseable reply written to its WARN line; at least {@link #MIN_REPLY_SNIPPET_LIMIT}.
+	 * Configurable because the default head of a reply often stops short of the defect that broke the parse.
+	 */
+	private final int replySnippetLimit;
+
+	/**
 	 * Caps Claude HTTP calls in flight at once across the whole process. The restructured slides-from-sheet
 	 * flow fans out many small per-tactic calls in parallel, so every send acquires a permit here first and
 	 * releases it when the call returns, keeping concurrency inside the account rate limit.
@@ -100,6 +106,7 @@ public class AnthropicMessagesClient {
 		this.callLimiter = new Semaphore(Math.max(1, props.getMaxConcurrentCalls()));
 		this.maxRetries = Math.max(0, props.getMaxRetries());
 		this.retryBackoffMillis = Math.max(0, props.getRetryBackoffMillis());
+		this.replySnippetLimit = Math.max(MIN_REPLY_SNIPPET_LIMIT, props.getReplySnippetLimit());
 	}
 
 	/**
@@ -137,7 +144,7 @@ public class AnthropicMessagesClient {
 		// The reply carried no object we can use — a prose preamble with no JSON, a refusal, or an essay
 		// that ran to max_tokens. Logging the head of it turns "JSON parse failed" from a dead end into a
 		// diagnosable line without dumping the whole (often large) reply.
-		log.warn("[claude:{}] JSON parse failed; reply began: {}", label, snippet(text));
+		logUnparseableReply(label, "object", text);
 		return null;
 	}
 
@@ -173,7 +180,7 @@ public class AnthropicMessagesClient {
 		if (node != null) {
 			return node;
 		}
-		log.warn("[claude:{}] JSON array parse failed; reply began: {}", label, snippet(text));
+		logUnparseableReply(label, "array", text);
 		return null;
 	}
 
@@ -273,15 +280,31 @@ public class AnthropicMessagesClient {
 	}
 
 	/**
-	 * Shortens reply text to a single-line head for a log line: whitespace collapsed, capped at
-	 * {@value #REPLY_SNIPPET_LIMIT} characters with an ellipsis when longer.
+	 * Shortens reply text to a single-line head for a log line: whitespace collapsed, capped at the configured
+	 * {@code external.anthropic.reply-snippet-limit} characters with an ellipsis when longer.
 	 *
 	 * @param text the reply text
 	 * @return the trimmed, length-capped snippet
 	 */
 	String snippet(String text) {
 		String flat = text.replaceAll("\\s+", " ").trim();
-		return flat.length() <= REPLY_SNIPPET_LIMIT ? flat : flat.substring(0, REPLY_SNIPPET_LIMIT) + "…";
+		return flat.length() <= replySnippetLimit ? flat : flat.substring(0, replySnippetLimit) + "…";
+	}
+
+	/**
+	 * Reports a reply no parse path could use. The WARN line carries the reply's head — long enough to name a
+	 * cause, short enough to keep the log readable — and the whole reply goes to DEBUG, verbatim and unflattened,
+	 * so the defect that broke the parse (a raw newline inside a string, a missing closing bracket, prose after
+	 * the JSON) can be read off a deployed run by turning on DEBUG for this logger alone.
+	 *
+	 * @param label short tag identifying this call in log messages
+	 * @param shape the expected top-level JSON shape, named in the message (e.g. {@code "object"})
+	 * @param text  the reply text, with any Markdown code fences already stripped
+	 */
+	void logUnparseableReply(String label, String shape, String text) {
+		log.warn("[claude:{}] JSON {} parse failed ({} chars); reply began: {}",
+				label, shape, text.length(), snippet(text));
+		log.debug("[claude:{}] full unparseable reply:\n{}", label, text);
 	}
 
 	/**

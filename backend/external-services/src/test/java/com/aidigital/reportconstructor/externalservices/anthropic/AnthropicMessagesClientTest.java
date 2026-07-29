@@ -170,6 +170,23 @@ class AnthropicMessagesClientTest {
 	}
 
 	@Test
+	void shouldWidenTheReplySnippetWhenConfiguredToTest() {
+		// Given: a client configured to log a wider head of a failed reply — the setting used to reach a parse
+		// defect that sits past the default 400 characters on a deployed run
+		AnthropicProperties props = new AnthropicProperties();
+		props.setApiKey("key");
+		props.setReplySnippetLimit(1200);
+		AnthropicMessagesClient client = new AnthropicMessagesClient(
+				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator());
+
+		// When:
+		String snippet = client.snippet("x".repeat(2000));
+
+		// Then: the configured cap is what the snippet honours, not the former fixed 400
+		assertThat(snippet.length()).isEqualTo(1201);
+	}
+
+	@Test
 	void shouldRetryTheTransientStatusesThatBlankedABatchTest() {
 		// Given: the client. The 522 that wiped the PrimaryKpis fact columns is a Cloudflare edge timeout,
 		// alongside the other transient upstream conditions worth another send.
