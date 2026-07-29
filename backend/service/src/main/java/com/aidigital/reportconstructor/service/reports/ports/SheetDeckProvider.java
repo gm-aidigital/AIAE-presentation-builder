@@ -36,6 +36,8 @@ public interface SheetDeckProvider {
 	 * @param fileName              Drive file name to give the cloned workbook
 	 * @param placeholderMap        resolved {@code {{token}}} → value pairs to write
 	 *                              into the cloned workbook
+	 * @param reportType            report template code ({@code "EOC"}/{@code "EOM"}); selects which
+	 *                              template workbook is cloned
 	 * @param userGoogleAccessToken optional Google OAuth access token for the
 	 *                              signed-in user (obtained from Clerk). When
 	 *                              non-blank the workbook is created in that user's
@@ -43,7 +45,9 @@ public interface SheetDeckProvider {
 	 *                              falls back to the service account.
 	 * @return public Sheets URL the UI shows in its "Sheet ready" card
 	 */
-	String createSheet(String jobId, String fileName, Map<String, String> placeholderMap, String userGoogleAccessToken);
+	String createSheet(
+			String jobId, String fileName, Map<String, String> placeholderMap, String reportType,
+			String userGoogleAccessToken);
 
 	/**
 	 * Clears the template's unused per-tactic cell ranges (values <em>and</em>

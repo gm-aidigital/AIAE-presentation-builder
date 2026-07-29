@@ -37,8 +37,12 @@ public class StubSheetDeckProvider implements SheetDeckProvider {
 
 	@Override
 	public String createSheet(
-			String jobId, String fileName, Map<String, String> placeholderMap, String userGoogleAccessToken) {
-		return "https://docs.google.com/spreadsheets/d/" + props.getSheetsTemplateId() + "/edit?stub=" + jobId;
+			String jobId, String fileName, Map<String, String> placeholderMap, String reportType,
+			String userGoogleAccessToken) {
+		String eomTemplateId = props.getEomSheetsTemplateId();
+		String templateId = "EOM".equals(reportType) && eomTemplateId != null && !eomTemplateId.isBlank()
+				? eomTemplateId : props.getSheetsTemplateId();
+		return "https://docs.google.com/spreadsheets/d/" + templateId + "/edit?stub=" + jobId;
 	}
 
 	@Override

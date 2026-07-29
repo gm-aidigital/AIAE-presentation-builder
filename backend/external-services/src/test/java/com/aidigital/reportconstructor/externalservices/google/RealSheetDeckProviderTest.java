@@ -38,12 +38,24 @@ class RealSheetDeckProviderTest {
 		});
 		GoogleProperties props = Mockito.mock(GoogleProperties.class);
 		when(props.getSheetsTemplateId()).thenReturn("template");
+		when(props.getEomSheetsTemplateId()).thenReturn("eom-template");
 		when(props.getSheetsTargetFolderId()).thenReturn("");
 		SheetPacingTableWriter writer = Mockito.mock(SheetPacingTableWriter.class);
 		GoogleRequestRetrier retrier = Mockito.mock(GoogleRequestRetrier.class);
 		DriveSharer driveSharer = Mockito.mock(DriveSharer.class);
 		DriveShareRecipients shareRecipients = Mockito.mock(DriveShareRecipients.class);
 		return new RealSheetDeckProvider(creds, props, writer, retrier, driveSharer, shareRecipients);
+	}
+
+	@Test
+	void templateIdForShouldPreferTheEomTemplateOnlyForEomReportsTest() {
+		// Given: a provider configured with both an EOC and an EOM template id
+		RealSheetDeckProvider provider = newProvider();
+
+		// When-Then: only "EOM" selects the EOM template; anything else (including EOC and unset) keeps the default
+		assertThat(provider.templateIdFor("EOM")).isEqualTo("eom-template");
+		assertThat(provider.templateIdFor("EOC")).isEqualTo("template");
+		assertThat(provider.templateIdFor(null)).isEqualTo("template");
 	}
 
 	@Test

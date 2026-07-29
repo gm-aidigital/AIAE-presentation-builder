@@ -51,9 +51,10 @@ import java.util.regex.Pattern;
 
 /**
  * Real Google Sheets + Drive implementation for the "Generate Sheet" flow. Clones
- * {@code external.google.sheets-template-id} into a new workbook named after the job,
- * runs {@code batchUpdate.findReplace} for every {@code {{token}}} → value pair, and
- * returns the public Sheets edit URL. Mirrors {@link RealSlidesProvider}.
+ * {@code external.google.sheets-template-id} (or {@code eom-sheets-template-id} for an EOM
+ * report, see {@link #templateIdFor}) into a new workbook named after the job, runs
+ * {@code batchUpdate.findReplace} for every {@code {{token}}} → value pair, and returns the
+ * public Sheets edit URL. Mirrors {@link RealSlidesProvider}.
  *
  * <p>Activated when {@link GoogleCredentialsFactory} is on the context. Falls back
  * to {@link StubSheetDeckProvider} otherwise.
@@ -263,7 +264,8 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 	private final GoogleRequestRetrier retrier;
 	private final Sheets sheets;
 	private final Drive drive;
-	private final String templateId;
+	private final String sheetsTemplateId;
+	private final String eomSheetsTemplateId;
 	private final String targetFolderId;
 	private final SheetPacingTableWriter pacingTableWriter;
 	private final DriveSharer driveSharer;
@@ -283,8 +285,24 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 		this.drive = new Drive.Builder(creds.transport(), creds.jsonFactory(), creds.initializer())
 				.setApplicationName(APPLICATION_NAME)
 				.build();
-		this.templateId = props.getSheetsTemplateId();
+		this.sheetsTemplateId = props.getSheetsTemplateId();
+		this.eomSheetsTemplateId = props.getEomSheetsTemplateId();
 		this.targetFolderId = props.getSheetsTargetFolderId() == null ? "" : props.getSheetsTargetFolderId().trim();
+	}
+
+	/**
+	 * Resolves which template workbook to clone for the given report type: the EOM workbook when
+	 * {@code reportType} is {@code "EOM"} and an EOM template id is configured, otherwise the EOC
+	 * (default) workbook.
+	 *
+	 * @param reportType report template code ({@code "EOC"}/{@code "EOM"}), may be {@code null}
+	 * @return the template id to clone
+	 */
+	String templateIdFor(String reportType) {
+		if ("EOM".equals(reportType) && eomSheetsTemplateId != null && !eomSheetsTemplateId.isBlank()) {
+			return eomSheetsTemplateId;
+		}
+		return sheetsTemplateId;
 	}
 
 	@Override
@@ -294,7 +312,9 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 
 	@Override
 	public String createSheet(
-			String jobId, String fileName, Map<String, String> placeholderMap, String userGoogleAccessToken) {
+			String jobId, String fileName, Map<String, String> placeholderMap, String reportType,
+			String userGoogleAccessToken) {
+		String templateId = templateIdFor(reportType);
 		boolean asUser = userGoogleAccessToken != null && !userGoogleAccessToken.isBlank();
 		Drive driveClient = asUser ? buildDrive(userGoogleAccessToken) : drive;
 		Sheets sheetsClient = asUser ? buildSheets(userGoogleAccessToken) : sheets;

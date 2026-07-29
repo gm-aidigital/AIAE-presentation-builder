@@ -45,8 +45,10 @@ public class ReportSheetHelperImpl implements ReportSheetHelper {
 	private final BreakdownSelectionResolver breakdownResolver;
 
 	@Override
-	public String buildSheet(String jobId, String fileName, Map<String, String> flatReplacements, String userGoogleToken) {
-		return sheets.createSheet(jobId, fileName, flatReplacements, userGoogleToken);
+	public String buildSheet(
+			String jobId, String fileName, Map<String, String> flatReplacements, String reportType,
+			String userGoogleToken) {
+		return sheets.createSheet(jobId, fileName, flatReplacements, reportType, userGoogleToken);
 	}
 
 	@Override
