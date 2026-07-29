@@ -194,9 +194,9 @@ class RealClaudeClientTest {
 	}
 
 	@Test
-	void publisherSectionAcceptsAWrapperArrayOnItsFirstAttemptTest() throws Exception {
-		// Given: a per-section publisher call whose reply arrived nested one level deep — the job 184 shape that
-		// used to be discarded three times over and ship the slide blank
+	void publisherSectionAcceptsAWrapperObjectOnItsFirstAttemptTest() throws Exception {
+		// Given: a per-section publisher call whose keyed fields arrived nested under a tactic key — the shape a
+		// reply borrows from the combined conclusions call, which used to be discarded and ship the slide blank
 		ClaudeResponseNormalizer normalizer = new ClaudeResponseNormalizer();
 		ClaudeBatchPromptBuilder promptBuilder = new ClaudeBatchPromptBuilder(normalizer, new Fmt());
 		ReportClaudeDefaults defaults = new ReportClaudeDefaults();
@@ -217,8 +217,8 @@ class RealClaudeClientTest {
 		PublisherObservationInput input = new PublisherObservationInput(
 				1, "CTV", List.of(new PublisherRow("Hulu", "400,000", "40%")), 400_000, 1_000_000);
 		JsonNode wrapped = json.readTree("""
-				[["Hulu led delivery.", "Long tail carried reach.",
-				  "Premium brand-safe mix.", "We steered weight to strong publishers."]]
+				{"tactic_1": {"field_1": "Hulu led delivery.", "field_2": "Long tail carried reach.",
+				  "field_3": "Premium brand-safe mix.", "field_4": "We steered weight to strong publishers."}}
 				""");
 		String expectedPrompt = promptBuilder.buildPublisherSectionPrompt(input, data, brief, 160).orElseThrow();
 		List<ClaudeCompressionField> expectedFields = List.of(
@@ -226,7 +226,7 @@ class RealClaudeClientTest {
 				new ClaudeCompressionField("1_1", "Long tail carried reach.", 160),
 				new ClaudeCompressionField("1_2", "Premium brand-safe mix.", 160),
 				new ClaudeCompressionField("1_3", "We steered weight to strong publishers.", 160));
-		when(messagesClient.callJsonArray(eq(expectedPrompt), eq(1500), eq(90), eq("PublisherSection"), eq(true)))
+		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(1500), eq(90), eq("PublisherSection"), eq(true)))
 				.thenReturn(wrapped);
 		when(compressionService.compress(eq(expectedFields), eq("PublisherSection")))
 				.thenAnswer(invocation -> {
@@ -246,12 +246,12 @@ class RealClaudeClientTest {
 				"Hulu led delivery.", "Long tail carried reach.",
 				"Premium brand-safe mix.", "We steered weight to strong publishers.");
 		verify(messagesClient, times(1))
-				.callJsonArray(eq(expectedPrompt), eq(1500), eq(90), eq("PublisherSection"), eq(true));
+				.callJsonObject(eq(expectedPrompt), eq(1500), eq(90), eq("PublisherSection"), eq(true));
 	}
 
 	@Test
-	void publisherSectionRetriesAShortArrayAndGivesUpBlankTest() {
-		// Given: a per-section publisher call whose reply is a well-formed array of the wrong length
+	void publisherSectionRetriesAnIncompleteReplyThenShipsTheFieldsItAnsweredTest() {
+		// Given: a per-section publisher call whose reply carries only the first of the slide's four fields
 		ClaudeResponseNormalizer normalizer = new ClaudeResponseNormalizer();
 		ClaudeBatchPromptBuilder promptBuilder = new ClaudeBatchPromptBuilder(normalizer, new Fmt());
 		ReportClaudeDefaults defaults = new ReportClaudeDefaults();
@@ -273,31 +273,45 @@ class RealClaudeClientTest {
 		String brief = "Drive awareness.";
 		String expectedPrompt = promptBuilder.buildPublisherSectionPrompt(input, data, brief, 160).orElseThrow();
 		String retryPrompt =
-				expectedPrompt + client.sectionRetrySuffix("the reply held 1 item(s), expected 4", 4);
-		when(messagesClient.callJsonArray(eq(expectedPrompt), eq(1500), eq(90), eq("PublisherSection"), eq(true)))
-				.thenReturn(json.createArrayNode().add("Only one bullet."));
-		when(messagesClient.callJsonArray(eq(retryPrompt), eq(1500), eq(90), eq("PublisherSection"), eq(true)))
-				.thenReturn(json.createArrayNode().add("Only one bullet."));
+				expectedPrompt + client.sectionRetrySuffix("field(s) [2, 3, 4] of 4 were missing or blank", 4);
+		JsonNode oneField = json.createObjectNode().put("field_1", "Only one bullet.");
+		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(1500), eq(90), eq("PublisherSection"), eq(true)))
+				.thenReturn(oneField);
+		when(messagesClient.callJsonObject(eq(retryPrompt), eq(1500), eq(90), eq("PublisherSection"), eq(true)))
+				.thenReturn(oneField);
+		List<ClaudeCompressionField> expectedFields = List.of(
+				new ClaudeCompressionField("1_0", "Only one bullet.", 160),
+				new ClaudeCompressionField("1_1", "", 160),
+				new ClaudeCompressionField("1_2", "", 160),
+				new ClaudeCompressionField("1_3", "", 160));
+		when(compressionService.compress(eq(expectedFields), eq("PublisherSection")))
+				.thenAnswer(invocation -> {
+					List<ClaudeCompressionField> fields = invocation.getArgument(0);
+					Map<String, String> out = new LinkedHashMap<>();
+					for (ClaudeCompressionField field : fields) {
+						out.put(field.key(), field.text());
+					}
+					return out;
+				});
 
 		// When:
 		List<String> bullets = client.publisherSection(data, input, brief);
 
-		// Then: nothing partial is shipped, and the section is sent twice in all — the configured one retry
-		assertThat(bullets).isEmpty();
+		// Then: the one field the model did answer reaches its own slot; the three it never answered dash
+		assertThat(bullets).containsExactly("Only one bullet.", "", "", "");
 		verify(messagesClient, times(1))
-				.callJsonArray(eq(expectedPrompt), eq(1500), eq(90), eq("PublisherSection"), eq(true));
+				.callJsonObject(eq(expectedPrompt), eq(1500), eq(90), eq("PublisherSection"), eq(true));
 
-		// Then: the retry is not the same prompt again — it names what the first reply got wrong
+		// Then: the retry is not the same prompt again — it names which fields the first reply left out
 		verify(messagesClient, times(1))
-				.callJsonArray(eq(retryPrompt), eq(1500), eq(90), eq("PublisherSection"), eq(true));
-		assertThat(retryPrompt).contains("your previous reply was rejected", "1 item(s), expected 4");
-		verifyNoInteractions(compressionService);
+				.callJsonObject(eq(retryPrompt), eq(1500), eq(90), eq("PublisherSection"), eq(true));
+		assertThat(retryPrompt).contains("your previous reply was incomplete", "[2, 3, 4] of 4");
 	}
 
 	@Test
-	void publisherSectionKeepsTheFirstFourStringsOfAnOverLongReplyTest() throws Exception {
-		// Given: a per-section publisher call whose reply carries a fifth, surplus string — four usable
-		// observations in the asked order plus commentary the slide has no slot for
+	void publisherSectionKeepsTheFourAskedFieldsOfAnOverLongReplyTest() throws Exception {
+		// Given: a per-section publisher call whose reply carries a fifth, surplus key — four usable
+		// observations under the asked keys plus commentary the slide has no slot for
 		ClaudeResponseNormalizer normalizer = new ClaudeResponseNormalizer();
 		ClaudeBatchPromptBuilder promptBuilder = new ClaudeBatchPromptBuilder(normalizer, new Fmt());
 		ReportClaudeDefaults defaults = new ReportClaudeDefaults();
@@ -318,8 +332,9 @@ class RealClaudeClientTest {
 		PublisherObservationInput input = new PublisherObservationInput(
 				1, "CTV", List.of(new PublisherRow("Hulu", "400,000", "40%")), 400_000, 1_000_000);
 		JsonNode overLong = json.readTree("""
-				["Hulu led delivery.", "Long tail carried reach.", "Premium brand-safe mix.",
-				 "We steered weight to strong publishers.", "One more note on the data."]
+				{"field_1": "Hulu led delivery.", "field_2": "Long tail carried reach.",
+				 "field_3": "Premium brand-safe mix.", "field_4": "We steered weight to strong publishers.",
+				 "field_5": "One more note on the data."}
 				""");
 		String expectedPrompt = promptBuilder.buildPublisherSectionPrompt(input, data, brief, 160).orElseThrow();
 		List<ClaudeCompressionField> expectedFields = List.of(
@@ -327,7 +342,7 @@ class RealClaudeClientTest {
 				new ClaudeCompressionField("1_1", "Long tail carried reach.", 160),
 				new ClaudeCompressionField("1_2", "Premium brand-safe mix.", 160),
 				new ClaudeCompressionField("1_3", "We steered weight to strong publishers.", 160));
-		when(messagesClient.callJsonArray(eq(expectedPrompt), eq(1500), eq(90), eq("PublisherSection"), eq(true)))
+		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(1500), eq(90), eq("PublisherSection"), eq(true)))
 				.thenReturn(overLong);
 		when(compressionService.compress(eq(expectedFields), eq("PublisherSection")))
 				.thenAnswer(invocation -> {
@@ -342,13 +357,13 @@ class RealClaudeClientTest {
 		// When:
 		List<String> bullets = client.publisherSection(data, input, brief);
 
-		// Then: the slide's four slots ship from the first four strings, the surplus one is dropped, and no
+		// Then: the slide's four slots ship from the four asked keys, the surplus one is dropped, and no
 		// retry was spent on a reply that already carried the copy
 		assertThat(bullets).containsExactly(
 				"Hulu led delivery.", "Long tail carried reach.",
 				"Premium brand-safe mix.", "We steered weight to strong publishers.");
 		verify(messagesClient, times(1))
-				.callJsonArray(eq(expectedPrompt), eq(1500), eq(90), eq("PublisherSection"), eq(true));
+				.callJsonObject(eq(expectedPrompt), eq(1500), eq(90), eq("PublisherSection"), eq(true));
 	}
 
 	@Test
@@ -377,8 +392,8 @@ class RealClaudeClientTest {
 				1, "CTV", List.of(new PublisherRow("Hulu", "400,000", "40%")), 400_000, 1_000_000);
 		String brief = "Drive awareness.";
 		String expectedPrompt = promptBuilder.buildPublisherSectionPrompt(input, data, brief, 160).orElseThrow();
-		when(messagesClient.callJsonArray(eq(expectedPrompt), eq(1500), eq(90), eq("PublisherSection"), eq(true)))
-				.thenReturn(json.createArrayNode().add("Only one bullet."));
+		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(1500), eq(90), eq("PublisherSection"), eq(true)))
+				.thenReturn(json.createObjectNode());
 
 		// When:
 		client.publisherSection(data, input, brief);
@@ -386,7 +401,7 @@ class RealClaudeClientTest {
 		// Then: the scope carries the section, the tactic and what was wrong, plus the final give-up line
 		assertThat(failures.snapshot()).isNotEmpty();
 		assertThat(failures.snapshot().getFirst())
-				.contains("PublisherSection", "tactic 1", "1 item(s), expected 4");
+				.contains("PublisherSection", "tactic 1", "[1, 2, 3, 4] of 4");
 		assertThat(failures.snapshot().getLast()).contains("gave up after 2 attempt(s)");
 		failureLog.clear();
 	}

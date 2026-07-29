@@ -153,9 +153,9 @@ public class RealClaudeClient implements ClaudeClient {
 
 	/**
 	 * Output budget for one per-section call. The valid output is small — geo's five ~140-char strings or
-	 * audience/device's ~256+3×120, a few hundred tokens as a bare JSON array — but the budget is set well above
+	 * audience/device's ~256+3×120, a few hundred tokens as a keyed JSON object — but the budget is set well above
 	 * that so a reply the model opens with a little extra text (which the prompt forbids but a model may still
-	 * add) still closes its last string instead of truncating mid-array and being rejected by {@code max_tokens}.
+	 * add) still closes its last field instead of truncating mid-object and losing it.
 	 */
 	private static final int SECTION_MAX_TOKENS = 1500;
 
@@ -388,17 +388,23 @@ public class RealClaudeClient implements ClaudeClient {
 
 	/**
 	 * Runs one section's dedicated per-tactic call with the shared accept/retry contract used by every
-	 * per-section method. It sends the prompt, accepts the reply only when {@link #sectionOnce} returns the
-	 * full set of strings (a JSON array of exactly {@code count} non-blank items), and otherwise retries up to
-	 * {@link #sectionRetries} times before giving up and returning an empty list so the tactic's section ships
-	 * blank (and the caller surfaces that) rather than carrying a partial or invented reply.
+	 * per-section method. It sends the prompt, returns as soon as {@link #sectionOnce} reports a complete reply
+	 * (every one of the {@code count} keyed fields non-blank), and otherwise retries up to
+	 * {@link #sectionRetries} times naming what was wrong.
+	 *
+	 * <p>What it does when the retries run out is the part that matters on the deck: the fullest reply any
+	 * attempt produced is kept and shipped, rather than being thrown away because one field of four was
+	 * missing. A section that answered three of its four fields puts three real sentences on the slide and one
+	 * dash; the all-or-nothing rule it replaces put four dashes there. Only a run where no attempt returned a
+	 * single usable field ships fully blank, and that is the one case the failure scope still reports.
 	 *
 	 * @param label     short tag identifying the section in log messages (e.g. {@code "GeoSection"})
 	 * @param tacticNum the tactic number, for log messages and compression-field keys
 	 * @param prompt    the built section prompt, or empty when the tactic has no data to reason over
-	 * @param count     the exact number of non-blank strings the reply must carry
+	 * @param count     the number of slide fields the reply is asked for
 	 * @param limitAt   the character budget for the field at a given index (sections vary which index is widest)
-	 * @return the {@code count} normalized strings in slide order, or an empty list when no attempt satisfied the contract
+	 * @return the {@code count} normalized strings in slide order (blank where the model never answered), or an
+	 * empty list when no attempt produced a single usable field
 	 */
 	List<String> runSection(
 			String label, int tacticNum, java.util.Optional<String> prompt, int count,
@@ -408,26 +414,50 @@ public class RealClaudeClient implements ClaudeClient {
 		}
 		int attempts = sectionRetries + 1;
 		String rejection = null;
+		List<String> best = List.of();
 		for (int attempt = 1; attempt <= attempts; attempt++) {
 			// The first attempt sends the prompt as built; every later one carries what the previous reply got
 			// wrong, so a deterministic rejection is not simply reproduced by an identical re-send.
 			String attemptPrompt =
 					rejection == null ? prompt.get() : prompt.get() + sectionRetrySuffix(rejection, count);
 			ClaudeSectionAttempt res = sectionOnce(label, tacticNum, attemptPrompt, count, limitAt);
-			if (!res.values().isEmpty()) {
+			if (res.rejection() == null) {
 				return res.values();
+			}
+			if (filledCount(res.values()) > filledCount(best)) {
+				best = res.values();
 			}
 			rejection = res.rejection();
 			if (attempt < attempts) {
-				log.warn("[claude:{}] tactic {} reply failed the {}-string contract — retry {}/{}",
-						label, tacticNum, count, attempt, sectionRetries);
+				log.warn("[claude:{}] tactic {} reply was incomplete — retry {}/{}",
+						label, tacticNum, attempt, sectionRetries);
 			}
+		}
+		int filled = filledCount(best);
+		if (filled > 0) {
+			// Partial, but every string in it came from the model and is in its slide's own slot: ship it.
+			log.warn("[claude:{}] tactic {} answered {} of {} fields after {} attempt(s) — shipping those, the "
+					+ "rest dash", label, tacticNum, filled, count, attempts);
+			failureLog.record(label, "tactic " + tacticNum + " answered only " + filled + " of " + count
+					+ " fields; the rest ship blank.");
+			return best;
 		}
 		log.warn("[claude:{}] tactic {} produced no usable copy after {} attempt(s) — its fields ship blank",
 				label, tacticNum, attempts);
 		failureLog.record(label, "tactic " + tacticNum + " gave up after " + attempts
 				+ " attempt(s); its slide fields ship blank.");
 		return List.of();
+	}
+
+	/**
+	 * Counts how many of a section attempt's fields the model actually answered, i.e. the non-blank ones, so
+	 * two partial attempts can be compared and the fuller one kept.
+	 *
+	 * @param values one attempt's field values in slide order, blank where unanswered
+	 * @return the number of non-blank values
+	 */
+	int filledCount(List<String> values) {
+		return (int) values.stream().filter(value -> value != null && !value.isBlank()).count();
 	}
 
 	/**
@@ -467,79 +497,119 @@ public class RealClaudeClient implements ClaudeClient {
 	 * sections all ended in blank slides. Naming the defect gives the model something to correct.
 	 *
 	 * @param rejection what was wrong with the previous reply
-	 * @param count     the exact number of strings the array must carry
+	 * @param count     the number of keyed fields the object must carry
 	 * @return the retry note, ready to append to the prompt
 	 */
 	String sectionRetrySuffix(String rejection, int count) {
-		return "\n\nIMPORTANT: your previous reply was rejected — " + rejection + ". Return ONLY a JSON array of "
-				+ count + " non-empty strings, in the order described above: the first character must be [ and the "
-				+ "last must be ], with no prose, no keys and no backticks.";
+		return "\n\nIMPORTANT: your previous reply was incomplete — " + rejection + ". Return ONLY a JSON object "
+				+ "carrying the keys field_1 through field_" + count + ", every value a non-empty string, in the "
+				+ "order described above, with no prose and no backticks.";
 	}
 
 	/**
-	 * Runs one section call once and enforces the positional contract: the reply is accepted when it parses as a
-	 * JSON array carrying at least {@code count} items whose first {@code count} are all non-blank, and the
-	 * first {@code count} are what ship. A short array, a non-array, a blank slot or a failed call is rejected
-	 * with its reason so {@link #runSection} can retry with that reason attached, rather than accepting a partial
-	 * reply. Accepted strings are compressed and normalized to the same per-index budgets the combined path
-	 * uses, so the per-section and combined paths yield identical field shapes.
+	 * Runs one section call once and reads its keyed reply field by field. Every {@code field_N} the reply
+	 * carries is compressed and normalized to that index's budget; the ones it does not carry stay blank. The
+	 * attempt is reported complete (a {@code null} rejection) only when all {@code count} fields arrived, so
+	 * {@link #runSection} knows whether a retry is worth sending — but the partial values travel back either
+	 * way, because a field the model did answer is worth shipping whatever happened to its neighbours.
+	 *
+	 * <p>Three reply shapes are read, since a model asked for one object occasionally sends a near miss: the
+	 * asked-for flat object, an object wrapping it under a single key (e.g. {@code {"tactic_1": {…}}}), and a
+	 * bare array, read by position. Compression and normalization are the same per-index budgets the combined
+	 * conclusions path uses, so both paths yield identical field shapes.
 	 *
 	 * @param label     short tag identifying the section in log/compression messages
 	 * @param tacticNum the tactic number, used to key the compression fields
 	 * @param prompt    the built section prompt text, including any retry note
-	 * @param count     the number of non-blank strings the slide has slots for
+	 * @param count     the number of fields the slide has slots for
 	 * @param limitAt   the character budget for the field at a given index
-	 * @return the accepted attempt carrying {@code count} normalized strings, or a rejected one carrying the reason
+	 * @return the attempt carrying {@code count} values in slide order (blank where unanswered), with a
+	 * rejection reason when any field is missing; empty values with a reason when the call itself failed
 	 */
 	ClaudeSectionAttempt sectionOnce(
 			String label, int tacticNum, String prompt, int count, java.util.function.IntUnaryOperator limitAt) {
-		// allowPartial lets the transport repair a reply the model never closed — the same salvage every other
-		// batch already gets. Nothing partial slips through: the shortfall check below still rejects an array
-		// that lost an item to the repair, so the attempt is retried rather than shipped short.
-		JsonNode arr = messagesClient.callJsonArray(
+		// allowPartial lets the transport repair a reply the model never closed — the same salvage the tactic
+		// overviews and campaign results already get, and the reason a reply cut off in its last field still
+		// yields the fields before it.
+		JsonNode obj = messagesClient.callJsonObject(
 				prompt, SECTION_MAX_TOKENS, BREAKDOWN_TIMEOUT_SEC, label, true);
-		if (arr == null || !arr.isArray()) {
-			// The call itself failed or the reply was not an array; the transport already logged the cause, so
-			// this line only ties that cause to the section and tactic whose fields are about to ship blank.
-			return rejectedSection(label, tacticNum, "no JSON array in the reply");
+		if (obj == null) {
+			// The call itself failed; the transport already logged the cause, so this line only ties that cause
+			// to the section and tactic whose fields are about to ship blank.
+			return rejectedSection(label, tacticNum, "no JSON object in the reply");
 		}
-		// Tolerate an accidental one-level wrapper array — the model sometimes returns [[...]] (an array whose
-		// only element is the real array of strings) instead of a flat [...]. Unwrap it before the count check;
-		// the "count non-blank strings" contract still applies to the unwrapped array.
-		if (arr.size() == 1 && arr.get(0).isArray()) {
-			arr = arr.get(0);
-		}
-		if (arr.size() < count) {
-			// Short is genuinely unusable — a slot would ship blank — so this is the one count that is retried.
-			return rejectedSection(label, tacticNum,
-					"the reply held " + arr.size() + " item(s), expected " + count);
-		}
-		if (arr.size() > count) {
-			// Over-long is not a defect worth a re-send: the slide has count slots, the strings are in the asked
-			// order, and the extras are surplus commentary. Rejecting the whole reply here used to cost a second
-			// call and often a blank slide, when the copy the slide needs had already arrived.
-			log.info("[claude:{}] tactic {} reply held {} items for {} slots — keeping the first {}",
-					label, tacticNum, arr.size(), count, count);
-		}
-		List<String> raw = new ArrayList<>(count);
-		for (int i = 0; i < count; i++) {
-			String value = arr.get(i).asText("").trim();
-			if (value.isBlank()) {
-				return rejectedSection(label, tacticNum,
-						"item " + i + " of " + count + " was blank (a " + arr.get(i).getNodeType() + " node)");
-			}
-			raw.add(value);
-		}
+		JsonNode fieldsNode = sectionFieldsNode(obj, count);
 		List<ClaudeCompressionField> fields = new ArrayList<>(count);
+		List<Integer> missing = new ArrayList<>();
 		for (int i = 0; i < count; i++) {
-			fields.add(new ClaudeCompressionField(tacticNum + "_" + i, raw.get(i), limitAt.applyAsInt(i)));
+			String value = sectionFieldValue(fieldsNode, i);
+			if (value.isBlank()) {
+				missing.add(i + 1);
+			}
+			fields.add(new ClaudeCompressionField(tacticNum + "_" + i, value, limitAt.applyAsInt(i)));
+		}
+		if (missing.size() == count) {
+			// Nothing to compress and nothing to ship: an object with none of the asked keys, e.g. a reply that
+			// answered in prose or under names of its own.
+			return rejectedSection(label, tacticNum, "field(s) " + missing + " of " + count + " were missing or blank");
 		}
 		Map<String, String> compressed = compressionService.compress(fields, label);
 		List<String> out = new ArrayList<>(count);
 		for (int i = 0; i < count; i++) {
-			out.add(normalizer.normalizeC(compressed.get(tacticNum + "_" + i), limitAt.applyAsInt(i)));
+			String value = compressed.get(tacticNum + "_" + i);
+			out.add(value == null || value.isBlank() ? "" : normalizer.normalizeC(value, limitAt.applyAsInt(i)));
 		}
-		return new ClaudeSectionAttempt(out, null);
+		if (missing.isEmpty()) {
+			return new ClaudeSectionAttempt(out, null);
+		}
+		String reason = "field(s) " + missing + " of " + count + " were missing or blank";
+		rejectSection(label, tacticNum, reason);
+		return new ClaudeSectionAttempt(out, reason);
+	}
+
+	/**
+	 * Picks the node the section's {@code field_N} values live on. Normally that is the reply object itself;
+	 * when the model wrapped the object under a single key — the {@code {"tactic_1": {…}}} shape the combined
+	 * conclusions call asks for, which a per-section reply sometimes borrows — the wrapper is stepped through,
+	 * and an array reply is returned as-is for positional reading.
+	 *
+	 * @param obj   the parsed reply object
+	 * @param count the number of fields expected
+	 * @return the node to read the fields off
+	 */
+	JsonNode sectionFieldsNode(JsonNode obj, int count) {
+		if (obj.has("field_1") || obj.isArray()) {
+			return obj;
+		}
+		if (obj.size() == 1) {
+			JsonNode only = obj.elements().next();
+			if (only != null && (only.isObject() || (only.isArray() && only.size() >= count))) {
+				return only;
+			}
+		}
+		return obj;
+	}
+
+	/**
+	 * Reads one section field off the reply, tolerating the ways a model names a positional key: the asked-for
+	 * {@code field_N}, the bare number {@code "N"}, and an array element at that position.
+	 *
+	 * @param node  the node carrying the fields
+	 * @param index the zero-based slide slot
+	 * @return the trimmed value, or an empty string when the reply does not carry it
+	 */
+	String sectionFieldValue(JsonNode node, int index) {
+		if (node == null) {
+			return "";
+		}
+		if (node.isArray()) {
+			return index < node.size() ? node.get(index).asText("").trim() : "";
+		}
+		JsonNode value = node.get("field_" + (index + 1));
+		if (value == null) {
+			value = node.get(String.valueOf(index + 1));
+		}
+		return value == null || !value.isValueNode() ? "" : value.asText("").trim();
 	}
 
 	@Override

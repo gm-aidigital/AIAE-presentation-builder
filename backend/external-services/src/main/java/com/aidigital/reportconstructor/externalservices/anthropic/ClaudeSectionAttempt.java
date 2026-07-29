@@ -3,17 +3,18 @@ package com.aidigital.reportconstructor.externalservices.anthropic;
 import java.util.List;
 
 /**
- * Outcome of one attempt at a per-section Claude call: either the section's strings, or the reason the reply
- * was turned down.
+ * Outcome of one attempt at a per-section Claude call: the section's field values, plus the reason the reply
+ * was short of complete when it was.
  *
- * <p>The reason is what makes a retry worth sending. A retry that repeats the original prompt byte for byte
- * reproduces a deterministic rejection — the same three-item array, the same prose wrapper — so the next
- * attempt is told what was wrong with the last one, and the reason travels back from the attempt for exactly
- * that purpose.
+ * <p>The two travel together on purpose. The reason is what makes a retry worth sending — a retry that repeats
+ * the original prompt byte for byte reproduces a deterministic shortfall, so the next attempt is told what the
+ * last one left out. The values travel back even when a reason is set, because a field the model did answer is
+ * worth shipping whatever happened to its neighbours; the caller keeps the fullest attempt it saw.
  *
- * @param values    the accepted strings in slide order, or an empty list when the reply was rejected
- * @param rejection what was wrong with the reply, in words that survive being shown to a user; {@code null}
- *                  when {@code values} carries the accepted strings
+ * @param values    the field values in slide order, blank where the model never answered; an empty list when
+ *                  the call failed or the reply carried none of the asked fields
+ * @param rejection what was short of complete, in words that survive being shown to a user; {@code null} when
+ *                  every field arrived
  */
 public record ClaudeSectionAttempt(List<String> values, String rejection) {
 

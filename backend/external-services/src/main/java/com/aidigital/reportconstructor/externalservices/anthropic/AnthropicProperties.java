@@ -69,7 +69,7 @@ public class AnthropicProperties {
 
 	/**
 	 * When true, EACH breakdown section (publishers, creative, geo, audience, device) is produced by its own
-	 * small dedicated per-tactic call — a keyless fixed-length JSON array validated by position with its own
+	 * small dedicated per-tactic call — a JSON object keyed field_1..field_N, read field by field with its own
 	 * retry — fanned out in parallel, instead of all sections coming from the big combined per-tactic
 	 * conclusions call (which then only writes each tactic's overview). Off by default so the combined path
 	 * stays the behaviour until the per-section path proves out on a real campaign.

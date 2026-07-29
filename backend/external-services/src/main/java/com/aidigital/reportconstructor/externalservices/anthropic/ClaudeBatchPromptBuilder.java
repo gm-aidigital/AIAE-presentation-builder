@@ -1023,9 +1023,9 @@ public class ClaudeBatchPromptBuilder {
 
 	/**
 	 * Builds the per-tactic audience-section pilot prompt: a small, self-contained call that asks for ONLY the
-	 * four "Audience analysis" slide strings as a bare JSON array of exactly four items, in slide order. Unlike
-	 * the combined conclusions prompt it carries a single tactic's audience block and demands a keyless array,
-	 * so there is no object key the model can drift on and the reply is validated purely by position and length.
+	 * four "Audience analysis" slide strings as a JSON object of exactly four keyed items, in slide order. Unlike
+	 * the combined conclusions prompt it carries a single tactic's audience block, so the reply is small and
+	 * every field it does carry can be read back on its own key — see {@link #sectionObjectRules}.
 	 * The instruction/context prefix is stable per run and marked cacheable, so each tactic re-reads it cheaply.
 	 *
 	 * @param input         the tactic's audience input (name + table); empty output when its table is blank
@@ -1054,7 +1054,7 @@ public class ClaudeBatchPromptBuilder {
 						+ "3) WATCH-OUT, at most " + shortPrompt + " characters;\n"
 						+ "4) RECOMMENDED ACTION — FORWARD-LOOKING, which age groups and segments to lean into next, at "
 						+ "most " + shortPrompt + " characters.\n\n"
-						+ sectionArrayRules(4)
+						+ sectionObjectRules(4)
 						+ campaignContextForConclusions(data, brief) + "\n\n"
 						+ AnthropicMessagesClient.CACHE_BREAKPOINT + "=== TACTIC: " + input.tacticName() + " ===\n"
 						+ "[AUDIENCE ANALYSIS]\n" + audienceContextBlock(input);
@@ -1063,8 +1063,8 @@ public class ClaudeBatchPromptBuilder {
 
 	/**
 	 * Builds the per-tactic publisher-section prompt: a small, self-contained call that asks for ONLY the four
-	 * "Top Publishers" slide observations as a bare JSON array of exactly four items. Keyless and single-tactic
-	 * like {@link #buildAudienceSectionPrompt}, so the reply is validated purely by position and length.
+	 * "Top Publishers" slide observations as a JSON object of exactly four keyed items. Single-tactic and
+	 * keyed like {@link #buildAudienceSectionPrompt}, so a partial reply still yields the fields it carries.
 	 *
 	 * @param input  the tactic's publisher input (name + rows); empty output when it has no rows
 	 * @param data   parsed campaign data supplying the shared campaign context block
@@ -1101,7 +1101,7 @@ public class ClaudeBatchPromptBuilder {
 						+ "measured fact. Every optimisation is phrased as something WE ALREADY DID (e.g. 'we shifted "
 						+ "weight toward stronger publishers'); never say we blacklisted or paused a TACTIC (say we "
 						+ "REDUCED ITS WEIGHT).\n\n"
-						+ sectionArrayRules(4)
+						+ sectionObjectRules(4)
 						+ campaignContextForConclusions(data, brief) + "\n\n"
 						+ AnthropicMessagesClient.CACHE_BREAKPOINT + "=== TACTIC: " + input.tacticName() + " ===\n"
 						+ "[TOP PUBLISHERS]\n" + publisherContextBlock(input);
@@ -1109,7 +1109,7 @@ public class ClaudeBatchPromptBuilder {
 	}
 
 	/**
-	 * Builds the per-tactic creative-section prompt: a bare JSON array of exactly four "Creative analysis"
+	 * Builds the per-tactic creative-section prompt: a JSON object of exactly four keyed "Creative analysis"
 	 * strings — three reads of the creative mix plus one optimisation already made. Keyless and single-tactic.
 	 *
 	 * @param input     the tactic's creative input (name + KPI type + table); empty output when the table is blank
@@ -1136,7 +1136,7 @@ public class ClaudeBatchPromptBuilder {
 						+ "for video, ACR for audio — and spend). Vary angles: delivery/completion anchor, engagement "
 						+ "leader, and a read on creative format/size. " + CREATIVE_SMALL_SAMPLE_RULE
 						+ creativeOptimisationRule("String 4", recoPrompt) + "\n"
-						+ sectionArrayRules(4)
+						+ sectionObjectRules(4)
 						+ campaignContextForConclusions(data, brief) + "\n\n"
 						+ AnthropicMessagesClient.CACHE_BREAKPOINT + "=== TACTIC: " + input.tacticName()
 						+ kpiSuffix(input.kpiType()) + " ===\n"
@@ -1145,7 +1145,7 @@ public class ClaudeBatchPromptBuilder {
 	}
 
 	/**
-	 * Builds the per-tactic geo-section prompt: a bare JSON array of exactly five "Geo analysis" strings — four
+	 * Builds the per-tactic geo-section prompt: a JSON object of exactly five keyed "Geo analysis" strings — four
 	 * insights plus one forward-looking recommendation. Keyless and single-tactic.
 	 *
 	 * @param input the tactic's geo input (name + KPI type + table); empty output when the table is blank
@@ -1171,7 +1171,7 @@ public class ClaudeBatchPromptBuilder {
 						+ "DIFFERENT — a FORWARD-LOOKING recommendation (where to open budget, which markets to scale), "
 						+ "at most " + prompt + " characters, still grounded in the table. "
 						+ GEO_TOP_MARKETS_RULE + "\n\n"
-						+ sectionArrayRules(5)
+						+ sectionObjectRules(5)
 						+ campaignContextForConclusions(data, brief) + "\n\n"
 						+ AnthropicMessagesClient.CACHE_BREAKPOINT + "=== TACTIC: " + input.tacticName()
 						+ kpiSuffix(input.kpiType()) + " ===\n"
@@ -1180,7 +1180,7 @@ public class ClaudeBatchPromptBuilder {
 	}
 
 	/**
-	 * Builds the per-tactic device-section prompt: a bare JSON array of exactly four "Device breakdown" strings,
+	 * Builds the per-tactic device-section prompt: a JSON object of exactly four keyed "Device breakdown" strings,
 	 * in the same takeaway/what-worked/watch-out/recommendation order as audience. Keyless and single-tactic.
 	 *
 	 * @param input         the tactic's device input (name + table); empty output when the table is blank
@@ -1211,7 +1211,7 @@ public class ClaudeBatchPromptBuilder {
 						+ "table below labels it — VCR for video, ACR for audio). CTR does not apply to Connected TV — "
 						+ "never treat a missing CTV CTR as a zero or weakness. Treat high-rate low-volume devices as "
 						+ "noise.\n\n"
-						+ sectionArrayRules(4)
+						+ sectionObjectRules(4)
 						+ campaignContextForConclusions(data, brief) + "\n\n"
 						+ AnthropicMessagesClient.CACHE_BREAKPOINT + "=== TACTIC: " + input.tacticName() + " ===\n"
 						+ "[DEVICE BREAKDOWN]\n" + deviceContextBlock(input);
@@ -1262,19 +1262,32 @@ public class ClaudeBatchPromptBuilder {
 	}
 
 	/**
-	 * The shared closing rules block for a per-section prompt: demand ONLY a bare JSON array of exactly the
-	 * given count of non-empty strings and nothing else, so the reply carries no object key the model can drift
-	 * on and can be validated by position and length alone.
+	 * The shared closing rules block for a per-section prompt: demand ONLY a JSON object carrying one
+	 * {@code field_N} key per slide field, in the order described above.
 	 *
-	 * @param count the exact number of strings the array must carry
+	 * <p>A keyed object is the shape the calls that never fail already use — the tactic overviews, the campaign
+	 * results and the per-tactic thoughts all return one. It is also the shape the reply can be read
+	 * <em>partially</em> from: a named key is still findable when a neighbouring one is missing or malformed,
+	 * where a bare array loses every field the moment its length is wrong. The earlier keyless-array contract
+	 * bought positional strictness at the price of an all-or-nothing reply, and the strictness was never worth
+	 * a blank slide.
+	 *
+	 * @param count the number of slide fields the object must carry, keyed {@code field_1}..{@code field_count}
 	 * @return the closing rules block, newline-terminated
 	 */
-	String sectionArrayRules(int count) {
+	String sectionObjectRules(int count) {
+		StringBuilder example = new StringBuilder("{");
+		for (int i = 1; i <= count; i++) {
+			example.append(i == 1 ? "" : ", ").append("\"field_").append(i).append("\": \"...\"");
+		}
+		example.append('}');
 		return "OUTPUT FORMAT — follow exactly:\n"
-				+ "- Your reply MUST begin with '[' and be ONLY a JSON array of EXACTLY " + count + " non-empty "
-				+ "strings, in the order above (no markdown, no backticks, no object, no keys).\n"
-				+ "- Write NO preamble, explanation, reasoning, or commentary before or after the array — the array "
-				+ "is the entire reply.\n"
+				+ "- Reply with ONLY a JSON object carrying EXACTLY these " + count + " keys, whose values are the "
+				+ count + " strings described above IN THAT ORDER: " + example + "\n"
+				+ "- Every value is a non-empty string. No markdown, no backticks, no arrays, no extra keys, no "
+				+ "nesting.\n"
+				+ "- Write NO preamble, explanation, reasoning, or commentary before or after the object — the "
+				+ "object is the entire reply.\n"
 				+ "- Do NOT refuse and do NOT flag data problems. If the data looks unusual, mislabelled, incomplete "
 				+ "or inconsistent, still write the best analyst copy you can from whatever is given; never replace a "
 				+ "string with a complaint about the data.\n"
