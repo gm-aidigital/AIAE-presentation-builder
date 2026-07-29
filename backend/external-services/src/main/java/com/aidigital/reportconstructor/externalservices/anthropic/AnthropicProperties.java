@@ -33,11 +33,14 @@ public class AnthropicProperties {
 	private double temperature = 0.4;
 
 	/**
-	 * Tactics per Step-2 combined per-tactic conclusions call in the slides-from-sheet flow. Default 1 keeps
-	 * each call small so the cached instruction prefix is re-read cheaply per tactic; raising it batches more
-	 * tactics per call at the cost of a larger, likelier-to-truncate reply. Clamped to at least 1 at use.
+	 * Tactics per Step-2 combined per-tactic conclusions call in the slides-from-sheet flow. Default 7: with
+	 * {@link #perSectionCallsEnabled} on, that call produces only each tactic's ~190-character overview, so a
+	 * chunk of 7 still asks for a small reply while turning a 28-tactic deck's 28 calls into 4 — and lets the
+	 * model see neighbouring tactics rather than writing every overview blind. Chunks run concurrently, so a
+	 * larger chunk trades parallelism for context; raise it further only alongside a larger reply budget.
+	 * Clamped to at least 1 at use.
 	 */
-	private int breakdownChunkSize = 1;
+	private int breakdownChunkSize = 7;
 
 	/**
 	 * Upper bound on Claude HTTP calls in flight at once across the whole run, enforced by a shared semaphore

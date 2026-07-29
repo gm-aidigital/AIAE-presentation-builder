@@ -436,9 +436,11 @@ external:
     # budgets, so the API default of 1.0 buys variety at the cost of format stability; 0.4 keeps the copy
     # varied while holding the schema and the limits. Clamped to 0.0..1.0.
     temperature: ${CLAUDE_TEMPERATURE:0.4}
-    # Tactics per Step-2 combined conclusions call (slides-from-sheet flow). 1 keeps the cached
-    # instruction prefix re-read cheaply per tactic; raise to batch more tactics per call.
-    breakdown-chunk-size: ${CLAUDE_BREAKDOWN_CHUNK_SIZE:1}
+    # Tactics per Step-2 combined conclusions call (slides-from-sheet flow). 7 because with the per-section
+    # calls on, this call writes only each tactic's ~190-char overview: a chunk of 7 is a small reply, cuts a
+    # 28-tactic deck from 28 calls to 4, and lets the model see neighbouring tactics instead of writing each
+    # overview blind. Chunks run concurrently, bounded by max-concurrent-calls.
+    breakdown-chunk-size: ${CLAUDE_BREAKDOWN_CHUNK_SIZE:7}
     # Max Claude HTTP calls in flight at once across a run (rate-limit guard for the per-tactic fan-out).
     max-concurrent-calls: ${CLAUDE_MAX_CONCURRENT_CALLS:6}
     # When true, EACH breakdown section (publishers, creative, geo, audience, device) is produced by its own

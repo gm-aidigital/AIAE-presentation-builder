@@ -2,9 +2,16 @@ package com.aidigital.reportconstructor.externalservices.anthropic;
 
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
+import com.aidigital.reportconstructor.service.reports.dto.CreativeRow;
+import com.aidigital.reportconstructor.service.reports.dto.CreativeTable;
+import com.aidigital.reportconstructor.service.reports.dto.CreativeTakeawayInput;
+import com.aidigital.reportconstructor.service.reports.dto.GeoInsightInput;
+import com.aidigital.reportconstructor.service.reports.dto.GeoRow;
+import com.aidigital.reportconstructor.service.reports.dto.GeoTable;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationInput;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
 import com.aidigital.reportconstructor.service.reports.dto.Tactic;
+import com.aidigital.reportconstructor.service.reports.dto.TacticConclusionInput;
 import com.aidigital.reportconstructor.service.reports.dto.TacticNarrativeDigest;
 import com.aidigital.reportconstructor.service.reports.dto.Totals;
 import com.aidigital.reportconstructor.service.reports.engine.Fmt;
@@ -46,7 +53,7 @@ class ClaudeBatchPromptBuilderTest {
 				600_000, 1_000_000);
 
 		// When:
-		String prompt = builder.buildPublisherSectionPrompt(input, data, "Drive awareness.", 155).orElseThrow();
+		String prompt = builder.buildPublisherSectionPrompt(input, data, "Drive awareness.", 160).orElseThrow();
 
 		// Then: the four observations are asked for as numbered slots, so each maps to one array position the
 		// way every other section's prompt already does
@@ -97,6 +104,63 @@ class ClaudeBatchPromptBuilderTest {
 	}
 
 	@Test
+	void shouldLabelAnAudioTacticsCompletionRateAsAcrInTheCreativeBlockTest() {
+		// Given: the same creative block on an audio tactic and on a CTV one
+		CreativeTable table = new CreativeTable(
+				"6", "1.85%", "0.42%", "Spot 30s",
+				List.of(new CreativeRow("Spot 30s", "400,000", "0.12%", "94.1%", "$2,400")));
+		CreativeTakeawayInput audio = new CreativeTakeawayInput(1, "Programmatic Audio", "ACR", table);
+		CreativeTakeawayInput ctv = new CreativeTakeawayInput(2, "Programmatic CTV", "VCR", table);
+
+		// When:
+		String audioBlock = builder.creativeContextBlock(audio);
+		String ctvBlock = builder.creativeContextBlock(ctv);
+
+		// Then: the audio tactic's stat labels and table header name the metric ACR, so the copy Claude writes
+		// matches the deck and the sheet instead of calling an audio completion rate VCR
+		assertThat(audioBlock).contains("Best CTR/ACR: 1.85%", "Avg CTR/ACR: 0.42%")
+				.contains("Creative | Impressions | CTR | ACR | Spend")
+				.doesNotContain("VCR");
+
+		// Then: every other tactic still reads VCR
+		assertThat(ctvBlock).contains("Best CTR/VCR: 1.85%", "Creative | Impressions | CTR | VCR | Spend");
+	}
+
+	@Test
+	void shouldLicenceTheCreativeOptimisationStringToBeReconstructedTest() {
+		// Given: one tactic with a creative table — the data a "Creative analysis" slide is written from, which
+		// carries performance but no record of what was changed mid-flight
+		Tactic display = new Tactic(
+				"Display", "Display", null,
+				5000.0, 1_000_000.0, 0.0, 1_000_000.0, null, null, null, null,
+				null, null, null, null, null, null, null, null);
+		CampaignData data = new CampaignData(
+				"Acme", "Spring Launch", "US", "Awareness", "Jan 1 - Mar 31",
+				null, "$500,000", "Reach", "Display", "25-44", "Auto intenders",
+				new Totals(0, 0, 0, 0, null, null), Map.of(1, display), null);
+		CreativeTakeawayInput input = new CreativeTakeawayInput(
+				1, "Display", "CTR",
+				new CreativeTable("6", "1.85%", "0.42%", "300x250_Summer",
+						List.of(new CreativeRow("300x250_Summer", "400,000", "1.85%", "", "$2,400"))));
+
+		// When:
+		String prompt = builder.buildCreativeSectionPrompt(input, data, "Drive awareness.", 160, 160).orElseThrow();
+
+		// Then: the fourth string is explicitly licenced to reconstruct the action, so the model stops choosing
+		// between the ask and the surrounding "do not invent" rules by hedging the slot
+		assertThat(prompt).contains(
+				"The data carries NO change log, so this ONE string is EXPECTED to be reconstructed",
+				"state it in past tense as something WE DID",
+				"never say the change log is missing");
+
+		// Then: the licence stops at the action — names and numbers still come from the table
+		assertThat(prompt).contains("must come from the table (never invent a metric)");
+
+		// Then: both budgets reach the model buffered to 80% of the 160 characters actually enforced
+		assertThat(prompt).contains("at most 128 characters").doesNotContain("at most 160 characters");
+	}
+
+	@Test
 	void shouldQuoteBufferedLimitsAndSendTheCampaignPromptUncachedTest() {
 		// Given: a minimal campaign with one tactic digest and a frequency pair, so every limited field is asked for
 		Tactic ctv = new Tactic(
@@ -126,6 +190,46 @@ class ClaudeBatchPromptBuilderTest {
 
 		// And: the prompt is sent as one uncached block — its prefix is unique to this once-per-report call
 		assertThat(prompt).doesNotContain(AnthropicMessagesClient.CACHE_BREAKPOINT);
+	}
+
+	@Test
+	void shouldTellBothGeoPromptsTheTableIsOnlyTheTopMarketsTest() {
+		// Given: one tactic whose geo table lists 2 markets while the stat above it says 14 ran — the row count
+		// and the real footprint disagree, which is the case the copy must not read off the rows
+		Tactic ctv = new Tactic(
+				"CTV", "CTV", null,
+				5000.0, 1_000_000.0, 0.0, 1_000_000.0, null, 98.0, null, null,
+				null, null, null, null, null, null, null, null);
+		CampaignData data = new CampaignData(
+				"Acme", "Spring Launch", "US", "Awareness", "Jan 1 - Mar 31",
+				null, "$500,000", "Reach", "CTV", "25-44", "Auto intenders",
+				new Totals(0, 0, 0, 0, null, null), Map.of(1, ctv), null);
+		GeoInsightInput geo = new GeoInsightInput(
+				1, "CTV", "VCR",
+				new GeoTable("14", "New York", "97.1%",
+						List.of(new GeoRow("New York", "400,000", "97.1%"),
+								new GeoRow("Los Angeles", "200,000", "96.4%"))));
+
+		// When: both paths that write geo copy build their prompt — the dedicated per-section call and the
+		// combined conclusions call
+		String sectionPrompt = builder.buildGeoSectionPrompt(geo, data, "Drive awareness.", 140).orElseThrow();
+		String combinedPrompt = builder.buildTacticConclusionsPrompt(
+						data, List.of(new TacticConclusionInput(1, null, null, geo, null, null)),
+						"Drive awareness.", 160, 160, 160, 140, 200, 140, 200, 140)
+				.orElseThrow();
+
+		// Then: each one states that the table is a top list and names the stat that does carry total coverage,
+		// so a two-row table never ships as "delivery ran across two markets"
+		assertThat(sectionPrompt).contains(
+				"The table lists only this tactic's TOP markets, NOT every market it ran in",
+				"never state or imply a total market count from the number of rows",
+				"The 'Markets activated' stat above the table is the only figure for total coverage");
+		assertThat(combinedPrompt).contains(
+				"The table lists only this tactic's TOP markets, NOT every market it ran in",
+				"The 'Markets activated' stat above the table is the only figure for total coverage");
+
+		// And: the stat the rule points at is actually in the data block, under the label the rule quotes
+		assertThat(sectionPrompt).contains("Markets activated: 14");
 	}
 
 }

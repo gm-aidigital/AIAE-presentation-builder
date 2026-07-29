@@ -31,6 +31,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -77,7 +79,7 @@ class RealClaudeClientTest {
 				List.of(new TacticConclusionInput(1, publisher, null, null, null, null));
 
 		String expectedPrompt = promptBuilder.buildTacticConclusionsPrompt(
-				data, inputs, brief, 155, 100, 140, 140, 256, 120, 256, 120).orElseThrow();
+				data, inputs, brief, 160, 160, 160, 140, 256, 120, 256, 120).orElseThrow();
 		JsonNode response = json.readTree("""
 				{
 				  "tactic_1": {
@@ -91,10 +93,10 @@ class RealClaudeClientTest {
 		List<ClaudeCompressionField> expectedFields = List.of(
 				new ClaudeCompressionField(
 						"1_overview", "CTV delivered 1M impressions at 98% VCR, driven by premium inventory.", 210),
-				new ClaudeCompressionField("1_pub_0", "Hulu led delivery.", 155),
-				new ClaudeCompressionField("1_pub_1", "Long tail carried reach.", 155),
-				new ClaudeCompressionField("1_pub_2", "Premium brand-safe mix.", 155),
-				new ClaudeCompressionField("1_pub_3", "We steered weight to strong publishers.", 155));
+				new ClaudeCompressionField("1_pub_0", "Hulu led delivery.", 160),
+				new ClaudeCompressionField("1_pub_1", "Long tail carried reach.", 160),
+				new ClaudeCompressionField("1_pub_2", "Premium brand-safe mix.", 160),
+				new ClaudeCompressionField("1_pub_3", "We steered weight to strong publishers.", 160));
 		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(2700), eq(90), eq("BatchConclusions"), eq(true)))
 				.thenReturn(response);
 		when(compressionService.compress(eq(expectedFields), eq("BatchD-Conclusions")))
@@ -151,7 +153,7 @@ class RealClaudeClientTest {
 				List.of(new TacticConclusionInput(1, publisher, null, null, null, null));
 
 		String expectedPrompt = promptBuilder.buildTacticConclusionsPrompt(
-				data, inputs, brief, 155, 100, 140, 140, 256, 120, 256, 120).orElseThrow();
+				data, inputs, brief, 160, 160, 160, 140, 256, 120, 256, 120).orElseThrow();
 		JsonNode bareResponse = json.readTree("""
 				{
 				  "overview": "CTV delivered 1M impressions at 98% VCR, driven by premium inventory.",
@@ -162,10 +164,10 @@ class RealClaudeClientTest {
 		List<ClaudeCompressionField> expectedFields = List.of(
 				new ClaudeCompressionField(
 						"1_overview", "CTV delivered 1M impressions at 98% VCR, driven by premium inventory.", 210),
-				new ClaudeCompressionField("1_pub_0", "Hulu led delivery.", 155),
-				new ClaudeCompressionField("1_pub_1", "Long tail carried reach.", 155),
-				new ClaudeCompressionField("1_pub_2", "Premium brand-safe mix.", 155),
-				new ClaudeCompressionField("1_pub_3", "We steered weight to strong publishers.", 155));
+				new ClaudeCompressionField("1_pub_0", "Hulu led delivery.", 160),
+				new ClaudeCompressionField("1_pub_1", "Long tail carried reach.", 160),
+				new ClaudeCompressionField("1_pub_2", "Premium brand-safe mix.", 160),
+				new ClaudeCompressionField("1_pub_3", "We steered weight to strong publishers.", 160));
 		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(2700), eq(90), eq("BatchConclusions"), eq(true)))
 				.thenReturn(bareResponse);
 		when(compressionService.compress(eq(expectedFields), eq("BatchD-Conclusions")))
@@ -218,12 +220,12 @@ class RealClaudeClientTest {
 				[["Hulu led delivery.", "Long tail carried reach.",
 				  "Premium brand-safe mix.", "We steered weight to strong publishers."]]
 				""");
-		String expectedPrompt = promptBuilder.buildPublisherSectionPrompt(input, data, brief, 155).orElseThrow();
+		String expectedPrompt = promptBuilder.buildPublisherSectionPrompt(input, data, brief, 160).orElseThrow();
 		List<ClaudeCompressionField> expectedFields = List.of(
-				new ClaudeCompressionField("1_0", "Hulu led delivery.", 155),
-				new ClaudeCompressionField("1_1", "Long tail carried reach.", 155),
-				new ClaudeCompressionField("1_2", "Premium brand-safe mix.", 155),
-				new ClaudeCompressionField("1_3", "We steered weight to strong publishers.", 155));
+				new ClaudeCompressionField("1_0", "Hulu led delivery.", 160),
+				new ClaudeCompressionField("1_1", "Long tail carried reach.", 160),
+				new ClaudeCompressionField("1_2", "Premium brand-safe mix.", 160),
+				new ClaudeCompressionField("1_3", "We steered weight to strong publishers.", 160));
 		when(messagesClient.callJsonArray(eq(expectedPrompt), eq(1500), eq(90), eq("PublisherSection"), eq(true)))
 				.thenReturn(wrapped);
 		when(compressionService.compress(eq(expectedFields), eq("PublisherSection")))
@@ -269,7 +271,7 @@ class RealClaudeClientTest {
 		PublisherObservationInput input = new PublisherObservationInput(
 				1, "CTV", List.of(new PublisherRow("Hulu", "400,000", "40%")), 400_000, 1_000_000);
 		String brief = "Drive awareness.";
-		String expectedPrompt = promptBuilder.buildPublisherSectionPrompt(input, data, brief, 155).orElseThrow();
+		String expectedPrompt = promptBuilder.buildPublisherSectionPrompt(input, data, brief, 160).orElseThrow();
 		String retryPrompt =
 				expectedPrompt + client.sectionRetrySuffix("the reply held 1 item(s), expected 4", 4);
 		when(messagesClient.callJsonArray(eq(expectedPrompt), eq(1500), eq(90), eq("PublisherSection"), eq(true)))
@@ -319,12 +321,12 @@ class RealClaudeClientTest {
 				["Hulu led delivery.", "Long tail carried reach.", "Premium brand-safe mix.",
 				 "We steered weight to strong publishers.", "One more note on the data."]
 				""");
-		String expectedPrompt = promptBuilder.buildPublisherSectionPrompt(input, data, brief, 155).orElseThrow();
+		String expectedPrompt = promptBuilder.buildPublisherSectionPrompt(input, data, brief, 160).orElseThrow();
 		List<ClaudeCompressionField> expectedFields = List.of(
-				new ClaudeCompressionField("1_0", "Hulu led delivery.", 155),
-				new ClaudeCompressionField("1_1", "Long tail carried reach.", 155),
-				new ClaudeCompressionField("1_2", "Premium brand-safe mix.", 155),
-				new ClaudeCompressionField("1_3", "We steered weight to strong publishers.", 155));
+				new ClaudeCompressionField("1_0", "Hulu led delivery.", 160),
+				new ClaudeCompressionField("1_1", "Long tail carried reach.", 160),
+				new ClaudeCompressionField("1_2", "Premium brand-safe mix.", 160),
+				new ClaudeCompressionField("1_3", "We steered weight to strong publishers.", 160));
 		when(messagesClient.callJsonArray(eq(expectedPrompt), eq(1500), eq(90), eq("PublisherSection"), eq(true)))
 				.thenReturn(overLong);
 		when(compressionService.compress(eq(expectedFields), eq("PublisherSection")))
@@ -374,7 +376,7 @@ class RealClaudeClientTest {
 		PublisherObservationInput input = new PublisherObservationInput(
 				1, "CTV", List.of(new PublisherRow("Hulu", "400,000", "40%")), 400_000, 1_000_000);
 		String brief = "Drive awareness.";
-		String expectedPrompt = promptBuilder.buildPublisherSectionPrompt(input, data, brief, 155).orElseThrow();
+		String expectedPrompt = promptBuilder.buildPublisherSectionPrompt(input, data, brief, 160).orElseThrow();
 		when(messagesClient.callJsonArray(eq(expectedPrompt), eq(1500), eq(90), eq("PublisherSection"), eq(true)))
 				.thenReturn(json.createArrayNode().add("Only one bullet."));
 
@@ -1198,5 +1200,203 @@ class RealClaudeClientTest {
 
 		// Then: the copy still gets the campaign facts — losing the brief entirely would be worse than carrying it
 		assertThat(result).isEqualTo(oversized);
+	}
+
+	@Test
+	void batchTacticConclusionsDropsTheSectionRulesAndBudgetWhenNoTacticCarriesASectionTest() throws Exception {
+		// Given: two tactics with every breakdown section off — the shape the call has once the per-section
+		// calls own the breakdown copy — batched into one chunk by the default chunk size
+		ClaudeResponseNormalizer normalizer = new ClaudeResponseNormalizer();
+		ClaudeBatchPromptBuilder promptBuilder = new ClaudeBatchPromptBuilder(normalizer, new Fmt());
+		RealClaudeClient client = new RealClaudeClient(
+				messagesClient, promptBuilder, normalizer, compressionService, new ReportClaudeDefaults(),
+				new WorkbookGeoFilter(), new PromptTokenEstimator(), new ClaudeFailureLogImpl(),
+				new AnthropicProperties());
+
+		Tactic display = new Tactic(
+				"Display", "Display", null,
+				1500.0, 251_633.0, 5257.0, 0.0, 2.09, null, null, null,
+				1500.0, 250_000.0, 0.17, null, null, null, null, null);
+		Tactic video = new Tactic(
+				"Video", "Video", null,
+				1500.0, 125_219.0, 760.0, 117_277.0, 0.61, 93.66, null, null,
+				1500.0, 125_000.0, 0.35, 60.0, null, null, null, null);
+		Map<Integer, Tactic> tactics = new LinkedHashMap<>();
+		tactics.put(1, display);
+		tactics.put(2, video);
+		CampaignData data = new CampaignData(
+				"Clean Habits", "Culture Pilot", "CA, OR", "Consideration", "Jun 1 - Jun 30",
+				null, "$3,000", "Imps, CTR, VCR", "Display, Video", "25+", "Eco-conscious",
+				new Totals(0, 0, 0, 0, null, null), tactics, null);
+		String brief = "Launch Clean Habits across Display and Video.";
+		List<TacticConclusionInput> inputs = List.of(
+				new TacticConclusionInput(1, null, null, null, null, null),
+				new TacticConclusionInput(2, null, null, null, null, null));
+
+		String expectedPrompt = promptBuilder.buildTacticConclusionsPrompt(
+				data, inputs, brief, 160, 160, 160, 140, 256, 120, 256, 120).orElseThrow();
+		JsonNode response = json.readTree("""
+				{
+				  "tactic_1": {"overview": "Display beat its CTR benchmark twelvefold."},
+				  "tactic_2": {"overview": "Video held a 93.66% VCR against a 60% plan."}
+				}
+				""");
+		List<ClaudeCompressionField> expectedFields = List.of(
+				new ClaudeCompressionField("1_overview", "Display beat its CTR benchmark twelvefold.", 210),
+				new ClaudeCompressionField("2_overview", "Video held a 93.66% VCR against a 60% plan.", 210));
+		// Two tactics, no sections → budget is base 200 + 2 × 120 = 440 rather than the section-sized 3900.
+		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(440), eq(90), eq("BatchConclusions"), eq(true)))
+				.thenReturn(response);
+		when(compressionService.compress(eq(expectedFields), eq("BatchD-Conclusions")))
+				.thenAnswer(invocation -> {
+					List<ClaudeCompressionField> fields = invocation.getArgument(0);
+					Map<String, String> out = new LinkedHashMap<>();
+					for (ClaudeCompressionField field : fields) {
+						out.put(field.key(), field.text());
+					}
+					return out;
+				});
+
+		// When:
+		List<TacticConclusion> conclusions = client.batchTacticConclusions(data, inputs, brief);
+
+		// Then: both tactics come back from the single call, with their sections left unrequested
+		assertThat(conclusions).hasSize(2);
+		assertThat(conclusions.getFirst().overview()).isEqualTo("Display beat its CTR benchmark twelvefold.");
+		assertThat(conclusions.get(1).overview()).isEqualTo("Video held a 93.66% VCR against a 60% plan.");
+		assertThat(conclusions.getFirst().publisherBullets()).isNull();
+
+		// Then: the prompt asks only for the overview — none of the five section rule blocks are sent
+		assertThat(expectedPrompt).contains("carrying exactly ONE field: \"overview\"");
+		assertThat(expectedPrompt).doesNotContain("=== top_publishers");
+		assertThat(expectedPrompt).doesNotContain("=== creative");
+		assertThat(expectedPrompt).doesNotContain("=== geo");
+		assertThat(expectedPrompt).doesNotContain("=== audience");
+		assertThat(expectedPrompt).doesNotContain("=== device");
+		verify(messagesClient, times(1))
+				.callJsonObject(eq(expectedPrompt), eq(440), eq(90), eq("BatchConclusions"), eq(true));
+	}
+
+	@Test
+	void batchTacticConclusionsReAsksATacticThatParsedWithABlankOverviewTest() throws Exception {
+		// Given: one tactic whose reply parses into a conclusion object but leaves the overview blank — before
+		// this was shipped straight to the slide as a dash, because only a wholly empty chunk was retried
+		ClaudeResponseNormalizer normalizer = new ClaudeResponseNormalizer();
+		ClaudeBatchPromptBuilder promptBuilder = new ClaudeBatchPromptBuilder(normalizer, new Fmt());
+		RealClaudeClient client = new RealClaudeClient(
+				messagesClient, promptBuilder, normalizer, compressionService, new ReportClaudeDefaults(),
+				new WorkbookGeoFilter(), new PromptTokenEstimator(), new ClaudeFailureLogImpl(),
+				new AnthropicProperties());
+
+		Tactic display = new Tactic(
+				"Display", "Display", null,
+				1500.0, 251_633.0, 5257.0, 0.0, 2.09, null, null, null,
+				1500.0, 250_000.0, 0.17, null, null, null, null, null);
+		CampaignData data = new CampaignData(
+				"Clean Habits", "Culture Pilot", "CA, OR", "Consideration", "Jun 1 - Jun 30",
+				null, "$1,500", "Imps, CTR", "Display", "25+", "Eco-conscious",
+				new Totals(0, 0, 0, 0, null, null), Map.of(1, display), null);
+		String brief = "Launch Clean Habits across Display.";
+		List<TacticConclusionInput> inputs = List.of(new TacticConclusionInput(1, null, null, null, null, null));
+
+		String expectedPrompt = promptBuilder.buildTacticConclusionsPrompt(
+				data, inputs, brief, 160, 160, 160, 140, 256, 120, 256, 120).orElseThrow();
+		JsonNode blank = json.readTree("{\"tactic_1\": {\"overview\": \"\"}}");
+		JsonNode filled = json.readTree(
+				"{\"tactic_1\": {\"overview\": \"Display beat its CTR benchmark twelvefold.\"}}");
+		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(320), eq(90), eq("BatchConclusions"), eq(true)))
+				.thenReturn(blank, filled);
+		when(compressionService.compress(
+				eq(List.of(new ClaudeCompressionField("1_overview", "", 210))), eq("BatchD-Conclusions")))
+				.thenReturn(Map.of("1_overview", ""));
+		when(compressionService.compress(
+				eq(List.of(new ClaudeCompressionField(
+						"1_overview", "Display beat its CTR benchmark twelvefold.", 210))),
+				eq("BatchD-Conclusions")))
+				.thenReturn(Map.of("1_overview", "Display beat its CTR benchmark twelvefold."));
+
+		// When:
+		List<TacticConclusion> conclusions = client.batchTacticConclusions(data, inputs, brief);
+
+		// Then: the blank answer is re-asked once and the slide gets the second reply's overview
+		assertThat(conclusions).hasSize(1);
+		assertThat(conclusions.getFirst().overview()).isEqualTo("Display beat its CTR benchmark twelvefold.");
+		verify(messagesClient, times(2))
+				.callJsonObject(eq(expectedPrompt), eq(320), eq(90), eq("BatchConclusions"), eq(true));
+	}
+
+	@Test
+	void batchTacticConclusionsRunsItsChunksConcurrentlyAndReturnsThemInTacticOrderTest() throws Exception {
+		// Given: four tactics sliced into two chunks, each call blocking until the other has started — so the
+		// test only completes if the chunks really run at the same time rather than one after the other
+		ClaudeResponseNormalizer normalizer = new ClaudeResponseNormalizer();
+		ClaudeBatchPromptBuilder promptBuilder = new ClaudeBatchPromptBuilder(normalizer, new Fmt());
+		AnthropicProperties props = new AnthropicProperties();
+		props.setBreakdownChunkSize(2);
+		RealClaudeClient client = new RealClaudeClient(
+				messagesClient, promptBuilder, normalizer, compressionService, new ReportClaudeDefaults(),
+				new WorkbookGeoFilter(), new PromptTokenEstimator(), new ClaudeFailureLogImpl(), props);
+
+		Map<Integer, Tactic> tactics = new LinkedHashMap<>();
+		for (int n = 1; n <= 4; n++) {
+			tactics.put(n, new Tactic(
+					"Display " + n, "Display", null,
+					1500.0, 251_633.0, 5257.0, 0.0, 2.09, null, null, null,
+					1500.0, 250_000.0, 0.17, null, null, null, null, null));
+		}
+		CampaignData data = new CampaignData(
+				"Clean Habits", "Culture Pilot", "CA, OR", "Consideration", "Jun 1 - Jun 30",
+				null, "$6,000", "Imps, CTR", "Display", "25+", "Eco-conscious",
+				new Totals(0, 0, 0, 0, null, null), tactics, null);
+		String brief = "Launch Clean Habits across four Display line items.";
+		List<TacticConclusionInput> inputs = List.of(
+				new TacticConclusionInput(1, null, null, null, null, null),
+				new TacticConclusionInput(2, null, null, null, null, null),
+				new TacticConclusionInput(3, null, null, null, null, null),
+				new TacticConclusionInput(4, null, null, null, null, null));
+
+		String firstPrompt = promptBuilder.buildTacticConclusionsPrompt(
+				data, inputs.subList(0, 2), brief, 160, 160, 160, 140, 256, 120, 256, 120).orElseThrow();
+		String secondPrompt = promptBuilder.buildTacticConclusionsPrompt(
+				data, inputs.subList(2, 4), brief, 160, 160, 160, 140, 256, 120, 256, 120).orElseThrow();
+		CountDownLatch bothInFlight = new CountDownLatch(2);
+		when(messagesClient.callJsonObject(eq(firstPrompt), eq(440), eq(90), eq("BatchConclusions"), eq(true)))
+				.thenAnswer(invocation -> {
+					bothInFlight.countDown();
+					assertThat(bothInFlight.await(5, TimeUnit.SECONDS)).isTrue();
+					return json.readTree("""
+							{"tactic_1": {"overview": "Tactic 1 overview."},
+							 "tactic_2": {"overview": "Tactic 2 overview."}}
+							""");
+				});
+		when(messagesClient.callJsonObject(eq(secondPrompt), eq(440), eq(90), eq("BatchConclusions"), eq(true)))
+				.thenAnswer(invocation -> {
+					bothInFlight.countDown();
+					assertThat(bothInFlight.await(5, TimeUnit.SECONDS)).isTrue();
+					return json.readTree("""
+							{"tactic_3": {"overview": "Tactic 3 overview."},
+							 "tactic_4": {"overview": "Tactic 4 overview."}}
+							""");
+				});
+		when(compressionService.compress(
+				eq(List.of(
+						new ClaudeCompressionField("1_overview", "Tactic 1 overview.", 210),
+						new ClaudeCompressionField("2_overview", "Tactic 2 overview.", 210))),
+				eq("BatchD-Conclusions")))
+				.thenReturn(Map.of("1_overview", "Tactic 1 overview.", "2_overview", "Tactic 2 overview."));
+		when(compressionService.compress(
+				eq(List.of(
+						new ClaudeCompressionField("3_overview", "Tactic 3 overview.", 210),
+						new ClaudeCompressionField("4_overview", "Tactic 4 overview.", 210))),
+				eq("BatchD-Conclusions")))
+				.thenReturn(Map.of("3_overview", "Tactic 3 overview.", "4_overview", "Tactic 4 overview."));
+
+		// When:
+		List<TacticConclusion> conclusions = client.batchTacticConclusions(data, inputs, brief);
+
+		// Then: every tactic comes back, in tactic order rather than in whichever order the chunks finished
+		assertThat(conclusions).extracting(TacticConclusion::tacticNum).containsExactly(1, 2, 3, 4);
+		assertThat(conclusions).extracting(TacticConclusion::overview).containsExactly(
+				"Tactic 1 overview.", "Tactic 2 overview.", "Tactic 3 overview.", "Tactic 4 overview.");
 	}
 }

@@ -30,11 +30,17 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -80,20 +86,36 @@ public class RealClaudeClient implements ClaudeClient {
 	 */
 	private static final Pattern TACTIC_KEY = Pattern.compile("^\\D*(\\d+)\\D*$");
 
+	/**
+	 * Character budget shared by the "Top Publishers" and "Creative analysis" bullets, whose slide fields hold
+	 * a full analyst sentence.
+	 *
+	 * <p>The 100 characters a creative takeaway used to carry were below what the prompt asks each string to
+	 * do: name the real creative, cite a real metric, and land the business consequence. Quoted to Claude at
+	 * {@code COMPRESSION_PROMPT_BUFFER_RATIO}, 100 reached the model as 80 — about twelve words for three
+	 * demands — so the model either overran the budget (paying for a compression call) or dropped the numbers
+	 * to fit, which is the one thing the "no generic language" principle forbids.
+	 *
+	 * <p>Deliberately not shared with geo and the audience/device short fields: those slide fields are narrower
+	 * and keep their own budgets.
+	 */
+	private static final int SECTION_BULLET_LIMIT = 160;
+
 	/** Character budget of one {@code {{publishers_observation_N_x}}} bullet on the slide. */
-	private static final int PUBLISHER_OBSERVATION_LIMIT = 155;
+	private static final int PUBLISHER_OBSERVATION_LIMIT = SECTION_BULLET_LIMIT;
 
 	/** Bullets per tactic on the "Top Publishers" slide. */
 	private static final int PUBLISHER_OBSERVATION_COUNT = 4;
 
 	/** Character budget of the first three {@code {{cr_takeaway_tactic N_x}}} bullets on the slide. */
-	private static final int CREATIVE_TAKEAWAY_LIMIT = 100;
+	private static final int CREATIVE_TAKEAWAY_LIMIT = SECTION_BULLET_LIMIT;
 
 	/**
-	 * Character budget of the fourth {@code {{cr_takeaway_tactic N_4}}} bullet. Wider than the other three
-	 * because it carries the mid-flight optimisation <em>and</em> its result, which does not fit in 100.
+	 * Character budget of the fourth {@code {{cr_takeaway_tactic N_4}}} bullet, which carries the mid-flight
+	 * optimisation <em>and</em> its result. Kept as its own constant even though it now matches the other three,
+	 * because it is a separate slide field whose budget can move independently of them.
 	 */
-	private static final int CREATIVE_RECO_LIMIT = 140;
+	private static final int CREATIVE_RECO_LIMIT = SECTION_BULLET_LIMIT;
 
 	/** Bullets per tactic on the "Creative analysis" slide; the last one is the recommendation. */
 	private static final int CREATIVE_TAKEAWAY_COUNT = 4;
@@ -173,6 +195,16 @@ public class RealClaudeClient implements ClaudeClient {
 	private static final int CONCLUSIONS_BASE_TOKENS = 1500;
 	private static final int CONCLUSIONS_TOKENS_PER_TACTIC = 1200;
 	private static final int CONCLUSIONS_MAX_TOKENS_CAP = 8000;
+
+	/**
+	 * Output budget for a conclusions chunk whose tactics carry no section at all — the shape the call has
+	 * whenever the per-section calls own the breakdown copy. The reply is then one ~190-character overview per
+	 * tactic, so the section-sized allowance above is roughly twenty times what the reply can use: it stops
+	 * bounding anything, and a model that wanders into an essay is billed for every token of it. These figures
+	 * are the same two-characters-per-token sizing the other budgets use, with head-room for an overrun.
+	 */
+	private static final int CONCLUSIONS_OVERVIEW_BASE_TOKENS = 200;
+	private static final int CONCLUSIONS_OVERVIEW_TOKENS_PER_TACTIC = 120;
 
 	/** The per-tactic "thoughts on tactic performance" slide holds exactly four thought strings. */
 	private static final int TACTIC_THOUGHTS_COUNT = 4;
@@ -892,11 +924,11 @@ public class RealClaudeClient implements ClaudeClient {
 		if (inputs == null || inputs.isEmpty() || data == null) {
 			return out;
 		}
+		List<List<TacticConclusionInput>> chunks = new ArrayList<>();
 		for (int start = 0; start < inputs.size(); start += breakdownChunkSize) {
-			List<TacticConclusionInput> chunk =
-					inputs.subList(start, Math.min(start + breakdownChunkSize, inputs.size()));
-			out.addAll(tacticConclusionsResilient(data, chunk, brief));
+			chunks.add(List.copyOf(inputs.subList(start, Math.min(start + breakdownChunkSize, inputs.size()))));
 		}
+		out.addAll(runConclusionChunks(data, chunks, brief));
 		// Name the tactics that finished every attempt with no conclusion so a future blank-overview run is one
 		// grep line ("shipped with no conclusion: [N]"), not a hunt back through raw reply snapshots. Each such
 		// tactic's {{tactic N overview}} and breakdown copy fall back to dashes for manual fill.
@@ -914,9 +946,62 @@ public class RealClaudeClient implements ClaudeClient {
 	}
 
 	/**
-	 * Runs one conclusions chunk and, when it comes back with nothing at all, retries rather than shipping the
-	 * chunk's tactics with no conclusions. A multi-tactic chunk is retried one tactic per call so a single bad
-	 * tactic cannot take its neighbours down, and a chunk already down to one tactic simply gets one more attempt.
+	 * Runs every conclusions chunk, concurrently once there is more than one. The chunks are independent calls
+	 * against an upstream that answers in seconds, so running them in sequence made the step's wall-clock the
+	 * sum of every call while the shared call limiter sat idle; fanning them out makes it roughly the slowest
+	 * call. Real concurrency against Anthropic is still bounded by the semaphore in {@link
+	 * AnthropicMessagesClient}, so this widens the queue, not the rate. A chunk that fails outright costs only
+	 * its own tactics, exactly as it did in sequence.
+	 *
+	 * @param data   parsed campaign data supplying the shared context and each tactic's overview metrics
+	 * @param chunks the chunks to run, already sliced to the configured size
+	 * @param brief  free-text campaign brief passed through to the prompt
+	 * @return every chunk's conclusions, ordered by tactic number
+	 */
+	List<TacticConclusion> runConclusionChunks(
+			CampaignData data, List<List<TacticConclusionInput>> chunks, String brief) {
+		if (chunks.size() == 1) {
+			return tacticConclusionsResilient(data, chunks.getFirst(), brief);
+		}
+		List<TacticConclusion> out = new ArrayList<>();
+		try (ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor()) {
+			List<CompletableFuture<List<TacticConclusion>>> futures = chunks.stream()
+					.map(chunk -> CompletableFuture.supplyAsync(
+							() -> tacticConclusionsResilient(data, chunk, brief), pool))
+					.toList();
+			for (CompletableFuture<List<TacticConclusion>> future : futures) {
+				out.addAll(joinConclusions(future));
+			}
+		}
+		out.sort(Comparator.comparingInt(TacticConclusion::tacticNum));
+		return out;
+	}
+
+	/**
+	 * Waits for one chunk's conclusions, turning a chunk that threw into an empty result so the remaining
+	 * chunks still ship. The tactics behind a failed chunk are named by the caller's missing-tactic warning.
+	 *
+	 * @param future the chunk's pending conclusions
+	 * @return the chunk's conclusions, or empty when it failed
+	 */
+	List<TacticConclusion> joinConclusions(CompletableFuture<List<TacticConclusion>> future) {
+		try {
+			return future.join();
+		} catch (CompletionException | CancellationException e) {
+			log.warn("[claude:BatchConclusions] a conclusions chunk failed outright ({}) — its tactics fall back "
+					+ "to dashes", e.getMessage());
+			return List.of();
+		}
+	}
+
+	/**
+	 * Runs one conclusions chunk and retries the tactics it did not answer for, rather than shipping them with
+	 * no conclusion. A tactic counts as answered only when it came back with a non-blank overview: the prompt
+	 * marks that field ALWAYS-produce, so an object that parsed without one is a failed answer, not a choice,
+	 * and before this it was shipped straight to the slide as a dash. Only the unanswered tactics are re-asked,
+	 * one per call, so a chunk's good conclusions are never re-billed and one bad tactic cannot take its
+	 * neighbours down; a chunk already down to one tactic simply gets one more attempt. A retry that comes back
+	 * with nothing usable leaves the original reply in place — it may still carry that tactic's section copy.
 	 *
 	 * @param data  parsed campaign data supplying the shared context and each tactic's overview metrics
 	 * @param chunk the tactics to cover
@@ -925,22 +1010,68 @@ public class RealClaudeClient implements ClaudeClient {
 	 */
 	List<TacticConclusion> tacticConclusionsResilient(
 			CampaignData data, List<TacticConclusionInput> chunk, String brief) {
+		if (chunk == null || chunk.isEmpty()) {
+			return List.of();
+		}
 		List<TacticConclusion> res = tacticConclusionsChunk(data, chunk, brief);
-		if (!res.isEmpty() || chunk.isEmpty()) {
+		Set<Integer> answered = answeredTactics(res);
+		List<TacticConclusionInput> missing = chunk.stream()
+				.filter(input -> !answered.contains(input.tacticNum()))
+				.toList();
+		if (missing.isEmpty()) {
 			return res;
 		}
 		if (chunk.size() == 1) {
-			log.warn("[claude:BatchConclusions] tactic {} came back empty — retrying once",
+			log.warn("[claude:BatchConclusions] tactic {} came back with no usable overview — retrying once",
 					chunk.getFirst().tacticNum());
-			return tacticConclusionsChunk(data, chunk, brief);
+			List<TacticConclusion> retry = tacticConclusionsChunk(data, chunk, brief);
+			return answeredTactics(retry).isEmpty() ? res : retry;
 		}
-		log.warn("[claude:BatchConclusions] chunk {} came back empty — retrying one tactic per call",
-				chunk.stream().map(TacticConclusionInput::tacticNum).toList());
-		List<TacticConclusion> perTactic = new ArrayList<>();
-		for (TacticConclusionInput input : chunk) {
-			perTactic.addAll(tacticConclusionsResilient(data, List.of(input), brief));
+		log.warn("[claude:BatchConclusions] chunk {} left tactic(s) {} with no usable overview — re-asking those "
+						+ "one per call", chunk.stream().map(TacticConclusionInput::tacticNum).toList(),
+				missing.stream().map(TacticConclusionInput::tacticNum).toList());
+		List<TacticConclusion> merged = new ArrayList<>(
+				res.stream().filter(conclusion -> answered.contains(conclusion.tacticNum())).toList());
+		for (TacticConclusionInput input : missing) {
+			List<TacticConclusion> retried = tacticConclusionsResilient(data, List.of(input), brief);
+			if (retried.isEmpty()) {
+				res.stream().filter(conclusion -> conclusion.tacticNum() == input.tacticNum()).forEach(merged::add);
+			} else {
+				merged.addAll(retried);
+			}
 		}
-		return perTactic;
+		merged.sort(Comparator.comparingInt(TacticConclusion::tacticNum));
+		return merged;
+	}
+
+	/**
+	 * The tactic numbers a conclusions reply actually answered for, i.e. those carrying a non-blank overview.
+	 *
+	 * @param conclusions the conclusions parsed out of one reply
+	 * @return the answered tactic numbers
+	 */
+	Set<Integer> answeredTactics(List<TacticConclusion> conclusions) {
+		return conclusions.stream()
+				.filter(conclusion -> conclusion.overview() != null && !conclusion.overview().isBlank())
+				.map(TacticConclusion::tacticNum)
+				.collect(Collectors.toSet());
+	}
+
+	/**
+	 * Output budget for one conclusions chunk. A chunk carrying sections is sized for an overview plus up to
+	 * five section blocks per tactic; a chunk carrying none is sized for the overviews alone, which is all the
+	 * reply can contain — see {@link #CONCLUSIONS_OVERVIEW_BASE_TOKENS}.
+	 *
+	 * @param chunk the tactics this call covers
+	 * @return the {@code max_tokens} to send
+	 */
+	int conclusionsMaxTokens(List<TacticConclusionInput> chunk) {
+		if (chunk.stream().noneMatch(promptBuilder::carriesAnySection)) {
+			return Math.min(CONCLUSIONS_MAX_TOKENS_CAP, CONCLUSIONS_OVERVIEW_BASE_TOKENS
+					+ CONCLUSIONS_OVERVIEW_TOKENS_PER_TACTIC * chunk.size());
+		}
+		return Math.min(CONCLUSIONS_MAX_TOKENS_CAP, CONCLUSIONS_BASE_TOKENS
+				+ CONCLUSIONS_TOKENS_PER_TACTIC * chunk.size());
 	}
 
 	/**
@@ -963,8 +1094,7 @@ public class RealClaudeClient implements ClaudeClient {
 		if (prompt.isEmpty()) {
 			return out;
 		}
-		int maxTokens = Math.min(CONCLUSIONS_MAX_TOKENS_CAP, CONCLUSIONS_BASE_TOKENS
-				+ CONCLUSIONS_TOKENS_PER_TACTIC * chunk.size());
+		int maxTokens = conclusionsMaxTokens(chunk);
 		// allowPartial: a reply that ran past the budget still carries whole conclusions for the tactics it
 		// finished, and salvaging those beats blanking the chunk over its unfinished tail.
 		JsonNode parsed = messagesClient.callJsonObject(
