@@ -26,6 +26,8 @@ public interface SlidesProvider {
 	 * @param fileName              Drive file name to give the cloned deck
 	 * @param placeholderMap        resolved {@code {token}} → value pairs to write
 	 *                              into the cloned deck
+	 * @param reportType            report template code ({@code "EOC"}/{@code "EOM"}); selects which
+	 *                              template deck is cloned
 	 * @param userGoogleAccessToken optional Google OAuth access token for the
 	 *                              signed-in user (obtained from Clerk). When
 	 *                              non-blank the deck is created in that user's
@@ -33,7 +35,9 @@ public interface SlidesProvider {
 	 *                              falls back to the service account.
 	 * @return public Slides URL the UI shows in its "Slides ready" card
 	 */
-	String createDeck(String jobId, String fileName, Map<String, String> placeholderMap, String userGoogleAccessToken);
+	String createDeck(
+			String jobId, String fileName, Map<String, String> placeholderMap, String reportType,
+			String userGoogleAccessToken);
 
 	/**
 	 * Removes the template's unused per-tactic slides, surplus summary + "Our

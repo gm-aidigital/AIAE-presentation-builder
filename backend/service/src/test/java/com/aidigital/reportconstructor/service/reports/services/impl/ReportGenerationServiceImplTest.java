@@ -171,7 +171,7 @@ class ReportGenerationServiceImplTest {
 		when(placeholders.buildFlatReplacements(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt()))
 				.thenReturn(Map.of());
 		when(fileNamer.buildFileName(any(), any(), any())).thenReturn("deck-file");
-		when(slides.createDeck(eq("7"), eq("deck-file"), any(), isNull())).thenReturn("http://deck");
+		when(slides.createDeck(eq("7"), eq("deck-file"), any(), any(), isNull())).thenReturn("http://deck");
 		when(chartHelper.buildCharts(eq("http://deck"), any(), any(), any(), isNull())).thenReturn(List.of());
 		when(warnings.serializeWarnings(List.of())).thenReturn("[]");
 
@@ -232,7 +232,7 @@ class ReportGenerationServiceImplTest {
 		when(placeholders.buildFlatReplacements(
 				any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt())).thenReturn(narrative);
 		when(fileNamer.buildFileName(any(), any(), any())).thenReturn("deck-file");
-		when(slides.createDeck(eq("11"), eq("deck-file"), any(), isNull())).thenReturn("http://deck");
+		when(slides.createDeck(eq("11"), eq("deck-file"), any(), any(), isNull())).thenReturn("http://deck");
 		// Step 2 reads (no Claude call): each section returns no enabled tactics, so no tokens and no writes.
 		when(publisherBreakdown.readPublisherInputs(eq("http://sheet"), isNull(), any(), isNull()))
 				.thenReturn(new BreakdownSectionInputs<>(Set.of(), Map.of(), Map.of(), List.of()));
@@ -262,7 +262,7 @@ class ReportGenerationServiceImplTest {
 		// Then: it reconstructs campaign context from the sheet, then merges narrative UNDER the sheet values
 		verify(sheetCampaign).read(sheetValues, 2);
 		ArgumentCaptor<Map<String, String>> deckMap = ArgumentCaptor.forClass(Map.class);
-		verify(slides).createDeck(eq("11"), eq("deck-file"), deckMap.capture(), isNull());
+		verify(slides).createDeck(eq("11"), eq("deck-file"), deckMap.capture(), any(), isNull());
 		assertThat(deckMap.getValue())
 				.containsEntry("{{client_name}}", "Acme")
 				.containsEntry("{{recommendation 1}}", "Do X");

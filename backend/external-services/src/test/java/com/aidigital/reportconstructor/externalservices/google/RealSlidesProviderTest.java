@@ -52,6 +52,7 @@ class RealSlidesProviderTest {
 		});
 		GoogleProperties props = Mockito.mock(GoogleProperties.class);
 		when(props.getSlidesTemplateId()).thenReturn("template");
+		when(props.getEomSlidesTemplateId()).thenReturn("eom-template");
 		when(props.getSlidesTargetFolderId()).thenReturn("");
 		when(props.getTacticSlideObjectIds()).thenReturn(tacticSlideObjectIds);
 		when(props.getThoughtsMasterSlideObjectId()).thenReturn(thoughtsMasterId);
@@ -80,6 +81,17 @@ class RealSlidesProviderTest {
 		}
 		page.setPageElements(elements);
 		return page;
+	}
+
+	@Test
+	void templateIdForShouldPreferTheEomTemplateOnlyForEomReportsTest() {
+		// Given: a provider configured with both an EOC and an EOM template id
+		RealSlidesProvider provider = newProvider(Map.of());
+
+		// When-Then: only "EOM" selects the EOM template; anything else (including EOC and unset) keeps the default
+		assertThat(provider.templateIdFor("EOM")).isEqualTo("eom-template");
+		assertThat(provider.templateIdFor("EOC")).isEqualTo("template");
+		assertThat(provider.templateIdFor(null)).isEqualTo("template");
 	}
 
 	@Test

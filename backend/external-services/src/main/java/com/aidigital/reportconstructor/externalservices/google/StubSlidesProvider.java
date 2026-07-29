@@ -29,8 +29,12 @@ public class StubSlidesProvider implements SlidesProvider {
 
 	@Override
 	public String createDeck(
-			String jobId, String fileName, Map<String, String> placeholderMap, String userGoogleAccessToken) {
-		return "https://docs.google.com/presentation/d/" + props.getSlidesTemplateId() + "/edit?stub=" + jobId;
+			String jobId, String fileName, Map<String, String> placeholderMap, String reportType,
+			String userGoogleAccessToken) {
+		String eomTemplateId = props.getEomSlidesTemplateId();
+		String templateId = "EOM".equals(reportType) && eomTemplateId != null && !eomTemplateId.isBlank()
+				? eomTemplateId : props.getSlidesTemplateId();
+		return "https://docs.google.com/presentation/d/" + templateId + "/edit?stub=" + jobId;
 	}
 
 	@Override

@@ -49,7 +49,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Real Google Slides + Drive implementation. Clones {@code SLIDES_TEMPLATE_ID}
+ * Real Google Slides + Drive implementation. Clones {@code SLIDES_TEMPLATE_ID} (or
+ * {@code EOM_SLIDES_TEMPLATE_ID} for an EOM report, see {@link #templateIdFor})
  * into a new deck named after the job, runs {@code replaceAllText} for every
  * {@code {token}} → value pair, and returns the public Slides edit URL.
  *
@@ -118,7 +119,8 @@ public class RealSlidesProvider implements SlidesProvider {
 	private final DriveShareRecipients shareRecipients;
 	private final Slides slides;
 	private final Drive drive;
-	private final String templateId;
+	private final String slidesTemplateId;
+	private final String eomSlidesTemplateId;
 	private final String targetFolderId;
 	private final Map<Integer, String> summaryTableObjectIds;
 	private final Map<Integer, String> summarySlideObjectIds;
@@ -133,7 +135,8 @@ public class RealSlidesProvider implements SlidesProvider {
 			GoogleCredentialsFactory creds, GoogleProperties props, DriveSharer driveSharer,
 			DriveShareRecipients shareRecipients, GoogleRequestRetrier retrier,
 			BreakdownSlideNaming breakdownSlideNaming, BreakdownThoughtsGate thoughtsGate) {
-		String templateId = props.getSlidesTemplateId();
+		String slidesTemplateId = props.getSlidesTemplateId();
+		String eomSlidesTemplateId = props.getEomSlidesTemplateId();
 		String targetFolderId = props.getSlidesTargetFolderId();
 		this.summaryTableObjectIds = props.getSummaryTableObjectIds();
 		this.summarySlideObjectIds = props.getSummarySlideObjectIds();
@@ -154,8 +157,24 @@ public class RealSlidesProvider implements SlidesProvider {
 		this.drive = new Drive.Builder(creds.transport(), creds.jsonFactory(), creds.initializer())
 				.setApplicationName(APPLICATION_NAME)
 				.build();
-		this.templateId = templateId;
+		this.slidesTemplateId = slidesTemplateId;
+		this.eomSlidesTemplateId = eomSlidesTemplateId;
 		this.targetFolderId = targetFolderId == null ? "" : targetFolderId.trim();
+	}
+
+	/**
+	 * Resolves which template deck to clone for the given report type: the EOM deck when
+	 * {@code reportType} is {@code "EOM"} and an EOM template id is configured, otherwise the EOC
+	 * (default) deck.
+	 *
+	 * @param reportType report template code ({@code "EOC"}/{@code "EOM"}), may be {@code null}
+	 * @return the template id to clone
+	 */
+	String templateIdFor(String reportType) {
+		if ("EOM".equals(reportType) && eomSlidesTemplateId != null && !eomSlidesTemplateId.isBlank()) {
+			return eomSlidesTemplateId;
+		}
+		return slidesTemplateId;
 	}
 
 	@Override
@@ -165,7 +184,9 @@ public class RealSlidesProvider implements SlidesProvider {
 
 	@Override
 	public String createDeck(
-			String jobId, String fileName, Map<String, String> placeholderMap, String userGoogleAccessToken) {
+			String jobId, String fileName, Map<String, String> placeholderMap, String reportType,
+			String userGoogleAccessToken) {
+		String templateId = templateIdFor(reportType);
 		boolean asUser = userGoogleAccessToken != null && !userGoogleAccessToken.isBlank();
 		Drive driveClient = asUser ? buildDrive(userGoogleAccessToken) : drive;
 		Slides slidesClient = asUser ? buildSlides(userGoogleAccessToken) : slides;

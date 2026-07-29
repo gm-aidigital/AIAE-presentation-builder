@@ -274,7 +274,8 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 			}
 
 			jobProgress.markJobRunningAtStep(jobId, 6, "Building slide deck");
-			String slideUrl = slides.createDeck(String.valueOf(jobId), fileName, flatReplacements, userGoogleToken);
+			String slideUrl = slides.createDeck(
+					String.valueOf(jobId), fileName, flatReplacements, payload.reportType(), userGoogleToken);
 
 			chartHelper.trimUnusedTactics(slideUrl, payload, userGoogleToken);
 
@@ -515,7 +516,8 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		jobProgress.markJobRunningAtStep(jobId, 6, "Building slide deck");
 		String fileName = fileNamer.buildFileName(
 				payload.reportType(), flatReplacements.get(CLIENT_NAME_TOKEN), userEmail);
-		String slideUrl = slides.createDeck(String.valueOf(jobId), fileName, flatReplacements, userGoogleToken);
+		String slideUrl = slides.createDeck(
+				String.valueOf(jobId), fileName, flatReplacements, payload.reportType(), userGoogleToken);
 		chartHelper.trimUnusedTactics(slideUrl, tacticCount, userGoogleToken);
 		// Per-tactic breakdown + thoughts slides: duplicate the selected masters, fill their tokens (already in
 		// breakdownValues, including the {{thoughts on tactic n performance}} tokens for the > 2-breakdown
