@@ -142,17 +142,6 @@ public interface ClaudeClient {
 	ClaudeSheetBatch batchSheet(CampaignData data, String brief);
 
 	/**
-	 * Batch C — results overview, thoughts on performance, tactic overviews, plus the frequency
-	 * narrative ({@code {{f_oppartunity}} / {{f_fact}} / {{f_storytelling}}}) seeded with {@code frequencies}.
-	 *
-	 * @param data        parsed campaign data and actual-vs-plan tactic metrics
-	 * @param brief       free-text campaign brief used to infer the client's industry
-	 * @param frequencies pre-computed planned/actual frequency figures embedded in the frequency narrative
-	 * @return the parsed, length-capped Batch C copy
-	 */
-	ClaudeResults batchResults(CampaignData data, String brief, CampaignFrequencies frequencies);
-
-	/**
 	 * Batch D — narrative alignment. A final harmonisation pass run after Batches A and C and after every
 	 * per-tactic breakdown batch has produced its copy. It reads the already-generated campaign-level
 	 * conclusions plus a read-only digest of the breakdown conclusions and rewrites only the cross-cutting

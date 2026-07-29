@@ -156,14 +156,14 @@ public class RealClaudeClient implements ClaudeClient {
 	 */
 	private static final int DEVICE_FIELD_COUNT = 4;
 
-	// Batch C emits one results-overview per tactic group plus one tactic-overview PER TACTIC (up to 28), on
-	// top of thoughts, four recommendations and the frequency copy — all in a single JSON reply. A fixed cap
-	// truncated the reply once a campaign carried ~20+ tactics, so the JSON failed to parse and the whole
-	// batch fell back to empty (every {{Our results overview N}} and {{tactic n overview}} rendered blank).
-	// Scale the output budget with the tactic count instead: fixed base for the shared copy + per-tactic room.
-	private static final int BATCH_C_BASE_TOKENS = 2500;
-	private static final int BATCH_C_TOKENS_PER_TACTIC = 170;
-	private static final int BATCH_C_MAX_TOKENS_CAP = 8000;
+	// BatchSheet emits one small per-tactic object (gender split + two peak windows) plus the two audience
+	// fields. A fixed cap risks a campaign with enough tactics overrunning a flat budget: the reply gets cut
+	// mid-JSON and the whole call — audience fields included — falls back to blank. Scale with the tactic
+	// count instead, with a small per-tactic allowance since each tactic's payload here is a handful of short
+	// fields, not prose.
+	private static final int BATCH_SHEET_BASE_TOKENS = 600;
+	private static final int BATCH_SHEET_TOKENS_PER_TACTIC = 60;
+	private static final int BATCH_SHEET_MAX_TOKENS_CAP = 3000;
 
 	/**
 	 * Output budget for the Step-2 combined conclusions call. Each tactic can carry an overview plus up to five
@@ -563,7 +563,11 @@ public class RealClaudeClient implements ClaudeClient {
 		if (prompt.isEmpty()) {
 			return claudeDefaults.emptySheetBatch();
 		}
-		JsonNode parsed = messagesClient.callJsonObject(prompt.get(), 2000, 60, "BatchSheet", false);
+		int tacticCount = data.tactics() == null ? 0 : data.tactics().size();
+		int maxTokens = Math.min(BATCH_SHEET_MAX_TOKENS_CAP,
+				BATCH_SHEET_BASE_TOKENS + BATCH_SHEET_TOKENS_PER_TACTIC * tacticCount);
+		int timeoutSec = tacticCount > 10 ? 120 : 60;
+		JsonNode parsed = messagesClient.callJsonObject(prompt.get(), maxTokens, timeoutSec, "BatchSheet", true);
 		if (parsed == null) {
 			return claudeDefaults.emptySheetBatch();
 		}
@@ -608,111 +612,6 @@ public class RealClaudeClient implements ClaudeClient {
 			}
 		}
 		return new ClaudeSheetBatch(age, seg, result);
-	}
-
-	@Override
-	public ClaudeResults batchResults(CampaignData data, String brief, CampaignFrequencies frequencies) {
-		var prompt = promptBuilder.buildBatchCPrompt(data, brief, frequencies);
-		if (prompt.isEmpty()) {
-			return claudeDefaults.emptyResults();
-		}
-		int tacticCount = data.tactics() == null ? 0 : data.tactics().size();
-		int maxTokens = Math.min(BATCH_C_MAX_TOKENS_CAP,
-				BATCH_C_BASE_TOKENS + BATCH_C_TOKENS_PER_TACTIC * tacticCount);
-		// A larger reply also streams longer, so give big decks more HTTP head-room than the 60s that was
-		// enough for the old fixed cap.
-		int timeoutSec = tacticCount > 10 ? 120 : 60;
-		JsonNode parsed = messagesClient.callJsonObject(prompt.get(), maxTokens, timeoutSec, "BatchC", true);
-		if (parsed == null) {
-			return claudeDefaults.emptyResults();
-		}
-
-		Map<Integer, String> rawResultsOverviews = parseNumberedTextMap(parsed.get("results_overviews"));
-		List<String> rawThoughts =
-				normalizer.normalizeThoughts(normalizer.textOrNull(parsed.get("thoughts_on_performance")));
-
-		Map<Integer, String> rawTacticOverviews = parseNumberedTextMap(parsed.get("tactic_overviews"));
-
-		JsonNode recArr = parsed.get("optimization_recommendations");
-		String[] rawRecTitles = new String[4];
-		String[] rawRecTexts = new String[4];
-		for (int i = 0; i < 4; i++) {
-			JsonNode item = (recArr != null && recArr.isArray() && i < recArr.size()) ? recArr.get(i) : null;
-			rawRecTitles[i] = item == null ? "" : item.path("title").asText("").trim();
-			rawRecTexts[i] = item == null ? "" : item.path("text").asText("").trim();
-		}
-
-		String rawFOpportunity = normalizer.textOrNull(parsed.get("f_opportunity"));
-		String rawFFact = normalizer.textOrNull(parsed.get("f_fact"));
-		String rawFStorytelling = normalizer.textOrNull(parsed.get("f_storytelling"));
-
-		List<ClaudeCompressionField> compressionFields = new ArrayList<>();
-		for (Map.Entry<Integer, String> e : rawResultsOverviews.entrySet()) {
-			compressionFields.add(new ClaudeCompressionField(
-					"results_overview_" + e.getKey(), e.getValue(), RESULTS_OVERVIEW_LIMIT));
-		}
-		if (rawFOpportunity != null) {
-			compressionFields.add(new ClaudeCompressionField("f_opportunity", rawFOpportunity, F_OPPORTUNITY_LIMIT));
-		}
-		if (rawFFact != null) {
-			compressionFields.add(new ClaudeCompressionField("f_fact", rawFFact, F_FACT_LIMIT));
-		}
-		if (rawFStorytelling != null) {
-			compressionFields.add(new ClaudeCompressionField("f_storytelling", rawFStorytelling, F_STORYTELLING_LIMIT));
-		}
-		for (int i = 0; i < rawThoughts.size(); i++) {
-			String thought = rawThoughts.get(i);
-			if (thought != null) {
-				compressionFields.add(new ClaudeCompressionField("thought_" + i, thought, THOUGHT_LIMIT));
-			}
-		}
-		for (Map.Entry<Integer, String> e : rawTacticOverviews.entrySet()) {
-			compressionFields.add(
-					new ClaudeCompressionField("tactic_overview_" + e.getKey(), e.getValue(), TACTIC_OVERVIEW_LIMIT));
-		}
-		for (int i = 0; i < 4; i++) {
-			compressionFields.add(
-					new ClaudeCompressionField("rec_title_" + i, rawRecTitles[i], RECOMMENDATION_TITLE_LIMIT));
-			compressionFields.add(
-					new ClaudeCompressionField("rec_text_" + i, rawRecTexts[i], RECOMMENDATION_TEXT_LIMIT));
-		}
-		Map<String, String> compressed = compressionService.compress(compressionFields, "BatchD-Results");
-
-		Map<Integer, String> resultsOverviews = new LinkedHashMap<>();
-		for (Integer group : rawResultsOverviews.keySet()) {
-			resultsOverviews.put(group,
-					normalizer.limitResultsOverview(compressed.get("results_overview_" + group)));
-		}
-
-		List<String> thoughts = new ArrayList<>();
-		for (int i = 0; i < rawThoughts.size(); i++) {
-			String thought = rawThoughts.get(i);
-			thoughts.add(thought == null ? null : normalizer.normalizeC(compressed.get("thought_" + i), THOUGHT_LIMIT));
-		}
-
-		Map<Integer, String> tacticOverviews = new LinkedHashMap<>();
-		for (Integer tacticNumber : rawTacticOverviews.keySet()) {
-			tacticOverviews.put(tacticNumber,
-					normalizer.limitTacticOverview(compressed.get("tactic_overview_" + tacticNumber)));
-		}
-
-		List<Recommendation> recommendations = new ArrayList<>();
-		for (int i = 0; i < 4; i++) {
-			String title = normalizer.limitRecommendationTitle(compressed.get("rec_title_" + i));
-			String text = normalizer.limitRecommendationText(compressed.get("rec_text_" + i));
-			recommendations.add(new Recommendation(title, text));
-		}
-
-		String fOpportunity = rawFOpportunity == null
-				? null
-				: normalizer.limitFOpportunity(compressed.get("f_opportunity"));
-		String fFact = rawFFact == null ? null : normalizer.limitFFact(compressed.get("f_fact"));
-		String fStorytelling = rawFStorytelling == null
-				? null
-				: normalizer.limitFStorytelling(compressed.get("f_storytelling"));
-
-		return new ClaudeResults(resultsOverviews, thoughts, tacticOverviews, recommendations,
-				fOpportunity, fFact, fStorytelling);
 	}
 
 	@Override
@@ -1200,14 +1099,34 @@ public class RealClaudeClient implements ClaudeClient {
 		int maxTokens = Math.min(CAMPAIGN_RESULTS_MAX_TOKENS_CAP,
 				CAMPAIGN_RESULTS_BASE_TOKENS + CAMPAIGN_RESULTS_TOKENS_PER_TACTIC * tacticCount);
 		int timeoutSec = tacticCount > 10 ? 120 : 60;
-		JsonNode parsed = messagesClient.callJsonObject(prompt.get(), maxTokens, timeoutSec, "BatchCampaign", true);
+		ClaudeResults results = campaignResultsOne(prompt.get(), maxTokens, timeoutSec);
+		if (results != null) {
+			return results;
+		}
+		log.warn("[claude:BatchCampaign] campaign results came back empty — retrying once");
+		results = campaignResultsOne(prompt.get(), maxTokens, timeoutSec);
+		return results == null ? claudeDefaults.emptyResults() : results;
+	}
+
+	/**
+	 * Runs one campaign-results call: send the prompt, parse the grouped overviews, thoughts, recommendations
+	 * and frequency copy, compress whatever overran its budget, and normalize. Returns {@code null} — never a
+	 * half-empty DTO — when the call failed or the reply carried none of the three main sections, so the
+	 * caller can re-send instead of blanking the report's most visible slides on one bad reply.
+	 *
+	 * @param prompt     the assembled campaign-results prompt
+	 * @param maxTokens  output budget for this call
+	 * @param timeoutSec per-request HTTP timeout in seconds
+	 * @return the campaign-level copy, or {@code null} when the call produced nothing usable
+	 */
+	ClaudeResults campaignResultsOne(String prompt, int maxTokens, int timeoutSec) {
+		JsonNode parsed = messagesClient.callJsonObject(prompt, maxTokens, timeoutSec, "BatchCampaign", true);
 		if (parsed == null) {
-			return claudeDefaults.emptyResults();
+			return null;
 		}
 
 		Map<Integer, String> rawResultsOverviews = parseNumberedTextMap(parsed.get("results_overviews"));
-		List<String> rawThoughts =
-				normalizer.normalizeThoughts(normalizer.textOrNull(parsed.get("thoughts_on_performance")));
+		List<String> rawThoughts = normalizer.normalizeThoughts(parsed.get("thoughts_on_performance"));
 
 		JsonNode recArr = parsed.get("optimization_recommendations");
 		String[] rawRecTitles = new String[4];
@@ -1221,6 +1140,14 @@ public class RealClaudeClient implements ClaudeClient {
 		String rawFOpportunity = normalizer.textOrNull(parsed.get("f_opportunity"));
 		String rawFFact = normalizer.textOrNull(parsed.get("f_fact"));
 		String rawFStorytelling = normalizer.textOrNull(parsed.get("f_storytelling"));
+
+		// A reply that parsed as JSON but carries none of the three main sections is a failure, not an answer:
+		// shipping it would dash the results overview, the performance thoughts and the recommendations at once.
+		// Bail out before the compression call so the retry costs one send, not two.
+		if (!campaignReplyUsable(rawResultsOverviews, rawThoughts, rawRecTitles, rawRecTexts)) {
+			log.warn("[claude:BatchCampaign] reply parsed but carried no overviews, thoughts or recommendations");
+			return null;
+		}
 
 		List<ClaudeCompressionField> compressionFields = new ArrayList<>();
 		for (Map.Entry<Integer, String> e : rawResultsOverviews.entrySet()) {
@@ -1281,6 +1208,38 @@ public class RealClaudeClient implements ClaudeClient {
 		// them into the aggregate before the placeholder resolver reads it.
 		return new ClaudeResults(resultsOverviews, thoughts, Map.of(), recommendations,
 				fOpportunity, fFact, fStorytelling);
+	}
+
+	/**
+	 * Reports whether a parsed campaign-results reply carried anything worth shipping: at least one group
+	 * overview, at least one performance thought, or at least one non-blank recommendation. The frequency
+	 * strings alone do not qualify — they are optional copy, and a reply that contains only them still leaves
+	 * every results slide blank.
+	 *
+	 * @param resultsOverviews the group-keyed overviews parsed from the reply
+	 * @param thoughts         the performance thoughts parsed from the reply
+	 * @param recTitles        the four recommendation titles, blank where the reply had none
+	 * @param recTexts         the four recommendation texts, blank where the reply had none
+	 * @return {@code true} when at least one of the three main sections carries content
+	 */
+	boolean campaignReplyUsable(
+			Map<Integer, String> resultsOverviews, List<String> thoughts, String[] recTitles, String[] recTexts) {
+		for (String overview : resultsOverviews.values()) {
+			if (normalizer.notBlank(overview)) {
+				return true;
+			}
+		}
+		for (String thought : thoughts) {
+			if (normalizer.notBlank(thought)) {
+				return true;
+			}
+		}
+		for (int i = 0; i < recTitles.length; i++) {
+			if (normalizer.notBlank(recTitles[i]) || normalizer.notBlank(recTexts[i])) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	@Override

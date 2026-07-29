@@ -80,7 +80,7 @@ class RealLineItemMatchAssistantTest {
 		JsonNode reply = new ObjectMapper().readTree("{\"1\":\"999999\"}");
 		ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
 		when(messagesClient.callJsonObject(
-				prompt.capture(), eq(1024), eq(30), eq("LineItemMatch"), eq(false))).thenReturn(reply);
+				prompt.capture(), eq(1024), eq(30), eq("LineItemMatch"), eq(true))).thenReturn(reply);
 
 		// When:
 		Map<Integer, String> matched = assistant.match(tactics, options);
@@ -88,7 +88,7 @@ class RealLineItemMatchAssistantTest {
 		// Then: the assignment is kept and the prompt that was sent stayed inside the budget
 		assertThat(matched).containsExactly(Map.entry(1, "999999"));
 		verify(messagesClient).callJsonObject(
-				prompt.getValue(), 1024, 30, "LineItemMatch", false);
+				prompt.getValue(), 1024, 30, "LineItemMatch", true);
 		assertThat(new PromptTokenEstimator().fitsWithin(prompt.getValue(), 2000)).isTrue();
 	}
 }

@@ -141,11 +141,6 @@ public class PlaceholderResolverServiceImpl implements PlaceholderResolverServic
 	}
 
 	@Override
-	public boolean needResults(GeneratePayload payload, CampaignData data) {
-		return claudeGate.needResults(payload, data);
-	}
-
-	@Override
 	public boolean needGeoSummary(GeneratePayload payload) {
 		return claudeGate.needGeoSummary(payload);
 	}

@@ -101,11 +101,6 @@ public class StubClaudeClient implements ClaudeClient {
 	}
 
 	@Override
-	public ClaudeResults batchResults(CampaignData data, String brief, CampaignFrequencies frequencies) {
-		return claudeDefaults.emptyResults();
-	}
-
-	@Override
 	public ClaudeNarrative batchAlignNarrative(
 			ClaudeStrategic strategic, ClaudeResults results, List<String> breakdownDigest, String brief) {
 		// No live model: there is nothing to align, so echo the inputs back unchanged.

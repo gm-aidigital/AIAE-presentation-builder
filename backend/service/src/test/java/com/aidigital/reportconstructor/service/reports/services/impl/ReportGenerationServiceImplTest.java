@@ -273,7 +273,6 @@ class ReportGenerationServiceImplTest {
 		// And: the raw-grid collection and the offline Claude batches never run — no duplicate work
 		verify(placeholders, never()).collectData(any());
 		verify(claude, never()).batchStrategicNarrative(any(), any());
-		verify(claude, never()).batchResults(any(), any(), any());
 	}
 
 	@Test

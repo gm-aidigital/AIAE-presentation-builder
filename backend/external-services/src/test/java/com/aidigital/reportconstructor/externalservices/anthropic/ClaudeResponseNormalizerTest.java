@@ -1,5 +1,6 @@
 package com.aidigital.reportconstructor.externalservices.anthropic;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
@@ -115,6 +116,41 @@ class ClaudeResponseNormalizerTest {
 		List<String> slots = normalizer.normalizeThoughts("a | b | c | d | e");
 		assertThat(slots).hasSize(4);
 		assertThat(slots.get(3)).isEqualTo("d");
+	}
+
+	@Test
+	void shouldSplitThoughtsOnBarePipeWithoutSpacesTest() {
+		// Given: a reply that joined the paragraphs without the requested spaces around the pipe
+		String reply = "one|two | three|  four";
+
+		// When: the field is normalized
+		List<String> slots = normalizer.normalizeThoughts(reply);
+
+		// Then: each paragraph lands in its own slot instead of collapsing into the first
+		assertThat(slots).containsExactly("one", "two", "three", "four");
+	}
+
+	@Test
+	void shouldReadThoughtsFromArrayReplyTest() throws Exception {
+		// Given: a reply that returned the paragraphs as a JSON array instead of a pipe-joined string
+		var node = json.readTree("[\"one\", \"two\", \"three\", \"four\", \"five\"]");
+
+		// When: the node is normalized
+		List<String> slots = normalizer.normalizeThoughts(node);
+
+		// Then: the first four paragraphs fill the slots and no raw JSON leaks into slot one
+		assertThat(slots).containsExactly("one", "two", "three", "four");
+	}
+
+	@Test
+	void shouldReturnEmptySlotsWhenThoughtsNodeIsMissingTest() {
+		// Given: the reply carried no thoughts_on_performance field
+
+		// When: the absent node is normalized
+		List<String> slots = normalizer.normalizeThoughts((JsonNode) null);
+
+		// Then: four empty slots come back rather than a failure
+		assertThat(slots).containsExactly(null, null, null, null);
 	}
 
 	@Test

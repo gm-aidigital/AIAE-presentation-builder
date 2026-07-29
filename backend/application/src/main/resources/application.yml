@@ -432,6 +432,10 @@ external:
   anthropic:
     api-key: ${ANTHROPIC_API_KEY:}
     model: ${ANTHROPIC_MODEL:claude-sonnet-4-6}
+    # Sampling temperature for every Claude call. Every prompt here demands strict JSON inside hard character
+    # budgets, so the API default of 1.0 buys variety at the cost of format stability; 0.4 keeps the copy
+    # varied while holding the schema and the limits. Clamped to 0.0..1.0.
+    temperature: ${CLAUDE_TEMPERATURE:0.4}
     # Tactics per Step-2 combined conclusions call (slides-from-sheet flow). 1 keeps the cached
     # instruction prefix re-read cheaply per tactic; raise to batch more tactics per call.
     breakdown-chunk-size: ${CLAUDE_BREAKDOWN_CHUNK_SIZE:1}
@@ -446,6 +450,10 @@ external:
     # section ships blank. Default 1 means one retry, two sends in total — a third send costs a third of the
     # section budget and, on the failures seen so far, repeats the same rejection.
     section-retries: ${CLAUDE_SECTION_RETRIES:1}
+    # Extra attempts ANY Claude HTTP call makes after a transient upstream failure (429/5xx/522/529, dropped
+    # connection). 1 means one retry, two sends in total, matching section-retries: a run fans out many calls,
+    # so a third send mostly lengthens an already-slow run rather than rescuing a still-failing upstream.
+    max-retries: ${CLAUDE_MAX_RETRIES:1}
     # Characters of an unparseable reply written to its WARN line. Raise temporarily when a parse failure has
     # to be diagnosed on a deployed run and 400 chars stop short of the defect; the full reply is on DEBUG.
     reply-snippet-limit: ${CLAUDE_REPLY_SNIPPET_LIMIT:400}

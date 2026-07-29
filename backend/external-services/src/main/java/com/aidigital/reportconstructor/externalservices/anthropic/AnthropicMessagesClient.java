@@ -38,6 +38,9 @@ public class AnthropicMessagesClient {
 	/** Floor on the configured reply snippet length, so a misconfigured value still logs something usable. */
 	private static final int MIN_REPLY_SNIPPET_LIMIT = 80;
 
+	/** Ceiling the configured temperature is clamped to: the Messages API rejects anything above 1.0. */
+	private static final double MAX_TEMPERATURE = 1.0;
+
 	/**
 	 * HTTP statuses treated as transient and retried: 408 request timeout, 429 rate limit, 500/502/503/504
 	 * server and gateway errors, Cloudflare edge timeouts 522/524, and 529 (Anthropic "overloaded"). Any other
@@ -73,6 +76,12 @@ public class AnthropicMessagesClient {
 
 	/** Base linear backoff between retries in milliseconds, scaled by attempt number; at least 0. */
 	private final long retryBackoffMillis;
+
+	/**
+	 * Sampling temperature sent with every request; clamped to the API's 0.0..1.0 range. Held below the API
+	 * default because every prompt here demands schema-exact JSON inside hard character budgets.
+	 */
+	private final double temperature;
 
 	/**
 	 * Characters of an unparseable reply written to its WARN line; at least {@link #MIN_REPLY_SNIPPET_LIMIT}.
@@ -113,6 +122,7 @@ public class AnthropicMessagesClient {
 		this.callLimiter = new Semaphore(Math.max(1, props.getMaxConcurrentCalls()));
 		this.maxRetries = Math.max(0, props.getMaxRetries());
 		this.retryBackoffMillis = Math.max(0, props.getRetryBackoffMillis());
+		this.temperature = Math.min(MAX_TEMPERATURE, Math.max(0.0, props.getTemperature()));
 		this.replySnippetLimit = Math.max(MIN_REPLY_SNIPPET_LIMIT, props.getReplySnippetLimit());
 	}
 
@@ -459,6 +469,7 @@ public class AnthropicMessagesClient {
 			Map<String, Object> body = Map.of(
 					"model", model,
 					"max_tokens", maxTokens,
+					"temperature", temperature,
 					"messages", List.of(Map.of("role", "user", "content", buildUserContent(prompt)))
 			);
 			req = HttpRequest.newBuilder()

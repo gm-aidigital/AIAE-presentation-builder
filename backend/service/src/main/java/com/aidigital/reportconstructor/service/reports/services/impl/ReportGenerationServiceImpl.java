@@ -234,9 +234,10 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 				ccB = (live && placeholders.needTactical(payload, data))
 						? claude.batchTactical(data, brief) : claudeDefaults.emptyTactical();
 
-				jobProgress.markJobRunningAtStep(jobId, 5, "Claude — executive batch (C)");
-				ccC = (live && placeholders.needResults(payload, data))
-						? claude.batchResults(data, brief, frequencies) : claudeDefaults.emptyResults();
+				// The campaign-level result copy is produced by the sheet flow's own campaign batch
+				// (see runSlidesFromSheet), so this direct-to-deck path ships the empty shape and the
+				// resolvers fall back to whatever the workbook already carries.
+				ccC = claudeDefaults.emptyResults();
 			}
 
 			String geoSummary = (live && placeholders.needGeoSummary(payload))
@@ -474,17 +475,19 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		// them up when it is duplicated.
 		Map<Integer, Set<BreakdownType>> enabledByTactic = qualifyingSelections(payload, tacticCount);
 		Set<Integer> qualifying = thoughtsGate.qualifyingTactics(enabledByTactic);
+		Map<Integer, String> namesByTactic = tacticNames(prelim, tacticCount);
 		List<TacticThoughts> thoughts = List.of();
 		if (live && !qualifying.isEmpty()) {
 			List<TacticThoughtsInput> thoughtsInputs = conclusionAssembler.toThoughtsInputs(
-					conclusions, tacticNames(prelim, tacticCount), qualifying);
+					conclusions, namesByTactic, qualifying);
 			thoughts = claude.batchTacticThoughts(thoughtsInputs, brief);
 		}
 		writeThoughtsTokens(breakdownValues, qualifying, thoughts, prelim);
 
 		// Step 4 — campaign-level results (results overviews, performance thoughts, recommendations, frequency)
 		// from the per-tactic digests; the Step-2 overviews are merged back in for the tactic-overview slides.
-		List<TacticNarrativeDigest> digests = conclusionAssembler.toCampaignDigests(conclusions, thoughts);
+		List<TacticNarrativeDigest> digests =
+				conclusionAssembler.toCampaignDigests(conclusions, namesByTactic, thoughts);
 		ClaudeResults campaign = live
 				? claude.batchCampaignResults(data, brief, frequencies, digests) : claudeDefaults.emptyResults();
 		// A silent empty campaign result despite real per-tactic digests means Batch C degraded to the empty DTO
