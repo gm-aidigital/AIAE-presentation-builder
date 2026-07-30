@@ -1,5 +1,6 @@
 package com.aidigital.reportconstructor.service.reports.helpers.impl;
 
+import com.aidigital.reportconstructor.service.reports.dto.AudienceAgeRow;
 import com.aidigital.reportconstructor.service.reports.dto.AudienceInsightInput;
 import com.aidigital.reportconstructor.service.reports.dto.AudienceSegmentRow;
 import com.aidigital.reportconstructor.service.reports.dto.AudienceTable;
@@ -132,10 +133,116 @@ public class AudienceBreakdownHelperImpl implements AudienceBreakdownHelper {
 		values.put("{{age_" + tacticNum + "_gr}}", orDash(table.ageDistribution()));
 		values.put("{{gender_" + tacticNum + "}}", orDash(table.genderDemographics()));
 
+		AudienceSegmentRow topSegment = table.segmentRows().isEmpty() ? null : table.segmentRows().get(0);
+		values.put("{{aud_" + tacticNum + "_top_segment}}", topSegment == null ? DASH : orDash(topSegment.segment()));
+		values.put("{{aud_" + tacticNum + "_top_segment_index}}",
+				topSegment == null ? DASH : orDash(topSegment.affinityIndex()));
+
 		for (int i = 1; i <= SEGMENT_ROWS; i++) {
 			AudienceSegmentRow row = i <= table.segmentRows().size() ? table.segmentRows().get(i - 1) : null;
 			values.put("{{aud_" + tacticNum + "_" + i + "}}", row == null ? DASH : orDash(row.segment()));
 			values.put("{{aud_in_" + tacticNum + "_" + i + "}}", row == null ? DASH : orDash(row.affinityIndex()));
+		}
+
+		// Reach, frequency and the primary engagement rate already resolved for the tactic's main slide
+		// (as {{tactic N reach}}/{{tactic N f}}/{{tactic N KPI}}); the Audience Analysis slide's stat
+		// tiles show the exact same figures under different names rather than a second, independently
+		// sourced number.
+		values.put("{{aud_" + tacticNum + "_reach}}", fromDeck(flatReplacements, "{{tactic " + tacticNum + " reach}}"));
+		values.put("{{aud_" + tacticNum + "_freq}}", fromDeck(flatReplacements, "{{tactic " + tacticNum + " f}}"));
+		values.put("{{aud_" + tacticNum + "_engaged}}", fromDeck(flatReplacements, "{{tactic " + tacticNum + " KPI}}"));
+
+		putAgeBucketShares(values, tacticNum, table.ageRows());
+	}
+
+	/**
+	 * Reads an already-resolved deck token's value for reuse under a different Audience Analysis
+	 * token name.
+	 *
+	 * @param flatReplacements the deck's resolved placeholder map
+	 * @param sourceToken       the already-resolved token to read (e.g. {@code "{{tactic 1 reach}}"})
+	 * @return the source token's value, or {@link #DASH} when it never resolved or is blank
+	 */
+	String fromDeck(Map<String, String> flatReplacements, String sourceToken) {
+		String value = flatReplacements.get(sourceToken);
+		return value == null || value.isBlank() ? DASH : value;
+	}
+
+	/** Canonical age-bucket labels, in slide order, matched against the sheet's pre-filled age column. */
+	private static final List<String> AGE_BUCKETS = List.of("18-24", "25-34", "35-44", "45-54", "55-64", "65+");
+
+	/** Slide token suffix for each entry in {@link #AGE_BUCKETS}, in the same order. */
+	private static final List<String> AGE_BUCKET_TOKEN_SUFFIXES =
+			List.of("18_24", "25_34", "35_44", "45_54", "55_64", "65plus");
+
+	/**
+	 * Computes each canonical age bucket's share of the tactic's total tracked impressions from the
+	 * sheet's hand-entered age-distribution rows, and writes the six {@code {{age_N_<bucket>}}} tokens.
+	 * The age rows never appear on the slide as their own table (the master renders them as an
+	 * embedded chart instead), but the same impressions numbers are the only source for these new
+	 * per-bucket percentages.
+	 *
+	 * @param values    the accumulating token → value map
+	 * @param tacticNum the tactic whose tokens are being written
+	 * @param ageRows   the tactic's filled age-distribution rows
+	 */
+	void putAgeBucketShares(Map<String, String> values, int tacticNum, List<AudienceAgeRow> ageRows) {
+		Map<String, Double> impsByBucket = new LinkedHashMap<>();
+		double total = 0;
+		for (AudienceAgeRow row : ageRows) {
+			double imps = parseImpressions(row.impressions());
+			total += imps;
+			String bucket = normalizeAgeBucket(row.ageGroup());
+			if (bucket != null) {
+				impsByBucket.merge(bucket, imps, Double::sum);
+			}
+		}
+		for (int i = 0; i < AGE_BUCKETS.size(); i++) {
+			Double imps = impsByBucket.get(AGE_BUCKETS.get(i));
+			String value = imps == null || total <= 0 ? DASH : Math.round(imps / total * 100) + "%";
+			values.put("{{age_" + tacticNum + "_" + AGE_BUCKET_TOKEN_SUFFIXES.get(i) + "}}", value);
+		}
+	}
+
+	/**
+	 * Matches a sheet age-group label against the six canonical buckets, tolerating the en/em-dash
+	 * Sheets sometimes substitutes for a hyphen and surrounding whitespace.
+	 *
+	 * @param raw the sheet's age-group cell text
+	 * @return the matching canonical bucket label, or {@code null} when it matches none
+	 */
+	String normalizeAgeBucket(String raw) {
+		if (raw == null) {
+			return null;
+		}
+		String cleaned = raw.trim().replace('–', '-').replace('—', '-').replaceAll("\\s+", "");
+		for (String bucket : AGE_BUCKETS) {
+			if (bucket.equalsIgnoreCase(cleaned)) {
+				return bucket;
+			}
+		}
+		return cleaned.equalsIgnoreCase("65plus") ? "65+" : null;
+	}
+
+	/**
+	 * Parses an age row's impressions cell into a number, stripping grouping separators and any other
+	 * non-numeric decoration.
+	 *
+	 * @param raw the raw impressions cell text
+	 * @return the parsed impressions count, or {@code 0} when the cell holds no usable number
+	 */
+	double parseImpressions(String raw) {
+		if (raw == null) {
+			return 0;
+		}
+		String cleaned = raw.replaceAll("[^0-9.]", "");
+		if (cleaned.isEmpty()) {
+			return 0;
+		}
+		try {
+			return Double.parseDouble(cleaned);
+		} catch (NumberFormatException ex) {
+			return 0;
 		}
 	}
 

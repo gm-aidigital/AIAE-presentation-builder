@@ -176,7 +176,11 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 
 		Map<String, Resolved> m = new LinkedHashMap<>();
 		m.put("{{tactic " + n + "}}", info);
-		m.put("{{tactic " + n + " goal}}", tacticResolvers.resolveTacticGoal(n, sheet, adj));
+		Resolved goal = tacticResolvers.resolveTacticGoal(n, sheet, adj);
+		m.put("{{tactic " + n + " goal}}", goal);
+		// The EOM funnel-stage badge is the exact same Media Plan "Goal" column value the EOC "goal"
+		// token already reads — same data, same per-tactic row alignment, just a second slide slot.
+		m.put("{{tactic " + n + " funnel stage}}", goal);
 		m.put("{{tactic " + n + " overview}}", tacticResolvers.resolveTacticOverview(n, sheet, adj, ccC));
 		m.put("{{tactic " + n + " spend}}", tacticResolvers.resolveTacticSpend(n, tacticName, sheet, adj, data));
 		m.put("{{tactic " + n + " spend plan}}",

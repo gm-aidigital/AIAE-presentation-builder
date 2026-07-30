@@ -69,6 +69,30 @@ class DeviceBreakdownHelperImplTest {
 		assertThat(values.get("{{ctv_vcr_1}}")).isEqualTo("—");
 		assertThat(values.get("{{tablet_imps_1}}")).isEqualTo("—");
 		assertThat(values.get("{{tablet_spend_1}}")).isEqualTo("—");
+
+		// Then: each filled device's share is its impressions over the 1,500,000 filled total
+		assertThat(values.get("{{dev_1_mobile_share}}")).isEqualTo("80%");
+		assertThat(values.get("{{dev_1_desktop_share}}")).isEqualTo("20%");
+		assertThat(values.get("{{dev_1_ctv_share}}")).isEqualTo("—");
+		assertThat(values.get("{{dev_1_tablet_share}}")).isEqualTo("—");
+	}
+
+	@Test
+	void shouldDashEveryDeviceShareWhenNoRowParsesAnyImpressionsTest() {
+		// Given: the only device row is present but its impressions cell is unparseable
+		List<BreakdownSelection> selections = List.of(new BreakdownSelection(1, List.of("dev")));
+		when(breakdownResolver.resolve(selections)).thenReturn(Map.of(1, EnumSet.of(BreakdownType.DEVICE)));
+		DeviceTable table = new DeviceTable("1.20%", "82%", "1", "Mobile", "100%",
+				List.of(new DeviceRow("Mobile", "", "1.20%", "78%", "$4,000")));
+		when(sheetHelper.readDeviceTables("sheet-url", Set.of(1), "token")).thenReturn(Map.of(1, table));
+
+		// When:
+		Map<String, String> values = helper.readDeviceInputs(
+				"sheet-url", selections, Map.of("{{tactic 1}}", "CTV"), "token").dataValues();
+
+		// Then: a zero total dashes every share rather than dividing by zero
+		assertThat(values.get("{{dev_1_mobile_share}}")).isEqualTo("—");
+		assertThat(values.get("{{dev_1_ctv_share}}")).isEqualTo("—");
 	}
 
 	@Test

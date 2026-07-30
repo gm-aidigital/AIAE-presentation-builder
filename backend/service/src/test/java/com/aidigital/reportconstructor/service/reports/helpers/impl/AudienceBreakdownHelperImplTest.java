@@ -1,5 +1,6 @@
 package com.aidigital.reportconstructor.service.reports.helpers.impl;
 
+import com.aidigital.reportconstructor.service.reports.dto.AudienceAgeRow;
 import com.aidigital.reportconstructor.service.reports.dto.AudienceInsightInput;
 import com.aidigital.reportconstructor.service.reports.dto.AudienceSegmentRow;
 import com.aidigital.reportconstructor.service.reports.dto.AudienceTable;
@@ -223,5 +224,86 @@ class AudienceBreakdownHelperImplTest {
 		assertThat(values.get("{{tactic 1}}")).isEqualTo("CTV");
 		assertThat(values.get("{{tactic 1 male}}")).isEqualTo("42%");
 		assertThat(values.get("{{tactic 1 female}}")).isEqualTo("58%");
+	}
+
+	@Test
+	void shouldDeriveTopSegmentAndIndexFromTheFirstSegmentRowTest() {
+		// Given: two filled segment rows, in sheet order
+		List<BreakdownSelection> selections = List.of(new BreakdownSelection(1, List.of("aud")));
+		when(breakdownResolver.resolve(selections)).thenReturn(Map.of(1, EnumSet.of(BreakdownType.AUDIENCE)));
+		AudienceTable table = new AudienceTable("25-34", "58% F / 42% M",
+				List.of(),
+				List.of(new AudienceSegmentRow("Auto Intenders", "142"),
+						new AudienceSegmentRow("Sports Fans", "128")));
+		when(sheetHelper.readAudienceTables("sheet-url", Set.of(1), "token")).thenReturn(Map.of(1, table));
+
+		// When:
+		Map<String, String> values = helper.readAudienceInputs(
+				"sheet-url", selections, Map.of("{{tactic 1}}", "CTV"), "token").dataValues();
+
+		// Then: the top segment tile mirrors the first segment row, the same row {{aud_1_1}} uses
+		assertThat(values.get("{{aud_1_top_segment}}")).isEqualTo("Auto Intenders");
+		assertThat(values.get("{{aud_1_top_segment_index}}")).isEqualTo("142");
+	}
+
+	@Test
+	void shouldDashTopSegmentWhenNoSegmentRowIsFilledTest() {
+		// Given: an audience block with no filled segment rows
+		List<BreakdownSelection> selections = List.of(new BreakdownSelection(1, List.of("aud")));
+		when(breakdownResolver.resolve(selections)).thenReturn(Map.of(1, EnumSet.of(BreakdownType.AUDIENCE)));
+		AudienceTable table = new AudienceTable("25-34", "", List.of(), List.of());
+		when(sheetHelper.readAudienceTables("sheet-url", Set.of(1), "token")).thenReturn(Map.of(1, table));
+
+		// When:
+		Map<String, String> values = helper.readAudienceInputs(
+				"sheet-url", selections, Map.of("{{tactic 1}}", "CTV"), "token").dataValues();
+
+		// Then:
+		assertThat(values.get("{{aud_1_top_segment}}")).isEqualTo("—");
+		assertThat(values.get("{{aud_1_top_segment_index}}")).isEqualTo("—");
+	}
+
+	@Test
+	void shouldReuseTheTacticsAlreadyResolvedReachFrequencyAndPrimaryKpiTest() {
+		// Given: the deck already resolved reach/frequency/KPI for this tactic's main slide
+		List<BreakdownSelection> selections = List.of(new BreakdownSelection(1, List.of("aud")));
+		when(breakdownResolver.resolve(selections)).thenReturn(Map.of(1, EnumSet.of(BreakdownType.AUDIENCE)));
+		when(sheetHelper.readAudienceTables("sheet-url", Set.of(1), "token"))
+				.thenReturn(Map.of(1, AudienceTable.EMPTY));
+
+		// When:
+		Map<String, String> values = helper.readAudienceInputs(
+				"sheet-url", selections,
+				Map.of("{{tactic 1}}", "CTV", "{{tactic 1 reach}}", "9,028", "{{tactic 1 f}}", "11",
+						"{{tactic 1 KPI}}", "0.29%"),
+				"token").dataValues();
+
+		// Then: the Audience Analysis stat tiles mirror the main slide's figures exactly
+		assertThat(values.get("{{aud_1_reach}}")).isEqualTo("9,028");
+		assertThat(values.get("{{aud_1_freq}}")).isEqualTo("11");
+		assertThat(values.get("{{aud_1_engaged}}")).isEqualTo("0.29%");
+	}
+
+	@Test
+	void shouldComputeAgeBucketSharesFromTheFilledAgeRowsTest() {
+		// Given: three filled age rows, one bucket repeated across two rows
+		List<BreakdownSelection> selections = List.of(new BreakdownSelection(1, List.of("aud")));
+		when(breakdownResolver.resolve(selections)).thenReturn(Map.of(1, EnumSet.of(BreakdownType.AUDIENCE)));
+		AudienceTable table = new AudienceTable("25-34", "",
+				List.of(new AudienceAgeRow("18-24", "200"),
+						new AudienceAgeRow("25–34", "500"),
+						new AudienceAgeRow("65+", "300")),
+				List.of());
+		when(sheetHelper.readAudienceTables("sheet-url", Set.of(1), "token")).thenReturn(Map.of(1, table));
+
+		// When:
+		Map<String, String> values = helper.readAudienceInputs(
+				"sheet-url", selections, Map.of("{{tactic 1}}", "CTV"), "token").dataValues();
+
+		// Then: each bucket's share is over the 1,000 total, including the en-dash-typed "25–34" row
+		assertThat(values.get("{{age_1_18_24}}")).isEqualTo("20%");
+		assertThat(values.get("{{age_1_25_34}}")).isEqualTo("50%");
+		assertThat(values.get("{{age_1_35_44}}")).isEqualTo("—");
+		assertThat(values.get("{{age_1_65plus}}")).isEqualTo("30%");
 	}
 }

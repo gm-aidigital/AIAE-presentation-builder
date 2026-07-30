@@ -145,6 +145,66 @@ public class DeviceBreakdownHelperImpl implements DeviceBreakdownHelper {
 		putDeviceRow(values, tacticNum, CTV_PREFIX, rowsByDevice.get(CTV_PREFIX), false);
 		putDeviceRow(values, tacticNum, DESKTOP_PREFIX, rowsByDevice.get(DESKTOP_PREFIX), true);
 		putDeviceRow(values, tacticNum, TABLET_PREFIX, rowsByDevice.get(TABLET_PREFIX), true);
+
+		double totalImps = totalImpressions(table.rows());
+		values.put("{{dev_" + tacticNum + "_mobile_share}}", shareOf(rowsByDevice.get(MOBILE_PREFIX), totalImps));
+		values.put("{{dev_" + tacticNum + "_ctv_share}}", shareOf(rowsByDevice.get(CTV_PREFIX), totalImps));
+		values.put("{{dev_" + tacticNum + "_desktop_share}}", shareOf(rowsByDevice.get(DESKTOP_PREFIX), totalImps));
+		values.put("{{dev_" + tacticNum + "_tablet_share}}", shareOf(rowsByDevice.get(TABLET_PREFIX), totalImps));
+	}
+
+	/**
+	 * Sums the impressions across every filled device row, the denominator each device's
+	 * {@code {{dev_N_<device>_share}}} percentage is computed against.
+	 *
+	 * @param rows the block's filled device rows
+	 * @return the summed impressions, or {@code 0} when no row parses
+	 */
+	double totalImpressions(List<DeviceRow> rows) {
+		double sum = 0;
+		for (DeviceRow row : rows) {
+			sum += parseImpressions(row.impressions());
+		}
+		return sum;
+	}
+
+	/**
+	 * Computes one device's share of the tactic's total tracked impressions, rounded to a whole
+	 * percent.
+	 *
+	 * @param row       the device's sheet row, or {@code null} when the user did not fill it in
+	 * @param totalImps the tactic's total impressions across every filled device row
+	 * @return the rounded percentage share (e.g. {@code "42%"}), or {@link #DASH} when the device has
+	 * no row or the total is non-positive
+	 */
+	String shareOf(DeviceRow row, double totalImps) {
+		if (row == null || totalImps <= 0) {
+			return DASH;
+		}
+		double pct = parseImpressions(row.impressions()) / totalImps * 100;
+		return Math.round(pct) + "%";
+	}
+
+	/**
+	 * Parses a device row's impressions cell into a number, stripping grouping separators and any
+	 * other non-numeric decoration.
+	 *
+	 * @param raw the raw impressions cell text
+	 * @return the parsed impressions count, or {@code 0} when the cell holds no usable number
+	 */
+	double parseImpressions(String raw) {
+		if (raw == null) {
+			return 0;
+		}
+		String cleaned = raw.replaceAll("[^0-9.]", "");
+		if (cleaned.isEmpty()) {
+			return 0;
+		}
+		try {
+			return Double.parseDouble(cleaned);
+		} catch (NumberFormatException ex) {
+			return 0;
+		}
 	}
 
 	/**
