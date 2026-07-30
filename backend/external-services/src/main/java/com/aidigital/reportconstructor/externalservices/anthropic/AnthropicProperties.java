@@ -24,11 +24,23 @@ public class AnthropicProperties {
 	private String model = "claude-sonnet-4-6";
 
 	/**
-	 * Tactics per Step-2 combined per-tactic conclusions call in the slides-from-sheet flow. Default 1 keeps
-	 * each call small so the cached instruction prefix is re-read cheaply per tactic; raising it batches more
-	 * tactics per call at the cost of a larger, likelier-to-truncate reply. Clamped to at least 1 at use.
+	 * Sampling temperature sent with every Claude call. Every prompt in this integration asks for a strict
+	 * JSON reply whose fields carry hard character budgets, so the API default of 1.0 buys variety we do not
+	 * want and costs format stability: a hotter sample is likelier to drift on the schema, overrun a limit
+	 * (forcing an extra compression call) or wrap the JSON in prose. 0.4 keeps the copy varied enough to read
+	 * as written prose while holding the contract. Clamped to 0.0..1.0 at use.
 	 */
-	private int breakdownChunkSize = 1;
+	private double temperature = 0.4;
+
+	/**
+	 * Tactics per Step-2 combined per-tactic conclusions call in the slides-from-sheet flow. Default 7: with
+	 * {@link #perSectionCallsEnabled} on, that call produces only each tactic's ~190-character overview, so a
+	 * chunk of 7 still asks for a small reply while turning a 28-tactic deck's 28 calls into 4 — and lets the
+	 * model see neighbouring tactics rather than writing every overview blind. Chunks run concurrently, so a
+	 * larger chunk trades parallelism for context; raise it further only alongside a larger reply budget.
+	 * Clamped to at least 1 at use.
+	 */
+	private int breakdownChunkSize = 7;
 
 	/**
 	 * Upper bound on Claude HTTP calls in flight at once across the whole run, enforced by a shared semaphore
@@ -41,10 +53,12 @@ public class AnthropicProperties {
 	/**
 	 * Extra attempts a Claude HTTP call makes after its first send fails on a transient upstream condition —
 	 * a retryable status such as a Cloudflare 522 or an Anthropic 529 overload, or a dropped connection. One
-	 * such failure otherwise discards a whole batch and blanks its slide tokens, so a few cheap re-sends are
-	 * worth it. Default 2 means up to three sends in total. Clamped to at least 0 (no retry) at use.
+	 * such failure otherwise discards a whole batch and blanks its slide tokens, so a cheap re-send is worth
+	 * it. Default 1 means one retry, two sends in total: a run fans out many calls, and a third send mostly
+	 * lengthens an already-slow run against an upstream that is still failing rather than rescuing it — the
+	 * same reasoning as {@link #sectionRetries}. Clamped to at least 0 (no retry) at use.
 	 */
-	private int maxRetries = 2;
+	private int maxRetries = 1;
 
 	/**
 	 * Base backoff between retries in milliseconds, scaled linearly by attempt number (attempt 1 waits this,
@@ -55,7 +69,7 @@ public class AnthropicProperties {
 
 	/**
 	 * When true, EACH breakdown section (publishers, creative, geo, audience, device) is produced by its own
-	 * small dedicated per-tactic call — a keyless fixed-length JSON array validated by position with its own
+	 * small dedicated per-tactic call — a JSON object keyed field_1..field_N, read field by field with its own
 	 * retry — fanned out in parallel, instead of all sections coming from the big combined per-tactic
 	 * conclusions call (which then only writes each tactic's overview). Off by default so the combined path
 	 * stays the behaviour until the per-section path proves out on a real campaign.
@@ -65,9 +79,18 @@ public class AnthropicProperties {
 	/**
 	 * Extra attempts a per-section pilot call makes when its reply fails the positional contract (not a JSON
 	 * array of exactly the expected count of non-blank strings) before the tactic's section ships blank.
-	 * Default 2 means up to three sends in total. Clamped to at least 0 (no retry) at use.
+	 * Default 1 means one retry, two sends in total: a deterministic rejection reproduces on the re-send, so a
+	 * third identical prompt mostly burns tokens. Clamped to at least 0 (no retry) at use.
 	 */
-	private int sectionRetries = 2;
+	private int sectionRetries = 1;
+
+	/**
+	 * Characters of an unparseable reply written to the WARN line that reports the parse failure. The default
+	 * 400 keeps the log readable but truncates before the defect on a long reply, so this is raised
+	 * temporarily when a parse failure has to be diagnosed on a deployed environment. The full reply is
+	 * always available on DEBUG regardless of this value. Clamped to at least 80 at use.
+	 */
+	private int replySnippetLimit = 400;
 
 	public String getApiKey() {
 		return apiKey;
@@ -83,6 +106,14 @@ public class AnthropicProperties {
 
 	public void setModel(String model) {
 		this.model = model;
+	}
+
+	public double getTemperature() {
+		return temperature;
+	}
+
+	public void setTemperature(double temperature) {
+		this.temperature = temperature;
 	}
 
 	public int getBreakdownChunkSize() {
@@ -131,5 +162,13 @@ public class AnthropicProperties {
 
 	public void setSectionRetries(int sectionRetries) {
 		this.sectionRetries = sectionRetries;
+	}
+
+	public int getReplySnippetLimit() {
+		return replySnippetLimit;
+	}
+
+	public void setReplySnippetLimit(int replySnippetLimit) {
+		this.replySnippetLimit = replySnippetLimit;
 	}
 }

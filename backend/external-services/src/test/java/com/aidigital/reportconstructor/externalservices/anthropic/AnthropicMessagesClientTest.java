@@ -1,5 +1,6 @@
 package com.aidigital.reportconstructor.externalservices.anthropic;
 
+import com.aidigital.reportconstructor.service.reports.diagnostics.impl.ClaudeFailureLogImpl;
 import com.aidigital.reportconstructor.service.reports.usage.ClaudeUsageEventService;
 import com.aidigital.reportconstructor.service.reports.usage.impl.ClaudeUsageTrackerImpl;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -18,7 +19,7 @@ class AnthropicMessagesClientTest {
 		AnthropicProperties props = new AnthropicProperties();
 		props.setApiKey("key");
 		AnthropicMessagesClient client = new AnthropicMessagesClient(
-				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator());
+				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator(), new ClaudeFailureLogImpl());
 		String truncated = "{\"tactic_1\": [\"First bullet.\", \"Second bullet.\", \"Third bullet.\", \"Fourth bul";
 
 		// When:
@@ -36,7 +37,7 @@ class AnthropicMessagesClientTest {
 		AnthropicProperties props = new AnthropicProperties();
 		props.setApiKey("key");
 		AnthropicMessagesClient client = new AnthropicMessagesClient(
-				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator());
+				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator(), new ClaudeFailureLogImpl());
 
 		// When:
 		String repaired = client.repairTruncatedJson("{\"tactic_1\": [\"Done.\"], \"tactic_2\"");
@@ -52,7 +53,7 @@ class AnthropicMessagesClientTest {
 		AnthropicProperties props = new AnthropicProperties();
 		props.setApiKey("key");
 		AnthropicMessagesClient client = new AnthropicMessagesClient(
-				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator());
+				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator(), new ClaudeFailureLogImpl());
 
 		// When:
 		String repaired = client.repairTruncatedJson("{\"a\": [1,2], \"b\": {\"c\": 1");
@@ -67,7 +68,7 @@ class AnthropicMessagesClientTest {
 		AnthropicProperties props = new AnthropicProperties();
 		props.setApiKey("key");
 		AnthropicMessagesClient client = new AnthropicMessagesClient(
-				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator());
+				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator(), new ClaudeFailureLogImpl());
 
 		// When:
 		String repaired = client.repairTruncatedJson("{\"tactic_1\": [\"Cell still reads {{cr_live_n}}.\", \"Sec");
@@ -82,7 +83,7 @@ class AnthropicMessagesClientTest {
 		AnthropicProperties props = new AnthropicProperties();
 		props.setApiKey("key");
 		AnthropicMessagesClient client = new AnthropicMessagesClient(
-				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator());
+				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator(), new ClaudeFailureLogImpl());
 
 		// When:
 		String repaired = client.repairTruncatedJson("{\"tactic_1\": [\"Unfinished bul");
@@ -99,7 +100,7 @@ class AnthropicMessagesClientTest {
 		AnthropicProperties props = new AnthropicProperties();
 		props.setApiKey("key");
 		AnthropicMessagesClient client = new AnthropicMessagesClient(
-				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator());
+				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator(), new ClaudeFailureLogImpl());
 		String wrapped = "Here are the observations:\n\n{\"tactic_1\": [\"First.\", \"Second.\"]}\n\nThese show the mix.";
 
 		// When:
@@ -116,7 +117,7 @@ class AnthropicMessagesClientTest {
 		AnthropicProperties props = new AnthropicProperties();
 		props.setApiKey("key");
 		AnthropicMessagesClient client = new AnthropicMessagesClient(
-				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator());
+				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator(), new ClaudeFailureLogImpl());
 		String wrapped = "Sure! {\"tactic_1\": [\"First.\", \"Second.\", \"Third.\", \"Fourth bul";
 
 		// When:
@@ -133,7 +134,7 @@ class AnthropicMessagesClientTest {
 		AnthropicProperties props = new AnthropicProperties();
 		props.setApiKey("key");
 		AnthropicMessagesClient client = new AnthropicMessagesClient(
-				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator());
+				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator(), new ClaudeFailureLogImpl());
 
 		// When-Then: a non-object never masquerades as a usable reply.
 		assertThat(client.parseJsonObject("[\"a\", \"b\"]", true)).isNull();
@@ -145,7 +146,7 @@ class AnthropicMessagesClientTest {
 		AnthropicProperties props = new AnthropicProperties();
 		props.setApiKey("key");
 		AnthropicMessagesClient client = new AnthropicMessagesClient(
-				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator());
+				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator(), new ClaudeFailureLogImpl());
 
 		// When-Then:
 		assertThat(client.parseJsonObject("I can't help with that request.", true)).isNull();
@@ -157,7 +158,7 @@ class AnthropicMessagesClientTest {
 		AnthropicProperties props = new AnthropicProperties();
 		props.setApiKey("key");
 		AnthropicMessagesClient client = new AnthropicMessagesClient(
-				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator());
+				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator(), new ClaudeFailureLogImpl());
 		String reply = "line one\n\n   line two".repeat(60);
 
 		// When:
@@ -170,13 +171,97 @@ class AnthropicMessagesClientTest {
 	}
 
 	@Test
+	void shouldRecoverASectionArrayThatNeverGotItsClosingBracketTest() {
+		// Given: the shape that blanked three breakdown sections on job 184 — a section reply nested one level
+		// deep that closed the inner array and stopped, leaving the outer one open
+		AnthropicProperties props = new AnthropicProperties();
+		props.setApiKey("key");
+		AnthropicMessagesClient client = new AnthropicMessagesClient(
+				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator(), new ClaudeFailureLogImpl());
+		String unclosed = "[[\"Modrinth anchored reach.\", \"Five destinations held 25%.\", "
+				+ "\"Brand-safe gaming mix.\", \"We steered weight to strong publishers.\"]";
+
+		// When:
+		JsonNode parsed = client.parseJsonArray(unclosed, true);
+
+		// Then: the bullets survive as the wrapper array the caller then unwraps, instead of the whole reply
+		// being thrown away and re-sent
+		assertThat(parsed).isNotNull();
+		assertThat(parsed.isArray()).isTrue();
+		assertThat(parsed.size()).isEqualTo(1);
+		assertThat(parsed.get(0).size()).isEqualTo(4);
+		assertThat(parsed.get(0).get(0).asText()).isEqualTo("Modrinth anchored reach.");
+	}
+
+	@Test
+	void shouldKeepTheCompleteItemsOfAnArrayCutMidItemTest() {
+		// Given: a section reply the model stopped writing part-way through its last bullet
+		AnthropicProperties props = new AnthropicProperties();
+		props.setApiKey("key");
+		AnthropicMessagesClient client = new AnthropicMessagesClient(
+				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator(), new ClaudeFailureLogImpl());
+
+		// When:
+		JsonNode parsed = client.parseJsonArray("[\"First.\", \"Second.\", \"Thi", true);
+
+		// Then: the finished items are recovered; the caller's exact-count check is what decides to retry
+		assertThat(parsed).isNotNull();
+		assertThat(parsed.size()).isEqualTo(2);
+	}
+
+	@Test
+	void shouldNotRepairAnArrayWhenPartialsAreNotAllowedTest() {
+		// Given: the same unclosed reply, on a caller that has not opted into salvage
+		AnthropicProperties props = new AnthropicProperties();
+		props.setApiKey("key");
+		AnthropicMessagesClient client = new AnthropicMessagesClient(
+				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator(), new ClaudeFailureLogImpl());
+
+		// When-Then: strict parsing is unchanged — nothing repaired slips into a caller that did not ask for it
+		assertThat(client.parseJsonArray("[\"First.\", \"Second.\", \"Thi", false)).isNull();
+	}
+
+	@Test
+	void shouldStillReadAnArrayWrappedInProseTest() {
+		// Given: a reply with a preamble and a trailing comment around the array
+		AnthropicProperties props = new AnthropicProperties();
+		props.setApiKey("key");
+		AnthropicMessagesClient client = new AnthropicMessagesClient(
+				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator(), new ClaudeFailureLogImpl());
+
+		// When:
+		JsonNode parsed = client.parseJsonArray("Here you go:\n[\"First.\", \"Second.\"]\nLet me know.", true);
+
+		// Then: the array is still found either side of the prose
+		assertThat(parsed).isNotNull();
+		assertThat(parsed.size()).isEqualTo(2);
+	}
+
+	@Test
+	void shouldWidenTheReplySnippetWhenConfiguredToTest() {
+		// Given: a client configured to log a wider head of a failed reply — the setting used to reach a parse
+		// defect that sits past the default 400 characters on a deployed run
+		AnthropicProperties props = new AnthropicProperties();
+		props.setApiKey("key");
+		props.setReplySnippetLimit(1200);
+		AnthropicMessagesClient client = new AnthropicMessagesClient(
+				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator(), new ClaudeFailureLogImpl());
+
+		// When:
+		String snippet = client.snippet("x".repeat(2000));
+
+		// Then: the configured cap is what the snippet honours, not the former fixed 400
+		assertThat(snippet.length()).isEqualTo(1201);
+	}
+
+	@Test
 	void shouldRetryTheTransientStatusesThatBlankedABatchTest() {
 		// Given: the client. The 522 that wiped the PrimaryKpis fact columns is a Cloudflare edge timeout,
 		// alongside the other transient upstream conditions worth another send.
 		AnthropicProperties props = new AnthropicProperties();
 		props.setApiKey("key");
 		AnthropicMessagesClient client = new AnthropicMessagesClient(
-				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator());
+				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator(), new ClaudeFailureLogImpl());
 
 		// When-Then: every transient upstream status is retried.
 		assertThat(client.isTransientStatus(522)).isTrue();
@@ -193,7 +278,7 @@ class AnthropicMessagesClientTest {
 		AnthropicProperties props = new AnthropicProperties();
 		props.setApiKey("key");
 		AnthropicMessagesClient client = new AnthropicMessagesClient(
-				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator());
+				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator(), new ClaudeFailureLogImpl());
 
 		// When-Then: permanent statuses are never retried.
 		assertThat(client.isTransientStatus(400)).isFalse();
@@ -209,7 +294,7 @@ class AnthropicMessagesClientTest {
 		props.setApiKey("key");
 		props.setRetryBackoffMillis(0);
 		AnthropicMessagesClient client = new AnthropicMessagesClient(
-				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator());
+				props, new ClaudeResponseNormalizer(), new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator(), new ClaudeFailureLogImpl());
 
 		// When: the backoff for a failed attempt is applied.
 		long start = System.nanoTime();
@@ -228,7 +313,7 @@ class AnthropicMessagesClientTest {
 		ClaudeUsageTrackerImpl tracker = new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class));
 		var scope = tracker.begin(7L, null, null);
 		AnthropicMessagesClient client =
-				new AnthropicMessagesClient(props, new ClaudeResponseNormalizer(), tracker, new PromptTokenEstimator());
+				new AnthropicMessagesClient(props, new ClaudeResponseNormalizer(), tracker, new PromptTokenEstimator(), new ClaudeFailureLogImpl());
 		JsonNode response = new ObjectMapper().readTree("""
 				{"model": "claude-sonnet-4-6", "usage": {"input_tokens": 1200, "output_tokens": 340,
 				"cache_creation_input_tokens": 90, "cache_read_input_tokens": 8000}}""");
@@ -247,6 +332,24 @@ class AnthropicMessagesClientTest {
 	}
 
 	@Test
+	void shouldSendOnlyTheUserTurnAndNeverAnAssistantPrefillTest() {
+		// Given: a prompt with no cache marker, sent the way any call sends it
+		AnthropicProperties props = new AnthropicProperties();
+		props.setApiKey("key");
+		AnthropicMessagesClient client = new AnthropicMessagesClient(
+				props, new ClaudeResponseNormalizer(),
+				new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class)), new PromptTokenEstimator(),
+				new ClaudeFailureLogImpl());
+
+		// When: the request's message list is built
+		var messages = client.buildMessages("Return four observations.");
+
+		// Then: exactly one user turn goes out — an assistant prefill would be rejected with a 400 by the model
+		assertThat(messages).hasSize(1);
+		assertThat(messages.getFirst()).containsEntry("role", "user");
+	}
+
+	@Test
 	void shouldIgnoreAReplyThatCarriesNoUsageBlockTest() throws Exception {
 		// Given: a reply with no usage block — accounting must never break a request
 		AnthropicProperties props = new AnthropicProperties();
@@ -254,7 +357,7 @@ class AnthropicMessagesClientTest {
 		ClaudeUsageTrackerImpl tracker = new ClaudeUsageTrackerImpl(mock(ClaudeUsageEventService.class));
 		var scope = tracker.begin(7L, null, null);
 		AnthropicMessagesClient client =
-				new AnthropicMessagesClient(props, new ClaudeResponseNormalizer(), tracker, new PromptTokenEstimator());
+				new AnthropicMessagesClient(props, new ClaudeResponseNormalizer(), tracker, new PromptTokenEstimator(), new ClaudeFailureLogImpl());
 		JsonNode response = new ObjectMapper().readTree("{\"content\": []}");
 
 		// When:

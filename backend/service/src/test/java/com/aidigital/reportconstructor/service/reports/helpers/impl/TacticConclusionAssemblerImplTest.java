@@ -61,12 +61,13 @@ class TacticConclusionAssemblerImplTest {
 
 		// When: campaign digests are assembled
 		List<TacticNarrativeDigest> digests =
-				assembler.toCampaignDigests(List.of(three), List.of(thoughts));
+				assembler.toCampaignDigests(List.of(three), Map.of(3, "CTV"), List.of(thoughts));
 
 		// Then: the digest carries the thoughts and no breakdown fallback lines
 		assertThat(digests).hasSize(1);
 		TacticNarrativeDigest digest = digests.getFirst();
 		assertThat(digest.tacticNum()).isEqualTo(3);
+		assertThat(digest.tacticName()).isEqualTo("CTV");
 		assertThat(digest.overview()).isEqualTo("Overview 3");
 		assertThat(digest.thoughts()).containsExactly("thought a", "thought b");
 		assertThat(digest.breakdownDigestLines()).isEmpty();
@@ -84,11 +85,12 @@ class TacticConclusionAssemblerImplTest {
 				List.of("dev a"));
 
 		// When: campaign digests are assembled with an empty thoughts list
-		List<TacticNarrativeDigest> digests = assembler.toCampaignDigests(List.of(four), List.of());
+		List<TacticNarrativeDigest> digests = assembler.toCampaignDigests(List.of(four), Map.of(), List.of());
 
 		// Then: thoughts are null and the digest flattens non-blank section lines in section order
 		assertThat(digests).hasSize(1);
 		TacticNarrativeDigest digest = digests.getFirst();
+		assertThat(digest.tacticName()).isNull();
 		assertThat(digest.thoughts()).isNull();
 		assertThat(digest.breakdownDigestLines()).containsExactly("pub a", "geo a", "dev a");
 	}

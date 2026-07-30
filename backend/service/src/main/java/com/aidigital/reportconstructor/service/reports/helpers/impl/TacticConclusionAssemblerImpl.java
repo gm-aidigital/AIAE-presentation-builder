@@ -54,11 +54,12 @@ public class TacticConclusionAssemblerImpl implements TacticConclusionAssembler 
 
 	@Override
 	public List<TacticNarrativeDigest> toCampaignDigests(
-			List<TacticConclusion> conclusions, List<TacticThoughts> thoughts) {
+			List<TacticConclusion> conclusions, Map<Integer, String> tacticNames, List<TacticThoughts> thoughts) {
 		List<TacticNarrativeDigest> digests = new ArrayList<>();
 		if (conclusions == null) {
 			return digests;
 		}
+		Map<Integer, String> names = tacticNames == null ? Map.of() : tacticNames;
 		Map<Integer, List<String>> thoughtsByTactic = new LinkedHashMap<>();
 		if (thoughts != null) {
 			for (TacticThoughts t : thoughts) {
@@ -72,11 +73,12 @@ public class TacticConclusionAssemblerImpl implements TacticConclusionAssembler 
 				continue;
 			}
 			List<String> tacticThoughts = thoughtsByTactic.get(c.tacticNum());
+			String name = names.get(c.tacticNum());
 			if (tacticThoughts != null) {
-				digests.add(new TacticNarrativeDigest(c.tacticNum(), c.overview(), tacticThoughts, List.of()));
+				digests.add(new TacticNarrativeDigest(c.tacticNum(), name, c.overview(), tacticThoughts, List.of()));
 			} else {
 				digests.add(new TacticNarrativeDigest(
-						c.tacticNum(), c.overview(), null, breakdownDigestLines(c)));
+						c.tacticNum(), name, c.overview(), null, breakdownDigestLines(c)));
 			}
 		}
 		return digests;

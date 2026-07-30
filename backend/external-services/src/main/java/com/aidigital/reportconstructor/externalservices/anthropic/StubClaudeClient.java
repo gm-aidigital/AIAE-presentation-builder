@@ -101,11 +101,6 @@ public class StubClaudeClient implements ClaudeClient {
 	}
 
 	@Override
-	public ClaudeResults batchResults(CampaignData data, String brief, CampaignFrequencies frequencies) {
-		return claudeDefaults.emptyResults();
-	}
-
-	@Override
 	public ClaudeNarrative batchAlignNarrative(
 			ClaudeStrategic strategic, ClaudeResults results, List<String> breakdownDigest, String brief) {
 		// No live model: there is nothing to align, so echo the inputs back unchanged.
@@ -120,9 +115,9 @@ public class StubClaudeClient implements ClaudeClient {
 	}
 
 	@Override
-	public List<TacticThoughts> batchTacticThoughts(List<TacticThoughtsInput> inputs, String brief) {
-		// No live model: no thoughts to generate, so the thoughts slides render blank.
-		return List.of();
+	public TacticThoughts tacticThoughts(TacticThoughtsInput input, String brief) {
+		// No live model: no thoughts to generate, so the thoughts slide renders blank.
+		return null;
 	}
 
 	@Override
@@ -152,6 +147,12 @@ public class StubClaudeClient implements ClaudeClient {
 	public String digestBrief(String brief) {
 		// No live model: the caller falls back to the raw brief, exactly as it behaved before the digest step.
 		return null;
+	}
+
+	@Override
+	public String digestBriefIfOversized(String brief) {
+		// No live model to digest with, so the brief passes through unchanged.
+		return brief;
 	}
 
 	@Override

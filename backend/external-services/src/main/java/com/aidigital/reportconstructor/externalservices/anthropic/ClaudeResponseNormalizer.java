@@ -16,6 +16,12 @@ import java.util.Set;
 public class ClaudeResponseNormalizer {
 
 	/**
+	 * Number of "thoughts on performance" paragraphs the campaign slide holds, and therefore the fixed length
+	 * of the slot list {@code normalizeThoughts} returns regardless of how many paragraphs the reply carried.
+	 */
+	private static final int THOUGHT_SLOTS = 4;
+
+	/**
 	 * Function/connector words that read as unfinished when a sentence is cut right after them, so they are
 	 * trimmed from the tail of a hard word-boundary cut before a closing period is appended.
 	 */
@@ -183,7 +189,31 @@ public class ClaudeResponseNormalizer {
 	}
 
 	/**
-	 * Splits {@code " | "} into exactly four elements (null for blanks/missing).
+	 * Reads the thoughts-on-performance field straight off the parsed reply, accepting either shape the model
+	 * produces: a JSON array of paragraphs (the shape the compression prompt asks for, which the campaign call
+	 * drifts into) or the pipe-joined string the campaign prompt asks for. Taking the node rather than its text
+	 * matters — {@link #textOrNull} renders an array as its raw JSON, which the string path cannot split, so an
+	 * array reply used to collapse into slot one and ship {@code ["a","b",…]} onto the slide.
+	 *
+	 * @param node the {@code thoughts_on_performance} node, possibly absent, textual or an array
+	 * @return four slots, never shorter than four entries (null for blank or missing paragraphs)
+	 */
+	public List<String> normalizeThoughts(JsonNode node) {
+		if (node != null && node.isArray()) {
+			List<String> out = new ArrayList<>(Arrays.asList(null, null, null, null));
+			for (int i = 0; i < THOUGHT_SLOTS && i < node.size(); i++) {
+				String p = node.get(i).asText("").trim();
+				out.set(i, p.isEmpty() ? null : p);
+			}
+			return out;
+		}
+		return normalizeThoughts(textOrNull(node));
+	}
+
+	/**
+	 * Splits a pipe-joined thoughts string into exactly four elements (null for blanks/missing). The separator
+	 * is matched with any surrounding whitespace, so a reply that writes {@code a|b} or {@code a |b} instead of
+	 * the requested {@code a | b} still lands one paragraph per slot rather than collapsing into the first.
 	 *
 	 * @param val thoughts-on-performance field from Batch C
 	 * @return four slots, never shorter than four entries
@@ -194,8 +224,8 @@ public class ClaudeResponseNormalizer {
 			return out;
 		}
 		val = val.replaceAll("\\s*[\\r\\n]+\\s*", " ").replaceAll("\\s{2,}", " ").trim();
-		String[] parts = val.split(" \\| ", -1);
-		for (int i = 0; i < 4; i++) {
+		String[] parts = val.split("\\s*\\|\\s*", -1);
+		for (int i = 0; i < THOUGHT_SLOTS; i++) {
 			if (i < parts.length) {
 				String p = parts[i] == null ? null : parts[i].trim();
 				out.set(i, (p == null || p.isEmpty()) ? null : p);

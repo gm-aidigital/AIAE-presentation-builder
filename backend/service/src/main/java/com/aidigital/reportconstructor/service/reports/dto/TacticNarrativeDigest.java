@@ -10,12 +10,15 @@ import java.util.List;
  * digest small is deliberate: the campaign call reasons over conclusions, never raw grids.
  *
  * @param tacticNum            the 1-based tactic number this digest belongs to
+ * @param tacticName           the tactic's display name (channel), or {@code null} when the sheet has none;
+ *                             carried so the campaign copy can name the channel instead of "Tactic N"
  * @param overview             the tactic's {@code {{tactic n overview}}} narrative, or {@code null}
  * @param thoughts             the tactic's Step-3 thoughts when it qualified, otherwise {@code null}
  * @param breakdownDigestLines one short line per available breakdown conclusion, used as read-only context
  */
 public record TacticNarrativeDigest(
 		int tacticNum,
+		String tacticName,
 		String overview,
 		List<String> thoughts,
 		List<String> breakdownDigestLines

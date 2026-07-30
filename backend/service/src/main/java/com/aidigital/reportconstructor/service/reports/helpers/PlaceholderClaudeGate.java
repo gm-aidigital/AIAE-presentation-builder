@@ -26,15 +26,6 @@ public interface PlaceholderClaudeGate {
 	boolean needTactical(GeneratePayload payload, CampaignData data);
 
 	/**
-	 * Returns true when results overview, performance thoughts, or tactic overviews are missing.
-	 *
-	 * @param payload constructor request whose adjustments and sheet rows are inspected
-	 * @param data    aggregated snapshot whose tactic keys drive overview checks
-	 * @return {@code true} when at least one Batch C placeholder still needs AI generation
-	 */
-	boolean needResults(GeneratePayload payload, CampaignData data);
-
-	/**
 	 * Returns true when the geo summary must be generated from the workbook: no manual geo value is
 	 * present and the media-plan geo column is either absent or only points at another tab.
 	 *

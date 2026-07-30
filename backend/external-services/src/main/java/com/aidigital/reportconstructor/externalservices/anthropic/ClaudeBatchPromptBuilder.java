@@ -47,6 +47,17 @@ public class ClaudeBatchPromptBuilder {
 	/** Tactics per results-overview group; the deck carries one summary + overview slide per group. */
 	private static final int TACTICS_PER_GROUP = 7;
 
+	// Character budgets of the campaign-results fields, mirroring the limits RealClaudeClient enforces on the
+	// reply. Quoted to Claude through COMPRESSION_PROMPT_BUFFER_RATIO like every other prompt, so a reply that
+	// lands slightly over the number it was given still fits the real budget and skips the compression call.
+	private static final int RESULTS_OVERVIEW_LIMIT = 380;
+	private static final int THOUGHTS_TOTAL_LIMIT = 700;
+	private static final int RECOMMENDATION_TITLE_LIMIT = 28;
+	private static final int RECOMMENDATION_TEXT_LIMIT = 125;
+	private static final int F_OPPORTUNITY_LIMIT = 180;
+	private static final int F_FACT_LIMIT = 140;
+	private static final int F_STORYTELLING_LIMIT = 320;
+
 	/**
 	 * Substrings marking a completion-led tactic as audio, so Claude sees its completion rate as ACR not VCR.
 	 * Mirrors {@code TacticExtractionHelper}'s audio keywords — kept local because the prompt context is
@@ -90,6 +101,26 @@ public class ClaudeBatchPromptBuilder {
 					+ "model would either fail to spend it or deliver well below the current average. Where a "
 					+ "creative genuinely deserves more budget, the action is an increase of at most ~20%, so the "
 					+ "DSP's learning phase is not reset.\n";
+
+	/**
+	 * Top-N caveat for the geo prompts, shared by the standalone geo-section prompt and the combined
+	 * conclusions prompt so both paths hold the copy to the same claim.
+	 *
+	 * <p>The geo table on the "Breakdowns" tab holds a handful of the tactic's strongest markets, not every
+	 * market it ran in — the block has room for a top list, and that is what the user fills in. Left unsaid,
+	 * Claude counts the rows and states the count as the campaign's footprint ("delivery ran across five
+	 * markets"), which is the publisher slide's old failure mode in a different table and is wrong on the
+	 * deck rather than merely thin. The "Markets activated" stat above the table is the one figure that does
+	 * carry total coverage, so the rule points the copy at it and forbids inferring a total from the rows;
+	 * when the user left that stat blank there is no total to state at all.
+	 */
+	private static final String GEO_TOP_MARKETS_RULE =
+			"The table lists only this tactic's TOP markets, NOT every market it ran in: never state or imply a "
+					+ "total market count from the number of rows, and never read the list as the campaign's full "
+					+ "geographic footprint. The 'Markets activated' stat above the table is the only figure for total "
+					+ "coverage — cite that when it is present, and when it is absent write about the listed markets "
+					+ "without claiming how many ran in total. Shares of delivery are shares of the listed markets, "
+					+ "not of the tactic.";
 
 	private final ClaudeResponseNormalizer normalizer;
 	private final Fmt fmt;
@@ -471,78 +502,36 @@ public class ClaudeBatchPromptBuilder {
 	/**
 	 * Builds the Generate Sheet prompt: a single call that asks only for the fields the sheet template
 	 * consumes — the Batch A {@code audience_age}/{@code audience_segments} narrative and the Batch B
-	 * per-tactic gender split and weekday/weekend peak windows. The context block mirrors {@link
-	 * #buildBatchAPrompt} and every field instruction is copied verbatim from Batches A and B so the sheet
-	 * copy is generated identically to the slide deck, just without the unused proposal/strategic/results
-	 * fields.
+	 * per-tactic gender split and weekday/weekend peak windows. Every field instruction is copied verbatim
+	 * from Batches A and B so the sheet copy is generated identically to the slide deck, just without the
+	 * unused proposal/strategic/results fields. Unlike {@link #buildBatchAPrompt}, the context sent here is
+	 * deliberately narrow — brief, tactic names and the Audience & Inventory tab only. Neither the full
+	 * campaign-plan fields (client/geo/goal/flight/budget/KPIs/tactics list) nor per-tactic delivery metrics
+	 * (spend/impressions/CTR/VCR) carry signal for gender split or peak-hour windows — the prompt itself
+	 * grounds both in "the tactic's channel or audience", which the tactic name already conveys — so both
+	 * are left out to keep the reply within its token budget.
 	 *
 	 * @param data  parsed campaign plan and per-tactic performance used to assemble the context blocks and
 	 *                 the per-tactic JSON keys
-	 * @param brief free-text campaign brief prepended as the {@code === CAMPAIGN BRIEF ===} section (treated
-	 *                as empty when null)
+	 * @param brief campaign brief (already digested by the caller) prepended as the
+	 *                {@code === CAMPAIGN BRIEF ===} section (treated as empty when null)
 	 * @return the merged sheet prompt requesting audience + per-tactic JSON, or empty when no context block
 	 * could be built
 	 */
 	public Optional<String> buildBatchSheetPrompt(CampaignData data, String brief) {
 		String brf = brief == null ? "" : brief;
-		List<String> planLines = new ArrayList<>();
-		if (normalizer.notBlank(data.client())) {
-			planLines.add("Client:       " + data.client());
-		}
-		if (normalizer.notBlank(data.campaign())) {
-			planLines.add("Campaign:     " + data.campaign());
-		}
-		if (normalizer.notBlank(data.geo())) {
-			planLines.add("Geo:          " + data.geo());
-		}
-		if (normalizer.notBlank(data.goal())) {
-			planLines.add("Goal:         " + data.goal());
-		}
-		if (normalizer.notBlank(data.flightDates())) {
-			planLines.add("Flight:       " + data.flightDates());
-		}
-		if (normalizer.notBlank(data.budget())) {
-			planLines.add("Budget:       " + data.budget());
-		}
-		if (normalizer.notBlank(data.primaryKpis())) {
-			planLines.add("KPIs:         " + data.primaryKpis());
-		}
-		if (normalizer.notBlank(data.tacticsList())) {
-			planLines.add("Tactics:      " + data.tacticsList());
-		}
-		if (normalizer.notBlank(data.audienceAge())) {
-			planLines.add("Audience age: " + data.audienceAge());
-		}
 
 		List<String> tacticLines = new ArrayList<>();
 		for (Map.Entry<Integer, Tactic> e : data.tactics().entrySet()) {
-			Tactic t = e.getValue();
-			StringBuilder line = new StringBuilder("  Tactic " + e.getKey() + " — " + t.name() + ":");
-			if (t.spend() > 0) {
-				line.append(" Spend $").append(fmt.intGroup(Math.round(t.spend())));
-			}
-			if (t.imps() > 0) {
-				line.append(" | Imps ").append(fmt.intGroup(t.imps()));
-			}
-			if (t.ctr() != null) {
-				line.append(" | CTR ").append(fmt.dec2(t.ctr())).append('%');
-			}
-			if (t.vcr() != null) {
-				line.append(" | ").append(completionRateLabel(t.name())).append(' ').append(fmt.dec2(t.vcr()))
-						.append('%');
-			}
-			tacticLines.add(line.toString());
+			tacticLines.add("  Tactic " + e.getKey() + " — " + e.getValue().name());
 		}
 
 		List<String> ctx = new ArrayList<>();
 		if (!brf.isEmpty()) {
 			ctx.add("=== CAMPAIGN BRIEF ===\n" + brf);
 		}
-		if (!planLines.isEmpty()) {
-			ctx.add("=== CAMPAIGN PLAN ===\n" + String.join("\n", planLines));
-		}
 		if (!tacticLines.isEmpty()) {
-			ctx.add("=== TACTIC PERFORMANCE ===\n" + String.join("\n", tacticLines));
+			ctx.add("=== TACTICS ===\n" + String.join("\n", tacticLines));
 		}
 		if (normalizer.notBlank(data.audienceTab())) {
 			ctx.add("=== AUDIENCE & INVENTORY TAB ===\n" + data.audienceTab());
@@ -610,332 +599,6 @@ public class ClaudeBatchPromptBuilder {
 	}
 
 	/**
-	 * Builds the Batch C (results) prompt, or empty when there is no campaign context to send.
-	 *
-	 * @param data        parsed campaign data including overall totals and actual-vs-plan tactic metrics used for the
-	 *                       results context blocks
-	 * @param brief       free-text campaign brief prepended as the {@code === CAMPAIGN BRIEF ===} section (treated as
-	 *                       empty when null)
-	 * @param frequencies pre-computed planned/actual frequency figures; when both are present a {@code === FREQUENCY
-	 *                       ===} block is added and Claude is asked to fill the frequency-narrative fields, otherwise
-	 *                       those fields are returned null
-	 * @return the Batch C post-campaign prompt requesting results overview, performance thoughts and per-tactic
-	 * overviews JSON, or empty when no context block could be built
-	 */
-	public Optional<String> buildBatchCPrompt(CampaignData data, String brief, CampaignFrequencies frequencies) {
-		String brf = brief == null ? "" : brief;
-		boolean hasFrequencies = frequencies != null
-				&& normalizer.notBlank(frequencies.plan()) && normalizer.notBlank(frequencies.fact());
-
-		List<String> planLines = new ArrayList<>();
-		if (normalizer.notBlank(data.client())) {
-			planLines.add("Client:   " + data.client());
-		}
-		if (normalizer.notBlank(data.campaign())) {
-			planLines.add("Campaign: " + data.campaign());
-		}
-		if (normalizer.notBlank(data.flightDates())) {
-			planLines.add("Flight:   " + data.flightDates());
-		}
-		if (normalizer.notBlank(data.goal())) {
-			planLines.add("Goal:     " + data.goal());
-		}
-		if (normalizer.notBlank(data.budget())) {
-			planLines.add("Budget:   " + data.budget());
-		}
-
-		Totals tot = data.totals();
-		List<String> totalLines = new ArrayList<>();
-		if (tot != null) {
-			if (tot.spend() > 0) {
-				totalLines.add("Total Spend: $" + fmt.intGroup(Math.round(tot.spend())));
-			}
-			if (tot.imps() > 0) {
-				totalLines.add("Total Imps:  " + fmt.intGroup(tot.imps()));
-			}
-			if (tot.ctr() != null) {
-				totalLines.add("Total CTR:   " + fmt.dec2(tot.ctr()) + "%");
-			}
-			if (tot.vcr() != null) {
-				totalLines.add("Total VCR:   " + fmt.dec2(tot.vcr()) + "%");
-			}
-		}
-
-		List<String> tacticLines = new ArrayList<>();
-		for (Map.Entry<Integer, Tactic> e : data.tactics().entrySet()) {
-			Tactic t = e.getValue();
-			StringBuilder line = new StringBuilder("  Tactic " + e.getKey() + " — " + t.name() + ":");
-			if (t.spend() > 0) {
-				line.append(" Actual Spend $").append(fmt.intGroup(Math.round(t.spend())));
-			}
-			if (t.imps() > 0) {
-				line.append(" | Actual Imps ").append(fmt.intGroup(t.imps()));
-			}
-			if (t.ctr() != null) {
-				line.append(" | Actual CTR ").append(fmt.dec2(t.ctr())).append('%');
-			}
-			if (t.vcr() != null) {
-				line.append(" | Actual ").append(completionRateLabel(t.name())).append(' ')
-						.append(fmt.dec2(t.vcr())).append('%');
-			}
-			if (t.planSpend() != null) {
-				line.append(" | Plan Spend $").append(fmt.intGroup(Math.round(t.planSpend())));
-			}
-			if (t.planImps() != null) {
-				line.append(" | Plan Imps ").append(fmt.intGroup(t.planImps()));
-			}
-			if (t.planCtr() != null) {
-				line.append(" | Plan CTR ").append(fmt.dec2(t.planCtr())).append('%');
-			}
-			if (t.planVcr() != null) {
-				line.append(" | Plan ").append(completionRateLabel(t.name())).append(' ')
-						.append(fmt.dec2(t.planVcr())).append('%');
-			}
-			tacticLines.add(line.toString());
-		}
-
-		List<String> ctx = new ArrayList<>();
-		if (!brf.isEmpty()) {
-			ctx.add("=== CAMPAIGN BRIEF ===\n" + brf);
-		}
-		if (!planLines.isEmpty()) {
-			ctx.add("=== CAMPAIGN PLAN ===\n" + String.join("\n", planLines));
-		}
-		if (!totalLines.isEmpty()) {
-			ctx.add("=== OVERALL RESULTS ===\n" + String.join("\n", totalLines));
-		}
-		if (!tacticLines.isEmpty()) {
-			ctx.add("=== RESULTS BY TACTIC ===\n" + String.join("\n", tacticLines));
-		}
-		if (hasFrequencies) {
-			ctx.add("=== FREQUENCY ===\n"
-					+ "Planned frequency (touchpoints per user): " + frequencies.plan() + "\n"
-					+ "Actual frequency (touchpoints per user):  " + frequencies.fact());
-		}
-		if (ctx.isEmpty()) {
-			return Optional.empty();
-		}
-		String context = String.join("\n\n", ctx);
-
-		List<String> nums = new ArrayList<>();
-		for (Integer k : data.tactics().keySet()) {
-			nums.add(String.valueOf(k));
-		}
-		String tacticNums = String.join(", ", nums);
-
-		// Tactic groups (7 tactics each) present in this campaign — one results overview per group:
-		// group 1 → tactics 1–7, group 2 → 8–14, group 3 → 15–21, group 4 → 22–28.
-		Map<Integer, List<String>> tacticsByGroup = new java.util.TreeMap<>();
-		for (Integer k : data.tactics().keySet()) {
-			tacticsByGroup.computeIfAbsent((k - 1) / TACTICS_PER_GROUP + 1, g -> new ArrayList<>())
-					.add(String.valueOf(k));
-		}
-		List<String> groupNumList = new ArrayList<>();
-		List<String> groupRangeList = new ArrayList<>();
-		for (Map.Entry<Integer, List<String>> g : tacticsByGroup.entrySet()) {
-			groupNumList.add(String.valueOf(g.getKey()));
-			groupRangeList.add("group " + g.getKey() + " → tactics " + String.join(",", g.getValue()));
-		}
-		String groupNums = String.join(", ", groupNumList);
-		String groupRanges = String.join("; ", groupRangeList);
-
-		String prompt =
-				"You are a senior digital media analyst writing a post-campaign report for a client presentation.\n\n"
-						+ "ANALYTICAL PRINCIPLES — non-negotiable, apply to every text field:\n"
-						+ "1. OBSERVATION → EXPLANATION → RECOMMENDATION in every insight. "
-						+ "State what happened, explain WHY it happened (name a specific cause: learning phase, " +
-						"creative fatigue, "
-						+ "inventory constraints, bid competitiveness, audience saturation, pacing decision, seasonal " +
-						"effect, etc.), "
-						+ "then state what this means or what should follow. All three parts are mandatory, delivered "
-						+ "as one cohesive, flowing statement — never as labeled sections or separate bullets.\n"
-						+ "2. INTERPRET, NEVER ENUMERATE. The reader can see the numbers. Your job is to explain what " +
-						"they mean. "
-						+ "WRONG: \"CTV delivered 12M impressions, the highest of any channel.\" "
-						+ "RIGHT: \"CTV absorbed the majority of delivery because it was the only channel with priced " +
-						"inventory "
-						+ "in the target geo during the campaign window — not a sign that other tactics " +
-						"underperformed, "
-						+ "but a feature of the buy structure.\" Transform every data point into a business " +
-						"implication.\n"
-						+ "3. 'SO WHAT' IS MANDATORY. Every metric cited must be followed by its business " +
-						"consequence: "
-						+ "did we hit goals? what does over/underdelivery mean for the brand? what did the audience " +
-						"actually receive?\n"
-						+ "4. NO GENERIC LANGUAGE. Forbidden: \"performance is tracking well\", \"results are in line " +
-						"with expectations\", "
-						+ "\"we recommend monitoring\", \"this tactic requires optimization\". "
-						+ "Every sentence must be specific to THIS campaign's numbers, channels, and audience.\n"
-						+ "5. NAME THE CAUSE. Don't say performance was strong — say why: audience targeting " +
-						"precision, "
-						+ "creative format fit, placement quality, flight timing, competitive dynamics, etc.\n"
-						+ METRIC_DEVIATION_RULE
-						+ LEARNING_PHASE_RULE
-						+ "\n"
-						+ "Read the campaign data and return a JSON object with EXACTLY these keys:\n\n"
-						+ "{\n"
-						+ "  \"results_overviews\": {              // Keyed by tactic-group number as strings (" + groupNums + ").\n"
-						+ "  //  One entry PER GROUP listed above (" + groupRanges + "). Each value covers ONLY that " +
-						"group's tactics.\n"
-						+ "  //  Include a key for every group number listed — no more, no fewer.\n"
-						+ "    \"1\": string,                       // Key is the group number as a string (never a " +
-						"letter). EXACTLY 2 SENTENCES. Past tense, no bullets, no " +
-						"line breaks. Hard limit: ≤380 chars total.\n"
-						+ "  //  SENTENCE 1 — Overall result + key metric vs plan + reason WHY performance was as it " +
-						"was.\n"
-						+ "  //    Must include: the most significant delivery outcome (over/underdelivery vs plan) + " +
-						"one specific cause\n"
-						+ "  //    (budget pacing, inventory constraints, audience fit, bid dynamics, flight timing, " +
-						"etc.).\n"
-						+ "  //    WRONG: \"The campaign delivered X impressions across Y tactics.\"\n"
-						+ "  //    RIGHT: \"The campaign significantly underdelivered against planned reach goals due " +
-						"to budget pacing delays,\n"
-						+ "  //            achieving only 4.8M impressions versus a planned 13M+ through Q1 spending " +
-						"constraints.\"\n"
-						+ "  //  SENTENCE 2 — Tactic-level breakdown: which tactic(s) led performance and which " +
-						"lagged, with a specific reason for each.\n"
-						+ "  //    Name the actual tactics. Include one metric per tactic (VCR%, CTR%, imps, spend). " +
-						"Name the cause.\n"
-						+ "  //    RIGHT: \"Video tactics dominated actual delivery with strong completion rates (97% " +
-						"for Live Sports, 98% for CTV/Netflix),\n"
-						+ "  //            while display formats like DOOH underperformed due to limited spend " +
-						"activation.\"\n"
-						+ "  //  DO NOT write a third sentence. Stop after the second.\n"
-						+ "  //  CLIENT-FACING TONE: This text goes directly into a client presentation.\n"
-						+ "  //    Always lead with what went well or what was achieved — even in underdelivery " +
-						"scenarios, frame it as\n"
-						+ "  //    a strategic constraint, not a failure. Highlight strong metrics (VCR, CTR, " +
-						"completion rates)\n"
-						+ "  //    before mentioning gaps. If a tactic underperformed, attribute it to external " +
-						"factors\n"
-						+ "  //    (inventory availability, budget pacing, market conditions) — never to poor " +
-						"execution.\n"
-						+ "  },\n"
-						+ "  \"thoughts_on_performance\": string,  // EXACTLY 4 SHORT ANALYTICAL PARAGRAPHS separated " +
-						"by the literal string \" | \".\n"
-						+ "  //  Each paragraph: 1–2 sentences, past tense, client-friendly. NOT bullet headers — " +
-						"flowing sentences.\n"
-						+ "  //  REQUIRED STRUCTURE — exactly these 4 paragraphs in this order:\n"
-						+ "  //  (1) Which tactic/channel performed best and the specific reason WHY (not just 'it " +
-						"performed well').\n"
-						+ "  //  (2) Why the campaign succeeded overall — name the mechanism: targeting precision, " +
-						"audience-channel fit, creative alignment, etc.\n"
-						+ "  //  (3) One creative or format insight — what worked and why (format size, video length, " +
-						"placement position, etc.).\n"
-						+ "  //  (4) Efficiency or reach insight — what the spend delivered beyond raw impressions " +
-						"(CPM efficiency, frequency management, reach quality).\n"
-						+ "  //  CRITICAL: produce EXACTLY 4 paragraphs — no more, no fewer. Result must contain " +
-						"EXACTLY 3 \" | \" separators.\n"
-						+ "  //  BAD example: \"Programmatic video performed well.\" | \"Audience targeting was " +
-						"effective.\" | ...\n"
-						+ "  //  GOOD example: \"Programmatic video exceeded impression goals by 0.6%, driven by " +
-						"strong inventory availability "
-						+ "in the 25-44 demo during evening dayparts — the format's native environment for this " +
-						"audience.\" | ...\n"
-						+ "  //  Total string including \" | \" separators must be ≤700 chars.\n"
-						+ "  \"tactic_overviews\": {               // Per-tactic. Keys: tactic numbers as strings (" + tacticNums + ")\n"
-						+ "    \"N\": string                        // MAX 190 CHARACTERS. End on a complete word and " +
-						"sentence.\n"
-						+ "  //  STRUCTURE: [What the tactic delivered vs plan] + [WHY it performed as it did] + " +
-						"[business So what].\n"
-						+ "  //  All three parts required even in 190 chars — be concise but complete.\n"
-						+ "  //  WRONG: \"CTV delivered 5M impressions at 98% VCR, exceeding plan.\"\n"
-						+ "  //  RIGHT: \"CTV delivered 5M impressions at 98% VCR (+2pp vs plan), driven by premium " +
-						"inventory selection — "
-						+ "confirming the audience's high receptivity to full-screen video in this vertical.\"\n"
-						+ "  //  Focus metrics by tactic type: Display→Imps+CTR; Video/Pre-roll→Imps+CTR+VCR; " +
-						"CTV/OTT→Imps+VCR; Audio→Completions.\n"
-						+ "  //  Past tense. No bullets. Business English. Max 2 sentences.\n"
-						+ "  },\n"
-						+ "  \"optimization_recommendations\": array  // EXACTLY 4 objects: {\"title\": string, " +
-						"\"text\": string}.\n"
-						+ "  //  This is the single most important slide of the deck — the agency's forward-looking, " +
-						"actionable plan.\n"
-						+ "  //  Every other section of this report exists to justify these 4 recommendations: ground " +
-						"each one in the\n"
-						+ "  //    actual results, tactics, audience and goal above.\n"
-						+ "  //  PURPOSE: concrete next-step actions that show how to hit the client's goal even more " +
-						"effectively next flight.\n"
-						+ "  //  'title': MAX 28 CHARACTERS. A short imperative action headline, Title Case, no " +
-						"trailing period\n"
-						+ "  //    (e.g. \"Scale CTV In Evening Dayparts\", \"Refresh Display Creative\"). Name the " +
-						"specific lever.\n"
-						+ "  //  'text': MAX 125 CHARACTERS. One complete sentence stating WHAT to do and WHY it " +
-						"advances the goal,\n"
-						+ "  //    referencing a specific tactic / audience / metric from this campaign. End on a " +
-						"complete sentence.\n"
-						+ "  //  CLIENT-FACING TONE — non-negotiable: these recommendations represent the agency as the " +
-						"expert partner.\n"
-						+ "  //    Frame every item as a proactive optimization to amplify success — NEVER as a fix for " +
-						"agency error\n"
-						+ "  //    or past underperformance. Position the agency as the strategist driving the next win. " +
-						"No blame, no\n"
-						+ "  //    apology, no generic advice (\"keep monitoring\", \"optimize further\") — each must be " +
-						"specific and ownable.\n"
-						+ "  //  The 4 recommendations must be DISTINCT levers (e.g. budget reallocation, " +
-						"audience expansion,\n"
-						+ "  //    creative strategy, channel/daypart mix, measurement) — no two restating the same idea.\n"
-						+ (hasFrequencies
-								? "  \"f_opportunity\": string,           // MAX 180 CHARACTERS. End on a complete " +
-								"sentence.\n"
-								+ "  //  Convey EXACTLY this message, naming the client's specific industry (infer it " +
-								"from the brief/campaign):\n"
-								+ "  //  \"Based on our experience in your industry ([INDUSTRY]), it takes " + frequencies.plan() +
-								" touchpoints to move a user\n"
-								+ "  //   from passive awareness to active intent — keeping the brand top-of-mind and " +
-								"triggering the 'Invisible Win' faster.\"\n"
-								+ "  //  Use the number " + frequencies.plan() + " VERBATIM. Do not invent a different " +
-								"figure.\n"
-								+ "  \"f_fact\": string,                   // MAX 140 CHARACTERS. End on a complete " +
-								"sentence.\n"
-								+ "  //  Convey this message: in practice the campaign's actual delivered frequency came " +
-								"out to " + frequencies.fact() + "\n"
-								+ "  //   touchpoints per user, closely aligned with our original plan. Use the number " +
-								frequencies.fact() + " VERBATIM.\n"
-								+ "  \"f_storytelling\": string,           // MAX 320 CHARACTERS. End on a complete " +
-								"sentence.\n"
-								+ "  //  Convey EXACTLY this 3-part message, using all VERBATIM numbers given:\n"
-								+ "  //  \"Our data shows frequency was " + frequencies.fact() + " vs " + frequencies.plan() +
-								", which positively impacted overall\n"
-								+ "  //   performance, consistent with the campaign results and booked media volume. " +
-								"Moving forward, we recommend\n"
-								+ "  //   maintaining this frequency as we engage the remaining in-market audience"
-								+ (frequencies.remainingAudience() != null
-										? " of approximately " + fmt.compact(frequencies.remainingAudience())
-										: "")
-								+ " available for upcoming\n"
-								+ "  //   flights.\"\n"
-								+ "  //  Tone: neutral and factual — do not editorialize or claim the results \"validate\" " +
-								"or \"prove\" anything.\n"
-								: "")
-						+ "}\n\n"
-						+ "Rules:\n"
-						+ "- Return ONLY the JSON object — no markdown, no backticks, no explanation.\n"
-						+ "- null for thoughts_on_performance if genuinely insufficient data.\n"
-						+ "- For results_overviews: include a key for every tactic-group number listed above (" + groupNums +
-						"); each value covers only that group's tactics.\n"
-						+ "- For tactic_overviews: include a key for every tactic number listed above.\n"
-						+ "- optimization_recommendations: ALWAYS return exactly 4 objects, each with non-empty title " +
-						"and text.\n"
-						+ "- Do NOT invent metrics. Use only the numbers provided.\n"
-						+ "- Leave a field blank/omit the claim rather than pad it with generic filler — an unsupported "
-						+ "sentence is worse than a shorter, fully-grounded one.\n"
-						+ "- CRITICAL: each tactic_overview value MUST end on a complete word/sentence and be ≤190 " +
-						"characters.\n"
-						+ "- thoughts_on_performance uses \" | \" (space-pipe-space) as paragraph separator — NOT " +
-						"newlines.\n"
-						+ "- DEPTH OVER BREADTH: one insight with a real explanation beats three that only restate " +
-						"numbers.\n"
-						+ (hasFrequencies
-								? "- f_opportunity / f_fact / f_storytelling: keep each within its character limit, embed " +
-								"the supplied frequency numbers VERBATIM, and end on a complete sentence.\n"
-								: "")
-						+ "- Output in English.\n\n"
-						+ "Campaign data:\n" + context;
-		return Optional.of(prompt);
-	}
-
-	/**
 	 * Renders one tactic's creative block as prompt context: its name and KPI type, the four summary
 	 * stats the slide shows, and the creative table. Blank summary cells are omitted rather than sent as
 	 * empty labels, so the user leaving a stat tile empty never reads to Claude as a zero.
@@ -945,6 +608,9 @@ public class ClaudeBatchPromptBuilder {
 	 */
 	String creativeContextBlock(CreativeTakeawayInput input) {
 		CreativeTable table = input.table();
+		// An audio tactic's completion metric is ACR everywhere else in the deck and the sheet; sending it here
+		// as "VCR" is how Claude came to write VCR into an audio tactic's creative copy.
+		String completionLabel = completionRateLabel(input.tacticName());
 		StringBuilder block = new StringBuilder();
 		block.append("tactic_").append(input.tacticNum()).append(" — ").append(input.tacticName());
 		if (input.kpiType() != null && !input.kpiType().isBlank()) {
@@ -952,10 +618,10 @@ public class ClaudeBatchPromptBuilder {
 		}
 		block.append('\n');
 		appendCreativeStat(block, "Creatives live", table.creativesLive());
-		appendCreativeStat(block, "Best CTR/VCR", table.bestKpi());
-		appendCreativeStat(block, "Avg CTR/VCR", table.avgKpi());
+		appendCreativeStat(block, "Best CTR/" + completionLabel, table.bestKpi());
+		appendCreativeStat(block, "Avg CTR/" + completionLabel, table.avgKpi());
 		appendCreativeStat(block, "Top creative", table.topCreative());
-		block.append("Creative | Impressions | CTR | VCR | Spend\n");
+		block.append("Creative | Impressions | CTR | ").append(completionLabel).append(" | Spend\n");
 		for (CreativeRow row : table.rows()) {
 			block.append(row.name()).append(" | ").append(row.impressions()).append(" | ").append(row.ctr())
 					.append(" | ").append(row.vcr()).append(" | ").append(row.spend()).append('\n');
@@ -1054,15 +720,17 @@ public class ClaudeBatchPromptBuilder {
 	 */
 	String deviceContextBlock(DeviceInsightInput input) {
 		DeviceTable table = input.table();
+		// Same reason as creativeContextBlock: an audio tactic's completion metric is ACR, not VCR.
+		String completionLabel = completionRateLabel(input.tacticName());
 		StringBuilder block = new StringBuilder();
 		block.append("tactic_").append(input.tacticNum()).append(" — ").append(input.tacticName()).append('\n');
 		appendCreativeStat(block, "Highest CTR", table.highestCtr());
-		appendCreativeStat(block, "Best completion (VCR)", table.bestCompletion());
+		appendCreativeStat(block, "Best completion (" + completionLabel + ")", table.bestCompletion());
 		appendCreativeStat(block, "Devices tracked", table.devicesTracked());
 		appendCreativeStat(block, "Top device", table.topDevice());
 		appendCreativeStat(block, "Top device % of impressions", table.topDeviceImpressionsPct());
 		if (!table.rows().isEmpty()) {
-			block.append("Device | Impressions | CTR | VCR | Spend\n");
+			block.append("Device | Impressions | CTR | ").append(completionLabel).append(" | Spend\n");
 			for (DeviceRow row : table.rows()) {
 				block.append(row.device()).append(" | ").append(row.impressions())
 						.append(" | ").append(row.ctr()).append(" | ").append(row.vcr())
@@ -1084,6 +752,14 @@ public class ClaudeBatchPromptBuilder {
 	 * per-tactic call; only the tactic's own data follows the marker. Every section's rules are always in the
 	 * cached prefix (keeping the prefix byte-stable for the cache) and the model fills a section only when that
 	 * section appears in the tactic's data.
+	 *
+	 * <p>When no tactic in the chunk carries a single section — the shape this call has whenever the
+	 * per-section calls own the breakdown copy and only the overview is left here — the five section rule
+	 * blocks are dropped and {@link #overviewOnlyInstruction()} is sent instead. Those rules are four fifths
+	 * of the instruction and describe fields the reply cannot contain, so keeping them only buys cache writes
+	 * and hands the model a pile of inapplicable instructions ahead of a two-sentence answer. The choice is
+	 * made from the chunk's own data rather than from configuration, so a caller that does attach a section
+	 * still gets the full instruction.
 	 *
 	 * @param data                  parsed campaign data supplying the shared context and each tactic's overview metrics
 	 * @param chunk                 the tactics to cover in this call, each with its enabled-section inputs
@@ -1117,6 +793,38 @@ public class ClaudeBatchPromptBuilder {
 			return Optional.empty();
 		}
 
+		String prompt = conclusionsInstruction(chunk, publisherLimit, creativeLimit, creativeRecoLimit, geoLimit,
+						audienceTakeawayLimit, audienceShortLimit, deviceTakeawayLimit, deviceShortLimit)
+				+ campaignContextForConclusions(data, brief) + "\n\n"
+				+ AnthropicMessagesClient.CACHE_BREAKPOINT + "=== TACTIC DATA ===\n"
+				+ String.join("\n\n", dataBlocks);
+		return Optional.of(prompt);
+	}
+
+	/**
+	 * Picks and renders the instruction half of the conclusions prompt: the full overview-plus-five-sections
+	 * brief when any tactic in the chunk actually carries a section, and the overview-only brief when none
+	 * does. Every character budget quoted to Claude is the slide budget shaved by {@link
+	 * #COMPRESSION_PROMPT_BUFFER_RATIO}, leaving room for a reply that writes past the limit it was asked for.
+	 *
+	 * @param chunk                 the tactics this call covers, read only to see which sections are present
+	 * @param publisherLimit        slide budget for each publisher bullet
+	 * @param creativeLimit         slide budget for creative takeaways 1-3
+	 * @param creativeRecoLimit     slide budget for creative takeaway 4 (the optimisation)
+	 * @param geoLimit              slide budget for each geo string
+	 * @param audienceTakeawayLimit slide budget for the audience key takeaway
+	 * @param audienceShortLimit    slide budget for the other three audience strings
+	 * @param deviceTakeawayLimit   slide budget for the device key takeaway
+	 * @param deviceShortLimit      slide budget for the other three device strings
+	 * @return the instruction block, ending in a blank line before the campaign context
+	 */
+	String conclusionsInstruction(
+			List<TacticConclusionInput> chunk,
+			int publisherLimit, int creativeLimit, int creativeRecoLimit, int geoLimit,
+			int audienceTakeawayLimit, int audienceShortLimit, int deviceTakeawayLimit, int deviceShortLimit) {
+		if (chunk.stream().noneMatch(this::carriesAnySection)) {
+			return overviewOnlyInstruction();
+		}
 		int publisherPrompt = Math.max(1, (int) (publisherLimit * COMPRESSION_PROMPT_BUFFER_RATIO));
 		int creativePrompt = Math.max(1, (int) (creativeLimit * COMPRESSION_PROMPT_BUFFER_RATIO));
 		int creativeRecoPrompt = Math.max(1, (int) (creativeRecoLimit * COMPRESSION_PROMPT_BUFFER_RATIO));
@@ -1126,27 +834,16 @@ public class ClaudeBatchPromptBuilder {
 		int devTakeawayPrompt = Math.max(1, (int) (deviceTakeawayLimit * COMPRESSION_PROMPT_BUFFER_RATIO));
 		int devShortPrompt = Math.max(1, (int) (deviceShortLimit * COMPRESSION_PROMPT_BUFFER_RATIO));
 
-		String prompt =
+		String instruction =
 				"You are a senior digital media analyst writing per-tactic conclusions for a post-campaign report.\n\n"
 						+ "For EACH tactic below, return a JSON object with an \"overview\" string and, for EACH "
 						+ "breakdown section present in that tactic's data, that section's fields. Produce a section's "
 						+ "fields ONLY when that section appears in the tactic's data — never invent a section that is "
 						+ "not there.\n\n"
-						+ "ANALYTICAL PRINCIPLES — non-negotiable, apply to every text field:\n"
-						+ "1. OBSERVATION → EXPLANATION → RECOMMENDATION: state what happened, why (a specific cause), "
-						+ "and what it means — as one flowing statement, never labelled sections.\n"
-						+ "2. INTERPRET, NEVER ENUMERATE. The reader can see the numbers; explain what they mean.\n"
-						+ "3. 'SO WHAT' IS MANDATORY: every metric cited is followed by its business consequence.\n"
-						+ "4. NO GENERIC LANGUAGE: every sentence is specific to THIS campaign's numbers and audience.\n"
-						+ "5. NAME THE CAUSE for strong or soft performance.\n"
-						+ METRIC_DEVIATION_RULE
-						+ LEARNING_PHASE_RULE
-						+ "\n"
+						+ conclusionPrinciples()
 						+ "=== overview (ALWAYS produce) ===\n"
-						+ "MAX 190 CHARACTERS, ending on a complete word and sentence. Structure: [what the tactic "
-						+ "delivered vs plan] + [WHY it performed as it did] + [business so-what]. Past tense, business "
-						+ "English, max 2 sentences, no bullets. Focus metrics by tactic type: Display→Imps+CTR; "
-						+ "Video/Pre-roll→Imps+CTR+VCR; CTV/OTT→Imps+VCR; Audio→Completions.\n\n"
+						+ overviewSpec()
+						+ "\n"
 						+ "=== top_publishers (array of exactly 4 strings, when present) ===\n"
 						+ "KEY OBSERVATIONS for the 'Top Publishers' slide, written on behalf of the team that ran the "
 						+ "campaign (confident, complimentary of our own delivery). Each ONE complete sentence, at most "
@@ -1163,19 +860,19 @@ public class ClaudeBatchPromptBuilder {
 						+ "=== creative (array of exactly 4 strings, when present) ===\n"
 						+ "KEY TAKEAWAYS for the 'Creative analysis' slide. Takeaways 1-3 read the creative mix: ONE "
 						+ "sentence each, at most " + creativePrompt + " characters, grounded in the numbers (name real "
-						+ "creatives, cite impressions shares, CTR/VCR, spend). Vary angles: delivery/completion "
-						+ "anchor, engagement leader, and a read on creative format/size. "
+						+ "creatives, cite impressions shares, CTR and the completion rate exactly as the tactic's "
+						+ "creative table labels it — VCR for video, ACR for audio — and spend). Vary angles: "
+						+ "delivery/completion anchor, engagement leader, and a read on creative format/size. "
 						+ CREATIVE_SMALL_SAMPLE_RULE
-						+ "Takeaway 4 states an optimisation ALREADY MADE on creative during the flight and its "
-						+ "result, at most " + creativeRecoPrompt + " characters. Use the tactic's own KPI type for its "
-						+ "lead metric.\n\n"
+						+ creativeOptimisationRule("Takeaway 4", creativeRecoPrompt) + "\n"
 						+ "=== geo (array of exactly 5 strings, when present) ===\n"
 						+ "'WHAT THE MAP TELLS US' for the 'Geo analysis' slide. Strings 1-4 are insights: ONE sentence "
 						+ "each, at most " + geoPrompt + " characters, grounded in real markets/geos and the lead KPI; "
 						+ "vary angles: concentration across top geos, efficient (over-indexing) markets, reach with "
 						+ "softer engagement, and audience/market fit. Treat high-KPI low-volume markets as noise. "
 						+ "String 5 is DIFFERENT — a FORWARD-LOOKING recommendation (where to open budget, which "
-						+ "markets to scale), at most " + geoPrompt + " characters, still grounded in the table.\n\n"
+						+ "markets to scale), at most " + geoPrompt + " characters, still grounded in the table. "
+						+ GEO_TOP_MARKETS_RULE + "\n\n"
 						+ "=== audience (array of exactly 4 strings, when present) ===\n"
 						+ "For the 'Audience analysis' slide, in order: 1) KEY TAKEAWAY (who this tactic reached), at "
 						+ "most " + audTakeawayPrompt + " characters; 2) WHAT WORKED, at most " + audShortPrompt
@@ -1188,25 +885,147 @@ public class ClaudeBatchPromptBuilder {
 						+ "most " + devTakeawayPrompt + " characters; 2) WHAT WORKED, at most " + devShortPrompt
 						+ " characters; 3) WATCH-OUT, at most " + devShortPrompt + " characters; 4) RECOMMENDED ACTION "
 						+ "— FORWARD-LOOKING, which devices to lean into next, at most " + devShortPrompt
-						+ " characters. Ground in real devices (impressions, CTR, VCR, spend). CTR does not apply to "
+						+ " characters. Ground in real devices (impressions, CTR, spend and the completion rate exactly "
+						+ "as the tactic's device table labels it — VCR for video, ACR for audio). CTR does not apply to "
 						+ "Connected TV — never treat a missing CTV CTR as a zero or weakness. Treat high-rate "
 						+ "low-volume devices as noise.\n\n"
 						+ "Return ONLY a JSON object keyed by tactic, each key an object with the present sections, e.g.:\n"
 						+ "{\"tactic_1\": {\"overview\": \"...\", \"top_publishers\": [\"...\",\"...\",\"...\",\"...\"], "
 						+ "\"geo\": [\"...\",\"...\",\"...\",\"...\",\"...\"]}}\n"
-						+ "Rules: return ONLY the JSON (no markdown/backticks); analyst tone, no bullet characters; "
-						+ "do NOT invent metrics; every string ends on a complete sentence within its limit; English.\n\n"
-						+ campaignContextForConclusions(data, brief) + "\n\n"
-						+ AnthropicMessagesClient.CACHE_BREAKPOINT + "=== TACTIC DATA ===\n"
-						+ String.join("\n\n", dataBlocks);
-		return Optional.of(prompt);
+						+ conclusionsOutputRules();
+		return instruction;
+	}
+
+	/**
+	 * Builds the overview-only instruction: the same analyst framing, principles and overview spec as the
+	 * combined brief, with every section rule block dropped and the example reply reduced to the one field
+	 * the chunk can produce. Sent whenever no tactic in the chunk carries a section — see {@link
+	 * #buildTacticConclusionsPrompt} for why the section rules are not worth their cache slot in that shape.
+	 *
+	 * @return the overview-only instruction block, ending in a blank line before the campaign context
+	 */
+	String overviewOnlyInstruction() {
+		return "You are a senior digital media analyst writing per-tactic conclusions for a post-campaign report.\n\n"
+				+ "For EACH tactic below, return a JSON object carrying exactly ONE field: \"overview\".\n\n"
+				+ conclusionPrinciples()
+				+ "=== overview ===\n"
+				+ overviewSpec()
+				+ "\n"
+				+ "Return ONLY a JSON object keyed by tactic, e.g.:\n"
+				+ "{\"tactic_1\": {\"overview\": \"...\"}, \"tactic_2\": {\"overview\": \"...\"}}\n"
+				+ "Produce one key for EVERY tactic in the data below — none skipped, none invented.\n"
+				+ conclusionsOutputRules();
+	}
+
+	/**
+	 * The analytical principles both conclusions instructions open with, shared so the overview written in the
+	 * overview-only shape is held to exactly the same standard as one written alongside its sections.
+	 *
+	 * @return the principles block, newline-terminated
+	 */
+	String conclusionPrinciples() {
+		return "ANALYTICAL PRINCIPLES — non-negotiable, apply to every text field:\n"
+				+ "1. OBSERVATION → EXPLANATION → RECOMMENDATION: state what happened, why (a specific cause), "
+				+ "and what it means — as one flowing statement, never labelled sections.\n"
+				+ "2. INTERPRET, NEVER ENUMERATE. The reader can see the numbers; explain what they mean.\n"
+				+ "3. 'SO WHAT' IS MANDATORY: every metric cited is followed by its business consequence.\n"
+				+ "4. NO GENERIC LANGUAGE: every sentence is specific to THIS campaign's numbers and audience.\n"
+				+ "5. NAME THE CAUSE for strong or soft performance.\n"
+				+ METRIC_DEVIATION_RULE
+				+ LEARNING_PHASE_RULE
+				+ "\n";
+	}
+
+	/**
+	 * The {@code {{tactic n overview}}} field spec, shared by both conclusions instructions so the field is
+	 * asked for in identical words whichever shape the call takes.
+	 *
+	 * @return the overview spec, newline-terminated
+	 */
+	String overviewSpec() {
+		return "MAX 190 CHARACTERS, ending on a complete word and sentence. Structure: [what the tactic "
+				+ "delivered vs plan] + [WHY it performed as it did] + [business so-what]. Past tense, business "
+				+ "English, max 2 sentences, no bullets. Focus metrics by tactic type: Display→Imps+CTR; "
+				+ "Video/Pre-roll→Imps+CTR+VCR; CTV/OTT→Imps+VCR; Audio→Completions.\n";
+	}
+
+	/**
+	 * The closing output rules shared by both conclusions instructions.
+	 *
+	 * @return the rules line, ending in a blank line
+	 */
+	String conclusionsOutputRules() {
+		return "Rules: return ONLY the JSON (no markdown/backticks); analyst tone, no bullet characters; "
+				+ "do NOT invent metrics; every string ends on a complete sentence within its limit; English.\n\n";
+	}
+
+	/**
+	 * Whether a tactic carries at least one breakdown section with rows to reason over, using exactly the
+	 * emptiness checks {@link #tacticConclusionDataBlock} uses to decide whether to render that section — so
+	 * "the instruction mentions a section" and "the data block contains one" can never disagree.
+	 *
+	 * @param input the tactic's enabled-section inputs
+	 * @return {@code true} when at least one section would be rendered into the tactic's data block
+	 */
+	boolean carriesAnySection(TacticConclusionInput input) {
+		return hasPublisher(input) || hasCreative(input) || hasGeo(input) || hasAudience(input) || hasDevice(input);
+	}
+
+	/**
+	 * Whether the tactic carries publisher rows to reason over.
+	 *
+	 * @param input the tactic's enabled-section inputs
+	 * @return {@code true} when the publisher section has rows
+	 */
+	boolean hasPublisher(TacticConclusionInput input) {
+		return input.publisher() != null && input.publisher().rows() != null && !input.publisher().rows().isEmpty();
+	}
+
+	/**
+	 * Whether the tactic carries a creative table to reason over.
+	 *
+	 * @param input the tactic's enabled-section inputs
+	 * @return {@code true} when the creative section has rows
+	 */
+	boolean hasCreative(TacticConclusionInput input) {
+		return input.creative() != null && input.creative().table() != null && !input.creative().table().isEmpty();
+	}
+
+	/**
+	 * Whether the tactic carries a geo table to reason over.
+	 *
+	 * @param input the tactic's enabled-section inputs
+	 * @return {@code true} when the geo section has rows
+	 */
+	boolean hasGeo(TacticConclusionInput input) {
+		return input.geo() != null && input.geo().table() != null && !input.geo().table().isEmpty();
+	}
+
+	/**
+	 * Whether the tactic carries an audience table to reason over.
+	 *
+	 * @param input the tactic's enabled-section inputs
+	 * @return {@code true} when the audience section has rows
+	 */
+	boolean hasAudience(TacticConclusionInput input) {
+		return input.audience() != null && input.audience().table() != null && !input.audience().table().isEmpty();
+	}
+
+	/**
+	 * Whether the tactic carries a device table to reason over.
+	 *
+	 * @param input the tactic's enabled-section inputs
+	 * @return {@code true} when the device section has rows
+	 */
+	boolean hasDevice(TacticConclusionInput input) {
+		return input.device() != null && input.device().table() != null && !input.device().table().isEmpty();
 	}
 
 	/**
 	 * Builds the per-tactic audience-section pilot prompt: a small, self-contained call that asks for ONLY the
-	 * four "Audience analysis" slide strings as a bare JSON array of exactly four items, in slide order. Unlike
-	 * the combined conclusions prompt it carries a single tactic's audience block and demands a keyless array,
-	 * so there is no object key the model can drift on and the reply is validated purely by position and length.
+	 * four "Audience analysis" slide strings as a JSON object of exactly four keyed items, in slide order. Unlike
+	 * the combined conclusions prompt it carries a single tactic's audience block, so the reply is small and
+	 * every field it does carry can be read back on its own key — see {@link #sectionObjectRules}.
 	 * The instruction/context prefix is stable per run and marked cacheable, so each tactic re-reads it cheaply.
 	 *
 	 * @param input         the tactic's audience input (name + table); empty output when its table is blank
@@ -1235,7 +1054,7 @@ public class ClaudeBatchPromptBuilder {
 						+ "3) WATCH-OUT, at most " + shortPrompt + " characters;\n"
 						+ "4) RECOMMENDED ACTION — FORWARD-LOOKING, which age groups and segments to lean into next, at "
 						+ "most " + shortPrompt + " characters.\n\n"
-						+ sectionArrayRules(4)
+						+ sectionObjectRules(4)
 						+ campaignContextForConclusions(data, brief) + "\n\n"
 						+ AnthropicMessagesClient.CACHE_BREAKPOINT + "=== TACTIC: " + input.tacticName() + " ===\n"
 						+ "[AUDIENCE ANALYSIS]\n" + audienceContextBlock(input);
@@ -1244,8 +1063,8 @@ public class ClaudeBatchPromptBuilder {
 
 	/**
 	 * Builds the per-tactic publisher-section prompt: a small, self-contained call that asks for ONLY the four
-	 * "Top Publishers" slide observations as a bare JSON array of exactly four items. Keyless and single-tactic
-	 * like {@link #buildAudienceSectionPrompt}, so the reply is validated purely by position and length.
+	 * "Top Publishers" slide observations as a JSON object of exactly four keyed items. Single-tactic and
+	 * keyed like {@link #buildAudienceSectionPrompt}, so a partial reply still yields the fields it carries.
 	 *
 	 * @param input  the tactic's publisher input (name + rows); empty output when it has no rows
 	 * @param data   parsed campaign data supplying the shared campaign context block
@@ -1264,18 +1083,25 @@ public class ClaudeBatchPromptBuilder {
 						+ "post-campaign report, on behalf of the team that ran the campaign (confident, complimentary "
 						+ "of our own delivery).\n\n"
 						+ sectionPrinciples()
-						+ "Return FOUR key observations, each ONE complete sentence, at most " + prompt + " characters. "
-						+ "The table lists only the TOP ~15 publishers over a long tail of thousands more. We run an "
-						+ "AUDIENCE-FIRST approach: we chase the audience, not sites. Ground each in the numbers (name "
-						+ "real publishers, cite real shares/impressions, head vs long tail). At most ~20% may go beyond "
-						+ "the table and never as measured fact. Any optimisation is phrased as something WE ALREADY DID "
-						+ "(e.g. 'we shifted weight toward stronger publishers'); never say we blacklisted or paused a "
-						+ "TACTIC (say we REDUCED ITS WEIGHT). One of the 4 notes that we blacklisted a large number of "
-						+ "PUBLISHERS (hundreds to a few thousand, kept qualitative) to hold delivery on premium, "
-						+ "brand-safe inventory. Vary the 4 angles: volume/reach + long tail, audience-fit, "
-						+ "premium/brand-suitability incl. blacklisting, and steering weight to the strongest "
-						+ "publishers.\n\n"
-						+ sectionArrayRules(4)
+						+ "Return the four observations in THIS order, each ONE complete sentence:\n"
+						+ "1) VOLUME AND REACH — where delivery concentrated across the named publishers and how that "
+						+ "head compares with the long tail, at most " + prompt + " characters;\n"
+						+ "2) AUDIENCE FIT — why these publishers matched the audience we were chasing (we run an "
+						+ "AUDIENCE-FIRST approach: we chase the audience, not sites), at most " + prompt
+						+ " characters;\n"
+						+ "3) PREMIUM AND BRAND SUITABILITY — state that WE BLACKLISTED a large number of PUBLISHERS "
+						+ "(hundreds to a few thousand, kept qualitative — never a precise count) to hold delivery on "
+						+ "premium, brand-safe inventory, at most " + prompt + " characters;\n"
+						+ "4) STEERING WEIGHT — an optimisation WE ALREADY MADE toward the strongest publishers and what "
+						+ "it produced, at most " + prompt + " characters.\n"
+						+ "Ground every observation in the numbers: name real publishers from the table and cite their "
+						+ "real shares/impressions. The table lists only this tactic's top publishers out of thousands; "
+						+ "the HEAD VS LONG TAIL line under it states the exact share of delivery they carry — cite that "
+						+ "share rather than estimating coverage, and never state anything the table does not show as a "
+						+ "measured fact. Every optimisation is phrased as something WE ALREADY DID (e.g. 'we shifted "
+						+ "weight toward stronger publishers'); never say we blacklisted or paused a TACTIC (say we "
+						+ "REDUCED ITS WEIGHT).\n\n"
+						+ sectionObjectRules(4)
 						+ campaignContextForConclusions(data, brief) + "\n\n"
 						+ AnthropicMessagesClient.CACHE_BREAKPOINT + "=== TACTIC: " + input.tacticName() + " ===\n"
 						+ "[TOP PUBLISHERS]\n" + publisherContextBlock(input);
@@ -1283,7 +1109,7 @@ public class ClaudeBatchPromptBuilder {
 	}
 
 	/**
-	 * Builds the per-tactic creative-section prompt: a bare JSON array of exactly four "Creative analysis"
+	 * Builds the per-tactic creative-section prompt: a JSON object of exactly four keyed "Creative analysis"
 	 * strings — three reads of the creative mix plus one optimisation already made. Keyless and single-tactic.
 	 *
 	 * @param input     the tactic's creative input (name + KPI type + table); empty output when the table is blank
@@ -1306,11 +1132,11 @@ public class ClaudeBatchPromptBuilder {
 						+ sectionPrinciples()
 						+ "Return the four strings in THIS order. Takeaways 1-3 read the creative mix: ONE sentence "
 						+ "each, at most " + prompt + " characters, grounded in the numbers (name real creatives, cite "
-						+ "impressions shares, CTR/VCR, spend). Vary angles: delivery/completion anchor, engagement "
+						+ "impressions shares, CTR and the completion rate exactly as the table below labels it — VCR "
+						+ "for video, ACR for audio — and spend). Vary angles: delivery/completion anchor, engagement "
 						+ "leader, and a read on creative format/size. " + CREATIVE_SMALL_SAMPLE_RULE
-						+ "String 4 states an optimisation ALREADY MADE on creative during the flight and its result, "
-						+ "at most " + recoPrompt + " characters. Use the tactic's own KPI type for its lead metric.\n\n"
-						+ sectionArrayRules(4)
+						+ creativeOptimisationRule("String 4", recoPrompt) + "\n"
+						+ sectionObjectRules(4)
 						+ campaignContextForConclusions(data, brief) + "\n\n"
 						+ AnthropicMessagesClient.CACHE_BREAKPOINT + "=== TACTIC: " + input.tacticName()
 						+ kpiSuffix(input.kpiType()) + " ===\n"
@@ -1319,7 +1145,7 @@ public class ClaudeBatchPromptBuilder {
 	}
 
 	/**
-	 * Builds the per-tactic geo-section prompt: a bare JSON array of exactly five "Geo analysis" strings — four
+	 * Builds the per-tactic geo-section prompt: a JSON object of exactly five keyed "Geo analysis" strings — four
 	 * insights plus one forward-looking recommendation. Keyless and single-tactic.
 	 *
 	 * @param input the tactic's geo input (name + KPI type + table); empty output when the table is blank
@@ -1343,8 +1169,9 @@ public class ClaudeBatchPromptBuilder {
 						+ "concentration across top geos, efficient (over-indexing) markets, reach with softer "
 						+ "engagement, and audience/market fit. Treat high-KPI low-volume markets as noise. String 5 is "
 						+ "DIFFERENT — a FORWARD-LOOKING recommendation (where to open budget, which markets to scale), "
-						+ "at most " + prompt + " characters, still grounded in the table.\n\n"
-						+ sectionArrayRules(5)
+						+ "at most " + prompt + " characters, still grounded in the table. "
+						+ GEO_TOP_MARKETS_RULE + "\n\n"
+						+ sectionObjectRules(5)
 						+ campaignContextForConclusions(data, brief) + "\n\n"
 						+ AnthropicMessagesClient.CACHE_BREAKPOINT + "=== TACTIC: " + input.tacticName()
 						+ kpiSuffix(input.kpiType()) + " ===\n"
@@ -1353,7 +1180,7 @@ public class ClaudeBatchPromptBuilder {
 	}
 
 	/**
-	 * Builds the per-tactic device-section prompt: a bare JSON array of exactly four "Device breakdown" strings,
+	 * Builds the per-tactic device-section prompt: a JSON object of exactly four keyed "Device breakdown" strings,
 	 * in the same takeaway/what-worked/watch-out/recommendation order as audience. Keyless and single-tactic.
 	 *
 	 * @param input         the tactic's device input (name + table); empty output when the table is blank
@@ -1380,10 +1207,11 @@ public class ClaudeBatchPromptBuilder {
 						+ "3) WATCH-OUT, at most " + shortPrompt + " characters;\n"
 						+ "4) RECOMMENDED ACTION — FORWARD-LOOKING, which devices to lean into next, at most "
 						+ shortPrompt + " characters.\n"
-						+ "Ground in real devices (impressions, CTR, VCR, spend). CTR does not apply to Connected TV — "
+						+ "Ground in real devices (impressions, CTR, spend and the completion rate exactly as the "
+						+ "table below labels it — VCR for video, ACR for audio). CTR does not apply to Connected TV — "
 						+ "never treat a missing CTV CTR as a zero or weakness. Treat high-rate low-volume devices as "
 						+ "noise.\n\n"
-						+ sectionArrayRules(4)
+						+ sectionObjectRules(4)
 						+ campaignContextForConclusions(data, brief) + "\n\n"
 						+ AnthropicMessagesClient.CACHE_BREAKPOINT + "=== TACTIC: " + input.tacticName() + " ===\n"
 						+ "[DEVICE BREAKDOWN]\n" + deviceContextBlock(input);
@@ -1405,19 +1233,61 @@ public class ClaudeBatchPromptBuilder {
 	}
 
 	/**
-	 * The shared closing rules block for a per-section prompt: demand ONLY a bare JSON array of exactly the
-	 * given count of non-empty strings and nothing else, so the reply carries no object key the model can drift
-	 * on and can be validated by position and length alone.
+	 * Builds the "optimisation already made" instruction for the creative slide's last string, shared by the
+	 * standalone creative-section prompt and the combined conclusions prompt so both licence the same inference
+	 * in the same words.
 	 *
-	 * @param count the exact number of strings the array must carry
+	 * <p>The slot asks what was changed on creative mid-flight and what it achieved, but nothing in the data
+	 * records that: a creative table carries performance, not a change log. Left unsaid, the ask collides with
+	 * the surrounding "do NOT invent" rules, and the model resolves the collision the wrong way — a hedge, a
+	 * generic line, or a complaint about missing data in a slot the slide expects copy in. Naming the one thing
+	 * it may reconstruct (the action) while holding every creative name and every number to the table is what
+	 * keeps the string both filled and honest.
+	 *
+	 * @param lead  how the instruction names the slot, e.g. {@code "String 4"} or {@code "Takeaway 4"}
+	 * @param limit character budget quoted to Claude for this string
+	 * @return the optimisation instruction, newline-terminated
+	 */
+	String creativeOptimisationRule(String lead, int limit) {
+		return lead + " states an optimisation ALREADY MADE on creative during the flight and its result, at most "
+				+ limit + " characters. The data carries NO change log, so this ONE string is EXPECTED to be "
+				+ "reconstructed rather than quoted: infer the most plausible optimisation the numbers imply — "
+				+ "shifting weight toward the strongest creative, retiring an under-delivering size or format, "
+				+ "refreshing worn creative, rebalancing spend across sizes — and state it in past tense as "
+				+ "something WE DID. That is expected here and is NOT a data problem: never hedge it, never say the "
+				+ "change log is missing, never leave it generic. Constraints: every creative you name and every "
+				+ "number you cite must come from the table (never invent a metric), the result you claim must be "
+				+ "consistent with the table's figures, and the action must obey the small-sample and budget-shift "
+				+ "rules above. Use the tactic's own KPI type for its lead metric.\n";
+	}
+
+	/**
+	 * The shared closing rules block for a per-section prompt: demand ONLY a JSON object carrying one
+	 * {@code field_N} key per slide field, in the order described above.
+	 *
+	 * <p>A keyed object is the shape the calls that never fail already use — the tactic overviews, the campaign
+	 * results and the per-tactic thoughts all return one. It is also the shape the reply can be read
+	 * <em>partially</em> from: a named key is still findable when a neighbouring one is missing or malformed,
+	 * where a bare array loses every field the moment its length is wrong. The earlier keyless-array contract
+	 * bought positional strictness at the price of an all-or-nothing reply, and the strictness was never worth
+	 * a blank slide.
+	 *
+	 * @param count the number of slide fields the object must carry, keyed {@code field_1}..{@code field_count}
 	 * @return the closing rules block, newline-terminated
 	 */
-	String sectionArrayRules(int count) {
+	String sectionObjectRules(int count) {
+		StringBuilder example = new StringBuilder("{");
+		for (int i = 1; i <= count; i++) {
+			example.append(i == 1 ? "" : ", ").append("\"field_").append(i).append("\": \"...\"");
+		}
+		example.append('}');
 		return "OUTPUT FORMAT — follow exactly:\n"
-				+ "- Your reply MUST begin with '[' and be ONLY a JSON array of EXACTLY " + count + " non-empty "
-				+ "strings, in the order above (no markdown, no backticks, no object, no keys).\n"
-				+ "- Write NO preamble, explanation, reasoning, or commentary before or after the array — the array "
-				+ "is the entire reply.\n"
+				+ "- Reply with ONLY a JSON object carrying EXACTLY these " + count + " keys, whose values are the "
+				+ count + " strings described above IN THAT ORDER: " + example + "\n"
+				+ "- Every value is a non-empty string. No markdown, no backticks, no arrays, no extra keys, no "
+				+ "nesting.\n"
+				+ "- Write NO preamble, explanation, reasoning, or commentary before or after the object — the "
+				+ "object is the entire reply.\n"
 				+ "- Do NOT refuse and do NOT flag data problems. If the data looks unusual, mislabelled, incomplete "
 				+ "or inconsistent, still write the best analyst copy you can from whatever is given; never replace a "
 				+ "string with a complaint about the data.\n"
@@ -1449,19 +1319,19 @@ public class ClaudeBatchPromptBuilder {
 		StringBuilder block = new StringBuilder();
 		block.append("tactic_").append(input.tacticNum()).append(" — ").append(tactic.name()).append('\n');
 		block.append("PERFORMANCE (for overview): ").append(tacticMetricLine(tactic)).append('\n');
-		if (input.publisher() != null && input.publisher().rows() != null && !input.publisher().rows().isEmpty()) {
+		if (hasPublisher(input)) {
 			block.append("[TOP PUBLISHERS]\n").append(publisherContextBlock(input.publisher())).append('\n');
 		}
-		if (input.creative() != null && input.creative().table() != null && !input.creative().table().isEmpty()) {
+		if (hasCreative(input)) {
 			block.append("[CREATIVE ANALYSIS]\n").append(creativeContextBlock(input.creative())).append('\n');
 		}
-		if (input.geo() != null && input.geo().table() != null && !input.geo().table().isEmpty()) {
+		if (hasGeo(input)) {
 			block.append("[GEO ANALYSIS]\n").append(geoContextBlock(input.geo())).append('\n');
 		}
-		if (input.audience() != null && input.audience().table() != null && !input.audience().table().isEmpty()) {
+		if (hasAudience(input)) {
 			block.append("[AUDIENCE ANALYSIS]\n").append(audienceContextBlock(input.audience())).append('\n');
 		}
-		if (input.device() != null && input.device().table() != null && !input.device().table().isEmpty()) {
+		if (hasDevice(input)) {
 			block.append("[DEVICE BREAKDOWN]\n").append(deviceContextBlock(input.device())).append('\n');
 		}
 		return block.toString();
@@ -1481,7 +1351,32 @@ public class ClaudeBatchPromptBuilder {
 			block.append(row.name()).append(" | ").append(row.impressions())
 					.append(" | ").append(row.shareOfVoice()).append('\n');
 		}
+		block.append(publisherCoverageLine(input));
 		return block.toString();
+	}
+
+	/**
+	 * Renders the head-vs-long-tail line that closes a publisher block: what the listed rows carry against the
+	 * tactic's whole delivery, as impressions and as a share.
+	 *
+	 * <p>This is the figure the prompt tells Claude to cite instead of estimating how much of the campaign the
+	 * table covers — a real number from the sheet rather than a licence to guess. It is omitted whenever the
+	 * arithmetic would be untrustworthy: either total is unknown, or the rows add up to more than the tactic
+	 * delivered (a mistyped cell), in which case the copy is better off saying nothing about coverage.
+	 *
+	 * @param input the tactic's publisher input carrying both impression totals
+	 * @return the coverage line, newline-terminated, or an empty string when it cannot be stated
+	 */
+	String publisherCoverageLine(PublisherObservationInput input) {
+		long head = input.headImpressions();
+		long total = input.tacticImpressions();
+		if (head <= 0 || total <= 0 || head > total) {
+			return "";
+		}
+		long share = Math.round(100.0 * head / total);
+		return "HEAD VS LONG TAIL: these " + input.rows().size() + " publishers carry " + fmt.intGroup(head)
+				+ " of the tactic's " + fmt.intGroup(total) + " impressions (" + share + "% of its delivery); "
+				+ "the remaining " + (100 - share) + "% sits in a long tail of thousands of unlisted publishers.\n";
 	}
 
 	/**
@@ -1707,6 +1602,14 @@ public class ClaudeBatchPromptBuilder {
 		String groupNums = String.join(", ", groupNumList);
 		String groupRanges = String.join("; ", groupRangeList);
 
+		int overviewPrompt = bufferedLimit(RESULTS_OVERVIEW_LIMIT);
+		int thoughtsPrompt = bufferedLimit(THOUGHTS_TOTAL_LIMIT);
+		int recTitlePrompt = bufferedLimit(RECOMMENDATION_TITLE_LIMIT);
+		int recTextPrompt = bufferedLimit(RECOMMENDATION_TEXT_LIMIT);
+		int fOpportunityPrompt = bufferedLimit(F_OPPORTUNITY_LIMIT);
+		int fFactPrompt = bufferedLimit(F_FACT_LIMIT);
+		int fStorytellingPrompt = bufferedLimit(F_STORYTELLING_LIMIT);
+
 		String prompt =
 				"You are a senior digital media analyst writing the campaign-level copy for a post-campaign report.\n\n"
 						+ "ANALYTICAL PRINCIPLES — non-negotiable, apply to every text field:\n"
@@ -1726,24 +1629,33 @@ public class ClaudeBatchPromptBuilder {
 						+ "{\n"
 						+ "  \"results_overviews\": { // Keyed by tactic-group number as strings (" + groupNums + "). "
 						+ "One entry PER GROUP (" + groupRanges + "). Each value covers ONLY that group's tactics, "
-						+ "EXACTLY 2 SENTENCES, past tense, ≤380 chars: sentence 1 = overall result + key metric vs "
+						+ "EXACTLY 2 SENTENCES, past tense, ≤" + overviewPrompt
+						+ " chars: sentence 1 = overall result + key metric vs "
 						+ "plan + a cause; sentence 2 = which tactic(s) led vs lagged, each with a reason. "
+						+ "Refer to a tactic by the display name given after its number below (e.g. 'CTV'), NEVER as "
+						+ "'Tactic 7'; when a tactic has no name, describe it without a label. "
 						+ "Client-facing tone: lead with what was achieved, frame gaps as external constraints. },\n"
 						+ "  \"thoughts_on_performance\": string, // EXACTLY 4 short paragraphs joined by \" | \" "
-						+ "(exactly 3 separators), ≤700 chars total. (1) best tactic/channel + WHY; (2) why the "
+						+ "(exactly 3 separators), ≤" + thoughtsPrompt
+						+ " chars total. (1) best tactic/channel + WHY; (2) why the "
 						+ "campaign succeeded — name the mechanism; (3) one creative/format insight; (4) an efficiency "
 						+ "or reach insight.\n"
-						+ "  \"optimization_recommendations\": array, // EXACTLY 4 objects {\"title\": ≤28 chars Title "
-						+ "Case imperative, \"text\": ≤125 chars one sentence}. Distinct forward-looking levers grounded "
+						+ "  \"optimization_recommendations\": array, // EXACTLY 4 objects {\"title\": ≤"
+						+ recTitlePrompt
+						+ " chars Title Case imperative, \"text\": ≤" + recTextPrompt
+						+ " chars one sentence}. Distinct forward-looking levers grounded "
 						+ "in the results; proactive optimisations, never a fix for past error.\n"
 						+ (hasFrequencies
-								? "  \"f_opportunity\": string, // ≤180 chars. Name the client's industry (infer it) and "
+								? "  \"f_opportunity\": string, // ≤" + fOpportunityPrompt
+								+ " chars. Name the client's industry (infer it) and "
 								+ "convey: it takes " + frequencies.plan() + " touchpoints to move a user from passive "
 								+ "awareness to active intent. Use " + frequencies.plan() + " VERBATIM.\n"
-								+ "  \"f_fact\": string, // ≤140 chars. Actual delivered frequency was " + frequencies.fact()
+								+ "  \"f_fact\": string, // ≤" + fFactPrompt + " chars. Actual delivered frequency was "
+								+ frequencies.fact()
 								+ " touchpoints per user, closely aligned with plan. Use " + frequencies.fact()
 								+ " VERBATIM.\n"
-								+ "  \"f_storytelling\": string, // ≤320 chars. Frequency was " + frequencies.fact() + " vs "
+								+ "  \"f_storytelling\": string, // ≤" + fStorytellingPrompt + " chars. Frequency was "
+								+ frequencies.fact() + " vs "
 								+ frequencies.plan() + ", positively impacting performance; recommend maintaining it"
 								+ (frequencies.remainingAudience() != null
 										? " as we engage the remaining ~" + fmt.compact(frequencies.remainingAudience())
@@ -1756,9 +1668,24 @@ public class ClaudeBatchPromptBuilder {
 						+ "thoughts_on_performance uses \" | \" not newlines; each field ends on a complete sentence "
 						+ "within its limit; English.\n\n"
 						+ campaignContextForConclusions(data, brief) + "\n\n"
-						+ AnthropicMessagesClient.CACHE_BREAKPOINT + "=== PER-TACTIC CONCLUSIONS ===\n"
+						// Deliberately NO cache breakpoint: this prompt's instruction prefix is unique to the
+						// campaign-results call and the call runs once per report, so a cache block written here
+						// could never be read back. Marking it would only pay the cache-write surcharge.
+						+ "=== PER-TACTIC CONCLUSIONS ===\n"
 						+ perTacticDigestBlock(perTactic);
 		return Optional.of(prompt);
+	}
+
+	/**
+	 * Shrinks a field's real character budget to the smaller number quoted to Claude, so a reply that lands
+	 * slightly over the limit it was given still fits the budget actually enforced on it and skips the
+	 * compression call. Same {@link #COMPRESSION_PROMPT_BUFFER_RATIO} the per-section prompts already apply.
+	 *
+	 * @param limit the field's real character budget
+	 * @return the buffered limit to quote in the prompt, at least 1
+	 */
+	int bufferedLimit(int limit) {
+		return Math.max(1, (int) (limit * COMPRESSION_PROMPT_BUFFER_RATIO));
 	}
 
 	/**
@@ -1766,8 +1693,11 @@ public class ClaudeBatchPromptBuilder {
 	 * Step-3 thoughts when present, otherwise its overview plus its short breakdown digest lines. Tactics with
 	 * no content at all are skipped.
 	 *
+	 * The tactic's display name is appended to its header when the sheet supplied one, so the campaign copy can
+	 * name the channel rather than a bare tactic number.
+	 *
 	 * @param perTactic the per-tactic digests, in tactic order
-	 * @return the {@code Tactic N: …} digest block
+	 * @return the {@code Tactic N — Name: …} digest block
 	 */
 	String perTacticDigestBlock(List<TacticNarrativeDigest> perTactic) {
 		StringBuilder block = new StringBuilder();
@@ -1795,7 +1725,11 @@ public class ClaudeBatchPromptBuilder {
 				}
 			}
 			if (body.length() > 0) {
-				block.append("Tactic ").append(digest.tacticNum()).append(":\n").append(body);
+				block.append("Tactic ").append(digest.tacticNum());
+				if (normalizer.notBlank(digest.tacticName())) {
+					block.append(" — ").append(digest.tacticName().trim());
+				}
+				block.append(":\n").append(body);
 			}
 		}
 		return block.toString();

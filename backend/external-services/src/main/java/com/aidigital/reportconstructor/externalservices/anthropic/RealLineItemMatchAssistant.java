@@ -64,7 +64,7 @@ public class RealLineItemMatchAssistant implements LineItemMatchAssistant {
 			return Map.of();
 		}
 		String prompt = buildPrompt(tactics, fitted);
-		JsonNode parsed = messagesClient.callJsonObject(prompt, MAX_TOKENS, TIMEOUT_SECONDS, "LineItemMatch", false);
+		JsonNode parsed = messagesClient.callJsonObject(prompt, MAX_TOKENS, TIMEOUT_SECONDS, "LineItemMatch", true);
 		if (parsed == null) {
 			return Map.of();
 		}

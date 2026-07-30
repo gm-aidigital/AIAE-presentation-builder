@@ -60,6 +60,9 @@ logging:
   level:
     root: INFO
     org.zalando.logbook: TRACE   # TRACE on the logbook logger → emit req/resp lines
+    # DEBUG here dumps the full text of any Claude reply that failed to parse, so a section failure can be
+    # diagnosed on a deployed run without widening every other logger.
+    com.aidigital.reportconstructor.externalservices.anthropic: ${CLAUDE_LOG_LEVEL:INFO}
 
 # App-specific config — these become AuthProperties / UsageLoggingProperties
 # via @ConfigurationProperties("app.auth") and ("app.usage-logging").
@@ -435,16 +438,31 @@ external:
   anthropic:
     api-key: ${ANTHROPIC_API_KEY:}
     model: ${ANTHROPIC_MODEL:claude-sonnet-4-6}
-    # Tactics per Step-2 combined conclusions call (slides-from-sheet flow). 1 keeps the cached
-    # instruction prefix re-read cheaply per tactic; raise to batch more tactics per call.
-    breakdown-chunk-size: ${CLAUDE_BREAKDOWN_CHUNK_SIZE:1}
+    # Sampling temperature for every Claude call. Every prompt here demands strict JSON inside hard character
+    # budgets, so the API default of 1.0 buys variety at the cost of format stability; 0.4 keeps the copy
+    # varied while holding the schema and the limits. Clamped to 0.0..1.0.
+    temperature: ${CLAUDE_TEMPERATURE:0.4}
+    # Tactics per Step-2 combined conclusions call (slides-from-sheet flow). 7 because with the per-section
+    # calls on, this call writes only each tactic's ~190-char overview: a chunk of 7 is a small reply, cuts a
+    # 28-tactic deck from 28 calls to 4, and lets the model see neighbouring tactics instead of writing each
+    # overview blind. Chunks run concurrently, bounded by max-concurrent-calls.
+    breakdown-chunk-size: ${CLAUDE_BREAKDOWN_CHUNK_SIZE:7}
     # Max Claude HTTP calls in flight at once across a run (rate-limit guard for the per-tactic fan-out).
     max-concurrent-calls: ${CLAUDE_MAX_CONCURRENT_CALLS:6}
     # When true, EACH breakdown section (publishers, creative, geo, audience, device) is produced by its own
-    # small dedicated per-tactic call — a keyless fixed-length JSON array with a strict positional accept +
-    # retry — fanned out in parallel, instead of all sections coming from the big combined conclusions call.
+    # small dedicated per-tactic call — a JSON object keyed field_1..field_N, read field by field so a partial
+    # reply still ships what it answered — fanned out in parallel, instead of all sections coming from the
+    # big combined conclusions call.
     # The combined call then only writes each tactic's overview. Off by default.
     per-section-calls-enabled: ${CLAUDE_PER_SECTION_CALLS:true}
-    # Extra attempts a per-section call makes when its reply fails the positional contract before the tactic's
-    # section ships blank. Default 2 means up to three sends in total.
-    section-retries: ${CLAUDE_SECTION_RETRIES:2}
+    # Extra attempts a per-section call makes when its reply came back missing fields, before the fullest
+    # attempt is shipped as it stands. Default 1 means one retry, two sends in total — a third send costs a
+    # third of the section budget and, on the failures seen so far, repeats the same shortfall.
+    section-retries: ${CLAUDE_SECTION_RETRIES:1}
+    # Extra attempts ANY Claude HTTP call makes after a transient upstream failure (429/5xx/522/529, dropped
+    # connection). 1 means one retry, two sends in total, matching section-retries: a run fans out many calls,
+    # so a third send mostly lengthens an already-slow run rather than rescuing a still-failing upstream.
+    max-retries: ${CLAUDE_MAX_RETRIES:1}
+    # Characters of an unparseable reply written to its WARN line. Raise temporarily when a parse failure has
+    # to be diagnosed on a deployed run and 400 chars stop short of the defect; the full reply is on DEBUG.
+    reply-snippet-limit: ${CLAUDE_REPLY_SNIPPET_LIMIT:400}

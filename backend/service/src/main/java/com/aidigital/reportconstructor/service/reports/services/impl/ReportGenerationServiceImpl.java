@@ -50,6 +50,8 @@ import com.aidigital.reportconstructor.service.reports.ports.SlidesProvider;
 import com.aidigital.reportconstructor.service.reports.ports.UserGoogleTokenProvider;
 import com.aidigital.reportconstructor.service.reports.services.PlaceholderResolverService;
 import com.aidigital.reportconstructor.service.reports.services.ReportGenerationService;
+import com.aidigital.reportconstructor.service.reports.diagnostics.ClaudeFailureLog;
+import com.aidigital.reportconstructor.service.reports.diagnostics.ClaudeFailureScope;
 import com.aidigital.reportconstructor.service.reports.usage.ClaudeUsageScope;
 import com.aidigital.reportconstructor.service.reports.usage.ClaudeUsageTracker;
 import lombok.RequiredArgsConstructor;
@@ -130,6 +132,8 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	private final AsyncTaskExecutor applicationTaskExecutor;
 	/** Per-run Claude token accounting, opened in {@link #run} and stamped onto the job when it ends. */
 	private final ClaudeUsageTracker usageTracker;
+
+	private final ClaudeFailureLog failureLog;
 	/** Reduces the request's per-tactic breakdown selections into the typed enabled-sections map. */
 	private final BreakdownSelectionResolver breakdownResolver;
 	/** The shared "&gt; 2 breakdowns" gate deciding which tactics get Step-3 thoughts and the thoughts slide. */
@@ -178,6 +182,10 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		// still reports the tokens it burned — those are billed either way, and a failed expensive run is
 		// exactly what the admin token dashboard exists to make visible.
 		ClaudeUsageScope usageScope = usageTracker.begin(jobId, null, userEmail);
+		// Opened alongside it for the same reason, on the other axis: a reply Claude sent but the pipeline
+		// rejected only shows up in the server log, which the person who ran the report cannot read. Collecting
+		// the reasons here puts them on the result card next to the blank slide they produced.
+		failureLog.begin();
 		try {
 			if (target == GenerationTarget.SLIDES_FROM_SHEET) {
 				// Step 2 of the sheet-as-source flow: the user-reviewed sheet is the only input, so
@@ -226,9 +234,10 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 				ccB = (live && placeholders.needTactical(payload, data))
 						? claude.batchTactical(data, brief) : claudeDefaults.emptyTactical();
 
-				jobProgress.markJobRunningAtStep(jobId, 5, "Claude — executive batch (C)");
-				ccC = (live && placeholders.needResults(payload, data))
-						? claude.batchResults(data, brief, frequencies) : claudeDefaults.emptyResults();
+				// The campaign-level result copy is produced by the sheet flow's own campaign batch
+				// (see runSlidesFromSheet), so this direct-to-deck path ships the empty shape and the
+				// resolvers fall back to whatever the workbook already carries.
+				ccC = claudeDefaults.emptyResults();
 			}
 
 			String geoSummary = (live && placeholders.needGeoSummary(payload))
@@ -291,6 +300,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		} finally {
 			recordUsage(jobId, usageScope);
 			usageTracker.clear();
+			failureLog.clear();
 		}
 	}
 
@@ -346,7 +356,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		// digest (older sheet, or Claude stubbed when step 1 ran).
 		String sheetBrief = sheetValues.get(RFP_INFO_TOKEN);
 		String briefContext = sheetBrief == null || sheetBrief.isBlank() ? payload.brief() : sheetBrief;
-		String brief = combineBriefWithChangeLog(briefContext, sheetValues.get(CHANGE_LOG_TOKEN));
+		String briefSource = combineBriefWithChangeLog(briefContext, sheetValues.get(CHANGE_LOG_TOKEN));
 		CampaignData data = sheetCampaign.read(sheetValues, tacticCount);
 		// Frequencies are reconstructed from the reviewed sheet — never the raw media plan — and without a
 		// fresh random reach uplift, so the Claude frequency narrative and the deck's frequency figures both
@@ -357,6 +367,11 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 					jobId, tacticCount, describeTactics(data));
 		}
 		boolean live = claude.isLive();
+		// Every call below repeats this text as context, so it is bounded to the digest budget before any of them
+		// sees it. The sheet's {{RFP info}} normally already holds step 1's digest, but it is a user-editable cell,
+		// the change log above is appended raw, and an older sheet falls back to the payload's raw brief — this is
+		// where those three paths are prevented from pushing the full brief into every prompt of the run.
+		String brief = live ? claude.digestBriefIfOversized(briefSource) : briefSource;
 		// Batch A: strategic narrative only (proposal + insights). Audience already lives in the sheet from the
 		// sheet-build step, so this flow never regenerates it — no duplicate Claude work across the two steps.
 		ClaudeStrategic ccA = live ? claude.batchStrategicNarrative(data, brief) : claudeDefaults.emptyStrategic();
@@ -462,21 +477,24 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 				dev.inputs().keySet(), devInsights, prelim));
 
 		// Step 3 — per-tactic "thoughts on tactic performance" for the tactics with more than two breakdowns
-		// (the same gate the thoughts slide uses). Written into the breakdown token map so the slide picks
-		// them up when it is duplicated.
+		// (the same gate the thoughts slide uses). One call per tactic, all dispatched at once so they run in
+		// parallel like Step 2's section calls. Written into the breakdown token map so the slide picks them up
+		// when it is duplicated.
 		Map<Integer, Set<BreakdownType>> enabledByTactic = qualifyingSelections(payload, tacticCount);
 		Set<Integer> qualifying = thoughtsGate.qualifyingTactics(enabledByTactic);
+		Map<Integer, String> namesByTactic = tacticNames(prelim, tacticCount);
 		List<TacticThoughts> thoughts = List.of();
 		if (live && !qualifying.isEmpty()) {
 			List<TacticThoughtsInput> thoughtsInputs = conclusionAssembler.toThoughtsInputs(
-					conclusions, tacticNames(prelim, tacticCount), qualifying);
-			thoughts = claude.batchTacticThoughts(thoughtsInputs, brief);
+					conclusions, namesByTactic, qualifying);
+			thoughts = joinThoughts(dispatchThoughts(thoughtsInputs, usageScope, brief));
 		}
 		writeThoughtsTokens(breakdownValues, qualifying, thoughts, prelim);
 
 		// Step 4 — campaign-level results (results overviews, performance thoughts, recommendations, frequency)
 		// from the per-tactic digests; the Step-2 overviews are merged back in for the tactic-overview slides.
-		List<TacticNarrativeDigest> digests = conclusionAssembler.toCampaignDigests(conclusions, thoughts);
+		List<TacticNarrativeDigest> digests =
+				conclusionAssembler.toCampaignDigests(conclusions, namesByTactic, thoughts);
 		ClaudeResults campaign = live
 				? claude.batchCampaignResults(data, brief, frequencies, digests) : claudeDefaults.emptyResults();
 		// A silent empty campaign result despite real per-tactic digests means Batch C degraded to the empty DTO
@@ -540,6 +558,13 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		jobWarnings.addAll(breakdownChartWarnings);
 		jobWarnings.addAll(chartWarnings);
 
+		// Every reply Claude sent that the pipeline could not use, in the order it happened: the parse failure
+		// or the wrong item count that left a slide blank, verbatim enough to act on without the server log.
+		ClaudeFailureScope failures = failureLog.current();
+		if (failures != null) {
+			jobWarnings.addAll(failures.snapshot());
+		}
+
 		jobProgress.recordArtifact(jobId, fileName, payload.sheetUrl());
 		jobProgress.markJobDone(jobId, slideUrl, warnings.serializeWarnings(jobWarnings));
 	}
@@ -600,9 +625,60 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	<T> Map<Integer, CompletableFuture<List<String>>> dispatchSection(
 			Map<Integer, T> inputs, ClaudeUsageScope usageScope, Function<T, List<String>> call) {
 		Map<Integer, CompletableFuture<List<String>>> futures = new LinkedHashMap<>();
+		// Both scopes are read here, on the run's own thread, and bound around each call on its worker thread —
+		// otherwise a section rejected off-thread would leave neither its tokens nor its reason behind.
+		ClaudeFailureScope failureScope = failureLog.current();
 		inputs.forEach((tacticNum, input) -> futures.put(tacticNum, CompletableFuture.supplyAsync(
-				usageTracker.inScope(usageScope, () -> call.apply(input)), applicationTaskExecutor)));
+				usageTracker.inScope(usageScope, failureLog.inScope(failureScope, () -> call.apply(input))),
+				applicationTaskExecutor)));
 		return futures;
+	}
+
+	/**
+	 * Dispatches the Step-3 per-tactic thoughts calls — one call per qualifying tactic — on the shared
+	 * virtual-thread executor and under the same usage and failure scopes {@link #dispatchSection} uses, so each
+	 * call's tokens are still billed to this job and its rejection reasons still reach the report card even
+	 * though it runs off the request thread. It returns the still-running futures in input order without joining,
+	 * so every tactic runs in parallel (bounded by the transport's shared Claude concurrency limit) instead of
+	 * one after another.
+	 *
+	 * @param inputs     one input per qualifying tactic, in slide order
+	 * @param usageScope the usage scope to run each call under so its tokens are billed to this job
+	 * @param brief      free-text campaign brief passed through to every call
+	 * @return the running futures, in input order
+	 */
+	List<CompletableFuture<TacticThoughts>> dispatchThoughts(
+			List<TacticThoughtsInput> inputs, ClaudeUsageScope usageScope, String brief) {
+		List<CompletableFuture<TacticThoughts>> futures = new ArrayList<>();
+		// Both scopes are read here, on the run's own thread, and bound around each call on its worker thread —
+		// otherwise a rejected tactic would leave neither its tokens nor its reason behind.
+		ClaudeFailureScope failureScope = failureLog.current();
+		for (TacticThoughtsInput input : inputs) {
+			futures.add(CompletableFuture.supplyAsync(
+					usageTracker.inScope(usageScope, failureLog.inScope(failureScope,
+							() -> claude.tacticThoughts(input, brief))),
+					applicationTaskExecutor));
+		}
+		return futures;
+	}
+
+	/**
+	 * Joins the dispatched Step-3 futures into the thoughts list the token writer and the campaign digests
+	 * expect, in input order. A tactic whose call produced no usable reply ({@code null}) is left out, so its
+	 * slide ships those tokens blank rather than carrying invented copy.
+	 *
+	 * @param futures the running futures from {@link #dispatchThoughts}, in input order
+	 * @return one entry per tactic that produced a usable reply, in input order
+	 */
+	List<TacticThoughts> joinThoughts(List<CompletableFuture<TacticThoughts>> futures) {
+		List<TacticThoughts> thoughts = new ArrayList<>();
+		for (CompletableFuture<TacticThoughts> future : futures) {
+			TacticThoughts value = future.join();
+			if (value != null) {
+				thoughts.add(value);
+			}
+		}
+		return thoughts;
 	}
 
 	/**

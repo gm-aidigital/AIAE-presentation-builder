@@ -1,5 +1,6 @@
 package com.aidigital.reportconstructor.externalservices.anthropic;
 
+import com.aidigital.reportconstructor.service.reports.diagnostics.ClaudeFailureLog;
 import com.aidigital.reportconstructor.service.reports.usage.ClaudeUsageTracker;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -34,8 +35,11 @@ public class AnthropicMessagesClient {
 	private static final Pattern FENCE_OPEN = Pattern.compile("^```(?:json)?\\s*", Pattern.CASE_INSENSITIVE);
 	private static final Pattern FENCE_CLOSE = Pattern.compile("\\s*```$");
 
-	/** Characters of a failed reply logged so a parse failure names its cause instead of being a dead end. */
-	private static final int REPLY_SNIPPET_LIMIT = 400;
+	/** Floor on the configured reply snippet length, so a misconfigured value still logs something usable. */
+	private static final int MIN_REPLY_SNIPPET_LIMIT = 80;
+
+	/** Ceiling the configured temperature is clamped to: the Messages API rejects anything above 1.0. */
+	private static final double MAX_TEMPERATURE = 1.0;
 
 	/**
 	 * HTTP statuses treated as transient and retried: 408 request timeout, 429 rate limit, 500/502/503/504
@@ -64,11 +68,26 @@ public class AnthropicMessagesClient {
 	private final ClaudeUsageTracker usageTracker;
 	private final PromptTokenEstimator tokenEstimator;
 
+	/** Run-scoped sink an unparseable reply's head goes to, so the report's own card can explain itself. */
+	private final ClaudeFailureLog failureLog;
+
 	/** Extra attempts after the first send when a transient upstream failure is retryable; at least 0. */
 	private final int maxRetries;
 
 	/** Base linear backoff between retries in milliseconds, scaled by attempt number; at least 0. */
 	private final long retryBackoffMillis;
+
+	/**
+	 * Sampling temperature sent with every request; clamped to the API's 0.0..1.0 range. Held below the API
+	 * default because every prompt here demands schema-exact JSON inside hard character budgets.
+	 */
+	private final double temperature;
+
+	/**
+	 * Characters of an unparseable reply written to its WARN line; at least {@link #MIN_REPLY_SNIPPET_LIMIT}.
+	 * Configurable because the default head of a reply often stops short of the defect that broke the parse.
+	 */
+	private final int replySnippetLimit;
 
 	/**
 	 * Caps Claude HTTP calls in flight at once across the whole process. The restructured slides-from-sheet
@@ -85,21 +104,26 @@ public class AnthropicMessagesClient {
 	 * @param normalizer   helper that extracts the assistant text content from a Messages API response
 	 * @param usageTracker   token accounting every call is reported to
 	 * @param tokenEstimator local prompt-size estimate, used to book a call whose reply never arrived
+	 * @param failureLog     run-scoped sink the reasons replies were rejected are collected in
 	 */
 	public AnthropicMessagesClient(
 			AnthropicProperties props,
 			ClaudeResponseNormalizer normalizer,
 			ClaudeUsageTracker usageTracker,
-			PromptTokenEstimator tokenEstimator) {
+			PromptTokenEstimator tokenEstimator,
+			ClaudeFailureLog failureLog) {
 		this.apiKey = props.getApiKey();
 		this.model = props.getModel();
 		this.normalizer = normalizer;
 		this.usageTracker = usageTracker;
 		this.tokenEstimator = tokenEstimator;
+		this.failureLog = failureLog;
 		this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
 		this.callLimiter = new Semaphore(Math.max(1, props.getMaxConcurrentCalls()));
 		this.maxRetries = Math.max(0, props.getMaxRetries());
 		this.retryBackoffMillis = Math.max(0, props.getRetryBackoffMillis());
+		this.temperature = Math.min(MAX_TEMPERATURE, Math.max(0.0, props.getTemperature()));
+		this.replySnippetLimit = Math.max(MIN_REPLY_SNIPPET_LIMIT, props.getReplySnippetLimit());
 	}
 
 	/**
@@ -120,9 +144,13 @@ public class AnthropicMessagesClient {
 		if (resp == null) {
 			return null;
 		}
-		if ("max_tokens".equals(resp.path("stop_reason").asText("")) && !allowPartial) {
+		boolean truncated = "max_tokens".equals(resp.path("stop_reason").asText(""));
+		if (truncated && !allowPartial) {
 			log.warn("[claude:{}] truncated by max_tokens", label);
 			return null;
+		}
+		if (truncated) {
+			noteSalvagedTruncation(label, maxTokens);
 		}
 		String text = normalizer.extractText(resp);
 		if (text == null || text.isBlank()) {
@@ -137,7 +165,7 @@ public class AnthropicMessagesClient {
 		// The reply carried no object we can use — a prose preamble with no JSON, a refusal, or an essay
 		// that ran to max_tokens. Logging the head of it turns "JSON parse failed" from a dead end into a
 		// diagnosable line without dumping the whole (often large) reply.
-		log.warn("[claude:{}] JSON parse failed; reply began: {}", label, snippet(text));
+		logUnparseableReply(label, "object", text);
 		return null;
 	}
 
@@ -145,23 +173,31 @@ public class AnthropicMessagesClient {
 	 * Sends a prompt expecting a bare top-level JSON array reply and returns the parsed array node, or
 	 * {@code null} on any failure. The per-section pilot calls ask for exactly this — a keyless array of a
 	 * fixed length — so there is no object key the model can drift on: the reply is either a usable array or
-	 * discarded. A reply truncated by {@code max_tokens} is rejected outright (a half-written array cannot be
-	 * trusted to have all its items), so the caller retries rather than accepting a short array.
+	 * discarded. The caller still enforces the item count on what comes back, so a repaired array that lost its
+	 * unfinished last item is rejected there and retried rather than shipped short.
 	 *
-	 * @param prompt     the full user prompt sent as the single message to Claude
-	 * @param maxTokens  cap on tokens the model may generate in its reply
-	 * @param timeoutSec per-request HTTP timeout in seconds
-	 * @param label      short tag identifying this call in log messages
+	 * @param prompt       the full user prompt sent as the single message to Claude
+	 * @param maxTokens    cap on tokens the model may generate in its reply
+	 * @param timeoutSec   per-request HTTP timeout in seconds
+	 * @param label        short tag identifying this call in log messages
+	 * @param allowPartial when {@code true}, accepts {@code max_tokens}-truncated output and tries to repair the
+	 *                     trailing JSON by closing open brackets — the same salvage the object path has always
+	 *                     had, and the only way a reply that merely forgot its final {@code ]} survives
 	 * @return the parsed array node, or {@code null} when no usable array could be recovered
 	 */
-	public JsonNode callJsonArray(String prompt, int maxTokens, int timeoutSec, String label) {
+	public JsonNode callJsonArray(
+			String prompt, int maxTokens, int timeoutSec, String label, boolean allowPartial) {
 		JsonNode resp = callRaw(prompt, maxTokens, timeoutSec, label);
 		if (resp == null) {
 			return null;
 		}
-		if ("max_tokens".equals(resp.path("stop_reason").asText(""))) {
+		boolean truncated = "max_tokens".equals(resp.path("stop_reason").asText(""));
+		if (truncated && !allowPartial) {
 			log.warn("[claude:{}] truncated by max_tokens", label);
 			return null;
+		}
+		if (truncated) {
+			noteSalvagedTruncation(label, maxTokens);
 		}
 		String text = normalizer.extractText(resp);
 		if (text == null || text.isBlank()) {
@@ -169,32 +205,50 @@ public class AnthropicMessagesClient {
 		}
 		text = FENCE_OPEN.matcher(text.trim()).replaceFirst("");
 		text = FENCE_CLOSE.matcher(text).replaceFirst("").trim();
-		JsonNode node = parseJsonArray(text);
+		JsonNode node = parseJsonArray(text, allowPartial);
 		if (node != null) {
 			return node;
 		}
-		log.warn("[claude:{}] JSON array parse failed; reply began: {}", label, snippet(text));
+		logUnparseableReply(label, "array", text);
 		return null;
 	}
 
 	/**
-	 * Parses the model's JSON array out of the reply text, tolerating prose wrapped around it by parsing from
-	 * the first <code>[</code> to the last <code>]</code>. A reply that carries no array yields {@code null}.
+	 * Parses the model's JSON array out of the reply text, tolerating the same ways a reply can carry usable
+	 * items that a plain parse still rejects as {@link #parseJsonObject} does: a tail the model never closed —
+	 * a run into {@code max_tokens}, or the missing final <code>]</code> of an accidentally nested
+	 * <code>[[…]]</code> reply — repaired by {@link #repairTruncatedJson}, and prose wrapped around the array,
+	 * salvaged by parsing from the first <code>[</code> to the last <code>]</code>. A reply that carries no
+	 * array yields {@code null}.
 	 *
-	 * @param text the reply text, with any Markdown code fences already stripped
+	 * @param text         the reply text, with any Markdown code fences already stripped
+	 * @param allowPartial whether to attempt truncation repair as well as a clean parse
 	 * @return the parsed array node, or {@code null} when no usable array could be recovered
 	 */
-	JsonNode parseJsonArray(String text) {
+	JsonNode parseJsonArray(String text, boolean allowPartial) {
 		JsonNode node = readArray(text);
 		if (node != null) {
 			return node;
 		}
+		if (allowPartial) {
+			node = readArray(repairTruncatedJson(text));
+			if (node != null) {
+				return node;
+			}
+		}
 		int first = text.indexOf('[');
-		int last = text.lastIndexOf(']');
-		if (first < 0 || last <= first) {
+		if (first < 0) {
 			return null;
 		}
-		return readArray(text.substring(first, last + 1));
+		String fromFirst = text.substring(first);
+		int last = fromFirst.lastIndexOf(']');
+		if (last > 0) {
+			node = readArray(fromFirst.substring(0, last + 1));
+			if (node != null) {
+				return node;
+			}
+		}
+		return allowPartial ? readArray(repairTruncatedJson(fromFirst)) : null;
 	}
 
 	/**
@@ -273,15 +327,54 @@ public class AnthropicMessagesClient {
 	}
 
 	/**
-	 * Shortens reply text to a single-line head for a log line: whitespace collapsed, capped at
-	 * {@value #REPLY_SNIPPET_LIMIT} characters with an ellipsis when longer.
+	 * Shortens reply text to a single-line head for a log line: whitespace collapsed, capped at the configured
+	 * {@code external.anthropic.reply-snippet-limit} characters with an ellipsis when longer.
 	 *
 	 * @param text the reply text
 	 * @return the trimmed, length-capped snippet
 	 */
 	String snippet(String text) {
 		String flat = text.replaceAll("\\s+", " ").trim();
-		return flat.length() <= REPLY_SNIPPET_LIMIT ? flat : flat.substring(0, REPLY_SNIPPET_LIMIT) + "…";
+		return flat.length() <= replySnippetLimit ? flat : flat.substring(0, replySnippetLimit) + "…";
+	}
+
+	/**
+	 * Reports a reply no parse path could use. The WARN line carries the reply's head — long enough to name a
+	 * cause, short enough to keep the log readable — and the whole reply goes to DEBUG, verbatim and unflattened,
+	 * so the defect that broke the parse (a raw newline inside a string, a missing closing bracket, prose after
+	 * the JSON) can be read off a deployed run by turning on DEBUG for this logger alone.
+	 *
+	 * @param label short tag identifying this call in log messages
+	 * @param shape the expected top-level JSON shape, named in the message (e.g. {@code "object"})
+	 * @param text  the reply text, with any Markdown code fences already stripped
+	 */
+	void logUnparseableReply(String label, String shape, String text) {
+		log.warn("[claude:{}] JSON {} parse failed ({} chars); reply began: {}",
+				label, shape, text.length(), snippet(text));
+		log.debug("[claude:{}] full unparseable reply:\n{}", label, text);
+		// The head of the reply is the one piece of evidence that says what actually broke the parse, and the
+		// person whose report degraded cannot open the server log — so it goes on their result card too.
+		failureLog.record(label, "reply was not valid JSON (" + shape + ", " + text.length()
+				+ " chars); it began: " + snippet(text));
+	}
+
+	/**
+	 * Records a reply the model stopped writing because it ran out of its output budget but which
+	 * {@code allowPartial} salvaged anyway.
+	 *
+	 * <p>Worth its own line precisely because the salvage succeeds: the report still builds, so the only
+	 * symptom is that the fields the reply never reached silently kept their earlier values — indistinguishable
+	 * from Claude having decided they were already fine. Naming the budget it overran is what turns a puzzling
+	 * half-applied pass into "raise this call's max tokens".
+	 *
+	 * @param label     batch tag the call was logged under
+	 * @param maxTokens the output budget the reply ran out of
+	 */
+	void noteSalvagedTruncation(String label, int maxTokens) {
+		log.warn("[claude:{}] reply ran out of its {}-token output budget; salvaged the part that arrived, so "
+				+ "later fields kept their previous values", label, maxTokens);
+		failureLog.record(label, "reply ran out of its " + maxTokens + "-token output budget; the fields it "
+				+ "never reached kept their previous values");
 	}
 
 	/**
@@ -388,6 +481,22 @@ public class AnthropicMessagesClient {
 	}
 
 	/**
+	 * Builds the request's message list: the single user turn carrying the prompt.
+	 *
+	 * <p>A pre-filled assistant turn is deliberately never sent. Assistant-turn prefill is rejected with a 400
+	 * by every current Claude model (Sonnet 4.6 included), so a prefilled request never reaches the model at
+	 * all — the reply shape is fixed by the prompt's output rules instead.
+	 *
+	 * @param prompt the full user prompt, cache marker included
+	 * @return the messages array in the shape the Messages API expects
+	 */
+	List<Map<String, Object>> buildMessages(String prompt) {
+		List<Map<String, Object>> messages = new ArrayList<>(1);
+		messages.add(Map.of("role", "user", "content", buildUserContent(prompt)));
+		return messages;
+	}
+
+	/**
 	 * Sends a prompt as a single user message to the Anthropic Messages API and returns the raw
 	 * parsed JSON response body, or {@code null} on a non-200 status or transport failure.
 	 *
@@ -403,7 +512,8 @@ public class AnthropicMessagesClient {
 			Map<String, Object> body = Map.of(
 					"model", model,
 					"max_tokens", maxTokens,
-					"messages", List.of(Map.of("role", "user", "content", buildUserContent(prompt)))
+					"temperature", temperature,
+					"messages", buildMessages(prompt)
 			);
 			req = HttpRequest.newBuilder()
 					.uri(URI.create(ENDPOINT))

@@ -37,8 +37,10 @@ public interface TacticConclusionAssembler {
 	 * something to reason over without ever seeing a raw grid.
 	 *
 	 * @param conclusions the Step-2 per-tactic conclusions
+	 * @param tacticNames 1-based tactic number → display name, so the campaign copy names channels not numbers
 	 * @param thoughts    the Step-3 thoughts that were produced (may be empty); matched to conclusions by number
 	 * @return one {@link TacticNarrativeDigest} per conclusion, in the conclusions' order
 	 */
-	List<TacticNarrativeDigest> toCampaignDigests(List<TacticConclusion> conclusions, List<TacticThoughts> thoughts);
+	List<TacticNarrativeDigest> toCampaignDigests(
+			List<TacticConclusion> conclusions, Map<Integer, String> tacticNames, List<TacticThoughts> thoughts);
 }

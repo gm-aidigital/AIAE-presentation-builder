@@ -104,15 +104,6 @@ public interface PlaceholderResolverService {
 	boolean needTactical(GeneratePayload payload, CampaignData data);
 
 	/**
-	 * Gates Claude Batch C when results or tactic overview copy is missing.
-	 *
-	 * @param payload the constructor request whose adjustments and sheet rows are inspected
-	 * @param data    the aggregated snapshot whose tactic keys drive the per-tactic overview checks
-	 * @return {@code true} if at least one Batch C placeholder is still unresolved
-	 */
-	boolean needResults(GeneratePayload payload, CampaignData data);
-
-	/**
 	 * Gates the AI geo summary when manual geo locations are absent and the Geo tab is referenced.
 	 *
 	 * @param payload the constructor request whose adjustments and sheet rows are inspected

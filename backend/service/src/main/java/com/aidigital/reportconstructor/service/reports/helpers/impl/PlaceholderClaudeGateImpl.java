@@ -65,39 +65,6 @@ public class PlaceholderClaudeGateImpl implements PlaceholderClaudeGate {
 	}
 
 	@Override
-	public boolean needResults(GeneratePayload payload, CampaignData data) {
-		List<List<String>> adj = payload.adjRows();
-		List<List<String>> sheet = payload.sheetRows();
-		if (bothNull(adj, sheet, "Our results overview 1:") && bothNull(adj, sheet, "Our results overview:")) {
-			return true;
-		}
-		if (bothNull(adj, sheet, "Thoughts on the performance:")) {
-			return true;
-		}
-		if (bothNull(adj, sheet, "Frequency opportunity:")
-				|| bothNull(adj, sheet, "Frequency fact:")
-				|| bothNull(adj, sheet, "Frequency storytelling:")) {
-			return true;
-		}
-		for (int i = 1; i <= 4; i++) {
-			if (bothNull(adj, sheet, "Recommendation " + i + ":")) {
-				return true;
-			}
-			if (bothNull(adj, sheet, "Recommendation " + i + " text:")) {
-				return true;
-			}
-		}
-		if (data != null && data.tactics() != null) {
-			for (int n : data.tactics().keySet()) {
-				if (bothNull(adj, sheet, "Tactic " + n + " overview:")) {
-					return true;
-				}
-			}
-		}
-		return false;
-	}
-
-	@Override
 	public boolean needGeoSummary(GeneratePayload payload) {
 		List<List<String>> adj = payload.adjRows();
 		List<List<String>> sheet = payload.sheetRows();

@@ -6,6 +6,7 @@ import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationInput;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
 import com.aidigital.reportconstructor.service.reports.helpers.BreakdownSelectionResolver;
+import com.aidigital.reportconstructor.service.reports.helpers.ReportNumberParser;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportSheetHelper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -31,6 +32,8 @@ class PublisherBreakdownHelperImplTest {
 	ReportSheetHelper sheetHelper;
 	@Mock
 	BreakdownSelectionResolver breakdownResolver;
+	@Mock
+	ReportNumberParser numbers;
 
 	@InjectMocks
 	PublisherBreakdownHelperImpl helper;
@@ -93,28 +96,79 @@ class PublisherBreakdownHelperImplTest {
 	}
 
 	@Test
-	void shouldCarryTheFullPublisherNamesIntoTheClaudeInputNotTheShortenedOnesTest() {
-		// Given: two listings of the same app that differ only past the separator — the distinction the
-		// combined call needs to reason about the platform mix, and the one the slide's short names throw away
+	void shouldGiveClaudeTheSameNamesTheSlideShowsWithoutJsonBreakingCharactersTest() {
+		// Given: an exported listing with a platform/bundle-id tail, and one whose name carries a double quote
+		// and a pipe — characters that come back inside a JSON string and can make the whole reply unparseable
 		List<BreakdownSelection> selections = List.of(new BreakdownSelection(1, List.of("tp")));
 		when(breakdownResolver.resolve(selections))
 				.thenReturn(Map.of(1, EnumSet.of(BreakdownType.TOP_PUBLISHERS)));
 		List<PublisherRow> rows = List.of(
 				new PublisherRow("Chai - Chat with AI bots - iOS (1544750895)", "25,534", "10.15%"),
-				new PublisherRow("Chai - Chat with AI Friends - Android (com.Beauchamp.Messenger)", "3,493", "1.39%"));
+				new PublisherRow("The \"Daily\" | News", "3,493", "1.39%"));
 		when(sheetHelper.readPublisherTables("sheet-url", Set.of(1), "token")).thenReturn(Map.of(1, rows));
 
 		// When:
 		BreakdownSectionInputs<PublisherObservationInput> read = helper.readPublisherInputs(
 				"sheet-url", selections, Map.of("{{tactic 1}}", "Display"), "token");
 
-		// Then: the tactic's input carries the rows verbatim, platform suffixes intact
-		assertThat(read.inputs().get(1).rows()).isEqualTo(rows);
+		// Then: Claude reads the slide's own short name, so a publisher it cites is findable in the table
+		List<PublisherRow> claudeRows = read.inputs().get(1).rows();
+		assertThat(claudeRows.getFirst().name()).isEqualTo("Chai");
 
-		// Then: the slide still collapses both to the same short label
-		Map<String, String> values = read.dataValues();
-		assertThat(values.get("{{publisher_1.1}}")).isEqualTo("Chai");
-		assertThat(values.get("{{publisher_1.2}}")).isEqualTo("Chai");
+		// Then: the quote and the pipe are gone before the name can break the reply's JSON
+		assertThat(claudeRows.get(1).name()).isEqualTo("The Daily News");
+
+		// Then: the figures the user signed off on go through untouched
+		assertThat(claudeRows.getFirst().impressions()).isEqualTo("25,534");
+		assertThat(claudeRows.getFirst().shareOfVoice()).isEqualTo("10.15%");
+	}
+
+	@Test
+	void shouldMeasureWhatTheListedPublishersCarryAgainstTheTacticsDeliveryTest() {
+		// Given: three listed publishers on a tactic that delivered 1,000,000 impressions
+		List<BreakdownSelection> selections = List.of(new BreakdownSelection(1, List.of("tp")));
+		when(breakdownResolver.resolve(selections))
+				.thenReturn(Map.of(1, EnumSet.of(BreakdownType.TOP_PUBLISHERS)));
+		List<PublisherRow> rows = List.of(
+				new PublisherRow("YouTube", "300,000", "30%"),
+				new PublisherRow("Hulu", "200,000", "20%"),
+				new PublisherRow("Roku", "", "—"));
+		when(sheetHelper.readPublisherTables("sheet-url", Set.of(1), "token")).thenReturn(Map.of(1, rows));
+		when(numbers.parseReportNumber("300,000")).thenReturn(300_000.0);
+		when(numbers.parseReportNumber("200,000")).thenReturn(200_000.0);
+		when(numbers.parseReportNumber("")).thenReturn(0.0);
+		when(numbers.parseReportNumber("1,000,000")).thenReturn(1_000_000.0);
+
+		// When:
+		BreakdownSectionInputs<PublisherObservationInput> read = helper.readPublisherInputs(
+				"sheet-url", selections,
+				Map.of("{{tactic 1}}", "CTV", "{{tactic 1 imps}}", "1,000,000"), "token");
+
+		// Then: the head total skips the row with no number rather than reading it as a real zero, and the
+		// tactic total comes across — together they are the coverage share the prompt cites
+		PublisherObservationInput input = read.inputs().get(1);
+		assertThat(input.headImpressions()).isEqualTo(500_000);
+		assertThat(input.tacticImpressions()).isEqualTo(1_000_000);
+	}
+
+	@Test
+	void shouldLeaveBothImpressionTotalsAtZeroWhenTheSheetCarriesNoTacticTotalTest() {
+		// Given: a filled table on a tactic whose {{tactic N imps}} token never resolved
+		List<BreakdownSelection> selections = List.of(new BreakdownSelection(1, List.of("tp")));
+		when(breakdownResolver.resolve(selections))
+				.thenReturn(Map.of(1, EnumSet.of(BreakdownType.TOP_PUBLISHERS)));
+		List<PublisherRow> rows = List.of(new PublisherRow("YouTube", "300,000", "30%"));
+		when(sheetHelper.readPublisherTables("sheet-url", Set.of(1), "token")).thenReturn(Map.of(1, rows));
+		when(numbers.parseReportNumber("300,000")).thenReturn(300_000.0);
+		when(numbers.parseReportNumber(null)).thenReturn(0.0);
+
+		// When:
+		BreakdownSectionInputs<PublisherObservationInput> read = helper.readPublisherInputs(
+				"sheet-url", selections, Map.of("{{tactic 1}}", "CTV"), "token");
+
+		// Then: the tactic total stays unknown, which is what makes the prompt omit its coverage line rather
+		// than quote a share against a missing denominator
+		assertThat(read.inputs().get(1).tacticImpressions()).isZero();
 	}
 
 	@Test

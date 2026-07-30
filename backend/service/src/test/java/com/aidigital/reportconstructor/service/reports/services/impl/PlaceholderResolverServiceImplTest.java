@@ -135,13 +135,11 @@ class PlaceholderResolverServiceImplTest {
 		CampaignData data = emptyData();
 		when(claudeGate.needStrategic(payload)).thenReturn(true);
 		when(claudeGate.needTactical(payload, data)).thenReturn(true);
-		when(claudeGate.needResults(payload, data)).thenReturn(false);
 		when(claudeGate.needGeoSummary(payload)).thenReturn(true);
 		when(claudeGate.needPrimaryKpis(payload)).thenReturn(true);
 
 		assertThat(service.needStrategic(payload)).isTrue();
 		assertThat(service.needTactical(payload, data)).isTrue();
-		assertThat(service.needResults(payload, data)).isFalse();
 		assertThat(service.needGeoSummary(payload)).isTrue();
 		assertThat(service.needPrimaryKpis(payload)).isTrue();
 	}
