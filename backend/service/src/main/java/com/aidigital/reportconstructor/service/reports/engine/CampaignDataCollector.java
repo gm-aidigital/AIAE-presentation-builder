@@ -267,6 +267,9 @@ public class CampaignDataCollector {
 		FlightDates mediaPlanFlight = isEom ? mediaPlanFlightWindow(sheetRows) : null;
 		Integer eomFlightMonthsTotal = mediaPlanFlight != null
 				? ratePlanCalculator.monthsSpanned(mediaPlanFlight.start(), mediaPlanFlight.end()) : null;
+		if (isEom) {
+			log.info("[eom-flight] mediaPlanFlight={} eomFlightMonthsTotal={}", mediaPlanFlight, eomFlightMonthsTotal);
+		}
 		Map<Integer, double[]> estimatesPlan = resolvePlanByTacticNum(tacticMap, estimatesByTactic);
 		Map<Integer, double[]> planByTacticNum = isEom
 				? resolveEomPlanByTacticNum(lineItemMapping, eomFlightMonthsTotal, estimatesPlan)

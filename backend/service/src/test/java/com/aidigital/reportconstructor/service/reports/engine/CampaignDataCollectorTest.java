@@ -190,4 +190,24 @@ class CampaignDataCollectorTest {
 		// Then:
 		assertThat(result).isNull();
 	}
+
+	@Test
+	void mediaPlanFlightWindowShouldIgnoreAnUnrelatedStartDateEndDateMetadataLabelTest() {
+		// Given: a media plan with a single-cell "Start Date:"/"End Date:" RFP summary label near the
+		// top (unrelated to any line item) followed by the real per-line-item Flight Start/Flight End
+		// table further down — the metadata label must not be mistaken for the table header
+		List<List<String>> sheet = List.of(
+				List.of("Start Date:", "January 1, 2020"),
+				List.of("End Date:", "January 1, 2020"),
+				List.of("Media", "Flight Start", "Flight End"),
+				List.of("programmatic display", "February 9, 2026", "May 3, 2026")
+		);
+
+		// When:
+		FlightDates result = collector.mediaPlanFlightWindow(sheet);
+
+		// Then: the real table's dates are used, not the unrelated 2020 metadata label
+		assertThat(result.start()).isEqualTo(LocalDate.of(2026, 2, 9));
+		assertThat(result.end()).isEqualTo(LocalDate.of(2026, 5, 3));
+	}
 }
