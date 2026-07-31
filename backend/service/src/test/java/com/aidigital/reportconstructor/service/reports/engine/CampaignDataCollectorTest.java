@@ -3,7 +3,6 @@ package com.aidigital.reportconstructor.service.reports.engine;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.DateFilter;
 import com.aidigital.reportconstructor.service.reports.dto.DateFilterMode;
-import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
 import com.aidigital.reportconstructor.service.reports.dto.LineItemMapping;
 import com.aidigital.reportconstructor.service.reports.dto.RateType;
 import org.junit.jupiter.api.Test;
@@ -89,16 +88,16 @@ class CampaignDataCollectorTest {
 	}
 
 	@Test
-	void collectForEomShouldResolvePlanFromRateAndMonthlyBudgetInsteadOfEstimatesTest() {
-		// Given: a CPM tactic with a $3,100 monthly budget and $10 unit price. The media plan's own
-		// Flight Start/Flight End columns span Jan 1 – Mar 31, 2026 (3 calendar months) — the full-flight
-		// target is monthlyBudget × flightMonthsTotal, converted to imps
+	void collectForEomShouldResolvePlanFromRateAndMonthlyBudgetTest() {
+		// Given: a CPM tactic with a $3,100 monthly budget and $10 unit price. The user-entered Flight
+		// dates at Data Inputs span Jan 1 – Mar 31, 2026 (3 calendar months) — the full-flight target is
+		// monthlyBudget × flightMonthsTotal, converted to imps
 		List<List<String>> sheet = List.of(
-				List.of("Media", "Flight Start", "Flight End"),
-				List.of("programmatic display", "January 1, 2026", "March 31, 2026")
+				List.of("Media"),
+				List.of("programmatic display")
 		);
 		DateFilter dateFilter = new DateFilter(DateFilterMode.RANGE, LocalDate.of(2026, 1, 1),
-				LocalDate.of(2026, 1, 31));
+				LocalDate.of(2026, 3, 31));
 		LineItemMapping mapping = new LineItemMapping("Programmatic Display", null, 1, RateType.CPM, 10.0, 3100.0);
 
 		// When:
@@ -106,19 +105,21 @@ class CampaignDataCollectorTest {
 				"EOM");
 
 		// Then: Estimates-sourced fields stay null, and the rate/budget-derived spend/imps are set
-		// to the full-flight target: 3100 * 3 = 9300 spend, 9300 / 10 * 1000 = 930,000 impressions
+		// to the full-flight target: 3100 * 3 = 9300 spend, 9300 / 10 * 1000 = 930,000 impressions.
+		// Elapsed and total are the same figure — this report always covers the whole flight window
+		// its plan is measured against, so there is no separate to-date proration.
 		assertThat(data.tactics().get(1).planSpend()).isEqualTo(9300.0);
 		assertThat(data.tactics().get(1).planImps()).isEqualTo(930_000.0);
 		assertThat(data.tactics().get(1).planCtr()).isNull();
 		assertThat(data.tactics().get(1).planVcr()).isNull();
-		assertThat(data.eomMonthNumber()).isEqualTo(1);
+		assertThat(data.eomMonthNumber()).isEqualTo(3);
 		assertThat(data.eomFlightMonthsTotal()).isEqualTo(3);
 	}
 
 	@Test
-	void collectForEomShouldLeavePlanUnresolvedWhenMediaPlanHasNoFlightDatesColumnsTest() {
-		// Given: the same rate/budget mapping, but the media plan carries no Flight Start/End columns at
-		// all — there is no way to derive the full-flight length, so no plan can be resolved
+	void collectForEomShouldLeavePlanUnresolvedWhenNoFlightDatesAreSetTest() {
+		// Given: the same rate/budget mapping, but no Flight dates were entered at Data Inputs — there
+		// is no way to derive the flight length, so no plan can be resolved
 		List<List<String>> sheet = List.of(
 				List.of("Media"),
 				List.of("programmatic display")
@@ -136,14 +137,13 @@ class CampaignDataCollectorTest {
 
 	@Test
 	void collectForEocShouldIgnoreLineItemMappingRateFieldsTest() {
-		// Given: the same rate/budget fields and Flight Start/End columns as the EOM case, but
-		// reportType is EOC
+		// Given: the same rate/budget fields and Flight dates as the EOM case, but reportType is EOC
 		List<List<String>> sheet = List.of(
-				List.of("Media", "Flight Start", "Flight End"),
-				List.of("programmatic display", "January 1, 2026", "March 31, 2026")
+				List.of("Media"),
+				List.of("programmatic display")
 		);
 		DateFilter dateFilter = new DateFilter(DateFilterMode.RANGE, LocalDate.of(2026, 1, 1),
-				LocalDate.of(2026, 1, 31));
+				LocalDate.of(2026, 3, 31));
 		LineItemMapping mapping = new LineItemMapping("Programmatic Display", null, 1, RateType.CPM, 10.0, 3100.0);
 
 		// When:
@@ -156,58 +156,5 @@ class CampaignDataCollectorTest {
 		assertThat(data.tactics().get(1).planImps()).isNull();
 		assertThat(data.eomMonthNumber()).isNull();
 		assertThat(data.eomFlightMonthsTotal()).isNull();
-	}
-
-	@Test
-	void mediaPlanFlightWindowShouldSpanTheEarliestStartAndLatestEndAcrossLineItemsTest() {
-		// Given: three line items with staggered flight windows
-		List<List<String>> sheet = List.of(
-				List.of("Media", "Flight Start", "Flight End"),
-				List.of("programmatic display", "February 9, 2026", "May 3, 2026"),
-				List.of("programmatic video", "January 1, 2026", "April 1, 2026"),
-				List.of("programmatic audio", "March 1, 2026", "June 15, 2026")
-		);
-
-		// When:
-		FlightDates result = collector.mediaPlanFlightWindow(sheet);
-
-		// Then: earliest start (Jan 1) to latest end (Jun 15)
-		assertThat(result.start()).isEqualTo(LocalDate.of(2026, 1, 1));
-		assertThat(result.end()).isEqualTo(LocalDate.of(2026, 6, 15));
-	}
-
-	@Test
-	void mediaPlanFlightWindowShouldReturnNullWhenEitherColumnIsMissingTest() {
-		// Given: only a Flight Start column, no Flight End
-		List<List<String>> sheet = List.of(
-				List.of("Media", "Flight Start"),
-				List.of("programmatic display", "January 1, 2026")
-		);
-
-		// When:
-		FlightDates result = collector.mediaPlanFlightWindow(sheet);
-
-		// Then:
-		assertThat(result).isNull();
-	}
-
-	@Test
-	void mediaPlanFlightWindowShouldIgnoreAnUnrelatedStartDateEndDateMetadataLabelTest() {
-		// Given: a media plan with a single-cell "Start Date:"/"End Date:" RFP summary label near the
-		// top (unrelated to any line item) followed by the real per-line-item Flight Start/Flight End
-		// table further down — the metadata label must not be mistaken for the table header
-		List<List<String>> sheet = List.of(
-				List.of("Start Date:", "January 1, 2020"),
-				List.of("End Date:", "January 1, 2020"),
-				List.of("Media", "Flight Start", "Flight End"),
-				List.of("programmatic display", "February 9, 2026", "May 3, 2026")
-		);
-
-		// When:
-		FlightDates result = collector.mediaPlanFlightWindow(sheet);
-
-		// Then: the real table's dates are used, not the unrelated 2020 metadata label
-		assertThat(result.start()).isEqualTo(LocalDate.of(2026, 2, 9));
-		assertThat(result.end()).isEqualTo(LocalDate.of(2026, 5, 3));
 	}
 }

@@ -32,9 +32,10 @@ import java.util.List;
  * @param dateFilter      user-confirmed raw-data date window (ALL or an inclusive RANGE); when {@code null} or ALL the
  *                        full date range present in the raw data ("Basic" tab) is used. This is the sole source of the
  *                        report flight window: it gates which delivery rows contribute and fills {@code {{flight_dates}}}.
- *                        The media plan is never consulted for dates. For EOM reports, this same window doubles as the
- *                        campaign-to-date reporting window: how far it spans in calendar months is
- *                        {@code eom_month_number}.
+ *                        The media plan is never consulted for dates. For EOM reports, this same window also gives
+ *                        both {@code eom_month_number} and {@code eom_flight_months_total} (how far it spans in
+ *                        calendar months) — the report always covers the whole period its plan figures are measured
+ *                        against, so there is no separate to-date/full-flight distinction.
  * @param sheetUrl        URL of a previously generated (and user-edited) Google Sheet; the sole input when the target is
  *                        {@code SLIDES_FROM_SHEET}, where the deck is filled from this sheet's values instead of the raw
  *                        grids. {@code null}/blank for the SLIDES and SHEET flows.

@@ -25,8 +25,10 @@ import java.util.Map;
  * @param tactics              per-tactic data keyed by the tactic's ordinal index in the report
  * @param eomMonthNumber       EOM-only: 1-based index of the reporting month within the flight, derived
  *                            from the calendar months {@code flightTs} spans; {@code null} for EOC
- * @param eomFlightMonthsTotal EOM-only: total months the flight spans, entered by the user once per
- *                            report; {@code null} for EOC
+ * @param eomFlightMonthsTotal EOM-only: total months the flight spans; the same {@code flightTs}-derived
+ *                            figure as {@code eomMonthNumber} — this report always covers the whole
+ *                            period its plan figures are measured against, so there is no separate
+ *                            to-date/full-flight distinction; {@code null} for EOC
  * @param audienceTab         raw audience-tab source content used to build audience copy
  */
 public record CampaignData(

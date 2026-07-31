@@ -32,24 +32,7 @@ public enum MediaPlanColumn {
 	FUNNEL(Set.of(
 			"goal", "goals", "funnel", "funnel stage", "funnel stages",
 			"objective", "objectives", "campaign objective", "campaign objectives",
-			"marketing objective", "marketing objectives", "stage", "stages")),
-
-	/**
-	 * The per-line-item flight-start-date column. Paired with {@link #FLIGHT_END}, the earliest start
-	 * across every line item gives the whole campaign's planned flight window for EOM pacing (as
-	 * opposed to the raw-data delivery window, which only covers what's been delivered so far).
-	 *
-	 * <p>Deliberately excludes bare synonyms like {@code "start date"}: media plans commonly carry an
-	 * unrelated single-cell {@code "Start Date:"} metadata label near the top of the sheet (e.g. RFP
-	 * summary fields), and a bare synonym would match that single cell before ever reaching the real
-	 * per-line-item table, silently returning an empty column.
-	 */
-	FLIGHT_START(Set.of(
-			"flight start", "flight start date", "flight begin", "flight begin date")),
-
-	/** The per-line-item flight-end-date column, paired with {@link #FLIGHT_START}. */
-	FLIGHT_END(Set.of(
-			"flight end", "flight end date", "flight finish", "flight finish date"));
+			"marketing objective", "marketing objectives", "stage", "stages"));
 
 	private final Set<String> synonyms;
 
