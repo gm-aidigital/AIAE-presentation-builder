@@ -80,6 +80,29 @@ class SheetPlaceholderReaderImplTest {
 	}
 
 	@Test
+	void shouldReadClicksAndCompletionsPlanColumnsWhenPresentTest() {
+		// Given: a summary table whose header also carries the CPC/CPV plan columns; a tactic with no
+		// plan for a given unit carries the em-dash a resolver writes for an unresolved figure
+		List<List<String>> grid = List.of(
+				List.of("Tactic name", "Clicks Plan", "Clicks Fact", "Completions Plan", "Completions Fact"),
+				List.of("Paid Search", "5,000", "4,800", "—", "—"),
+				List.of("YouTube", "—", "—", "80,000", "76,500"),
+				List.of("Total", "5,000", "4,800", "80,000", "76,500"));
+
+		// When: the placeholders are read
+		Map<String, String> out = reader.readPlaceholders(grid);
+
+		// Then: each tactic's own plan/fact column is captured, independent of the other tactic's dash
+		assertThat(out)
+				.containsEntry("{{tactic 1 clicks plan}}", "5,000")
+				.containsEntry("{{tactic 1 clicks}}", "4,800")
+				.containsEntry("{{tactic 1 completions plan}}", "—")
+				.containsEntry("{{tactic 2 completions plan}}", "80,000")
+				.containsEntry("{{tactic 2 complitions}}", "76,500")
+				.containsEntry("{{tactic 2 clicks plan}}", "—");
+	}
+
+	@Test
 	void shouldTreatDashFilledSummaryRowsAsUnusedTacticsTest() {
 		// Given: two real tactics followed by the template's dash-filled unused rows, then totals
 		List<List<String>> grid = List.of(

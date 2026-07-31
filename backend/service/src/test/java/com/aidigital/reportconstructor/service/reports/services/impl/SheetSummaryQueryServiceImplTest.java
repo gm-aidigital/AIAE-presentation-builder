@@ -35,7 +35,7 @@ class SheetSummaryQueryServiceImplTest {
 
 	@Test
 	void shouldProjectContiguousTacticsWithPlanAndFactFiguresTest() {
-		// Given: the workbook grid parses to two tactics' plan/fact tokens (tactic 3 absent)
+		// Given: the workbook grid parses to two CPM tactics' plan/fact tokens (tactic 3 absent)
 		when(userGoogleTokens.getIfAvailable()).thenReturn(null);
 		when(sheetHelper.readSheetGrid(anyString(), any())).thenReturn(List.of(List.of("cell")));
 		when(placeholderReader.readPlaceholders(any())).thenReturn(Map.ofEntries(
@@ -53,13 +53,86 @@ class SheetSummaryQueryServiceImplTest {
 		// When: the summary is read back
 		List<SheetSummaryRow> rows = service.readSummary("https://docs.google.com/spreadsheets/d/abc/edit", "user_1");
 
-		// Then: one row per contiguous tactic, in order, carrying the sheet's plan/fact strings
+		// Then: one row per contiguous tactic, in order, carrying the sheet's plan/fact strings —
+		// with no clicks/completions plan token present, the CPM impressions figures are the unit
 		assertThat(rows)
-				.extracting(SheetSummaryRow::tactic, SheetSummaryRow::impressionsPlan,
-						SheetSummaryRow::impressionsFact, SheetSummaryRow::spendPlan, SheetSummaryRow::spendFact)
+				.extracting(SheetSummaryRow::tactic, SheetSummaryRow::unitPlan,
+						SheetSummaryRow::unitFact, SheetSummaryRow::spendPlan, SheetSummaryRow::spendFact)
 				.containsExactly(
 						tuple("CTV", "250,000", "248,113", "$1,500", "$1,489"),
 						tuple("Display", "125,000", "130,402", "$1,500", "$1,502"));
+	}
+
+	@Test
+	void shouldPreferClicksOverImpressionsForACpcTacticTest() {
+		// Given: a CPC tactic carries both a clicks plan/fact and the always-literal impressions plan/fact
+		when(userGoogleTokens.getIfAvailable()).thenReturn(null);
+		when(sheetHelper.readSheetGrid(anyString(), any())).thenReturn(List.of(List.of("cell")));
+		when(placeholderReader.readPlaceholders(any())).thenReturn(Map.ofEntries(
+				Map.entry("{{tactic 1}}", "Paid Search"),
+				Map.entry("{{tactic 1 clicks plan}}", "5,000"),
+				Map.entry("{{tactic 1 clicks}}", "4,800"),
+				Map.entry("{{tactic 1 imps plan}}", "1,000,000"),
+				Map.entry("{{tactic 1 imps}}", "960,000"),
+				Map.entry("{{tactic 1 spend plan}}", "$2,000"),
+				Map.entry("{{tactic 1 spend}}", "$1,950")));
+
+		// When: the summary is read back
+		List<SheetSummaryRow> rows = service.readSummary("https://docs.google.com/spreadsheets/d/abc/edit", "user_1");
+
+		// Then: the main-unit columns carry clicks, not impressions
+		assertThat(rows)
+				.extracting(SheetSummaryRow::tactic, SheetSummaryRow::unitPlan, SheetSummaryRow::unitFact)
+				.containsExactly(tuple("Paid Search", "5,000", "4,800"));
+	}
+
+	@Test
+	void shouldPreferCompletionsOverImpressionsForACpvTacticTest() {
+		// Given: a CPV tactic carries both a completions plan/fact and the always-literal impressions plan/fact
+		when(userGoogleTokens.getIfAvailable()).thenReturn(null);
+		when(sheetHelper.readSheetGrid(anyString(), any())).thenReturn(List.of(List.of("cell")));
+		when(placeholderReader.readPlaceholders(any())).thenReturn(Map.ofEntries(
+				Map.entry("{{tactic 1}}", "YouTube"),
+				Map.entry("{{tactic 1 completions plan}}", "80,000"),
+				Map.entry("{{tactic 1 complitions}}", "76,500"),
+				Map.entry("{{tactic 1 imps plan}}", "500,000"),
+				Map.entry("{{tactic 1 imps}}", "478,000"),
+				Map.entry("{{tactic 1 spend plan}}", "$3,000"),
+				Map.entry("{{tactic 1 spend}}", "$2,900")));
+
+		// When: the summary is read back
+		List<SheetSummaryRow> rows = service.readSummary("https://docs.google.com/spreadsheets/d/abc/edit", "user_1");
+
+		// Then: the main-unit columns carry completions, not impressions
+		assertThat(rows)
+				.extracting(SheetSummaryRow::tactic, SheetSummaryRow::unitPlan, SheetSummaryRow::unitFact)
+				.containsExactly(tuple("YouTube", "80,000", "76,500"));
+	}
+
+	@Test
+	void shouldFallBackToImpressionsWhenClicksAndCompletionsPlanAreUnresolvedDashesTest() {
+		// Given: a CPM tactic whose sheet carries the em-dash a resolver writes into a Clicks/Completions
+		// Plan cell that does not apply to it (see PlaceholderValueFlattenerImpl), alongside real impressions
+		when(userGoogleTokens.getIfAvailable()).thenReturn(null);
+		when(sheetHelper.readSheetGrid(anyString(), any())).thenReturn(List.of(List.of("cell")));
+		when(placeholderReader.readPlaceholders(any())).thenReturn(Map.ofEntries(
+				Map.entry("{{tactic 1}}", "CTV"),
+				Map.entry("{{tactic 1 clicks plan}}", "—"),
+				Map.entry("{{tactic 1 clicks}}", "—"),
+				Map.entry("{{tactic 1 completions plan}}", "—"),
+				Map.entry("{{tactic 1 complitions}}", "—"),
+				Map.entry("{{tactic 1 imps plan}}", "250,000"),
+				Map.entry("{{tactic 1 imps}}", "248,113"),
+				Map.entry("{{tactic 1 spend plan}}", "$1,500"),
+				Map.entry("{{tactic 1 spend}}", "$1,489")));
+
+		// When: the summary is read back
+		List<SheetSummaryRow> rows = service.readSummary("https://docs.google.com/spreadsheets/d/abc/edit", "user_1");
+
+		// Then: the dash is not mistaken for a resolved clicks/completions plan — impressions win
+		assertThat(rows)
+				.extracting(SheetSummaryRow::tactic, SheetSummaryRow::unitPlan, SheetSummaryRow::unitFact)
+				.containsExactly(tuple("CTV", "250,000", "248,113"));
 	}
 
 	@Test

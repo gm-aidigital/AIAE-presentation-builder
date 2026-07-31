@@ -31,8 +31,15 @@ public class SheetSummaryQueryServiceImpl implements SheetSummaryQueryService {
 	private static final String SUFFIX_NAME = "";
 	private static final String SUFFIX_IMPS_PLAN = " imps plan";
 	private static final String SUFFIX_IMPS_FACT = " imps";
+	private static final String SUFFIX_CLICKS_PLAN = " clicks plan";
+	private static final String SUFFIX_CLICKS_FACT = " clicks";
+	private static final String SUFFIX_COMPLETIONS_PLAN = " completions plan";
+	private static final String SUFFIX_COMPLETIONS_FACT = " complitions";
 	private static final String SUFFIX_SPEND_PLAN = " spend plan";
 	private static final String SUFFIX_SPEND_FACT = " spend";
+
+	/** The em-dash a resolver writes for an unresolved figure (see {@code Resolved}); not a real value. */
+	private static final String UNRESOLVED_DASH = "—";
 
 	private final ReportSheetHelper sheetHelper;
 	private final SheetPlaceholderReader placeholderReader;
@@ -51,12 +58,66 @@ public class SheetSummaryQueryServiceImpl implements SheetSummaryQueryService {
 		for (int n = 1; n <= count; n++) {
 			rows.add(new SheetSummaryRow(
 					values.get(token(n, SUFFIX_NAME)),
-					values.get(token(n, SUFFIX_IMPS_PLAN)),
-					values.get(token(n, SUFFIX_IMPS_FACT)),
+					unitPlan(values, n),
+					unitFact(values, n),
 					values.get(token(n, SUFFIX_SPEND_PLAN)),
 					values.get(token(n, SUFFIX_SPEND_FACT))));
 		}
 		return rows;
+	}
+
+	/**
+	 * Resolves tactic {@code n}'s planned main-unit figure: whichever bought unit the tactic's rate
+	 * type carries — clicks plan for a CPC tactic, completions plan for CPV, impressions plan
+	 * otherwise (CPM, or an EOC report with no per-unit plan split at all).
+	 *
+	 * @param values the placeholder map read from the workbook
+	 * @param n      1-based tactic number
+	 * @return the planned clicks/completions/impressions cell, in that priority order, or
+	 * {@code null} when none of the three carries a resolved value
+	 */
+	String unitPlan(Map<String, String> values, int n) {
+		String clicksPlan = values.get(token(n, SUFFIX_CLICKS_PLAN));
+		if (hasValue(clicksPlan)) {
+			return clicksPlan;
+		}
+		String completionsPlan = values.get(token(n, SUFFIX_COMPLETIONS_PLAN));
+		if (hasValue(completionsPlan)) {
+			return completionsPlan;
+		}
+		return values.get(token(n, SUFFIX_IMPS_PLAN));
+	}
+
+	/**
+	 * Resolves tactic {@code n}'s delivered main-unit figure, matching whichever unit
+	 * {@link #unitPlan} chose — clicks fact when the tactic has a resolved clicks plan, completions
+	 * fact when it has a resolved completions plan, impressions fact otherwise.
+	 *
+	 * @param values the placeholder map read from the workbook
+	 * @param n      1-based tactic number
+	 * @return the delivered clicks/completions/impressions cell matching the planned unit, or
+	 * {@code null} when that cell is absent
+	 */
+	String unitFact(Map<String, String> values, int n) {
+		if (hasValue(values.get(token(n, SUFFIX_CLICKS_PLAN)))) {
+			return values.get(token(n, SUFFIX_CLICKS_FACT));
+		}
+		if (hasValue(values.get(token(n, SUFFIX_COMPLETIONS_PLAN)))) {
+			return values.get(token(n, SUFFIX_COMPLETIONS_FACT));
+		}
+		return values.get(token(n, SUFFIX_IMPS_FACT));
+	}
+
+	/**
+	 * Tells whether a cell read back from the workbook carries a real resolved figure, as opposed to
+	 * being absent ({@code null}) or the em-dash a resolver writes for an unresolved value (e.g. a
+	 * CPM tactic's "Clicks Plan" cell, which does not apply to it).
+	 *
+	 * @param cell the cell value read from the placeholder map, or {@code null} when absent
+	 * @return {@code true} when the cell is present and is not the unresolved-value dash
+	 */
+	boolean hasValue(String cell) {
+		return cell != null && !UNRESOLVED_DASH.equals(cell);
 	}
 
 	/**

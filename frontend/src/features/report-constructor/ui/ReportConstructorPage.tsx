@@ -359,21 +359,20 @@ function PageInner() {
         () =>
             (w.mapping ?? []).map((m, i) => {
                 const s = summaryRows?.[i] ?? null;
-                const b = budgets[i] ?? null;
-                const planSpend = b && b.amount > 0 ? usd.format(Math.round(b.amount)) : null;
-                const planImps = b && b.units > 0 ? grouped.format(Math.round(b.units)) : null;
                 return {
                     tactic: m.tacticName,
                     lineId: m.lineItemId ?? null,
-                    // Prefer the numbers the generated sheet actually carries; fall back to the
-                    // plan parsed from the media plan while the summary is still loading.
-                    spendPlan: s?.spendPlan ?? planSpend,
+                    // The full-flight plan (spend and its matching unit) only exists once the backend
+                    // has resolved it from the budget/rate the user entered while matching — the media
+                    // plan's own Units/Unit Price columns are pre-fill defaults, not that entry, and lack
+                    // the flight-length multiplier, so they are not a safe stand-in while this loads.
+                    spendPlan: s?.spendPlan ?? null,
                     spendFact: s?.spendFact ?? null,
-                    impressionsPlan: s?.impressionsPlan ?? planImps,
-                    impressionsFact: s?.impressionsFact ?? null,
+                    unitPlan: s?.unitPlan ?? null,
+                    unitFact: s?.unitFact ?? null,
                 };
             }),
-        [w.mapping, budgets, summaryRows]
+        [w.mapping, summaryRows]
     );
 
     // Enabled sections per tactic, dropped to the ones the tactic's channel actually supports (Meta,

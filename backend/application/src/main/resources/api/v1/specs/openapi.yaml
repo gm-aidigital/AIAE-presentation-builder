@@ -814,8 +814,14 @@ components:
         from the sheet; a field is null when that cell was never filled.
       properties:
         tactic: { type: string, nullable: true, description: "Tactic name." }
-        impressionsPlan: { type: string, nullable: true, description: "Planned impressions." }
-        impressionsFact: { type: string, nullable: true, description: "Delivered (fact) impressions." }
+        unitPlan:
+          type: string
+          nullable: true
+          description: "Planned main unit — impressions for CPM, clicks for CPC, completions for CPV."
+        unitFact:
+          type: string
+          nullable: true
+          description: "Delivered (fact) main unit, matching whichever unit unitPlan carries."
         spendPlan: { type: string, nullable: true, description: "Planned spend." }
         spendFact: { type: string, nullable: true, description: "Delivered (fact) spend." }
 

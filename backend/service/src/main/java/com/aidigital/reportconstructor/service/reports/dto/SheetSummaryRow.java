@@ -6,16 +6,18 @@ package com.aidigital.reportconstructor.service.reports.dto;
  * cells; a field is {@code null} when that cell was never filled (a leftover template token
  * is treated as absent, not a value).
  *
- * @param tactic          the tactic name as shown in the summary table
- * @param impressionsPlan the planned impressions cell, or {@code null} when absent
- * @param impressionsFact the delivered (fact) impressions cell, or {@code null} when absent
- * @param spendPlan       the planned spend cell, or {@code null} when absent
- * @param spendFact       the delivered (fact) spend cell, or {@code null} when absent
+ * @param tactic    the tactic name as shown in the summary table
+ * @param unitPlan  the planned main-unit cell — impressions for a CPM tactic, clicks for CPC,
+ *                  completions for CPV — or {@code null} when absent
+ * @param unitFact  the delivered (fact) main-unit cell, matching whichever unit {@code unitPlan}
+ *                  carries, or {@code null} when absent
+ * @param spendPlan the planned spend cell, or {@code null} when absent
+ * @param spendFact the delivered (fact) spend cell, or {@code null} when absent
  */
 public record SheetSummaryRow(
 		String tactic,
-		String impressionsPlan,
-		String impressionsFact,
+		String unitPlan,
+		String unitFact,
 		String spendPlan,
 		String spendFact
 ) {

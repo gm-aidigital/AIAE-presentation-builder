@@ -16,8 +16,10 @@ export interface ReviewRow {
     lineId: string | null;
     spendPlan: string | null;
     spendFact: string | null;
-    impressionsPlan: string | null;
-    impressionsFact: string | null;
+    /** Main planned unit — impressions for CPM, clicks for CPC, completions for CPV. */
+    unitPlan: string | null;
+    /** Delivered (fact) main unit, matching whichever unit unitPlan carries. */
+    unitFact: string | null;
 }
 
 interface Props {
@@ -121,8 +123,8 @@ export function StepReviewSheet({
                             <Cell value={r.lineId} addLabel="add ID" />
                             <Cell value={r.spendPlan} addLabel="add" />
                             <Cell value={r.spendFact} addLabel="add" />
-                            <Cell value={r.impressionsPlan} addLabel="add" />
-                            <Cell value={r.impressionsFact} addLabel="add" />
+                            <Cell value={r.unitPlan} addLabel="add" />
+                            <Cell value={r.unitFact} addLabel="add" />
                         </Fragment>
                     ))}
                 </div>
