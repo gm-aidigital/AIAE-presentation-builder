@@ -222,10 +222,10 @@ class TacticResolversTest {
 	}
 
 	@Test
-	void resolveTacticImpsPlanAndClicksPlanShouldReadTheirOwnFieldsForACpcTacticTest() {
-		// Given: an EOM tactic bought on CPC — CampaignDataCollector already backed the literal
-		// impressions figure out of the planned clicks and the Estimates CTR benchmark, alongside the
-		// planned clicks themselves
+	void resolveTacticImpsPlanShouldPreferClicksOverLiteralImpressionsForACpcTacticTest() {
+		// Given: an EOM tactic bought on CPC — CampaignDataCollector still backs a literal impressions
+		// figure out of the planned clicks and the Estimates CTR benchmark (for reach/CPM/projection
+		// math), but the sheet's "Unit Plan" column should show the bought unit itself: clicks
 		Tactic tactic = new Tactic(
 				"Google SEM", "Search", null,
 				0, 4_900_000, 3_429, 0, null, null, null, null,
@@ -244,17 +244,17 @@ class TacticResolversTest {
 		Resolved clicksPlan = resolvers.resolveTacticClicksPlan(1, List.of(), List.of(), data);
 		Resolved impsFact = resolvers.resolveTacticImps(1, "Google SEM", List.of(), List.of(), data);
 
-		// Then: impressions plan/fact are always literal impressions, clicks plan is the bought unit
-		assertThat(impsPlan.value()).isEqualTo("144,000");
+		// Then: Unit Plan matches the bought unit (clicks); the fact side stays literal impressions
+		assertThat(impsPlan.value()).isEqualTo("12,000");
 		assertThat(clicksPlan.value()).isEqualTo("12,000");
 		assertThat(impsFact.value()).isEqualTo("4,900,000");
 	}
 
 	@Test
-	void resolveTacticImpsPlanAndCompletionsPlanShouldReadTheirOwnFieldsForACpvTacticTest() {
-		// Given: an EOM tactic bought on CPV — CampaignDataCollector already backed the literal
-		// impressions figure out of the planned completions and the Estimates VCR benchmark, alongside
-		// the planned completions (views) themselves
+	void resolveTacticImpsPlanShouldPreferCompletionsOverLiteralImpressionsForACpvTacticTest() {
+		// Given: an EOM tactic bought on CPV — CampaignDataCollector still backs a literal impressions
+		// figure out of the planned completions and the Estimates VCR benchmark (for reach/CPM/projection
+		// math), but the sheet's "Unit Plan" column should show the bought unit itself: completions
 		Tactic tactic = new Tactic(
 				"YouTube", "Video", null,
 				0, 3_200_000, 0, 6_000, null, null, null, null,
@@ -273,8 +273,8 @@ class TacticResolversTest {
 		Resolved completionsPlan = resolvers.resolveTacticCompletionsPlan(1, List.of(), List.of(), data);
 		Resolved impsFact = resolvers.resolveTacticImps(1, "YouTube", List.of(), List.of(), data);
 
-		// Then: impressions plan/fact are always literal impressions, completions plan is the bought unit
-		assertThat(impsPlan.value()).isEqualTo("19,333");
+		// Then: Unit Plan matches the bought unit (completions); the fact side stays literal impressions
+		assertThat(impsPlan.value()).isEqualTo("5,800");
 		assertThat(completionsPlan.value()).isEqualTo("5,800");
 		assertThat(impsFact.value()).isEqualTo("3,200,000");
 	}

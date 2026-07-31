@@ -85,6 +85,9 @@ public class SheetPlaceholderReaderImpl implements SheetPlaceholderReader {
 			Map.entry("KPI (fact)", " KPI"),
 			Map.entry("Impressions Fact", " imps"),
 			Map.entry("Impressions Plan", " imps plan"),
+			// Same token as "Impressions Plan": the column now carries whichever unit the tactic was
+			// bought in (clicks/completions/impressions), so the template may be relabelled "Unit Plan".
+			Map.entry("Unit Plan", " imps plan"),
 			Map.entry("Clicks Fact", " clicks"),
 			Map.entry("Clicks Plan", " clicks plan"),
 			Map.entry("Completions Fact", " complitions"),

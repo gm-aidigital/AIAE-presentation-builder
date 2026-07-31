@@ -144,21 +144,20 @@ public class TacticResolvers {
 	}
 
 	/**
-	 * Resolves the planned impressions target for tactic {@code n}, preferring a manual Adjustments
-	 * override, then the Media Plan sheet, then the Estimates-tab/rate-derived plan. Always literal
-	 * impressions: for a CPC/CPV EOM tactic {@link CampaignDataCollector} backs this figure out of the
-	 * planned clicks/completions and the Estimates CTR/VCR benchmark rather than leaving it unset, so
-	 * every tactic's "Impressions Plan" carries a real number regardless of how it was bought.
-	 * {@link #resolveTacticClicksPlan} and {@link #resolveTacticCompletionsPlan} carry the bought unit
-	 * itself for a CPC/CPV tactic.
+	 * Resolves the planned main-unit target for tactic {@code n} — the sheet's "Unit Plan" column
+	 * (token {@code imps plan} for backward compatibility with the template and any existing
+	 * Adjustments overrides) — preferring a manual Adjustments override, then the Media Plan sheet,
+	 * then the rate/budget-derived plan for whichever unit the tactic was bought in: clicks for CPC,
+	 * completions for CPV, impressions for CPM. Matches {@link #resolveTacticImps}, which resolves the
+	 * same unit's delivered (fact) figure, so plan and fact are always directly comparable.
 	 *
 	 * @param n          one-based tactic index used to build the {@code "Tactic N imps plan:"} lookup label
-	 * @param tacticName display name of the tactic (unused for impressions plan; kept for resolver-signature parity)
+	 * @param tacticName display name of the tactic (unused for unit plan; kept for resolver-signature parity)
 	 * @param sheetRows  Media Plan grid rows searched for the labelled value
 	 * @param adjRows    manual Adjustments grid rows that take precedence over the sheet
-	 * @param data       campaign data providing the planned-impressions fallback
-	 * @return the resolved planned impressions with its source tag, or a {@code not_found} placeholder
-	 * when no value exists
+	 * @param data       campaign data providing the planned clicks/completions/impressions fallback
+	 * @return the resolved planned unit with its source tag, or a {@code not_found} placeholder when no
+	 * value exists
 	 */
 	public Resolved resolveTacticImpsPlan(int n, String tacticName, List<List<String>> sheetRows,
 	                                      List<List<String>> adjRows, CampaignData data) {
@@ -172,9 +171,22 @@ public class TacticResolvers {
 			return new Resolved(label, fromSheet, "sheet");
 		}
 		Tactic t = tactic(data, n);
-		Double planImps = t == null ? null : t.planImps();
+		if (t == null) {
+			return new Resolved(label, null, "not_found");
+		}
+		Double planClicks = t.planClicks();
+		if (planClicks != null && planClicks > 0) {
+			return new Resolved(label + " (auto: plan clicks, from CPC rate/budget)", fmt.intGroup(planClicks), "adj");
+		}
+		Double planViews = t.planViews();
+		if (planViews != null && planViews > 0) {
+			return new Resolved(label + " (auto: plan completions, from CPV rate/budget)", fmt.intGroup(planViews),
+					"adj");
+		}
+		Double planImps = t.planImps();
 		if (planImps != null && planImps > 0) {
-			return new Resolved(label + " (auto: plan impressions)", fmt.intGroup(planImps), "adj");
+			return new Resolved(label + " (auto: plan impressions, from CPM rate/budget)", fmt.intGroup(planImps),
+					"adj");
 		}
 		return new Resolved(label, null, "not_found");
 	}
@@ -980,8 +992,9 @@ public class TacticResolvers {
 
 	/**
 	 * Resolves the prorated to-date impressions goal for tactic {@code n}, scaled by elapsedMonths /
-	 * totalMonths, preferring a manual override. Always literal impressions — see
-	 * {@link #resolveTacticImpsPlan} for why a CPC/CPV tactic still carries one.
+	 * totalMonths, preferring a manual override. Always literal impressions (reads {@code t.planImps()}
+	 * directly, not the sheet's unit-aware "Unit Plan" column) — see
+	 * {@link CampaignDataCollector#resolveEomPlanByTacticNum} for why a CPC/CPV tactic still carries one.
 	 *
 	 * @param n         one-based tactic index used to build the {@code "Tactic N imps plan ctd:"} lookup label
 	 * @param sheetRows Media Plan grid rows searched for the labelled value

@@ -352,10 +352,12 @@ public class CampaignDataCollector {
 	 * @param estimatesPlanByTacticNum tactic number to its Estimates-tab row, used only for the
 	 *                                CTR/VCR/max-frequency benchmarks (indices 2-4)
 	 * @return tactic number to its planned {@code {spend, imps, ctr, vcr, maxFreq, clicks, views}} row.
-	 * {@code imps} is always populated when derivable: directly for a CPM tactic, or backed out of the
-	 * planned clicks/completions and the Estimates CTR/VCR benchmark for CPC/CPV (impressions is the
-	 * one figure every tactic's "Impressions Plan" column shows, regardless of how it was bought).
-	 * Omits tactics with no mapping entry.
+	 * {@code imps} is populated when derivable — directly for a CPM tactic, or backed out of the planned
+	 * clicks/completions and the Estimates CTR/VCR benchmark for CPC/CPV — for the reach/CPM/projection
+	 * math that needs true impressions regardless of how the tactic was bought (see
+	 * {@link TacticResolvers#resolveTacticReach}); the sheet's "Unit Plan" column instead shows
+	 * {@code clicks}/{@code views} directly for a CPC/CPV tactic (see
+	 * {@link TacticResolvers#resolveTacticImpsPlan}). Omits tactics with no mapping entry.
 	 */
 	Map<Integer, double[]> resolveEomPlanByTacticNum(
 			List<LineItemMapping> lineItemMapping, Integer eomFlightMonthsTotal,
