@@ -222,12 +222,14 @@ class TacticResolversTest {
 	}
 
 	@Test
-	void resolveTacticImpsAndImpsPlanShouldReadClicksForACpcTacticTest() {
-		// Given: an EOM tactic whose plan was entered as CPC (planClicks set, planImps null)
+	void resolveTacticImpsPlanAndClicksPlanShouldReadTheirOwnFieldsForACpcTacticTest() {
+		// Given: an EOM tactic bought on CPC — CampaignDataCollector already backed the literal
+		// impressions figure out of the planned clicks and the Estimates CTR benchmark, alongside the
+		// planned clicks themselves
 		Tactic tactic = new Tactic(
 				"Google SEM", "Search", null,
-				0, 0, 3_429, 0, null, null, null, null,
-				null, null, null, null, null,
+				0, 4_900_000, 3_429, 0, null, null, null, null,
+				null, 144_000.0, null, null, null,
 				null, null, null,
 				12_000.0, null
 		);
@@ -238,22 +240,25 @@ class TacticResolversTest {
 		);
 
 		// When:
-		Resolved plan = resolvers.resolveTacticImpsPlan(1, "Google SEM", List.of(), List.of(), data);
-		Resolved fact = resolvers.resolveTacticImps(1, "Google SEM", List.of(), List.of(), data);
+		Resolved impsPlan = resolvers.resolveTacticImpsPlan(1, "Google SEM", List.of(), List.of(), data);
+		Resolved clicksPlan = resolvers.resolveTacticClicksPlan(1, List.of(), List.of(), data);
+		Resolved impsFact = resolvers.resolveTacticImps(1, "Google SEM", List.of(), List.of(), data);
 
-		// Then: both read the click figures, not impressions
-		assertThat(plan.value()).isEqualTo("12,000");
-		assertThat(fact.value()).isEqualTo("3,429");
+		// Then: impressions plan/fact are always literal impressions, clicks plan is the bought unit
+		assertThat(impsPlan.value()).isEqualTo("144,000");
+		assertThat(clicksPlan.value()).isEqualTo("12,000");
+		assertThat(impsFact.value()).isEqualTo("4,900,000");
 	}
 
 	@Test
-	void resolveTacticImpsAndImpsPlanShouldReadViewsForACpvTacticTest() {
-		// Given: an EOM tactic whose plan was entered as CPV (planViews set, planImps null); completions
-		// carries the actual delivered views
+	void resolveTacticImpsPlanAndCompletionsPlanShouldReadTheirOwnFieldsForACpvTacticTest() {
+		// Given: an EOM tactic bought on CPV — CampaignDataCollector already backed the literal
+		// impressions figure out of the planned completions and the Estimates VCR benchmark, alongside
+		// the planned completions (views) themselves
 		Tactic tactic = new Tactic(
 				"YouTube", "Video", null,
-				0, 0, 0, 6_000, null, null, null, null,
-				null, null, null, null, null,
+				0, 3_200_000, 0, 6_000, null, null, null, null,
+				null, 19_333.0, null, null, null,
 				null, null, null,
 				null, 5_800.0
 		);
@@ -264,12 +269,38 @@ class TacticResolversTest {
 		);
 
 		// When:
-		Resolved plan = resolvers.resolveTacticImpsPlan(1, "YouTube", List.of(), List.of(), data);
-		Resolved fact = resolvers.resolveTacticImps(1, "YouTube", List.of(), List.of(), data);
+		Resolved impsPlan = resolvers.resolveTacticImpsPlan(1, "YouTube", List.of(), List.of(), data);
+		Resolved completionsPlan = resolvers.resolveTacticCompletionsPlan(1, List.of(), List.of(), data);
+		Resolved impsFact = resolvers.resolveTacticImps(1, "YouTube", List.of(), List.of(), data);
 
-		// Then: both read the view/completion figures, not impressions
-		assertThat(plan.value()).isEqualTo("5,800");
-		assertThat(fact.value()).isEqualTo("6,000");
+		// Then: impressions plan/fact are always literal impressions, completions plan is the bought unit
+		assertThat(impsPlan.value()).isEqualTo("19,333");
+		assertThat(completionsPlan.value()).isEqualTo("5,800");
+		assertThat(impsFact.value()).isEqualTo("3,200,000");
+	}
+
+	@Test
+	void resolveTacticClicksPlanAndCompletionsPlanShouldNotFoundWhenTacticCarriesNeitherTest() {
+		// Given: a CPM tactic with neither planClicks nor planViews set
+		Tactic tactic = new Tactic(
+				"Display", "Display", null,
+				0, 500_000, 0, 0, null, null, null, null,
+				null, 500_000.0, null, null, null,
+				null, null, null
+		);
+		CampaignData data = new CampaignData(
+				null, null, null, null, null, null, null, null, null, null, null,
+				new Totals(0, 0, 0, 0, null, null),
+				Map.of(1, tactic), null
+		);
+
+		// When:
+		Resolved clicksPlan = resolvers.resolveTacticClicksPlan(1, List.of(), List.of(), data);
+		Resolved completionsPlan = resolvers.resolveTacticCompletionsPlan(1, List.of(), List.of(), data);
+
+		// Then:
+		assertThat(clicksPlan.source()).isEqualTo("not_found");
+		assertThat(completionsPlan.source()).isEqualTo("not_found");
 	}
 
 	@Test

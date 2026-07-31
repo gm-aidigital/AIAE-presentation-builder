@@ -391,8 +391,11 @@ public class CampaignDataCollector {
 	 *                                or non-positive yields no plan figures at all
 	 * @param estimatesPlanByTacticNum tactic number to its Estimates-tab row, used only for the
 	 *                                CTR/VCR/max-frequency benchmarks (indices 2-4)
-	 * @return tactic number to its planned {@code {spend, imps, ctr, vcr, maxFreq, clicks, views}} row
-	 * (exactly one of imps/clicks/views is populated per rateType), omitting tactics with no mapping entry
+	 * @return tactic number to its planned {@code {spend, imps, ctr, vcr, maxFreq, clicks, views}} row.
+	 * {@code imps} is always populated when derivable: directly for a CPM tactic, or backed out of the
+	 * planned clicks/completions and the Estimates CTR/VCR benchmark for CPC/CPV (impressions is the
+	 * one figure every tactic's "Impressions Plan" column shows, regardless of how it was bought).
+	 * Omits tactics with no mapping entry.
 	 */
 	Map<Integer, double[]> resolveEomPlanByTacticNum(
 			List<LineItemMapping> lineItemMapping, Integer eomFlightMonthsTotal,
@@ -409,16 +412,25 @@ public class CampaignDataCollector {
 			Double fullBudget = m.monthlyBudget() == null ? null : m.monthlyBudget() * eomFlightMonthsTotal;
 			Double units = ratePlanCalculator.planUnits(fullBudget, m.unitPrice(), m.rateType());
 			double spend = fullBudget == null ? Double.NaN : fullBudget;
-			double imps = units != null && m.rateType() == RateType.CPM ? units : Double.NaN;
 			double clicks = units != null && m.rateType() == RateType.CPC ? units : Double.NaN;
 			double views = units != null && m.rateType() == RateType.CPV ? units : Double.NaN;
 			double[] estimates = estimatesPlanByTacticNum.get(num);
 			double ctr = estimates != null ? estimates[2] : Double.NaN;
 			double vcr = estimates != null ? estimates[3] : Double.NaN;
 			double maxFreq = estimates != null ? estimates[4] : Double.NaN;
+			double imps;
+			if (units != null && m.rateType() == RateType.CPM) {
+				imps = units;
+			} else if (!Double.isNaN(clicks) && !Double.isNaN(ctr) && ctr > 0) {
+				imps = clicks / (ctr / 100);
+			} else if (!Double.isNaN(views) && !Double.isNaN(vcr) && vcr > 0) {
+				imps = views / (vcr / 100);
+			} else {
+				imps = Double.NaN;
+			}
 			log.info("[eom-plan] tacticNum={} rateType={} unitPrice={} monthlyBudget={} "
-							+ "flightMonthsTotal={} fullBudget={} units={}",
-					num, m.rateType(), m.unitPrice(), m.monthlyBudget(), eomFlightMonthsTotal, fullBudget, units);
+							+ "flightMonthsTotal={} fullBudget={} units={} imps={}",
+					num, m.rateType(), m.unitPrice(), m.monthlyBudget(), eomFlightMonthsTotal, fullBudget, units, imps);
 			out.putIfAbsent(num, new double[]{spend, imps, ctr, vcr, maxFreq, clicks, views});
 		}
 		return out;

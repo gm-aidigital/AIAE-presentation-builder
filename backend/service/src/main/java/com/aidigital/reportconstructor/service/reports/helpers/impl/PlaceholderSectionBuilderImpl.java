@@ -195,6 +195,9 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		m.put("{{tactic " + n + " vcr plan}}", tacticResolvers.resolveTacticVcrPlan(n, tacticName, sheet, adj, data));
 		m.put("{{tactic " + n + " clicks}}", tacticResolvers.resolveTacticClicks(n, sheet, adj, data));
 		m.put("{{tactic " + n + " completions}}", tacticResolvers.resolveTacticCompletions(n, sheet, adj, data));
+		m.put("{{tactic " + n + " clicks plan}}", tacticResolvers.resolveTacticClicksPlan(n, sheet, adj, data));
+		m.put("{{tactic " + n + " completions plan}}",
+				tacticResolvers.resolveTacticCompletionsPlan(n, sheet, adj, data));
 		m.put("{{tactic " + n + " KPI type}}", tacticResolvers.resolveTacticKpiType(n, tacticName, sheet, adj));
 		m.put("{{tactic " + n + " KPI}}", tacticResolvers.resolveTacticKpi(n, tacticName, sheet, adj, data));
 		m.put("{{tactic " + n + " volume}}",
