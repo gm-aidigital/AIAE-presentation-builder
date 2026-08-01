@@ -42,6 +42,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
@@ -101,6 +102,21 @@ public class RealSlidesProvider implements SlidesProvider {
 	 */
 	private static final String MASTER_FIELDS = "slides.objectId";
 
+	/**
+	 * Field mask for the {@code presentations.get} used by {@link #deleteReportTypeSlides}: the slide order
+	 * ({@code objectId}) plus the shape and table text the configured titles are matched against.
+	 */
+	private static final String TITLE_FIELDS = BREAKDOWN_FIELDS;
+
+	/** Report type whose deck drops the EOC-only story slides configured in {@code eom-drop-slide-titles}. */
+	private static final String EOM_REPORT_TYPE = "EOM";
+
+	/** Prefix the Slides editor puts before a slide's object id in its {@code #slide=id.…} URL fragment. */
+	private static final String SLIDE_URL_ID_PREFIX = "id.";
+
+	/** Everything that is not a letter or a digit, stripped before matching a slide title. */
+	private static final Pattern NON_ALPHANUMERIC = Pattern.compile("[^\\p{L}\\p{N}]+");
+
 	/** Matches a whole {@code {{…}}} placeholder token (no nested braces). */
 	private static final Pattern TOKEN = Pattern.compile("\\{\\{[^{}]*\\}\\}");
 
@@ -127,6 +143,8 @@ public class RealSlidesProvider implements SlidesProvider {
 	private final Map<Integer, String> resultsSlideObjectIds;
 	private final Map<Integer, String> tacticSlideObjectIds;
 	private final Map<BreakdownType, String> breakdownMasterIds;
+	private final Set<String> eomDropSlideObjectIds;
+	private final List<String> eomDropSlideTitles;
 	private final String thoughtsMasterId;
 	private final BreakdownSlideNaming breakdownSlideNaming;
 	private final BreakdownThoughtsGate thoughtsGate;
@@ -143,6 +161,8 @@ public class RealSlidesProvider implements SlidesProvider {
 		this.resultsSlideObjectIds = props.getResultsSlideObjectIds();
 		this.tacticSlideObjectIds = props.getTacticSlideObjectIds();
 		this.breakdownMasterIds = resolveBreakdownMasterIds(props.getBreakdownMasterSlideObjectIds());
+		this.eomDropSlideObjectIds = normalizeSlideIds(props.getEomDropSlideObjectIds());
+		this.eomDropSlideTitles = normalizeTitles(props.getEomDropSlideTitles());
 		String thoughtsMaster = props.getThoughtsMasterSlideObjectId();
 		this.thoughtsMasterId = thoughtsMaster == null ? "" : thoughtsMaster.trim();
 		this.breakdownSlideNaming = breakdownSlideNaming;
@@ -519,6 +539,182 @@ public class RealSlidesProvider implements SlidesProvider {
 			throw new AppException(ErrorReason.C000,
 					"Google Slides deleteMasterSlides failed: " + ex.getMessage());
 		}
+	}
+
+	@Override
+	public void deleteReportTypeSlides(String presentationId, String reportType, String userGoogleAccessToken) {
+		if (!EOM_REPORT_TYPE.equals(reportType)
+				|| (eomDropSlideObjectIds.isEmpty() && eomDropSlideTitles.isEmpty())) {
+			return;
+		}
+		boolean asUser = userGoogleAccessToken != null && !userGoogleAccessToken.isBlank();
+		Slides slidesClient = asUser ? buildSlides(userGoogleAccessToken) : slides;
+		try {
+			Presentation deck = retrier.execute(
+					slidesClient.presentations().get(presentationId).setFields(TITLE_FIELDS),
+					"deleteReportTypeSlides get " + presentationId);
+			List<Request> requests = buildTitleDeleteRequests(deck.getSlides());
+			if (requests.isEmpty()) {
+				log.warn("[slides] deleteReportTypeSlides matched none of the {} configured id(s) / {} title(s) in {}",
+						eomDropSlideObjectIds.size(), eomDropSlideTitles.size(), presentationId);
+				return;
+			}
+			executeInChunks(slidesClient, presentationId, requests,
+					"deleteReportTypeSlides batchUpdate for " + presentationId);
+		} catch (IOException ex) {
+			log.error("[slides] deleteReportTypeSlides failed for {}", presentationId, ex);
+			throw new AppException(ErrorReason.C000,
+					"Google Slides deleteReportTypeSlides failed: " + ex.getMessage());
+		}
+	}
+
+	/**
+	 * Builds the {@code DeleteObject} requests for the slides an EOM deck must drop. A slide is deleted when
+	 * its object id is one of the configured ids — the reliable route, since object ids survive the Drive copy
+	 * that produced the deck — or, for slides not covered by an id, when its text contains one of the
+	 * configured titles. Both the slide text and the configured title are reduced to their letters and digits
+	 * before matching, so casing, spacing and punctuation in the template cannot break the fallback. Ids
+	 * configured but absent from the deck are skipped rather than failing the batch.
+	 *
+	 * @param slides the deck's slides in order (from {@code presentations.get} with {@link #TITLE_FIELDS})
+	 * @return the delete requests in slide order, or an empty list when no slide matched
+	 */
+	List<Request> buildTitleDeleteRequests(List<Page> slides) {
+		List<Request> requests = new ArrayList<>();
+		if (slides == null || slides.isEmpty()) {
+			return requests;
+		}
+		for (Page page : slides) {
+			String objectId = page.getObjectId();
+			if (objectId == null) {
+				continue;
+			}
+			if (eomDropSlideObjectIds.contains(objectId)) {
+				requests.add(new Request().setDeleteObject(new DeleteObjectRequest().setObjectId(objectId)));
+				continue;
+			}
+			String text = normalizeTitle(slideText(page));
+			if (text.isEmpty()) {
+				continue;
+			}
+			for (String title : eomDropSlideTitles) {
+				if (text.contains(title)) {
+					requests.add(new Request().setDeleteObject(new DeleteObjectRequest().setObjectId(objectId)));
+					break;
+				}
+			}
+		}
+		return requests;
+	}
+
+	/**
+	 * Concatenates every shape and table-cell text run on a slide into one string, so a title split across
+	 * runs (Slides splits on any formatting change) still matches as one phrase.
+	 *
+	 * @param page the slide to read (may carry no page elements)
+	 * @return the slide's text, or an empty string when it carries none
+	 */
+	String slideText(Page page) {
+		StringBuilder joined = new StringBuilder();
+		if (page.getPageElements() == null) {
+			return "";
+		}
+		for (PageElement element : page.getPageElements()) {
+			if (element.getShape() != null) {
+				appendText(element.getShape().getText(), joined);
+			}
+			Table table = element.getTable();
+			if (table != null && table.getTableRows() != null) {
+				for (TableRow row : table.getTableRows()) {
+					if (row.getTableCells() == null) {
+						continue;
+					}
+					for (TableCell cell : row.getTableCells()) {
+						appendText(cell.getText(), joined);
+					}
+				}
+			}
+		}
+		return joined.toString();
+	}
+
+	/**
+	 * Appends the text runs of one text container (a shape or a table cell) to the accumulator.
+	 *
+	 * @param text   the text container (may be {@code null})
+	 * @param joined the accumulating slide text
+	 */
+	void appendText(TextContent text, StringBuilder joined) {
+		if (text == null || text.getTextElements() == null) {
+			return;
+		}
+		for (TextElement element : text.getTextElements()) {
+			if (element.getTextRun() != null && element.getTextRun().getContent() != null) {
+				joined.append(element.getTextRun().getContent());
+			}
+		}
+	}
+
+	/**
+	 * Normalizes the configured drop slide ids: blank entries are dropped and the {@code id.} prefix the
+	 * Slides editor puts in its {@code #slide=id.…} URL fragment is stripped, so an id pasted straight from
+	 * the address bar matches the object id the API reports.
+	 *
+	 * @param configured the raw configured slide object ids (may be null/empty)
+	 * @return the normalized, non-blank object ids
+	 */
+	Set<String> normalizeSlideIds(List<String> configured) {
+		Set<String> normalized = new LinkedHashSet<>();
+		if (configured == null) {
+			return normalized;
+		}
+		for (String id : configured) {
+			if (id == null) {
+				continue;
+			}
+			String candidate = id.trim();
+			if (candidate.startsWith(SLIDE_URL_ID_PREFIX)) {
+				candidate = candidate.substring(SLIDE_URL_ID_PREFIX.length());
+			}
+			if (!candidate.isEmpty()) {
+				normalized.add(candidate);
+			}
+		}
+		return normalized;
+	}
+
+	/**
+	 * Normalizes the configured drop titles for matching, dropping blank entries.
+	 *
+	 * @param configured the raw configured title phrases (may be null/empty)
+	 * @return the normalized, non-blank titles
+	 */
+	List<String> normalizeTitles(List<String> configured) {
+		List<String> normalized = new ArrayList<>();
+		if (configured == null) {
+			return normalized;
+		}
+		for (String title : configured) {
+			String candidate = normalizeTitle(title);
+			if (!candidate.isEmpty()) {
+				normalized.add(candidate);
+			}
+		}
+		return normalized;
+	}
+
+	/**
+	 * Reduces a title (or a slide's text) to its upper-case letters and digits, so casing, spacing and
+	 * punctuation differences between the configured phrase and the template cannot break the match.
+	 *
+	 * @param value the raw text (may be {@code null})
+	 * @return the normalized text, or an empty string when there is nothing to match
+	 */
+	String normalizeTitle(String value) {
+		if (value == null) {
+			return "";
+		}
+		return NON_ALPHANUMERIC.matcher(value).replaceAll("").toUpperCase(Locale.ROOT);
 	}
 
 	/**

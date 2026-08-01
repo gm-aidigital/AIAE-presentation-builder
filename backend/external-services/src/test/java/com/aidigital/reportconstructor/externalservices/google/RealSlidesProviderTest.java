@@ -65,6 +65,30 @@ class RealSlidesProviderTest {
 				new BreakdownSlideNaming(), new BreakdownThoughtsGateImpl());
 	}
 
+	private RealSlidesProvider newTitleProvider(List<String> eomDropSlideTitles) {
+		return newDropProvider(List.of(), eomDropSlideTitles);
+	}
+
+	private RealSlidesProvider newDropProvider(List<String> eomDropSlideObjectIds, List<String> eomDropSlideTitles) {
+		GoogleCredentialsFactory creds = Mockito.mock(GoogleCredentialsFactory.class);
+		when(creds.transport()).thenReturn(new NetHttpTransport());
+		when(creds.jsonFactory()).thenReturn(GsonFactory.getDefaultInstance());
+		when(creds.initializer()).thenReturn(request -> {
+		});
+		GoogleProperties props = Mockito.mock(GoogleProperties.class);
+		when(props.getSlidesTemplateId()).thenReturn("template");
+		when(props.getEomSlidesTemplateId()).thenReturn("eom-template");
+		when(props.getSlidesTargetFolderId()).thenReturn("");
+		when(props.getTacticSlideObjectIds()).thenReturn(Map.of());
+		when(props.getThoughtsMasterSlideObjectId()).thenReturn("");
+		when(props.getBreakdownMasterSlideObjectIds()).thenReturn(Map.of());
+		when(props.getEomDropSlideObjectIds()).thenReturn(eomDropSlideObjectIds);
+		when(props.getEomDropSlideTitles()).thenReturn(eomDropSlideTitles);
+		return new RealSlidesProvider(
+				creds, props, Mockito.mock(DriveSharer.class), Mockito.mock(DriveShareRecipients.class),
+				Mockito.mock(GoogleRequestRetrier.class), new BreakdownSlideNaming(), new BreakdownThoughtsGateImpl());
+	}
+
 	private Page slide(String objectId) {
 		return new Page().setObjectId(objectId);
 	}
@@ -300,6 +324,73 @@ class RealSlidesProviderTest {
 
 		// When:
 		List<Request> requests = provider.buildMasterDeleteRequests(deck);
+
+		// Then: nothing is deleted
+		assertThat(requests).isEmpty();
+	}
+
+	@Test
+	void buildTitleDeleteRequests_deletesTheSlidesCarryingAConfiguredEomTitleTest() {
+		// Given: the two EOC-only titles an EOM deck must drop, and a deck whose frequency slide has its
+		// title split across text runs and whose awareness slide differs in casing and spacing
+		RealSlidesProvider provider = newTitleProvider(
+				List.of("THE FREQUENCY & VELOCITY PLAY", "AWARENESS & MARKET SHARE DOMINANCE"));
+		List<Page> deck = List.of(
+				shapeSlide("intro", List.of(List.of("Campaign overview"))),
+				shapeSlide("freq", List.of(List.of("THE FREQUENCY ", "& VELOCITY", " PLAY"), List.of("body copy"))),
+				shapeSlide("awareness", List.of(List.of("Awareness  &  Market Share Dominance"))),
+				shapeSlide("tactic1", List.of(List.of("CTV"))));
+
+		// When:
+		List<Request> requests = provider.buildTitleDeleteRequests(deck);
+
+		// Then: only the two matching slides are deleted, in deck order
+		assertThat(requests.stream().map(r -> r.getDeleteObject().getObjectId()).toList())
+				.containsExactly("freq", "awareness");
+	}
+
+	@Test
+	void buildTitleDeleteRequests_deletesTheConfiguredObjectIdsRegardlessOfSlideTextTest() {
+		// Given: the two slides are named by object id — one pasted with the editor's "id." URL prefix — and
+		// neither carries any text the configured title would match
+		RealSlidesProvider provider = newDropProvider(
+				List.of("g3f4b9ea3eb6_0_1", "id.g3f4b9ea3eb6_0_8"), List.of("THE FREQUENCY & VELOCITY PLAY"));
+		List<Page> deck = List.of(
+				shapeSlide("g3f4b9ea3eb6_0_1", List.of(List.of("Re-worded frequency slide"))),
+				shapeSlide("tactic1", List.of(List.of("CTV"))),
+				slide("g3f4b9ea3eb6_0_8"));
+
+		// When:
+		List<Request> requests = provider.buildTitleDeleteRequests(deck);
+
+		// Then: both configured ids are deleted, the "id." prefix having been stripped
+		assertThat(requests.stream().map(r -> r.getDeleteObject().getObjectId()).toList())
+				.containsExactly("g3f4b9ea3eb6_0_1", "g3f4b9ea3eb6_0_8");
+	}
+
+	@Test
+	void buildTitleDeleteRequests_skipsAConfiguredIdThatIsAbsentFromTheDeckTest() {
+		// Given: an id configured for a slide the deck does not carry
+		RealSlidesProvider provider = newDropProvider(List.of("gone"), List.of());
+		List<Page> deck = List.of(shapeSlide("intro", List.of(List.of("Campaign overview"))));
+
+		// When:
+		List<Request> requests = provider.buildTitleDeleteRequests(deck);
+
+		// Then: nothing is deleted
+		assertThat(requests).isEmpty();
+	}
+
+	@Test
+	void buildTitleDeleteRequests_noOpWhenNoSlideCarriesAConfiguredTitleTest() {
+		// Given: a configured title that no slide in the deck carries
+		RealSlidesProvider provider = newTitleProvider(List.of("THE FREQUENCY & VELOCITY PLAY"));
+		List<Page> deck = List.of(
+				shapeSlide("intro", List.of(List.of("Campaign overview"))),
+				slide("no-text"));
+
+		// When:
+		List<Request> requests = provider.buildTitleDeleteRequests(deck);
 
 		// Then: nothing is deleted
 		assertThat(requests).isEmpty();

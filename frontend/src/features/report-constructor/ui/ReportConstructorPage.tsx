@@ -319,7 +319,8 @@ function PageInner() {
     function confirmInputs() {
         const errs: InputErrors = {
             brief: !w.brief.trim(),
-            marketVolume: !w.marketVolume.trim(),
+            // EOM decks have no market-volume slide, so the field is hidden on step 2 and not required.
+            marketVolume: w.reportType !== "EOM" && !w.marketVolume.trim(),
             sheet: !w.mediaPlan,
             adj: !w.elevate,
             dates: !(w.dateStart && w.dateEnd),

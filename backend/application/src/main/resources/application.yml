@@ -154,6 +154,30 @@ external:
     # EOM (Tier 1&2) deck template. Falls back to slides-template-id (the EOC deck) only if
     # this default is ever blanked out via an empty EOM_SLIDES_TEMPLATE_ID override.
     eom-slides-template-id: ${EOM_SLIDES_TEMPLATE_ID:1Twb8J_beR4iwwuB3AC7bf-GnsJEOMsy5yfIvLy9gL-A}
+    # Slides an EOM deck must never ship (RealSlidesProvider#deleteReportTypeSlides). The EOM template is a
+    # copy of the EOC deck, so it still carries these EOC-only story slides; they are deleted after the deck
+    # is built. Only applied when reportType = EOM.
+    #
+    # Preferred: name them by object id — ids survive the Drive copy the deck is made from, so unlike a title
+    # they cannot drift when the template's wording is edited. To collect an id, open the EOM template
+    # (1Twb8J_…), click the slide, and copy the "#slide=id.XXXX" part of the address bar; paste it with or
+    # without the "id." prefix. Ids configured but absent from the deck are skipped.
+    # Ids read from a presentations.get dump of the EOC template (11qzOC7…), which the EOM template was
+    # copied from — a Drive copy keeps every object id, the same assumption tactic-slide-object-ids above
+    # already relies on for EOM decks.
+    eom-drop-slide-object-ids:
+      - "g3ef28aa56c3_0_2486"   # THE FREQUENCY & VELOCITY PLAY
+      - "g3ef28aa56c3_0_3106"   # AWARENESS & MARKET SHARE DOMINANCE
+    # Fallback for slides not matched by id: matched on the slide's text, reduced to letters + digits, so
+    # casing/spacing/punctuation don't matter — but "&" must stay "&" (an "and" spelling would not match).
+    # Less robust than the ids: re-wording the slide in the template silently stops the match. Phrases must
+    # be STATIC template text — this pass runs after the deck is filled, so a {{token}} is already gone.
+    # The frequency slide is matched on its "DATA SIGNAL" heading rather than its title, because the title
+    # is split across separate text boxes ("THE FREQUENCY" / "&" / "VELOCITY" / "PLAY") that do not
+    # concatenate into the phrase; "DATA SIGNAL" is unique to that slide in the template.
+    eom-drop-slide-titles:
+      - "DATA SIGNAL"
+      - "AWARENESS & MARKET SHARE DOMINANCE"
     slides-target-folder-id: ${SLIDES_TARGET_FOLDER_ID:}
     # Every generated file (deck AND EOC sheet) is auto-shared as a writer with
     # these emails, so an owner/admin keeps access even when a report is created

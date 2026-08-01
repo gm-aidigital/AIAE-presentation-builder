@@ -96,4 +96,18 @@ public interface SlidesProvider {
 	 *                              service account when blank
 	 */
 	void deleteMasterSlides(String presentationId, String userGoogleAccessToken);
+
+	/**
+	 * Removes the slides that the given report type must never ship. The EOM deck is a copy of the EOC
+	 * one and still carries EOC-only story slides (the frequency &amp; velocity play, the awareness /
+	 * market-share slide); those are located by their title text and deleted. A no-op for every other
+	 * report type, and for an EOM deck in which none of the configured titles is present — so a template
+	 * that already dropped them degrades safely.
+	 *
+	 * @param presentationId        the already-built deck to clean
+	 * @param reportType            report template code ({@code "EOC"}/{@code "EOM"}), may be {@code null}
+	 * @param userGoogleAccessToken optional signed-in user's Google OAuth token; falls back to the
+	 *                              service account when blank
+	 */
+	void deleteReportTypeSlides(String presentationId, String reportType, String userGoogleAccessToken);
 }

@@ -93,6 +93,9 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	/** Value an unresolved placeholder flattens to; treated as "no value" when filling the funnel stages. */
 	private static final String DASH = "—";
 
+	/** Report type whose deck ships without the frequency slide (and therefore without its narrative). */
+	private static final String EOM_REPORT_TYPE = "EOM";
+
 	/** Max tactics the report template carries; the derived tactic count is clamped to this. */
 	private static final int MAX_TACTICS = 28;
 
@@ -287,6 +290,8 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 					String.valueOf(jobId), fileName, flatReplacements, payload.reportType(), userGoogleToken);
 
 			chartHelper.trimUnusedTactics(slideUrl, payload, userGoogleToken);
+			// EOC-only story slides the EOM deck inherited from the template it was copied from.
+			chartHelper.deleteReportTypeSlides(slideUrl, payload.reportType(), userGoogleToken);
 
 			jobProgress.markJobRunningAtStep(jobId, 7, "Building charts");
 			List<String> chartWarnings = chartHelper.buildCharts(
@@ -495,8 +500,14 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		// from the per-tactic digests; the Step-2 overviews are merged back in for the tactic-overview slides.
 		List<TacticNarrativeDigest> digests =
 				conclusionAssembler.toCampaignDigests(conclusions, namesByTactic, thoughts);
+		// EOM decks drop the frequency slide entirely, so the frequency narrative ({{f_oppartunity}} /
+		// {{f_fact}} / {{f_storytelling}}) has nowhere to land: passing no frequencies keeps those three
+		// fields out of the prompt and out of the reply, instead of paying for copy that is deleted.
+		CampaignFrequencies resultsFrequencies =
+				EOM_REPORT_TYPE.equals(payload.reportType()) ? null : frequencies;
 		ClaudeResults campaign = live
-				? claude.batchCampaignResults(data, brief, frequencies, digests) : claudeDefaults.emptyResults();
+				? claude.batchCampaignResults(data, brief, resultsFrequencies, digests)
+				: claudeDefaults.emptyResults();
 		// A silent empty campaign result despite real per-tactic digests means Batch C degraded to the empty DTO
 		// (timeout / parse failure / non-200) — the results overview, performance thoughts and recommendations
 		// will all render as dashes. Surface it as a job warning so the blank sections are visible rather than
@@ -550,6 +561,9 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		// breakdown slides were inserted — the masters must never ship, even when Step 3 selected no
 		// breakdowns. Runs after the charts so every copy has finished duplicating from the masters.
 		chartHelper.deleteMasterSlides(slideUrl, userGoogleToken);
+		// Slides an EOM deck must never ship (the frequency & velocity play, the awareness / market-share
+		// slide): the EOM template is a copy of the EOC one, so they arrive with it and are deleted here.
+		chartHelper.deleteReportTypeSlides(slideUrl, payload.reportType(), userGoogleToken);
 
 		jobProgress.markJobRunningAtStep(jobId, 7, "Building charts");
 		List<String> chartWarnings = chartHelper.buildChartsFromSheet(

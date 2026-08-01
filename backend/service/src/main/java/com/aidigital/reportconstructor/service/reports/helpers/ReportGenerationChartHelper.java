@@ -117,4 +117,16 @@ public interface ReportGenerationChartHelper {
 	 * @param userGoogleToken OAuth token for Google Slides API, or null when unavailable
 	 */
 	void deleteMasterSlides(String slideUrl, String userGoogleToken);
+
+	/**
+	 * Removes the slides the given report type must never ship. The EOM deck is built from a copy of the
+	 * EOC template and still carries EOC-only story slides (the frequency &amp; velocity play, the awareness
+	 * / market-share slide), which are located by their title text and deleted. A no-op for every other
+	 * report type. Non-fatal: a failure is logged and the deck is delivered with those slides still present.
+	 *
+	 * @param slideUrl        URL of the generated Google Slides deck
+	 * @param reportType      report template code ({@code "EOC"}/{@code "EOM"}), may be null
+	 * @param userGoogleToken OAuth token for Google Slides API, or null when unavailable
+	 */
+	void deleteReportTypeSlides(String slideUrl, String reportType, String userGoogleToken);
 }

@@ -266,6 +266,20 @@ public class ReportGenerationChartHelperImpl implements ReportGenerationChartHel
 	}
 
 	@Override
+	public void deleteReportTypeSlides(String slideUrl, String reportType, String userGoogleToken) {
+		String presentationId = extractPresentationId(slideUrl);
+		if (presentationId == null) {
+			return;
+		}
+		try {
+			slides.deleteReportTypeSlides(presentationId, reportType, userGoogleToken);
+		} catch (RuntimeException ex) {
+			log.warn("[slides] deleteReportTypeSlides failed for {} (non-fatal): {}",
+					presentationId, ex.getMessage());
+		}
+	}
+
+	@Override
 	public List<String> buildBreakdownCharts(
 			String slideUrl, GeneratePayload payload, int tacticCount, Map<String, String> flatReplacements,
 			String userGoogleToken) {

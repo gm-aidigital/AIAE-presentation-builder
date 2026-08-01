@@ -176,6 +176,8 @@ export function StepDataInputs({
     const briefDone = w.brief.trim().length > 0;
     const changeLogDone = w.changeLog.trim().length > 0;
     const marketDone = w.marketVolume.trim().length > 0;
+    // EOM decks carry no market-volume slide, so the field is hidden (and not required) for that type.
+    const needsMarketVolume = w.reportType !== "EOM";
     const datesDone = !!w.dateStart && !!w.dateEnd;
     const bothConnected = !!w.mediaPlan && !!w.elevate;
     const matched = (w.mapping ?? []).filter((m) => m.lineItemId).length;
@@ -219,21 +221,25 @@ export function StepDataInputs({
                         />
                     </div>
 
-                    <div className="rc-field">
-                        <label className="rc-field__label">Market Volume</label>
-                        <input
-                            type="text"
-                            inputMode="numeric"
-                            className="rc-input"
-                            placeholder="e.g. 48,200,000 addressable impressions"
-                            value={w.marketVolume}
-                            onChange={(e) => {
-                                w.setMarketVolume(e.target.value);
-                                clearError("marketVolume");
-                            }}
-                        />
-                        {errors.marketVolume && <div className="rc-field__error">Market volume is required.</div>}
-                    </div>
+                    {needsMarketVolume && (
+                        <div className="rc-field">
+                            <label className="rc-field__label">Market Volume</label>
+                            <input
+                                type="text"
+                                inputMode="numeric"
+                                className="rc-input"
+                                placeholder="e.g. 48,200,000 addressable impressions"
+                                value={w.marketVolume}
+                                onChange={(e) => {
+                                    w.setMarketVolume(e.target.value);
+                                    clearError("marketVolume");
+                                }}
+                            />
+                            {errors.marketVolume && (
+                                <div className="rc-field__error">Market volume is required.</div>
+                            )}
+                        </div>
+                    )}
 
                     <div className="rc-field">
                         <div className="rc-toggle-row">
@@ -361,11 +367,13 @@ export function StepDataInputs({
                             done={changeLogDone}
                             value={changeLogDone ? "Filled" : "Optional"}
                         />
-                        <StatusRow
-                            label="Market Volume"
-                            done={marketDone}
-                            value={marketDone ? "Filled" : "Waiting"}
-                        />
+                        {needsMarketVolume && (
+                            <StatusRow
+                                label="Market Volume"
+                                done={marketDone}
+                                value={marketDone ? "Filled" : "Waiting"}
+                            />
+                        )}
                         <StatusRow
                             label="Dayparting & gender"
                             done={w.estimateDaypartGender}

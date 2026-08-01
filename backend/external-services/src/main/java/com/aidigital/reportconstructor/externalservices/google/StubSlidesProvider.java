@@ -53,4 +53,9 @@ public class StubSlidesProvider implements SlidesProvider {
 	public void deleteMasterSlides(String presentationId, String userGoogleAccessToken) {
 		// No-op: the stub never clones a real deck, so there are no master slides to delete.
 	}
+
+	@Override
+	public void deleteReportTypeSlides(String presentationId, String reportType, String userGoogleAccessToken) {
+		// No-op: the stub never clones a real deck, so there are no report-type slides to delete.
+	}
 }
