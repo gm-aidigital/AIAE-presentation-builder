@@ -54,6 +54,9 @@ interface WizardContextValue {
     dateStart: string;
     dateEnd: string;
     dateConfirmed: boolean;
+    // True once the user typed a date themselves — suggestions (EOM's previous-month
+    // default, the Elevate detection) never overwrite a hand-picked window.
+    datesEdited: boolean;
 
     setBrief(value: string): void;
     setChangeLog(value: string): void;
@@ -69,6 +72,7 @@ interface WizardContextValue {
     confirmMatch(): void;
     resetMatch(): void;
     setDateWindow(start: string, end: string): void;
+    suggestDateWindow(start: string, end: string): void;
     confirmDates(): void;
     resetDates(): void;
 }
@@ -88,6 +92,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     const [dateStart, setDateStart] = useState("");
     const [dateEnd, setDateEnd] = useState("");
     const [dateConfirmed, setDateConfirmed] = useState(false);
+    const [datesEdited, setDatesEdited] = useState(false);
 
     const invalidateMatch = useCallback(() => {
         setMappingState(null);
@@ -100,6 +105,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
         setDateStart("");
         setDateEnd("");
         setDateConfirmed(false);
+        setDatesEdited(false);
     }, []);
 
     const value = useMemo<WizardContextValue>(
@@ -116,6 +122,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
             dateStart,
             dateEnd,
             dateConfirmed,
+            datesEdited,
             setBrief: setBriefState,
             setChangeLog: setChangeLogState,
             setReportType: setReportTypeState,
@@ -151,6 +158,13 @@ export function WizardProvider({ children }: { children: ReactNode }) {
                 setDateStart(start);
                 setDateEnd(end);
                 setDateConfirmed(false);
+                setDatesEdited(true);
+            },
+            suggestDateWindow: (start, end) => {
+                if (datesEdited) return;
+                setDateStart(start);
+                setDateEnd(end);
+                setDateConfirmed(false);
             },
             confirmDates: () => setDateConfirmed(true),
             resetDates: invalidateDates,
@@ -168,6 +182,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
             dateStart,
             dateEnd,
             dateConfirmed,
+            datesEdited,
             invalidateMatch,
             invalidateDates,
         ]

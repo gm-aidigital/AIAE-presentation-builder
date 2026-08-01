@@ -3,6 +3,7 @@ import { MEDIA_PLAN_FALLBACK_TAB, MEDIA_PLAN_PRIMARY_TAB, readSheetSummary, read
 import type { GenerateRequest, LineItemMatchResult, Rows2D, SheetReadResult, SheetSummaryRow } from "@/shared/api/types";
 import { WizardProvider, useWizard } from "@/shared/wizard/WizardContext";
 import { extractTacticBudgets, looksLikeMediaPlan, type TacticBudget } from "../lib/mediaPlanBudget";
+import { eomWindow } from "../lib/reportingMonth";
 import { useDetectDateRange } from "../api/useDetectDateRange";
 import { useMatchLineItems } from "../api/useMatchLineItems";
 import { fetchReportJob, startReportJob } from "../api/useReportJob";
@@ -274,10 +275,16 @@ function PageInner() {
 
     // Prefill the flight-date field from the raw-data ("Basic" tab) so the user can
     // confirm or correct it. Best-effort — on failure the user enters dates by hand.
+    // An EOM deck reports one month, while the Elevate rows span the whole campaign, so
+    // the detected range is clipped to the month that just closed (17 Jul–30 Sep read on
+    // 1 Aug → 17–31 Jul).
     async function detectDates(adjRows: Rows2D) {
         try {
             const r = await detectDateRangeMutation.mutateAsync(adjRows);
-            if (r.start && r.end) w.setDateWindow(r.start, r.end);
+            if (!r.start || !r.end) return;
+            const detected = { start: r.start, end: r.end };
+            const range = w.reportType === "EOM" ? eomWindow(detected) : detected;
+            w.suggestDateWindow(range.start, range.end);
         } catch {
             /* detection is optional */
         }

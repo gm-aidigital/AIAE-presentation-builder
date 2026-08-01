@@ -176,8 +176,9 @@ export function StepDataInputs({
     const briefDone = w.brief.trim().length > 0;
     const changeLogDone = w.changeLog.trim().length > 0;
     const marketDone = w.marketVolume.trim().length > 0;
+    const isEom = w.reportType === "EOM";
     // EOM decks carry no market-volume slide, so the field is hidden (and not required) for that type.
-    const needsMarketVolume = w.reportType !== "EOM";
+    const needsMarketVolume = !isEom;
     const datesDone = !!w.dateStart && !!w.dateEnd;
     const bothConnected = !!w.mediaPlan && !!w.elevate;
     const matched = (w.mapping ?? []).filter((m) => m.lineItemId).length;
@@ -324,6 +325,12 @@ export function StepDataInputs({
                                 }}
                             />
                         </div>
+                        {isEom && datesDone && !w.datesEdited && (
+                            <div className="rc-field__hint">
+                                Set to last full month, trimmed to the days the campaign actually ran — change
+                                it if this deck covers a different period.
+                            </div>
+                        )}
                         {errors.dates && <div className="rc-field__error">Flight dates are required.</div>}
                     </div>
 
