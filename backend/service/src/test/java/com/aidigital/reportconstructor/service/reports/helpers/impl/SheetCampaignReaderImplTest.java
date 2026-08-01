@@ -47,6 +47,28 @@ class SheetCampaignReaderImplTest {
 	}
 
 	@Test
+	void shouldReadBoughtUnitPlansAndTreatUnresolvedDashAsNoValueTest() {
+		// Given: a sheet-read map for two tactics — a CPC one whose "Clicks Plan" column carries a figure
+		// and whose "Completions Plan" column carries the unresolved em-dash, and a CPV one the other way
+		Map<String, String> flat = Map.ofEntries(
+				Map.entry("{{tactic 1}}", "Display"),
+				Map.entry("{{tactic 1 clicks plan}}", "12,000"),
+				Map.entry("{{tactic 1 completions plan}}", "—"),
+				Map.entry("{{tactic 2}}", "Video"),
+				Map.entry("{{tactic 2 clicks plan}}", "—"),
+				Map.entry("{{tactic 2 completions plan}}", "450,000"));
+
+		// When: the campaign context is reconstructed for both tactics
+		CampaignData data = reader.read(flat, 2);
+
+		// Then: each tactic keeps its own bought-unit plan and the dashed column reads back as null
+		assertThat(data.tactics().get(1).planClicks()).isEqualTo(12_000.0);
+		assertThat(data.tactics().get(1).planViews()).isNull();
+		assertThat(data.tactics().get(2).planClicks()).isNull();
+		assertThat(data.tactics().get(2).planViews()).isEqualTo(450_000.0);
+	}
+
+	@Test
 	void shouldClampTacticCountAndTolerateMissingValuesTest() {
 		// Given: a nearly empty map and an over-range tactic count
 

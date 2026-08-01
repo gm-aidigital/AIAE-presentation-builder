@@ -116,7 +116,10 @@ public class TacticResolvers {
 
 	/**
 	 * Resolves the planned spend target for tactic {@code n}, preferring a manual Adjustments override,
-	 * then the Media Plan sheet, then the Estimates "Total Cost" figure joined onto the tactic.
+	 * then the Media Plan sheet, then the Estimates "Total Cost" figure joined onto the tactic. Rendered
+	 * as a bare two-decimal amount ({@code "11812.50"}) like the unit rate beside it, so the summary
+	 * table's money columns stay real numbers for the totals row's {@code =SUM(...)} and the template's
+	 * own currency formatting.
 	 *
 	 * @param n          one-based tactic index used to build the {@code "Tactic N spend plan:"} lookup label
 	 * @param tacticName display name of the tactic (unused for spend plan; kept for resolver-signature parity)
@@ -139,26 +142,25 @@ public class TacticResolvers {
 		Tactic t = tactic(data, n);
 		Double planSpend = t == null ? null : t.planSpend();
 		if (planSpend != null && planSpend > 0) {
-			return new Resolved(label + " (auto: Estimates Total Cost)", fmt.moneyExact(planSpend), "adj");
+			return new Resolved(label + " (auto: Estimates Total Cost)", fmt.dec2Plain(planSpend), "adj");
 		}
 		return new Resolved(label, null, "not_found");
 	}
 
 	/**
-	 * Resolves the planned main-unit target for tactic {@code n} — the sheet's "Unit Plan" column
-	 * (token {@code imps plan} for backward compatibility with the template and any existing
-	 * Adjustments overrides) — preferring a manual Adjustments override, then the Media Plan sheet,
-	 * then the rate/budget-derived plan for whichever unit the tactic was bought in: clicks for CPC,
-	 * completions for CPV, impressions for CPM. Matches {@link #resolveTacticImps}, which resolves the
-	 * same unit's delivered (fact) figure, so plan and fact are always directly comparable.
+	 * Resolves the planned impressions target for tactic {@code n} — always literal impressions, since
+	 * the summary table now carries the bought unit in its own "Clicks Plan" / "Completions Plan"
+	 * columns (see {@link #resolveTacticClicksPlan} / {@link #resolveTacticCompletionsPlan}). For a
+	 * CPC/CPV tactic the figure is the one backed out of the bought units and the planned CTR/VCR, so
+	 * it stays comparable with {@link #resolveTacticImps}, which resolves the delivered impressions.
 	 *
 	 * @param n          one-based tactic index used to build the {@code "Tactic N imps plan:"} lookup label
-	 * @param tacticName display name of the tactic (unused for unit plan; kept for resolver-signature parity)
+	 * @param tacticName display name of the tactic (unused for imps plan; kept for resolver-signature parity)
 	 * @param sheetRows  Media Plan grid rows searched for the labelled value
 	 * @param adjRows    manual Adjustments grid rows that take precedence over the sheet
-	 * @param data       campaign data providing the planned clicks/completions/impressions fallback
-	 * @return the resolved planned unit with its source tag, or a {@code not_found} placeholder when no
-	 * value exists
+	 * @param data       campaign data providing the planned-impressions fallback
+	 * @return the resolved planned impressions with its source tag, or a {@code not_found} placeholder
+	 * when no value exists
 	 */
 	public Resolved resolveTacticImpsPlan(int n, String tacticName, List<List<String>> sheetRows,
 	                                      List<List<String>> adjRows, CampaignData data) {
@@ -172,22 +174,9 @@ public class TacticResolvers {
 			return new Resolved(label, fromSheet, "sheet");
 		}
 		Tactic t = tactic(data, n);
-		if (t == null) {
-			return new Resolved(label, null, "not_found");
-		}
-		Double planClicks = t.planClicks();
-		if (planClicks != null && planClicks > 0) {
-			return new Resolved(label + " (auto: plan clicks, from CPC rate/budget)", fmt.intGroup(planClicks), "adj");
-		}
-		Double planViews = t.planViews();
-		if (planViews != null && planViews > 0) {
-			return new Resolved(label + " (auto: plan completions, from CPV rate/budget)", fmt.intGroup(planViews),
-					"adj");
-		}
-		Double planImps = t.planImps();
+		Double planImps = t == null ? null : t.planImps();
 		if (planImps != null && planImps > 0) {
-			return new Resolved(label + " (auto: plan impressions, from CPM rate/budget)", fmt.intGroup(planImps),
-					"adj");
+			return new Resolved(label + " (auto: plan impressions, from rate/budget)", fmt.intGroup(planImps), "adj");
 		}
 		return new Resolved(label, null, "not_found");
 	}
@@ -280,16 +269,16 @@ public class TacticResolvers {
 	}
 
 	/**
-	 * Resolves the planned clicks target for tactic {@code n} — the bought unit for a CPC EOM tactic —
-	 * preferring a manual Adjustments override, then the Media Plan sheet, then the rate/budget-derived
-	 * plan.
+	 * Resolves the planned clicks target for tactic {@code n} — the bought unit for a CPC tactic, and
+	 * for a CPM/CPV one the figure derived from its planned impressions and CTR benchmark — preferring
+	 * a manual Adjustments override, then the Media Plan sheet, then the rate/budget-derived plan.
 	 *
 	 * @param n         one-based tactic index used to build the {@code "Tactic N clicks plan:"} lookup label
 	 * @param sheetRows Media Plan grid rows searched for the labelled value
 	 * @param adjRows   manual Adjustments grid rows that take precedence over the sheet
 	 * @param data      campaign data providing the planned-clicks fallback
 	 * @return the resolved planned clicks with its source tag, or a {@code not_found} placeholder when
-	 * the tactic is not CPC-rated or carries no planned clicks figure
+	 * the tactic carries no planned clicks figure (e.g. no CTR benchmark to derive one from)
 	 */
 	public Resolved resolveTacticClicksPlan(int n, List<List<String>> sheetRows, List<List<String>> adjRows,
 	                                        CampaignData data) {
@@ -312,15 +301,16 @@ public class TacticResolvers {
 
 	/**
 	 * Resolves the planned completions (video/audio views) target for tactic {@code n} — the bought
-	 * unit for a CPV EOM tactic — preferring a manual Adjustments override, then the Media Plan sheet,
-	 * then the rate/budget-derived plan.
+	 * unit for a CPV tactic, and for a CPM/CPC one the figure derived from its planned impressions and
+	 * VCR benchmark — preferring a manual Adjustments override, then the Media Plan sheet, then the
+	 * rate/budget-derived plan.
 	 *
 	 * @param n         one-based tactic index used to build the {@code "Tactic N completions plan:"} lookup label
 	 * @param sheetRows Media Plan grid rows searched for the labelled value
 	 * @param adjRows   manual Adjustments grid rows that take precedence over the sheet
 	 * @param data      campaign data providing the planned-completions fallback
 	 * @return the resolved planned completions with its source tag, or a {@code not_found} placeholder
-	 * when the tactic is not CPV-rated or carries no planned completions figure
+	 * when the tactic carries no planned completions figure (e.g. no VCR benchmark to derive one from)
 	 */
 	public Resolved resolveTacticCompletionsPlan(int n, List<List<String>> sheetRows, List<List<String>> adjRows,
 	                                             CampaignData data) {
@@ -399,7 +389,7 @@ public class TacticResolvers {
 		Tactic t = tactic(data, n);
 		Double planVcr = t == null ? null : t.planVcr();
 		if (planVcr != null) {
-			return new Resolved(label + " (auto: Estimates VCR)", Math.round(planVcr) + "%", "adj");
+			return new Resolved(label + " (auto: Estimates VCR)", fmt.dec2(planVcr) + "%", "adj");
 		}
 		return new Resolved(label, null, "not_found");
 	}

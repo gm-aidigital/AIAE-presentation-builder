@@ -194,7 +194,7 @@ class TacticResolversTest {
 		);
 		Resolved r = resolvers.resolveTacticSpendPlan(1, "Display", List.of(), List.of(), data);
 		assertThat(r.source()).isEqualTo("adj");
-		assertThat(r.value()).isEqualTo("$45,000");
+		assertThat(r.value()).isEqualTo("45000.00");
 	}
 
 	@Test
@@ -224,10 +224,9 @@ class TacticResolversTest {
 	}
 
 	@Test
-	void resolveTacticImpsPlanShouldPreferClicksOverLiteralImpressionsForACpcTacticTest() {
-		// Given: an EOM tactic bought on CPC — CampaignDataCollector still backs a literal impressions
-		// figure out of the planned clicks and the Estimates CTR benchmark (for reach/CPM/projection
-		// math), but the sheet's "Unit Plan" column should show the bought unit itself: clicks
+	void resolveTacticImpsPlanShouldStayLiteralImpressionsForACpcTacticTest() {
+		// Given: an EOM tactic bought on CPC — the planned clicks are the bought unit and the planned
+		// impressions are the figure backed out of them and the CTR benchmark; each has its own column
 		Tactic tactic = new Tactic(
 				"Google SEM", "Search", null,
 				0, 4_900_000, 3_429, 0, null, null, null, null,
@@ -246,17 +245,17 @@ class TacticResolversTest {
 		Resolved clicksPlan = resolvers.resolveTacticClicksPlan(1, List.of(), List.of(), data);
 		Resolved impsFact = resolvers.resolveTacticImps(1, "Google SEM", List.of(), List.of(), data);
 
-		// Then: Unit Plan matches the bought unit (clicks); the fact side stays literal impressions
-		assertThat(impsPlan.value()).isEqualTo("12,000");
+		// Then: Impressions Plan is literal impressions, Clicks Plan carries the bought unit, and the
+		// fact side stays literal impressions
+		assertThat(impsPlan.value()).isEqualTo("144,000");
 		assertThat(clicksPlan.value()).isEqualTo("12,000");
 		assertThat(impsFact.value()).isEqualTo("4,900,000");
 	}
 
 	@Test
-	void resolveTacticImpsPlanShouldPreferCompletionsOverLiteralImpressionsForACpvTacticTest() {
-		// Given: an EOM tactic bought on CPV — CampaignDataCollector still backs a literal impressions
-		// figure out of the planned completions and the Estimates VCR benchmark (for reach/CPM/projection
-		// math), but the sheet's "Unit Plan" column should show the bought unit itself: completions
+	void resolveTacticImpsPlanShouldStayLiteralImpressionsForACpvTacticTest() {
+		// Given: an EOM tactic bought on CPV — the planned completions are the bought unit and the planned
+		// impressions are the figure backed out of them and the VCR benchmark; each has its own column
 		Tactic tactic = new Tactic(
 				"YouTube", "Video", null,
 				0, 3_200_000, 0, 6_000, null, null, null, null,
@@ -275,8 +274,9 @@ class TacticResolversTest {
 		Resolved completionsPlan = resolvers.resolveTacticCompletionsPlan(1, List.of(), List.of(), data);
 		Resolved impsFact = resolvers.resolveTacticImps(1, "YouTube", List.of(), List.of(), data);
 
-		// Then: Unit Plan matches the bought unit (completions); the fact side stays literal impressions
-		assertThat(impsPlan.value()).isEqualTo("5,800");
+		// Then: Impressions Plan is literal impressions, Completions Plan carries the bought unit, and the
+		// fact side stays literal impressions
+		assertThat(impsPlan.value()).isEqualTo("19,333");
 		assertThat(completionsPlan.value()).isEqualTo("5,800");
 		assertThat(impsFact.value()).isEqualTo("3,200,000");
 	}
@@ -323,7 +323,7 @@ class TacticResolversTest {
 	}
 
 	@Test
-	void resolveTacticVcrPlan_roundsEstimatesVcr() {
+	void resolveTacticVcrPlan_formatsEstimatesVcrToTwoDecimals() {
 		Tactic tactic = new Tactic(
 				"CTV", "Video", null,
 				0, 0, 0, 0, null, null, null, null,
@@ -336,7 +336,7 @@ class TacticResolversTest {
 				Map.of(1, tactic), null
 		);
 		Resolved r = resolvers.resolveTacticVcrPlan(1, "CTV", List.of(), List.of(), data);
-		assertThat(r.value()).isEqualTo("96%");
+		assertThat(r.value()).isEqualTo("95.70%");
 	}
 
 	@Test

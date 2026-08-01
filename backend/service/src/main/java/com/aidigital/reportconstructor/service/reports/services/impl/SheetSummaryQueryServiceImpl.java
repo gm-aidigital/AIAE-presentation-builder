@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -37,6 +38,9 @@ public class SheetSummaryQueryServiceImpl implements SheetSummaryQueryService {
 	private static final String SUFFIX_COMPLETIONS_FACT = " complitions";
 	private static final String SUFFIX_SPEND_PLAN = " spend plan";
 	private static final String SUFFIX_SPEND_FACT = " spend";
+
+	/** The summary table's "Rate type" cell token, {@code {{rate type N}}} — not a per-tactic suffix. */
+	private static final String RATE_TYPE_TOKEN_PREFIX = "{{rate type ";
 
 	/** The em-dash a resolver writes for an unresolved figure (see {@code Resolved}); not a real value. */
 	private static final String UNRESOLVED_DASH = "—";
@@ -67,16 +71,21 @@ public class SheetSummaryQueryServiceImpl implements SheetSummaryQueryService {
 	}
 
 	/**
-	 * Resolves tactic {@code n}'s planned main-unit figure: whichever bought unit the tactic's rate
-	 * type carries — clicks plan for a CPC tactic, completions plan for CPV, impressions plan
-	 * otherwise (CPM, or an EOC report with no per-unit plan split at all).
+	 * Resolves tactic {@code n}'s planned main-unit figure: whichever unit the tactic's "Rate type"
+	 * cell says it was bought in — clicks plan for CPC, completions plan for CPV, impressions plan for
+	 * CPM. Every plan column is populated for every rate type now (the non-bought ones are derived
+	 * through the CTR/VCR benchmarks), so the rate type is what picks the right one; a workbook with no
+	 * rate type at all (EOC) falls back to whichever plan cell carries a value.
 	 *
 	 * @param values the placeholder map read from the workbook
 	 * @param n      1-based tactic number
-	 * @return the planned clicks/completions/impressions cell, in that priority order, or
-	 * {@code null} when none of the three carries a resolved value
+	 * @return the planned cell for the bought unit, or {@code null} when it carries no resolved value
 	 */
 	String unitPlan(Map<String, String> values, int n) {
+		String suffix = boughtUnitPlanSuffix(values, n);
+		if (suffix != null) {
+			return values.get(token(n, suffix));
+		}
 		String clicksPlan = values.get(token(n, SUFFIX_CLICKS_PLAN));
 		if (hasValue(clicksPlan)) {
 			return clicksPlan;
@@ -90,8 +99,8 @@ public class SheetSummaryQueryServiceImpl implements SheetSummaryQueryService {
 
 	/**
 	 * Resolves tactic {@code n}'s delivered main-unit figure, matching whichever unit
-	 * {@link #unitPlan} chose — clicks fact when the tactic has a resolved clicks plan, completions
-	 * fact when it has a resolved completions plan, impressions fact otherwise.
+	 * {@link #unitPlan} chose — clicks fact for a CPC tactic, completions fact for CPV, impressions
+	 * fact otherwise.
 	 *
 	 * @param values the placeholder map read from the workbook
 	 * @param n      1-based tactic number
@@ -99,13 +108,37 @@ public class SheetSummaryQueryServiceImpl implements SheetSummaryQueryService {
 	 * {@code null} when that cell is absent
 	 */
 	String unitFact(Map<String, String> values, int n) {
-		if (hasValue(values.get(token(n, SUFFIX_CLICKS_PLAN)))) {
+		String planSuffix = boughtUnitPlanSuffix(values, n);
+		if (SUFFIX_CLICKS_PLAN.equals(planSuffix)
+				|| (planSuffix == null && hasValue(values.get(token(n, SUFFIX_CLICKS_PLAN))))) {
 			return values.get(token(n, SUFFIX_CLICKS_FACT));
 		}
-		if (hasValue(values.get(token(n, SUFFIX_COMPLETIONS_PLAN)))) {
+		if (SUFFIX_COMPLETIONS_PLAN.equals(planSuffix)
+				|| (planSuffix == null && hasValue(values.get(token(n, SUFFIX_COMPLETIONS_PLAN))))) {
 			return values.get(token(n, SUFFIX_COMPLETIONS_FACT));
 		}
 		return values.get(token(n, SUFFIX_IMPS_FACT));
+	}
+
+	/**
+	 * Maps tactic {@code n}'s "Rate type" cell to the plan-column suffix that rate type is bought in.
+	 *
+	 * @param values the placeholder map read from the workbook
+	 * @param n      1-based tactic number
+	 * @return the clicks/completions/impressions plan suffix, or {@code null} when the workbook carries
+	 * no usable rate type for the tactic (an EOC report, or an unfilled cell)
+	 */
+	String boughtUnitPlanSuffix(Map<String, String> values, int n) {
+		String rateType = values.get(RATE_TYPE_TOKEN_PREFIX + n + TOKEN_SUFFIX);
+		if (rateType == null) {
+			return null;
+		}
+		return switch (rateType.trim().toUpperCase(Locale.ROOT)) {
+			case "CPC" -> SUFFIX_CLICKS_PLAN;
+			case "CPV" -> SUFFIX_COMPLETIONS_PLAN;
+			case "CPM" -> SUFFIX_IMPS_PLAN;
+			default -> null;
+		};
 	}
 
 	/**

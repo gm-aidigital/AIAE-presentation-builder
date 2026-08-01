@@ -1,5 +1,6 @@
 package com.aidigital.reportconstructor.service.reports.engine;
 
+import com.aidigital.reportconstructor.service.reports.dto.PlanUnitTargets;
 import com.aidigital.reportconstructor.service.reports.dto.RateType;
 import org.junit.jupiter.api.Test;
 
@@ -39,6 +40,58 @@ class RatePlanCalculatorTest {
 
 		// Then: 300 / 0.05 = 6,000 views
 		assertThat(result).isEqualTo(6_000.0);
+	}
+
+	@Test
+	void planTargetsShouldDeriveClicksAndCompletionsFromImpressionsForCpmTest() {
+		// Given: $5,000 at a $10 CPM, with a 0.20% CTR and a 70% VCR benchmark
+		// When:
+		PlanUnitTargets targets = calculator.planTargets(5000.0, 10.0, RateType.CPM, 0.20, 70.0);
+
+		// Then: impressions are bought (500,000) and the other two follow from the rates
+		assertThat(targets.impressions()).isEqualTo(500_000.0);
+		assertThat(targets.clicks()).isEqualTo(1_000.0);
+		assertThat(targets.completions()).isEqualTo(350_000.0);
+	}
+
+	@Test
+	void planTargetsShouldBackImpressionsOutOfClicksForCpcTest() {
+		// Given: $500 at a $2 CPC, with a 0.25% CTR and a 50% VCR benchmark
+		// When:
+		PlanUnitTargets targets = calculator.planTargets(500.0, 2.0, RateType.CPC, 0.25, 50.0);
+
+		// Then: clicks are bought (250), impressions come from the CTR and completions from those
+		assertThat(targets.clicks()).isEqualTo(250.0);
+		assertThat(targets.impressions()).isEqualTo(100_000.0);
+		assertThat(targets.completions()).isEqualTo(50_000.0);
+	}
+
+	@Test
+	void planTargetsShouldBackImpressionsOutOfCompletionsForCpvTest() {
+		// Given: $300 at a $0.05 CPV, with a 0.10% CTR and a 60% VCR benchmark
+		// When:
+		PlanUnitTargets targets = calculator.planTargets(300.0, 0.05, RateType.CPV, 0.10, 60.0);
+
+		// Then: completions are bought (6,000), impressions come from the VCR and clicks from those
+		assertThat(targets.completions()).isEqualTo(6_000.0);
+		assertThat(targets.impressions()).isEqualTo(10_000.0);
+		assertThat(targets.clicks()).isEqualTo(10.0);
+	}
+
+	@Test
+	void planTargetsShouldLeaveDerivedFiguresNullWhenTheirRateIsMissingTest() {
+		// Given: a CPC tactic with a CTR benchmark but no VCR one, and a tactic with no unit price at all
+		// When:
+		PlanUnitTargets noVcr = calculator.planTargets(500.0, 2.0, RateType.CPC, 0.25, null);
+		PlanUnitTargets noPrice = calculator.planTargets(500.0, null, RateType.CPC, 0.25, 50.0);
+
+		// Then: only the underivable figures are null — nothing is invented
+		assertThat(noVcr.clicks()).isEqualTo(250.0);
+		assertThat(noVcr.impressions()).isEqualTo(100_000.0);
+		assertThat(noVcr.completions()).isNull();
+		assertThat(noPrice.impressions()).isNull();
+		assertThat(noPrice.clicks()).isNull();
+		assertThat(noPrice.completions()).isNull();
 	}
 
 	@Test

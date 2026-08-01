@@ -4,7 +4,7 @@ import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.DateFilter;
 import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
 import com.aidigital.reportconstructor.service.reports.dto.LineItemMapping;
-import com.aidigital.reportconstructor.service.reports.dto.RateType;
+import com.aidigital.reportconstructor.service.reports.dto.PlanUnitTargets;
 import com.aidigital.reportconstructor.service.reports.dto.Tactic;
 import com.aidigital.reportconstructor.service.reports.dto.Totals;
 import com.aidigital.reportconstructor.service.reports.dto.WindowMetrics;
@@ -347,12 +347,10 @@ public class CampaignDataCollector {
 	 * @param estimatesPlanByTacticNum tactic number to its Estimates-tab row, used only for the
 	 *                                CTR/VCR/max-frequency benchmarks (indices 2-4)
 	 * @return tactic number to its planned {@code {spend, imps, ctr, vcr, maxFreq, clicks, views}} row.
-	 * {@code imps} is populated when derivable — directly for a CPM tactic, or backed out of the planned
-	 * clicks/completions and the Estimates CTR/VCR benchmark for CPC/CPV — for the reach/CPM/projection
-	 * math that needs true impressions regardless of how the tactic was bought (see
-	 * {@link TacticResolvers#resolveTacticReach}); the sheet's "Unit Plan" column instead shows
-	 * {@code clicks}/{@code views} directly for a CPC/CPV tactic (see
-	 * {@link TacticResolvers#resolveTacticImpsPlan}). Omits tactics with no mapping entry.
+	 * All three unit figures are populated whenever they are derivable: the bought unit comes from the
+	 * rate and budget, the other two from it through the CTR/VCR benchmarks (see
+	 * {@link RatePlanCalculator#planTargets}), so the summary table's Impressions/Clicks/Completions Plan
+	 * columns all describe the same plan. Omits tactics with no mapping entry.
 	 */
 	Map<Integer, double[]> resolveEomPlanByTacticNum(
 			List<LineItemMapping> lineItemMapping, Map<Integer, double[]> estimatesPlanByTacticNum) {
@@ -363,29 +361,41 @@ public class CampaignDataCollector {
 				continue;
 			}
 			Double budget = m.monthlyBudget();
-			Double units = ratePlanCalculator.planUnits(budget, m.unitPrice(), m.rateType());
 			double spend = budget == null ? Double.NaN : budget;
-			double clicks = units != null && m.rateType() == RateType.CPC ? units : Double.NaN;
-			double views = units != null && m.rateType() == RateType.CPV ? units : Double.NaN;
 			double[] estimates = estimatesPlanByTacticNum.get(num);
 			double ctr = estimates != null ? estimates[2] : Double.NaN;
 			double vcr = estimates != null ? estimates[3] : Double.NaN;
 			double maxFreq = estimates != null ? estimates[4] : Double.NaN;
-			double imps;
-			if (units != null && m.rateType() == RateType.CPM) {
-				imps = units;
-			} else if (!Double.isNaN(clicks) && !Double.isNaN(ctr) && ctr > 0) {
-				imps = clicks / (ctr / 100);
-			} else if (!Double.isNaN(views) && !Double.isNaN(vcr) && vcr > 0) {
-				imps = views / (vcr / 100);
-			} else {
-				imps = Double.NaN;
-			}
-			log.info("[eom-plan] tacticNum={} rateType={} unitPrice={} monthlyBudget={} units={} imps={}",
-					num, m.rateType(), m.unitPrice(), m.monthlyBudget(), units, imps);
+			PlanUnitTargets targets = ratePlanCalculator.planTargets(
+					budget, m.unitPrice(), m.rateType(), boxed(ctr), boxed(vcr));
+			double imps = unboxed(targets.impressions());
+			double clicks = unboxed(targets.clicks());
+			double views = unboxed(targets.completions());
+			log.info("[eom-plan] tacticNum={} rateType={} unitPrice={} monthlyBudget={} imps={} clicks={} views={}",
+					num, m.rateType(), m.unitPrice(), m.monthlyBudget(), imps, clicks, views);
 			out.putIfAbsent(num, new double[]{spend, imps, ctr, vcr, maxFreq, clicks, views});
 		}
 		return out;
+	}
+
+	/**
+	 * Boxes a plan-row slot, mapping the {@code NaN} the row uses for "absent" to {@code null}.
+	 *
+	 * @param v the plan-row value, possibly {@code NaN}
+	 * @return the value, or {@code null} when it is {@code NaN}
+	 */
+	Double boxed(double v) {
+		return Double.isNaN(v) ? null : v;
+	}
+
+	/**
+	 * Unboxes a derived plan figure back into the plan row's {@code NaN}-for-absent convention.
+	 *
+	 * @param v the derived figure, possibly {@code null}
+	 * @return the value, or {@code NaN} when it is {@code null}
+	 */
+	double unboxed(Double v) {
+		return v == null ? Double.NaN : v;
 	}
 
 	/**

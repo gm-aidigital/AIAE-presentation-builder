@@ -24,6 +24,13 @@ public class SheetCampaignReaderImpl implements SheetCampaignReader {
 	/** Max tactics the report template carries; the requested tactic count is clamped to this. */
 	private static final int MAX_TACTICS = 28;
 
+	/**
+	 * The em-dash a resolver writes into a cell that does not apply to the tactic (e.g. the "Clicks
+	 * Plan" column of a CPM tactic). Read back as "no value" rather than as the zero the number parser
+	 * would otherwise produce.
+	 */
+	private static final String UNRESOLVED_DASH = "—";
+
 	private final ReportNumberParser numbers;
 
 	@Override
@@ -84,7 +91,9 @@ public class SheetCampaignReaderImpl implements SheetCampaignReader {
 	/**
 	 * Reconstructs one tactic's metrics from its {@code {{tactic n ...}}} placeholders. Frequency,
 	 * daypart and line-item fields are left null: they are not read by the Claude prompts and the
-	 * daypart copy already lives in the sheet.
+	 * daypart copy already lives in the sheet. The "Clicks Plan" / "Completions Plan" summary columns
+	 * are read back into {@code planClicks} / {@code planViews}, so a CPC/CPV tactic's bought-unit plan
+	 * survives the sheet round-trip instead of being re-derived from the rate and budget.
 	 *
 	 * @param flat the placeholder map
 	 * @param n    1-based tactic number
@@ -112,7 +121,9 @@ public class SheetCampaignReaderImpl implements SheetCampaignReader {
 				null,
 				str(flat, prefix + " top creative name}}"),
 				nullableNum(flat, prefix + " top creative imps}}"),
-				nullableNum(flat, prefix + " top creative clicks}}"));
+				nullableNum(flat, prefix + " top creative clicks}}"),
+				nullableNum(flat, prefix + " clicks plan}}"),
+				nullableNum(flat, prefix + " completions plan}}"));
 	}
 
 	/**
@@ -148,7 +159,7 @@ public class SheetCampaignReaderImpl implements SheetCampaignReader {
 	 */
 	Double nullableNum(Map<String, String> flat, String key) {
 		String v = flat.get(key);
-		if (v == null || v.isBlank()) {
+		if (v == null || v.isBlank() || UNRESOLVED_DASH.equals(v.trim())) {
 			return null;
 		}
 		return numbers.parseReportNumber(v);

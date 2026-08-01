@@ -136,6 +136,46 @@ class SheetSummaryQueryServiceImplTest {
 	}
 
 	@Test
+	void shouldPickTheBoughtUnitByRateTypeWhenEveryPlanColumnIsFilledTest() {
+		// Given: an EOM workbook where all three plan columns carry a figure for every tactic (the
+		// non-bought ones derived through the CTR/VCR benchmarks) — only the "Rate type" cell says which
+		// unit each tactic was actually bought in
+		when(userGoogleTokens.getIfAvailable()).thenReturn(null);
+		when(sheetHelper.readSheetGrid(anyString(), any())).thenReturn(List.of(List.of("cell")));
+		when(placeholderReader.readPlaceholders(any())).thenReturn(Map.ofEntries(
+				Map.entry("{{tactic 1}}", "CTV"),
+				Map.entry("{{rate type 1}}", "CPM"),
+				Map.entry("{{tactic 1 imps plan}}", "250,000"),
+				Map.entry("{{tactic 1 imps}}", "248,113"),
+				Map.entry("{{tactic 1 clicks plan}}", "500"),
+				Map.entry("{{tactic 1 clicks}}", "480"),
+				Map.entry("{{tactic 2}}", "Paid Search"),
+				Map.entry("{{rate type 2}}", "CPC"),
+				Map.entry("{{tactic 2 imps plan}}", "1,000,000"),
+				Map.entry("{{tactic 2 imps}}", "960,000"),
+				Map.entry("{{tactic 2 clicks plan}}", "5,000"),
+				Map.entry("{{tactic 2 clicks}}", "4,800"),
+				Map.entry("{{tactic 3}}", "YouTube"),
+				Map.entry("{{rate type 3}}", "CPV"),
+				Map.entry("{{tactic 3 imps plan}}", "500,000"),
+				Map.entry("{{tactic 3 imps}}", "478,000"),
+				Map.entry("{{tactic 3 clicks plan}}", "1,000"),
+				Map.entry("{{tactic 3 completions plan}}", "80,000"),
+				Map.entry("{{tactic 3 complitions}}", "76,500")));
+
+		// When: the summary is read back
+		List<SheetSummaryRow> rows = service.readSummary("https://docs.google.com/spreadsheets/d/abc/edit", "user_1");
+
+		// Then: each row shows the unit its rate type was bought in, not whichever column is filled first
+		assertThat(rows)
+				.extracting(SheetSummaryRow::tactic, SheetSummaryRow::unitPlan, SheetSummaryRow::unitFact)
+				.containsExactly(
+						tuple("CTV", "250,000", "248,113"),
+						tuple("Paid Search", "5,000", "4,800"),
+						tuple("YouTube", "80,000", "76,500"));
+	}
+
+	@Test
 	void shouldReturnEmptyWhenNoTacticsPresentTest() {
 		// Given: the workbook carries no summary table (no tactic-name tokens)
 		when(userGoogleTokens.getIfAvailable()).thenReturn(null);

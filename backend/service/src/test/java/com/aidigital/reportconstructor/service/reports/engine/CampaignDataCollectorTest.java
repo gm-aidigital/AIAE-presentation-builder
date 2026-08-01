@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -148,6 +149,35 @@ class CampaignDataCollectorTest {
 		// Then:
 		assertThat(data.tactics().get(1).planSpend()).isNull();
 		assertThat(data.tactics().get(1).planImps()).isNull();
+	}
+
+	@Test
+	void resolveEomPlanShouldFillAllThreeUnitPlansForEveryRateTypeTest() {
+		// Given: three tactics bought on CPM, CPC and CPV, each with the same 0.20% CTR / 50% VCR
+		// benchmarks from the Estimates tab (row layout {spend, imps, ctr, vcr, maxFreq})
+		List<LineItemMapping> mapping = List.of(
+				new LineItemMapping("Display", "li-1", 1, RateType.CPM, 10.0, 3100.0),
+				new LineItemMapping("Search", "li-2", 2, RateType.CPC, 2.0, 500.0),
+				new LineItemMapping("Video", "li-3", 3, RateType.CPV, 0.05, 300.0));
+		Map<Integer, double[]> estimates = Map.of(
+				1, new double[]{Double.NaN, Double.NaN, 0.20, 50.0, Double.NaN},
+				2, new double[]{Double.NaN, Double.NaN, 0.20, 50.0, Double.NaN},
+				3, new double[]{Double.NaN, Double.NaN, 0.20, 50.0, Double.NaN});
+
+		// When:
+		Map<Integer, double[]> plan = collector.resolveEomPlanByTacticNum(mapping, estimates);
+
+		// Then: each row carries impressions, clicks and completions (indices 1, 5 and 6) — the bought
+		// unit from the rate and budget, the other two derived through the CTR/VCR benchmarks
+		assertThat(plan.get(1)[1]).isEqualTo(310_000.0);
+		assertThat(plan.get(1)[5]).isEqualTo(620.0);
+		assertThat(plan.get(1)[6]).isEqualTo(155_000.0);
+		assertThat(plan.get(2)[5]).isEqualTo(250.0);
+		assertThat(plan.get(2)[1]).isEqualTo(125_000.0);
+		assertThat(plan.get(2)[6]).isEqualTo(62_500.0);
+		assertThat(plan.get(3)[6]).isEqualTo(6_000.0);
+		assertThat(plan.get(3)[1]).isEqualTo(12_000.0);
+		assertThat(plan.get(3)[5]).isEqualTo(24.0);
 	}
 
 	@Test
