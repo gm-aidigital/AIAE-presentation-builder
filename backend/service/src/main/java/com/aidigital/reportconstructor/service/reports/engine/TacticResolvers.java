@@ -10,6 +10,7 @@ import com.aidigital.reportconstructor.service.reports.helpers.SheetRowHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.TacticExtractionHelper;
 import org.springframework.stereotype.Component;
 
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -652,15 +653,16 @@ public class TacticResolvers {
 
 	/**
 	 * Resolves the average frequency for tactic {@code n}, preferring a manual Adjustments override,
-	 * then the Media Plan sheet, then a value derived from the planned max frequency (the auto label
-	 * notes the percentage reduction applied below that cap).
+	 * then the Media Plan sheet, then a derived value: for EOM the media plan's per-week frequency
+	 * scaled to the reporting period, otherwise the planned max frequency (the auto label notes the
+	 * percentage reduction applied below either figure).
 	 *
 	 * @param n         one-based tactic index used to build the {@code "Tactic N f:"} lookup label
 	 * @param sheetRows Media Plan grid rows searched for the labelled value
 	 * @param adjRows   manual Adjustments grid rows that take precedence over the sheet
-	 * @param data      campaign data providing the planned max-frequency estimate used for the fallback
+	 * @param data      campaign data providing the planned frequency estimates used for the fallback
 	 * @return the resolved frequency with its source tag, or a {@code not_found} placeholder when no
-	 * positive planned max frequency exists
+	 * positive planned frequency exists
 	 */
 	public Resolved resolveTacticFreq(int n, List<List<String>> sheetRows,
 	                                  List<List<String>> adjRows, CampaignData data) {
@@ -673,6 +675,12 @@ public class TacticResolvers {
 		if (fromSheet != null) {
 			return new Resolved(label, fromSheet, "sheet");
 		}
+		Double weeks = reportWeeks(data, n);
+		if (weeks != null) {
+			double freq = tacticExtraction.freqFromWeekly(n, tactic(data, n).planWeeklyFreq(), weeks);
+			return new Resolved(label + " (auto: MP freq/week \u00d7 " + fmt.dec2(weeks) + " weeks \u2212 2-20%)",
+					fmt.dec2(freq), "adj");
+		}
 		Tactic t = tactic(data, n);
 		Double maxFreq = t == null ? null : t.planMaxFreq();
 		if (maxFreq != null && maxFreq > 0) {
@@ -684,9 +692,56 @@ public class TacticResolvers {
 	}
 
 	/**
+	 * Returns the weeks the reporting period spans when tactic {@code n} should derive its frequency
+	 * from the media plan's per-week column: EOM only, and only when both that column and the
+	 * reporting window are present.
+	 *
+	 * @param data campaign data supplying the report window and the tactic's planned weekly frequency
+	 * @param n    one-based tactic index
+	 * @return report days \u00f7 7, or {@code null} when the weekly derivation does not apply
+	 */
+	Double reportWeeks(CampaignData data, int n) {
+
+		if (data == null || data.eomMonthNumber() == null || data.flightTs() == null
+				|| data.flightTs().start() == null || data.flightTs().end() == null) {
+			return null;
+		}
+		Tactic t = tactic(data, n);
+		if (t == null || t.planWeeklyFreq() == null || t.planWeeklyFreq() <= 0) {
+			return null;
+		}
+		long days = ChronoUnit.DAYS.between(data.flightTs().start(), data.flightTs().end()) + 1;
+		return days > 0 ? days / 7.0 : null;
+	}
+
+	/**
+	 * Derives the frequency tactic {@code n}'s reach figures divide impressions by, keeping reach and
+	 * {@code {{tactic n f}}} on one assumption: the EOM per-week derivation when it applies, the
+	 * planned max frequency otherwise.
+	 *
+	 * @param data campaign data supplying the planned frequencies and the report window
+	 * @param n    one-based tactic index
+	 * @return the derived frequency, or {@code null} when neither planned figure is available
+	 */
+	Double derivedFreq(CampaignData data, int n) {
+
+		Double weeks = reportWeeks(data, n);
+		if (weeks != null) {
+			double freq = tacticExtraction.freqFromWeekly(n, tactic(data, n).planWeeklyFreq(), weeks);
+			return freq > 0 ? freq : null;
+		}
+		Tactic t = tactic(data, n);
+		if (t == null || t.planMaxFreq() == null || t.planMaxFreq() <= 0) {
+			return null;
+		}
+		double freq = tacticExtraction.freqFromMax(n, t.planMaxFreq());
+		return freq > 0 ? freq : null;
+	}
+
+	/**
 	 * Resolves the unique reach for tactic {@code n}, preferring a manual Adjustments override,
-	 * then the Media Plan sheet, then a value computed as impressions divided by the derived
-	 * frequency (falling back to planned impressions when actuals are missing).
+	 * then the Media Plan sheet, then a value computed as impressions divided by the same frequency
+	 * {@code {{tactic n f}}} shows (falling back to planned impressions when actuals are missing).
 	 *
 	 * @param n         one-based tactic index used to build the {@code "Tactic N reach:"} lookup label
 	 * @param sheetRows Media Plan grid rows searched for the labelled value
@@ -707,12 +762,8 @@ public class TacticResolvers {
 			return new Resolved(label, fromSheet, "sheet");
 		}
 		Tactic t = tactic(data, n);
-		Double maxFreq = t == null ? null : t.planMaxFreq();
-		if (maxFreq == null || maxFreq <= 0) {
-			return new Resolved(label, null, "not_found");
-		}
-		double freq = tacticExtraction.freqFromMax(n, maxFreq);
-		if (freq <= 0) {
+		Double freq = derivedFreq(data, n);
+		if (t == null || freq == null) {
 			return new Resolved(label, null, "not_found");
 		}
 		double imps = t.imps();
@@ -1769,36 +1820,36 @@ public class TacticResolvers {
 	 * {@link #resolveTacticFreq} uses for the actual figure, so plan and actual reach share one
 	 * frequency assumption.
 	 *
-	 * @param data campaign data supplying the planned impressions/max frequency
+	 * @param data campaign data supplying the planned impressions and frequency
 	 * @param n    one-based tactic index
 	 * @return the derived planned reach, or {@code null} when the inputs are missing or non-positive
 	 */
 	Double planReach(CampaignData data, int n) {
 
 		Tactic t = tactic(data, n);
-		if (t == null || t.planImps() == null || t.planMaxFreq() == null || t.planMaxFreq() <= 0) {
+		Double freq = derivedFreq(data, n);
+		if (t == null || t.planImps() == null || freq == null) {
 			return null;
 		}
-		double freq = tacticExtraction.freqFromMax(n, t.planMaxFreq());
-		return freq > 0 ? t.planImps() / freq : null;
+		return t.planImps() / freq;
 	}
 
 	/**
 	 * Derives tactic {@code n}'s to-date actual reach as to-date impressions ÷ the same derived
 	 * frequency {@link #resolveTacticFreq} uses for the actual figure.
 	 *
-	 * @param data campaign data supplying the to-date impressions and the planned max frequency
+	 * @param data campaign data supplying the to-date impressions and the planned frequency
 	 * @param n    one-based tactic index
 	 * @return the derived actual reach, or {@code null} when the inputs are missing or non-positive
 	 */
 	Double actualReach(CampaignData data, int n) {
 
 		Tactic t = tactic(data, n);
-		if (t == null || t.planMaxFreq() == null || t.planMaxFreq() <= 0 || t.imps() <= 0) {
+		Double freq = derivedFreq(data, n);
+		if (t == null || t.imps() <= 0 || freq == null) {
 			return null;
 		}
-		double freq = tacticExtraction.freqFromMax(n, t.planMaxFreq());
-		return freq > 0 ? t.imps() / freq : null;
+		return t.imps() / freq;
 	}
 
 	/**

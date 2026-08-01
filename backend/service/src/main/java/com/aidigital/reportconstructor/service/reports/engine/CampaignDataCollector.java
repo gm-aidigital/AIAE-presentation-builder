@@ -154,8 +154,8 @@ public class CampaignDataCollector {
 
 		// ── 5. Estimates tab → planned KPIs by tactic ─────────────────────────
 		Map<String, Deque<double[]>> estimatesByTactic = parseEstimates(estimatesRows);
-		// double[] layout: {spend, imps, ctr, vcr, maxFreq}; NaN = null. Keyed by tactic name to a FIFO queue,
-		// because a media plan repeats a channel name across several line items (e.g. "Meta" four times) with
+		// double[] layout: {spend, imps, ctr, vcr, maxFreq, clicks, views, weeklyFreq}; NaN = null. Keyed by
+		// tactic name to a FIFO queue, because a media plan repeats a channel name across several line items (e.g. "Meta" four times) with
 		// different plan figures each; the queue keeps every line item's own numbers in media-plan order.
 
 		// ── 6. Tactics & channel mapping ──────────────────────────────────────
@@ -316,7 +316,7 @@ public class CampaignDataCollector {
 	 *
 	 * @param tacticMap         tactic number to {@code [name, channel]} mapping
 	 * @param estimatesByTactic Estimates-tab rows queued by lowercased tactic name
-	 * @return tactic number to its planned {@code {spend, imps, ctr, vcr, maxFreq}} row, omitting tactics
+	 * @return tactic number to its planned {@code {spend, imps, ctr, vcr, maxFreq, NaN, NaN, weeklyFreq}} row, omitting tactics
 	 * with no matching Estimates row
 	 */
 	Map<Integer, double[]> resolvePlanByTacticNum(Map<Integer, String[]> tacticMap,
@@ -346,7 +346,7 @@ public class CampaignDataCollector {
 	 *                                rateType/unitPrice/monthlyBudget
 	 * @param estimatesPlanByTacticNum tactic number to its Estimates-tab row, used only for the
 	 *                                CTR/VCR/max-frequency benchmarks (indices 2-4)
-	 * @return tactic number to its planned {@code {spend, imps, ctr, vcr, maxFreq, clicks, views}} row.
+	 * @return tactic number to its planned {@code {spend, imps, ctr, vcr, maxFreq, clicks, views, weeklyFreq}} row.
 	 * All three unit figures are populated whenever they are derivable: the bought unit comes from the
 	 * rate and budget, the other two from it through the CTR/VCR benchmarks (see
 	 * {@link RatePlanCalculator#planTargets}), so the summary table's Impressions/Clicks/Completions Plan
@@ -366,6 +366,7 @@ public class CampaignDataCollector {
 			double ctr = estimates != null ? estimates[2] : Double.NaN;
 			double vcr = estimates != null ? estimates[3] : Double.NaN;
 			double maxFreq = estimates != null ? estimates[4] : Double.NaN;
+			double weeklyFreq = estimates != null && estimates.length > 7 ? estimates[7] : Double.NaN;
 			PlanUnitTargets targets = ratePlanCalculator.planTargets(
 					budget, m.unitPrice(), m.rateType(), boxed(ctr), boxed(vcr));
 			double imps = unboxed(targets.impressions());
@@ -373,7 +374,7 @@ public class CampaignDataCollector {
 			double views = unboxed(targets.completions());
 			log.info("[eom-plan] tacticNum={} rateType={} unitPrice={} monthlyBudget={} imps={} clicks={} views={}",
 					num, m.rateType(), m.unitPrice(), m.monthlyBudget(), imps, clicks, views);
-			out.putIfAbsent(num, new double[]{spend, imps, ctr, vcr, maxFreq, clicks, views});
+			out.putIfAbsent(num, new double[]{spend, imps, ctr, vcr, maxFreq, clicks, views, weeklyFreq});
 		}
 		return out;
 	}
@@ -622,7 +623,8 @@ public class CampaignDataCollector {
 					topCr != null ? topCr[0] : null,
 					topCr != null ? topCr[1] : null,
 					plan != null && plan.length > 5 ? nan(plan[5]) : null,
-					plan != null && plan.length > 6 ? nan(plan[6]) : null
+					plan != null && plan.length > 6 ? nan(plan[6]) : null,
+					plan != null && plan.length > 7 ? nan(plan[7]) : null
 			));
 		}
 
@@ -657,8 +659,10 @@ public class CampaignDataCollector {
 
 	/**
 	 * Parses the Estimates tab into planned figures per tactic, preserving media-plan order. Each Media-column
-	 * name maps to a FIFO queue of {@code {spend, imps, ctr, vcr, maxFreq}} rows (NaN where blank), one entry
-	 * per line item in top-to-bottom order. A name repeated across line items (e.g. "Meta" appearing several
+	 * name maps to a FIFO queue of {@code {spend, imps, ctr, vcr, maxFreq, NaN, NaN, weeklyFreq}} rows (NaN
+	 * where blank), one entry per line item in top-to-bottom order. Slots 5/6 stay empty here so a plan row
+	 * keeps one shape across both report types: EOM fills them with its rate-derived Plan Units in
+	 * {@link #resolveEomPlanByTacticNum}. A name repeated across line items (e.g. "Meta" appearing several
 	 * times with different budgets) therefore keeps every occurrence's own numbers instead of collapsing to a
 	 * single row, so the tactic loop can assign the N-th occurrence its N-th planned line item.
 	 *
@@ -678,6 +682,7 @@ public class CampaignDataCollector {
 		int eCtrCol = -1;
 		int eVcrCol = -1;
 		int eFreqCol = -1;
+		int eWeeklyFreqCol = -1;
 		for (int i = 0; i < estimatesRows.size(); i++) {
 			List<String> row = estimatesRows.get(i);
 			if (row == null) {
@@ -690,6 +695,7 @@ public class CampaignDataCollector {
 			int ctr = -1;
 			int vcr = -1;
 			int freq = -1;
+			int weeklyFreq = -1;
 			for (int j = 0; j < row.size(); j++) {
 				String v = cell(row, j).toLowerCase(Locale.ROOT);
 				if (v.equals("media")) {
@@ -709,7 +715,10 @@ public class CampaignDataCollector {
 						"vcr/acr") || v.equals("acr")) {
 					vcr = j;
 				}
-				if (v.contains("max frequency") || v.contains("frequency per flight")) {
+				if (v.contains("frequency per week") || v.contains("freq per week")
+						|| v.contains("weekly frequency") || v.contains("weekly freq")) {
+					weeklyFreq = j;
+				} else if (v.contains("max frequency") || v.contains("frequency per flight")) {
 					freq = j;
 				}
 			}
@@ -721,6 +730,7 @@ public class CampaignDataCollector {
 				eCtrCol = ctr;
 				eVcrCol = vcr;
 				eFreqCol = freq;
+				eWeeklyFreqCol = weeklyFreq;
 				break;
 			}
 		}
@@ -755,9 +765,10 @@ public class CampaignDataCollector {
 			double ctr = parseNumericCell(cellAt(row, eCtrCol), eCtrCol, false);
 			double vcr = parseNumericCell(cellAt(row, eVcrCol), eVcrCol, false);
 			double freq = parseNumericCell(cellAt(row, eFreqCol), eFreqCol, false);
+			double weeklyFreq = parseNumericCell(cellAt(row, eWeeklyFreqCol), eWeeklyFreqCol, false);
 
 			out.computeIfAbsent(mediaVal.toLowerCase(Locale.ROOT), k -> new ArrayDeque<>())
-					.add(new double[]{spend, imps, ctr, vcr, freq});
+					.add(new double[]{spend, imps, ctr, vcr, freq, Double.NaN, Double.NaN, weeklyFreq});
 		}
 		return out;
 	}

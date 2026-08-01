@@ -106,6 +106,18 @@ public interface TacticExtractionHelper {
 	double freqFromMax(int n, double maxFreq);
 
 	/**
+	 * Derives a deterministic reduced frequency from the media plan's per-week frequency: the weekly
+	 * figure is scaled to the whole reporting period and then discounted, because a plan's weekly
+	 * frequency is a ceiling the actual delivery never quite reaches.
+	 *
+	 * @param n          one-based tactic index, which fixes the discount so the value is reproducible
+	 * @param weeklyFreq planned frequency per week from the media plan
+	 * @param weeks      weeks covered by the reporting period (report days ÷ 7)
+	 * @return the period frequency less a 2-20% discount, rounded to two decimals
+	 */
+	double freqFromWeekly(int n, double weeklyFreq, double weeks);
+
+	/**
 	 * Sanitizes text for safe insertion into Google Slides elements.
 	 *
 	 * @param value raw text (may be {@code null})

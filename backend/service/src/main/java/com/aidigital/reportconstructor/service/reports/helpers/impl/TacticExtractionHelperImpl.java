@@ -146,6 +146,19 @@ public class TacticExtractionHelperImpl implements TacticExtractionHelper {
 		return Math.round(freq * 100.0) / 100.0;
 	}
 
+	/**
+	 * Implementation note: like {@link #freqFromMax}, the discount is a stable function of the tactic
+	 * index (never random), so {@code {{tactic n f}}} and the reach derived from it always agree and
+	 * the deck is reproducible across the Preview and Generate passes.
+	 */
+	@Override
+	public double freqFromWeekly(int n, double weeklyFreq, double weeks) {
+
+		int pct = 2 + Math.floorMod(n * 11, 19); // 2..20, deterministic
+		double freq = weeklyFreq * weeks * (1.0 - pct / 100.0);
+		return Math.round(freq * 100.0) / 100.0;
+	}
+
 	@Override
 	public String sanitizeForSlides(String value) {
 

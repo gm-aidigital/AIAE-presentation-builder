@@ -1,6 +1,7 @@
 package com.aidigital.reportconstructor.service.reports.engine;
 
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
+import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
 import com.aidigital.reportconstructor.service.reports.dto.LineItemMapping;
 import com.aidigital.reportconstructor.service.reports.dto.RateType;
 import com.aidigital.reportconstructor.service.reports.dto.Tactic;
@@ -10,6 +11,7 @@ import com.aidigital.reportconstructor.service.reports.helpers.TacticExtractionH
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -473,6 +475,100 @@ class TacticResolversTest {
 		// Then: the manual override wins
 		assertThat(resolved.value()).isEqualTo("4.20");
 		assertThat(resolved.source()).isEqualTo("adj");
+	}
+
+	@Test
+	void shouldDeriveEomFrequencyFromTheMediaPlansWeeklyFrequencyTest() {
+		// Given: an EOM tactic whose media plan sets one exposure per week, reported over a 31-day month
+		Tactic tactic = new Tactic(
+				"Display", "Display", null,
+				0, 1_000_000, 0, 0, null, null, null, null,
+				null, 1_000_000.0, null, null, 10.0,
+				null, null, null,
+				null, null, 1.0
+		);
+		CampaignData data = new CampaignData(
+				null, null, null, null, null,
+				new FlightDates(LocalDate.of(2026, 7, 1), LocalDate.of(2026, 7, 31)),
+				null, null, null, null, null,
+				new Totals(0, 0, 0, 0, null, null),
+				Map.of(1, tactic), 1, 1, null
+		);
+
+		// When: frequency and reach are resolved
+		Resolved freq = resolvers.resolveTacticFreq(1, List.of(), List.of(), data);
+		Resolved reach = resolvers.resolveTacticReach(1, List.of(), List.of(), data);
+
+		// Then: the weekly figure is scaled over 31/7 weeks and discounted by this tactic's fixed 13%,
+		// and reach is impressions ÷ that same frequency, rounded to whole people
+		assertThat(freq.value()).isEqualTo("3.85"); // 1.00 × 4.428571 × 0.87
+		assertThat(freq.label()).contains("freq/week");
+		assertThat(reach.value()).isEqualTo("259,740"); // 1,000,000 ÷ 3.85
+	}
+
+	@Test
+	void shouldKeepMaxFrequencyDerivationWhenTheMediaPlanHasNoWeeklyColumnTest() {
+		// Given: an EOM tactic whose media plan carries only the max-frequency cap
+		Tactic tactic = new Tactic(
+				"Display", "Display", null,
+				0, 1_000_000, 0, 0, null, null, null, null,
+				null, 1_000_000.0, null, null, 10.0,
+				null, null, null,
+				null, null, null
+		);
+		CampaignData data = new CampaignData(
+				null, null, null, null, null,
+				new FlightDates(LocalDate.of(2026, 7, 1), LocalDate.of(2026, 7, 31)),
+				null, null, null, null, null,
+				new Totals(0, 0, 0, 0, null, null),
+				Map.of(1, tactic), 1, 1, null
+		);
+
+		// When: the frequency is resolved
+		Resolved freq = resolvers.resolveTacticFreq(1, List.of(), List.of(), data);
+
+		// Then: it falls back to the max-frequency reduction unchanged
+		assertThat(freq.value()).isEqualTo("9.00");
+		assertThat(freq.label()).contains("max freq");
+	}
+
+	@Test
+	void shouldIgnoreTheWeeklyFrequencyColumnForAnEocReportTest() {
+		// Given: the same weekly figure on an EOC report, which has no reporting-month window
+		Tactic tactic = new Tactic(
+				"Display", "Display", null,
+				0, 1_000_000, 0, 0, null, null, null, null,
+				null, 1_000_000.0, null, null, 10.0,
+				null, null, null,
+				null, null, 1.0
+		);
+		CampaignData data = new CampaignData(
+				null, null, null, null, null,
+				new FlightDates(LocalDate.of(2026, 7, 1), LocalDate.of(2026, 7, 31)),
+				null, null, null, null, null,
+				new Totals(0, 0, 0, 0, null, null),
+				Map.of(1, tactic), null
+		);
+
+		// When: the frequency is resolved
+		Resolved freq = resolvers.resolveTacticFreq(1, List.of(), List.of(), data);
+
+		// Then: EOC keeps deriving it from the max-frequency cap
+		assertThat(freq.value()).isEqualTo("9.00");
+	}
+
+	@Test
+	void freqFromWeeklyShouldBeDeterministicByTacticIndexTest() {
+		// Given-When: the same tactic asks twice, and a neighbouring tactic asks once
+		double first = tacticUtils.freqFromWeekly(1, 2.0, 4.0);
+		double firstAgain = tacticUtils.freqFromWeekly(1, 2.0, 4.0);
+		double second = tacticUtils.freqFromWeekly(2, 2.0, 4.0);
+
+		// Then: the discount is stable per tactic (so freq and reach agree across Preview and Generate)
+		// and always lands inside the 2-20% band
+		assertThat(first).isEqualTo(firstAgain).isEqualTo(6.96); // 8.0 − 13%
+		assertThat(second).isEqualTo(7.6); // 8.0 − 5%
+		assertThat(first).isBetween(8.0 * 0.80, 8.0 * 0.98);
 	}
 
 	@Test

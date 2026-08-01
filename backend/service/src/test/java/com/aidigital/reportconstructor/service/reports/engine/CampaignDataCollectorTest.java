@@ -74,6 +74,36 @@ class CampaignDataCollectorTest {
 	}
 
 	@Test
+	void collectShouldReadTheMediaPlansWeeklyFrequencyColumnPerTacticTest() {
+		// Given: a media plan whose Estimates tab carries both frequency columns, the per-week one and
+		// the flight cap, with a different weekly figure per line item
+		List<List<String>> sheet = List.of(
+				List.of("Media"),
+				List.of("programmatic display"),
+				List.of("programmatic audio")
+		);
+		List<List<String>> estimates = List.of(
+				List.of("Media", "Total Cost", "Impressions", "Frequency per week", "Max frequency"),
+				List.of("programmatic display", "100000", "500000", "1", "12"),
+				List.of("programmatic audio", "200000", "700000", "2.5", "20")
+		);
+		DateFilter dateFilter = new DateFilter(DateFilterMode.RANGE, LocalDate.of(2026, 7, 1),
+				LocalDate.of(2026, 7, 31));
+
+		// When:
+		CampaignData data = collector.collect(sheet, List.of(), List.of(), estimates,
+				List.of(new LineItemMapping("Programmatic Display", null, 1, RateType.CPM, 10.0, 3100.0),
+						new LineItemMapping("Programmatic Audio", null, 2, RateType.CPM, 8.0, 1600.0)),
+				dateFilter, "EOM");
+
+		// Then: each tactic keeps its own weekly frequency alongside the untouched max-frequency cap
+		assertThat(data.tactics().get(1).planWeeklyFreq()).isEqualTo(1.0);
+		assertThat(data.tactics().get(1).planMaxFreq()).isEqualTo(12.0);
+		assertThat(data.tactics().get(2).planWeeklyFreq()).isEqualTo(2.5);
+		assertThat(data.tactics().get(2).planMaxFreq()).isEqualTo(20.0);
+	}
+
+	@Test
 	void collect_buildsTacticMapFromMediaColumn() {
 		List<List<String>> sheet = List.of(
 				List.of("Media"),
