@@ -3,6 +3,7 @@ package com.aidigital.reportconstructor.service.reports.engine;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
+import com.aidigital.reportconstructor.service.reports.dto.LineItemMapping;
 import com.aidigital.reportconstructor.service.reports.dto.Tactic;
 import com.aidigital.reportconstructor.service.reports.dto.TacticInsight;
 import com.aidigital.reportconstructor.service.reports.helpers.SheetRowHelper;
@@ -189,6 +190,61 @@ public class TacticResolvers {
 					"adj");
 		}
 		return new Resolved(label, null, "not_found");
+	}
+
+	/**
+	 * Resolves the EOM "Unit rate" cell for tactic {@code n} — the unit price and rate type the user
+	 * entered for that tactic in the Line Item Matching step — preferring a manual Adjustments override,
+	 * then the Media Plan sheet, then the matching entry itself. The value is rendered as
+	 * {@code "$6.00 CPM"} so the cell carries both the price and the unit it is bought in, which the
+	 * summary table has no separate column for. EOC has no rate economics, so it resolves to
+	 * {@code not_found} (rendered as a dash) there.
+	 *
+	 * @param n               one-based tactic index used to build the {@code "Tactic N unit rate:"} lookup label
+	 * @param sheetRows       Media Plan grid rows searched for the labelled value
+	 * @param adjRows         manual Adjustments grid rows that take precedence over the sheet
+	 * @param lineItemMapping the tactic-to-line-item mapping carrying each tactic's rate type and unit
+	 *                        price ({@code null} when the caller has no mapping)
+	 * @return the resolved unit rate with its source tag, or a {@code not_found} placeholder when the
+	 * tactic has no rate type / unit price
+	 */
+	public Resolved resolveTacticUnitRate(int n, List<List<String>> sheetRows, List<List<String>> adjRows,
+	                                      List<LineItemMapping> lineItemMapping) {
+		String label = "Tactic " + n + " unit rate:";
+		String fromAdj = sheetUtils.findLabelValue(adjRows, label);
+		if (fromAdj != null) {
+			return new Resolved(label, fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, label);
+		if (fromSheet != null) {
+			return new Resolved(label, fromSheet, "sheet");
+		}
+		LineItemMapping m = mappingForTactic(lineItemMapping, n);
+		if (m == null || m.rateType() == null || m.unitPrice() == null || m.unitPrice() <= 0) {
+			return new Resolved(label, null, "not_found");
+		}
+		return new Resolved(label + " (matching step: unit price + rate type)",
+				"$" + fmt.dec2(m.unitPrice()) + " " + m.rateType().name(), "adj");
+	}
+
+	/**
+	 * Finds the matching entry for one tactic slot, joining on {@code tacticNum} — never on the tactic
+	 * name, which repeats when the same channel is bought twice.
+	 *
+	 * @param lineItemMapping the tactic-to-line-item mapping ({@code null} when the caller has none)
+	 * @param n               one-based tactic index to look up
+	 * @return the entry for that slot, or {@code null} when the mapping has none
+	 */
+	LineItemMapping mappingForTactic(List<LineItemMapping> lineItemMapping, int n) {
+		if (lineItemMapping == null) {
+			return null;
+		}
+		for (LineItemMapping m : lineItemMapping) {
+			if (m != null && m.tacticNum() != null && m.tacticNum() == n) {
+				return m;
+			}
+		}
+		return null;
 	}
 
 	/**

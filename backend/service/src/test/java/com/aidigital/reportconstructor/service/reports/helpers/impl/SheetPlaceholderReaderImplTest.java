@@ -103,6 +103,25 @@ class SheetPlaceholderReaderImplTest {
 	}
 
 	@Test
+	void shouldReadEomUnitRateColumnUnderItsOwnTokenNameTest() {
+		// Given: the EOM summary table, whose "Unit rate" column sits between the KPI and fact columns
+		List<List<String>> grid = List.of(
+				List.of("Tactic name", "KPI type", "Unit rate", "Impressions Fact"),
+				List.of("Programmatic Display", "CTR", "$6.00 CPM", "251,633"),
+				List.of("Programmatic Video", "VCR", "$12.00 CPM", "124,900"));
+
+		// When: the placeholders are read
+		Map<String, String> out = reader.readPlaceholders(grid);
+
+		// Then: the column is emitted as {{unit N rate}}, and the columns around it keep their own tokens
+		assertThat(out)
+				.containsEntry("{{unit 1 rate}}", "$6.00 CPM")
+				.containsEntry("{{unit 2 rate}}", "$12.00 CPM")
+				.containsEntry("{{tactic 1 KPI type}}", "CTR")
+				.containsEntry("{{tactic 2 imps}}", "124,900");
+	}
+
+	@Test
 	void shouldTreatDashFilledSummaryRowsAsUnusedTacticsTest() {
 		// Given: two real tactics followed by the template's dash-filled unused rows, then totals
 		List<List<String>> grid = List.of(

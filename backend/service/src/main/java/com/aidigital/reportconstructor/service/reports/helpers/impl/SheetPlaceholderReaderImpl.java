@@ -103,6 +103,15 @@ public class SheetPlaceholderReaderImpl implements SheetPlaceholderReader {
 			Map.entry("Market Volume", " volume"));
 
 	/**
+	 * Summary-table column headers whose per-tactic token is not a {@code {{tactic n …}}} token, mapped
+	 * to the token format their value is emitted under ({@code %d} is the 1-based tactic number). The
+	 * EOM "Unit rate" column is filled from the {@code {{unit N rate}}} template token, so it is read
+	 * back under the same name.
+	 */
+	private static final Map<String, String> SUMMARY_TACTIC_TOKEN_FORMATS = Map.of(
+			"Unit rate", "{{unit %d rate}}");
+
+	/**
 	 * Summary-table column headers mapped to the campaign-level total token read from the
 	 * {@code "Total"} row (columns without a totals token in the template are simply absent).
 	 */
@@ -202,7 +211,8 @@ public class SheetPlaceholderReaderImpl implements SheetPlaceholderReader {
 
 	/**
 	 * Emits every {@link #SUMMARY_TACTIC_SUFFIXES} column of one tactic's summary row as a
-	 * {@code {{tactic n <suffix>}}} placeholder.
+	 * {@code {{tactic n <suffix>}}} placeholder, plus the {@link #SUMMARY_TACTIC_TOKEN_FORMATS} columns
+	 * whose token is named differently.
 	 *
 	 * @param row        the tactic's summary row
 	 * @param headerCols header text (lowercased) to column index
@@ -214,6 +224,12 @@ public class SheetPlaceholderReaderImpl implements SheetPlaceholderReader {
 			Integer col = headerCols.get(e.getKey().toLowerCase(Locale.ROOT));
 			if (col != null) {
 				emit(out, "{{tactic " + tactic + e.getValue() + "}}", rows.cellAt(row, col));
+			}
+		}
+		for (Map.Entry<String, String> e : SUMMARY_TACTIC_TOKEN_FORMATS.entrySet()) {
+			Integer col = headerCols.get(e.getKey().toLowerCase(Locale.ROOT));
+			if (col != null) {
+				emit(out, String.format(Locale.ROOT, e.getValue(), tactic), rows.cellAt(row, col));
 			}
 		}
 	}

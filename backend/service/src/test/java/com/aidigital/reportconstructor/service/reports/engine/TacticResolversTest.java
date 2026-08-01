@@ -1,6 +1,8 @@
 package com.aidigital.reportconstructor.service.reports.engine;
 
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
+import com.aidigital.reportconstructor.service.reports.dto.LineItemMapping;
+import com.aidigital.reportconstructor.service.reports.dto.RateType;
 import com.aidigital.reportconstructor.service.reports.dto.Tactic;
 import com.aidigital.reportconstructor.service.reports.dto.Totals;
 import com.aidigital.reportconstructor.service.reports.helpers.SheetRowHelper;
@@ -383,6 +385,51 @@ class TacticResolversTest {
 		Resolved r = resolvers.resolveTacticCompletions(1, List.of(), List.of(), data);
 		assertThat(r.source()).isEqualTo("not_found");
 		assertThat(r.value()).isNull();
+	}
+
+	@Test
+	void shouldResolveUnitRateFromMatchingStepByTacticNumberTest() {
+		// Given: two tactics share a display name, and each carries its own rate type / unit price
+		List<LineItemMapping> mapping = List.of(
+				new LineItemMapping("Programmatic Display", "592884", 1, RateType.CPM, 6.0, 1500.0),
+				new LineItemMapping("Programmatic Display", "592885", 2, RateType.CPC, 1.25, 1500.0));
+
+		// When: the unit rate is resolved for each slot
+		Resolved first = resolvers.resolveTacticUnitRate(1, List.of(), List.of(), mapping);
+		Resolved second = resolvers.resolveTacticUnitRate(2, List.of(), List.of(), mapping);
+
+		// Then: each slot gets its own price and rate type, joined on tacticNum rather than on the name
+		assertThat(first.value()).isEqualTo("$6.00 CPM");
+		assertThat(first.source()).isEqualTo("adj");
+		assertThat(second.value()).isEqualTo("$1.25 CPC");
+	}
+
+	@Test
+	void shouldNotFindUnitRateWhenTacticHasNoRateEconomicsTest() {
+		// Given: an EOC-style mapping with no rate type or unit price
+		List<LineItemMapping> mapping = List.of(new LineItemMapping("Display", "592884", 1));
+
+		// When: the unit rate is resolved
+		Resolved resolved = resolvers.resolveTacticUnitRate(1, List.of(), List.of(), mapping);
+
+		// Then: it is not found, so the sheet cell renders as a dash
+		assertThat(resolved.source()).isEqualTo("not_found");
+		assertThat(resolved.value()).isNull();
+	}
+
+	@Test
+	void shouldPreferManualUnitRateOverrideOverMatchingStepTest() {
+		// Given: an Adjustments row overrides the unit rate the matching step supplied
+		List<List<String>> adj = List.of(List.of("Tactic 1 unit rate:", "$4.20 CPM"));
+		List<LineItemMapping> mapping = List.of(
+				new LineItemMapping("Display", "592884", 1, RateType.CPM, 6.0, 1500.0));
+
+		// When: the unit rate is resolved
+		Resolved resolved = resolvers.resolveTacticUnitRate(1, List.of(), adj, mapping);
+
+		// Then: the manual override wins
+		assertThat(resolved.value()).isEqualTo("$4.20 CPM");
+		assertThat(resolved.source()).isEqualTo("adj");
 	}
 
 	@Test

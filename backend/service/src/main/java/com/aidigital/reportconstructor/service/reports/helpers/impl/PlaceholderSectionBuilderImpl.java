@@ -6,6 +6,7 @@ import com.aidigital.reportconstructor.service.reports.dto.ClaudeResults;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
+import com.aidigital.reportconstructor.service.reports.dto.LineItemMapping;
 import com.aidigital.reportconstructor.service.reports.dto.Placeholder;
 import com.aidigital.reportconstructor.service.reports.dto.PreviewSection;
 import com.aidigital.reportconstructor.service.reports.engine.CampaignResolvers;
@@ -132,7 +133,7 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		for (int n = 1; n <= tacticLimit; n++) {
 			sections.add(buildPreviewSection("Tactic " + n,
 					buildFullTacticSection(n, sheet, adj, data, ccB, ccC, mediaTactics, payload.marketVolume(),
-							estimateDaypartGender, eomPeriod)));
+							estimateDaypartGender, eomPeriod, payload.lineItemMapping())));
 		}
 
 		sections.add(buildPreviewSection("Optimization Recommendations",
@@ -164,12 +165,14 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 	 *                              forces them to a dash)
 	 * @param eomPeriod             whether the EOM pacing tokens (plan ctd / proj / vs goal / cpm) should be
 	 *                              resolved for this tactic, i.e. an EOM report with a flight-months-total entered
+	 * @param lineItemMapping       the tactic-to-line-item mapping carrying the EOM rate type / unit price
+	 *                              entered in the matching step
 	 * @return the token-to-{@link Resolved} map for this tactic slide
 	 */
 	Map<String, Resolved> buildFullTacticSection(
 			int n, List<List<String>> sheet, List<List<String>> adj, CampaignData data,
 			ClaudeTactical ccB, ClaudeResults ccC, List<String> mediaTactics, String marketVolume,
-			boolean estimateDaypartGender, boolean eomPeriod
+			boolean estimateDaypartGender, boolean eomPeriod, List<LineItemMapping> lineItemMapping
 	) {
 		Resolved info = resolveTacticName(n, sheet, adj, mediaTactics);
 		String tacticName = info.value() == null ? "" : info.value();
@@ -188,6 +191,9 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		m.put("{{tactic " + n + " imps}}", tacticResolvers.resolveTacticImps(n, tacticName, sheet, adj, data));
 		m.put("{{tactic " + n + " imps plan}}",
 				tacticResolvers.resolveTacticImpsPlan(n, tacticName, sheet, adj, data));
+		// The EOM summary table's "Unit rate" column: the price/rate type the user entered per tactic in
+		// the matching step. Its template token is {{unit N rate}}, not a "{{tactic N …}}" token.
+		m.put("{{unit " + n + " rate}}", tacticResolvers.resolveTacticUnitRate(n, sheet, adj, lineItemMapping));
 		m.put("{{tactic " + n + " reach}}", tacticResolvers.resolveTacticReach(n, sheet, adj, data));
 		m.put("{{tactic " + n + " ctr}}", tacticResolvers.resolveTacticCtr(n, tacticName, sheet, adj, data));
 		m.put("{{tactic " + n + " ctr plan}}", tacticResolvers.resolveTacticCtrPlan(n, tacticName, sheet, adj, data));
