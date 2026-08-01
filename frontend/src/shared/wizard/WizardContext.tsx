@@ -49,6 +49,9 @@ interface WizardContextValue {
     elevate: ElevateState | null;
     mapping: MappingEntry[] | null;
     matchConfirmed: boolean;
+    // EOM pacing (monthly budget + buy type + final rate per tactic) is confirmed in its own
+    // dialog, separately from the line-item mapping, so editing one never re-opens the other.
+    pacingConfirmed: boolean;
     // Flight window confirmed by the user, derived from the raw-data ("Basic" tab)
     // date range. Dates are ISO yyyy-MM-dd; the media plan is never used for dates.
     dateStart: string;
@@ -71,6 +74,9 @@ interface WizardContextValue {
     setMapping(mapping: MappingEntry[]): void;
     confirmMatch(): void;
     resetMatch(): void;
+    /** Writes the pacing fields (monthly budget, rate type, unit price) without touching the confirmed mapping. */
+    setPacing(mapping: MappingEntry[]): void;
+    confirmPacing(): void;
     setDateWindow(start: string, end: string): void;
     suggestDateWindow(start: string, end: string): void;
     confirmDates(): void;
@@ -89,14 +95,17 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     const [elevate, setElevate] = useState<ElevateState | null>(null);
     const [mapping, setMappingState] = useState<MappingEntry[] | null>(null);
     const [matchConfirmed, setMatchConfirmed] = useState(false);
+    const [pacingConfirmed, setPacingConfirmed] = useState(false);
     const [dateStart, setDateStart] = useState("");
     const [dateEnd, setDateEnd] = useState("");
     const [dateConfirmed, setDateConfirmed] = useState(false);
     const [datesEdited, setDatesEdited] = useState(false);
 
+    // Re-matching rebuilds the tactic list, so any pacing entered against the old list is stale too.
     const invalidateMatch = useCallback(() => {
         setMappingState(null);
         setMatchConfirmed(false);
+        setPacingConfirmed(false);
     }, []);
 
     // Reconnecting/disconnecting the Elevate raw data replaces the "Basic" tab the
@@ -119,6 +128,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
             elevate,
             mapping,
             matchConfirmed,
+            pacingConfirmed,
             dateStart,
             dateEnd,
             dateConfirmed,
@@ -151,9 +161,15 @@ export function WizardProvider({ children }: { children: ReactNode }) {
             setMapping: (m) => {
                 setMappingState(m);
                 setMatchConfirmed(false);
+                setPacingConfirmed(false);
             },
             confirmMatch: () => setMatchConfirmed(true),
             resetMatch: invalidateMatch,
+            setPacing: (m) => {
+                setMappingState(m);
+                setPacingConfirmed(false);
+            },
+            confirmPacing: () => setPacingConfirmed(true),
             setDateWindow: (start, end) => {
                 setDateStart(start);
                 setDateEnd(end);
@@ -179,6 +195,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
             elevate,
             mapping,
             matchConfirmed,
+            pacingConfirmed,
             dateStart,
             dateEnd,
             dateConfirmed,

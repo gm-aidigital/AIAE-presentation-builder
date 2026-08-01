@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { isGoogleSheetUrl } from "@/shared/api/sheets";
 import { useWizard } from "@/shared/wizard/WizardContext";
+import { pacingReadyCount } from "../lib/pacing";
 import { IconArrowLeft, IconArrowRight, IconCheck, IconSpinner } from "./icons";
 
 export interface InputErrors {
@@ -27,6 +28,7 @@ interface Props {
     onDisconnectMediaPlan(): void;
     onDisconnectElevate(): void;
     onOpenMatch(): void;
+    onOpenPacing(): void;
     onConfirm(): void;
     onBack(): void;
     clearError(key: keyof InputErrors): void;
@@ -167,6 +169,7 @@ export function StepDataInputs({
     onDisconnectMediaPlan,
     onDisconnectElevate,
     onOpenMatch,
+    onOpenPacing,
     onConfirm,
     onBack,
     clearError,
@@ -183,6 +186,10 @@ export function StepDataInputs({
     const bothConnected = !!w.mediaPlan && !!w.elevate;
     const matched = (w.mapping ?? []).filter((m) => m.lineItemId).length;
     const matchTotal = (w.mapping ?? []).length;
+    // Pacing is an EOM-only input and is entered per tactic, so it only appears once matching
+    // produced the tactic list.
+    const needsPacing = isEom && matchTotal > 0;
+    const pacingReady = pacingReadyCount(w.mapping);
 
     return (
         <div className="rc-content">
@@ -353,6 +360,24 @@ export function StepDataInputs({
                         </div>
                     )}
 
+                    {needsPacing && (
+                        <div className={`rc-match${w.pacingConfirmed ? " rc-match--done" : ""}`}>
+                            <div className="rc-match__text">
+                                <div className="rc-match__label">
+                                    {w.pacingConfirmed ? "Pacing & rates set" : "Pacing & rates — needs input"}
+                                </div>
+                                <div className="rc-match__sub">
+                                    {w.pacingConfirmed || pacingReady > 0
+                                        ? `${pacingReady} of ${matchTotal} tactics with a budget, buy type and rate`
+                                        : "Enter the monthly budget, buy type and rate for every tactic"}
+                                </div>
+                            </div>
+                            <button type="button" className="rc-btn rc-btn--ghost rc-btn--sm" onClick={onOpenPacing}>
+                                {w.pacingConfirmed ? "Edit pacing" : "Set pacing"}
+                            </button>
+                        </div>
+                    )}
+
                     <div className="rc-actions rc-actions--split">
                         <button type="button" className="rc-btn rc-btn--outline" onClick={onBack}>
                             <IconArrowLeft size={16} />
@@ -397,6 +422,15 @@ export function StepDataInputs({
                             value={w.elevate ? "Connected" : "Waiting"}
                         />
                         <StatusRow label="Flight dates" done={datesDone} value={datesDone ? "Set" : "Waiting"} />
+                        {isEom && (
+                            <StatusRow
+                                label="Pacing & rates"
+                                done={w.pacingConfirmed}
+                                value={
+                                    w.pacingConfirmed ? "Confirmed" : matchTotal > 0 ? "Waiting" : "After matching"
+                                }
+                            />
+                        )}
                     </div>
                 </aside>
             </div>

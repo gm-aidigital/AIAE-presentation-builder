@@ -8,6 +8,7 @@ import { useDetectDateRange } from "../api/useDetectDateRange";
 import { useMatchLineItems } from "../api/useMatchLineItems";
 import { fetchReportJob, startReportJob } from "../api/useReportJob";
 import { MatchModal } from "./MatchModal";
+import { PacingModal } from "./PacingModal";
 import { Stepper } from "./Stepper";
 import {
     allowedBreakdowns,
@@ -109,6 +110,8 @@ function PageInner() {
 
     const [matchOpen, setMatchOpen] = useState(false);
     const [matchData, setMatchData] = useState<LineItemMatchResult | null>(null);
+    // EOM pacing input (monthly budget, buy type, rate per tactic) — its own dialog, gated on step 2.
+    const [pacingOpen, setPacingOpen] = useState(false);
 
     // Per-tactic breakdown toggles, keyed by tacticNum. Sent as breakdownSelections in the SHEET
     // build payload: the backend clears every breakdown section a tactic did not enable on the
@@ -322,6 +325,21 @@ function PageInner() {
         showToast(`Mapping confirmed — ${matched}/${w.mapping.length} tactics`);
     }
 
+    // ── Pacing ────────────────────────────────────────────────────────────
+    function openPacing() {
+        if (!w.mapping || w.mapping.length === 0) {
+            showToast("Match the line items first", true);
+            openMatch();
+            return;
+        }
+        setPacingOpen(true);
+    }
+    function confirmPacing() {
+        w.confirmPacing();
+        setPacingOpen(false);
+        showToast(`Pacing confirmed — ${w.mapping?.length ?? 0} tactics`);
+    }
+
     // ── Step 2 → 3 gate ───────────────────────────────────────────────────
     function confirmInputs() {
         const errs: InputErrors = {
@@ -340,6 +358,12 @@ function PageInner() {
         if (!w.matchConfirmed) {
             showToast("Confirm the line-item mapping first", true);
             openMatch();
+            return;
+        }
+        // EOM pacing figures come from the user, not the media plan — the deck can't be built without them.
+        if (w.reportType === "EOM" && !w.pacingConfirmed) {
+            showToast("Set the pacing & rates for every tactic first", true);
+            openPacing();
             return;
         }
         setStep(2);
@@ -594,6 +618,7 @@ function PageInner() {
                         setMatchData(null);
                     }}
                     onOpenMatch={openMatch}
+                    onOpenPacing={openPacing}
                     onConfirm={confirmInputs}
                     onBack={() => setStep(0)}
                     clearError={clearError}
@@ -646,6 +671,8 @@ function PageInner() {
                 onRun={runMatching}
                 onConfirm={confirmMatching}
             />
+
+            <PacingModal open={pacingOpen} onClose={() => setPacingOpen(false)} onConfirm={confirmPacing} />
 
             {building && (
                 <div className="rc-overlay">

@@ -1,10 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import type { LineItemMatchResult, MappingEntry } from "@/shared/api/types";
 import { useWizard } from "@/shared/wizard/WizardContext";
-import { extractTacticBudgets, namingTail, normalizeRateType, type TacticBudget } from "../lib/mediaPlanBudget";
+import { extractTacticBudgets, namingTail, type TacticBudget } from "../lib/mediaPlanBudget";
 import { IconCheck, IconInfo, IconLink2, IconRefresh, IconSpinner } from "./icons";
-
-const RATE_TYPES = ["CPM", "CPC", "CPV"] as const;
 
 interface Props {
     open: boolean;
@@ -42,8 +40,7 @@ function budgetLine(b: TacticBudget): string {
 }
 
 export function MatchModal({ open, matchData, running, onClose, onRun, onConfirm }: Props) {
-    const { mapping, setMapping, mediaPlan, reportType } = useWizard();
-    const isEom = reportType === "EOM";
+    const { mapping, setMapping, mediaPlan } = useWizard();
     const [dragOver, setDragOver] = useState<number | null>(null);
 
     // Budget/volume per tactic, aligned to the mapping order so duplicated
@@ -52,38 +49,6 @@ export function MatchModal({ open, matchData, running, onClose, onRun, onConfirm
         () => extractTacticBudgets(mediaPlan?.sheetRows ?? null, (mapping ?? []).map((m) => m.tacticName)),
         [mediaPlan, mapping]
     );
-
-    // Writes the media-plan rate/price into real mapping state for any row that doesn't have its own
-    // yet. The <select>/<input> `value`s below fall back to the same numbers for *display*, but a
-    // fallback shown in a controlled input is never actually submitted unless the user touches the
-    // control — so without this, a row whose rate type already looks right would silently send
-    // rateType/unitPrice as undefined.
-    useEffect(() => {
-        if (!isEom || !mapping || mapping.length === 0) {
-            return;
-        }
-        let changed = false;
-        const next = mapping.map((m, i) => {
-            const patch: Partial<Pick<MappingEntry, "rateType" | "unitPrice">> = {};
-            if (m.rateType === undefined) {
-                const rateType = normalizeRateType(budgets[i]?.rateType);
-                if (rateType) {
-                    patch.rateType = rateType;
-                }
-            }
-            if (m.unitPrice === undefined && budgets[i]?.unitPrice) {
-                patch.unitPrice = budgets[i]!.unitPrice;
-            }
-            if (Object.keys(patch).length === 0) {
-                return m;
-            }
-            changed = true;
-            return { ...m, ...patch };
-        });
-        if (changed) {
-            setMapping(next);
-        }
-    }, [isEom, budgets, mapping, setMapping]);
 
     useEffect(() => {
         document.body.style.overflow = open ? "hidden" : "";
@@ -119,9 +84,6 @@ export function MatchModal({ open, matchData, running, onClose, onRun, onConfirm
                 i === idx ? { ...m, lineItemId: undefined, namingSample: undefined, autoMatched: false } : m
             )
         );
-    }
-    function updateRate(idx: number, patch: Partial<Pick<MappingEntry, "rateType" | "unitPrice" | "monthlyBudget">>) {
-        setMapping(rows.map((m, i) => (i === idx ? { ...m, ...patch } : m)));
     }
 
     return (
@@ -202,53 +164,6 @@ export function MatchModal({ open, matchData, running, onClose, onRun, onConfirm
                                                         title="Planned budget · volume from the media plan"
                                                     >
                                                         {budgetLine(budgets[idx] as TacticBudget)}
-                                                    </div>
-                                                )}
-                                                {isEom && (
-                                                    <div className="match-rate-row">
-                                                        <select
-                                                            className="match-rate-row__select"
-                                                            title="Rate type"
-                                                            value={row.rateType ?? normalizeRateType(budgets[idx]?.rateType) ?? ""}
-                                                            onChange={(e) =>
-                                                                updateRate(idx, {
-                                                                    rateType: (e.target.value || undefined) as
-                                                                        | MappingEntry["rateType"]
-                                                                        | undefined,
-                                                                })
-                                                            }
-                                                        >
-                                                            <option value="">Rate…</option>
-                                                            {RATE_TYPES.map((rt) => (
-                                                                <option key={rt} value={rt}>
-                                                                    {rt}
-                                                                </option>
-                                                            ))}
-                                                        </select>
-                                                        <input
-                                                            type="number"
-                                                            className="match-rate-row__input"
-                                                            title="Monthly budget"
-                                                            placeholder="Monthly budget"
-                                                            value={row.monthlyBudget ?? ""}
-                                                            onChange={(e) =>
-                                                                updateRate(idx, {
-                                                                    monthlyBudget: e.target.value === "" ? undefined : Number(e.target.value),
-                                                                })
-                                                            }
-                                                        />
-                                                        <input
-                                                            type="number"
-                                                            className="match-rate-row__input"
-                                                            title="Final unit price"
-                                                            placeholder="Final unit price"
-                                                            value={row.unitPrice ?? budgets[idx]?.unitPrice ?? ""}
-                                                            onChange={(e) =>
-                                                                updateRate(idx, {
-                                                                    unitPrice: e.target.value === "" ? undefined : Number(e.target.value),
-                                                                })
-                                                            }
-                                                        />
                                                     </div>
                                                 )}
                                                 {hasId && naming && (

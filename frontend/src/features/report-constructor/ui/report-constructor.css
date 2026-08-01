@@ -520,15 +520,6 @@
   font-size: 11px; color: var(--text-muted); font-family: var(--rc-mono);
   margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.match-rate-row { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
-.match-rate-row__select, .match-rate-row__input {
-  font-family: var(--rc-mono); font-size: 11px; color: var(--black);
-  border: 1px solid var(--border); border-radius: 5px; background: var(--white);
-  padding: 3px 6px; outline: none;
-}
-.match-rate-row__select { flex: 0 0 auto; }
-.match-rate-row__input { flex: 1 1 0; min-width: 0; }
-.match-rate-row__select:focus, .match-rate-row__input:focus { border-color: var(--blue); }
 .match-tactic-badge { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .match-id-pill {
   font-family: var(--rc-mono); font-size: 11px; font-weight: 600;
@@ -593,6 +584,49 @@
 .match-empty { padding: 32px; text-align: center; color: var(--gray); font-size: 13px; }
 .match-stats { font-family: var(--rc-mono); font-size: 11px; color: var(--text-muted); }
 
+/* ═══════════ Pacing & rates modal ═══════════ */
+.pacing-modal { max-width: 880px; }
+.pacing-table { display: flex; flex-direction: column; gap: 6px; }
+.pacing-table__head {
+  display: grid; grid-template-columns: minmax(0, 1.5fr) 140px 110px 150px; gap: 12px;
+  align-items: center; padding: 0 13px 4px;
+  font-family: var(--rc-mono); font-size: 10px; letter-spacing: 1.2px;
+  text-transform: uppercase; color: var(--text-muted);
+}
+.pacing-row {
+  display: grid; grid-template-columns: minmax(0, 1.5fr) 140px 110px 150px; gap: 12px;
+  align-items: start; padding: 12px 13px; background: var(--white);
+  border: 1px solid var(--border); border-radius: 8px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.pacing-row--done { border-color: rgba(174, 243, 63, 0.8); background: var(--lime-light); }
+.pacing-row__tactic { display: flex; align-items: flex-start; gap: 10px; min-width: 0; padding-top: 6px; }
+.pacing-row__names { min-width: 0; }
+.pacing-row__rate { display: flex; flex-direction: column; gap: 4px; }
+.pacing-row__hint {
+  font-family: var(--rc-mono); font-size: 10px; color: var(--text-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pacing-field {
+  display: flex; align-items: center; gap: 4px; background: var(--white);
+  border: 1px solid var(--border); border-radius: 6px; padding: 0 8px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.pacing-field:focus-within { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-light); }
+.pacing-field__prefix { font-family: var(--rc-mono); font-size: 12px; color: var(--text-muted); }
+.pacing-field__input {
+  width: 100%; min-width: 0; border: 0; outline: none; background: transparent;
+  font-family: var(--rc-mono); font-size: 13px; color: var(--black); padding: 8px 0;
+}
+.pacing-select {
+  width: 100%; border: 1px solid var(--border); border-radius: 6px; background: var(--white);
+  font-family: var(--rc-mono); font-size: 13px; color: var(--black);
+  padding: 8px; outline: none; transition: border-color 0.15s, box-shadow 0.15s;
+}
+.pacing-select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-light); }
+.pacing-foot__actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.pacing-foot__warn { font-size: 11px; color: var(--orange); max-width: 280px; line-height: 1.4; }
+
 /* ═══════════ Toast (legacy, verbatim) ═══════════ */
 .toast { position: fixed; bottom: 24px; right: 24px; background: var(--rc-blue); border-radius: 8px; padding: 13px 17px; font-size: 13px; line-height: 1.5; color: var(--white); display: flex; align-items: flex-start; gap: 10px; transform: translateY(70px); opacity: 0; transition: all 0.28s cubic-bezier(0.34,1.56,0.64,1); z-index: 210; box-shadow: 0 8px 28px rgba(0,9,220,0.25); max-width: 440px; overflow-wrap: anywhere; }
 .toast.show { transform: translateY(0); opacity: 1; }
@@ -605,6 +639,9 @@
   .rc-typegrid { grid-template-columns: 1fr; }
   .rc-tactic__grid { grid-template-columns: 1fr; gap: 0; }
   .match-layout { grid-template-columns: 1fr; }
+  .pacing-table__head { display: none; }
+  .pacing-row { grid-template-columns: 1fr 1fr; }
+  .pacing-row__tactic { grid-column: 1 / -1; padding-top: 0; }
   .rc-stepper { overflow-x: auto; }
   .rc-sheet { overflow-x: auto; }
   .rc-sheet__grid { min-width: 720px; }
