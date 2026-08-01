@@ -255,9 +255,10 @@ external:
     # located by content (header labels / anchor cells) at trim time — see
     # RealSheetDeckProvider — so no per-slot range config is needed here.
     sheets-template-id: ${SHEETS_TEMPLATE_ID:1aRNqq-vxDZEgA75-rGQL04uGezGGIksB4fqEe21E8aU}
-    # EOM sheet template, used by the "Generate Sheet" step of the two-step EOM flow. Blank falls
-    # back to sheets-template-id (the EOC sheet) — set EOM_SHEETS_TEMPLATE_ID once configured.
-    eom-sheets-template-id: ${EOM_SHEETS_TEMPLATE_ID:}
+    # EOM sheet template, used by the "Generate Sheet" step of the two-step EOM flow. Falls back to
+    # sheets-template-id (the EOC sheet) only if this default is ever blanked out via an empty
+    # EOM_SHEETS_TEMPLATE_ID override.
+    eom-sheets-template-id: ${EOM_SHEETS_TEMPLATE_ID:1YAZDnMQk2ya5rulTm1nnJaF4BTRgFJAGcbhgmeUW3AU}
     sheets-target-folder-id: ${SHEETS_TARGET_FOLDER_ID:}
     charts:
       chart-id-in-sheet: ${GOOGLE_CHART_ID_IN_SHEET:1087145314}
