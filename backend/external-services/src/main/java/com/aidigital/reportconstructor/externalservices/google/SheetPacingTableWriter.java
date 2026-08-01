@@ -1,5 +1,6 @@
 package com.aidigital.reportconstructor.externalservices.google;
 
+import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
 import com.aidigital.reportconstructor.service.reports.engine.ChartPivot;
 import com.aidigital.reportconstructor.service.reports.engine.Headers;
 import com.aidigital.reportconstructor.service.reports.engine.Pivot;
@@ -104,7 +105,10 @@ public class SheetPacingTableWriter {
 		Map<Integer, int[]> distAnchors = findNumberedAnchors(grid, DISTRIBUTION_ANCHOR);
 
 		Map<Integer, List<String>> tacticLineItems = lineItemGrouper.groupByTactic(req.lineItemMapping());
-		boolean multiYear = chartPivot.isMultiYear(req.bqRows(), headers, req.flightTs());
+		// The monthly blocks may span a wider window than the daily ones (EOM reports on a single month but
+		// charts every month since campaign start), so their multi-year labelling is decided separately.
+		FlightDates monthlyTs = req.monthlyTs() != null ? req.monthlyTs() : req.flightTs();
+		boolean monthlyMultiYear = chartPivot.isMultiYear(req.bqRows(), headers, monthlyTs);
 
 		List<ValueRange> data = new ArrayList<>();
 		for (int n = 1; n <= req.tacticCount(); n++) {
@@ -115,7 +119,7 @@ public class SheetPacingTableWriter {
 					() -> chartPivot.buildDailyPivot(req.bqRows(), liIds, headers, req.flightTs()),
 					kpiType, "Daily pacing " + n, errors);
 			collectPacingBlock(data, grid, monthlyAnchors.get(n), tabName, n, true,
-					() -> chartPivot.buildMonthlyPivot(req.bqRows(), liIds, headers, req.flightTs(), multiYear),
+					() -> chartPivot.buildMonthlyPivot(req.bqRows(), liIds, headers, monthlyTs, monthlyMultiYear),
 					kpiType, "Monthly pacing " + n, errors);
 			collectDistributionBlock(data, grid, distAnchors.get(n), tabName, n,
 					req.distTacticNames().getOrDefault(n, "Tactic " + n),

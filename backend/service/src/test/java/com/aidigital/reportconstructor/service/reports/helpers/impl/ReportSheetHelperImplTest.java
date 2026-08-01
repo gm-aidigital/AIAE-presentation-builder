@@ -9,6 +9,7 @@ import com.aidigital.reportconstructor.service.reports.dto.LineItemMapping;
 import com.aidigital.reportconstructor.service.reports.dto.Totals;
 import com.aidigital.reportconstructor.service.reports.helpers.BreakdownSelectionResolver;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportNumberParser;
+import com.aidigital.reportconstructor.service.reports.helpers.SheetRowHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.TacticExtractionHelper;
 import com.aidigital.reportconstructor.service.reports.ports.PacingTablesRequest;
 import com.aidigital.reportconstructor.service.reports.ports.SheetDeckProvider;
@@ -19,6 +20,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDate;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -43,6 +45,8 @@ class ReportSheetHelperImplTest {
 	ReportNumberParser reportNumbers;
 	@Mock
 	BreakdownSelectionResolver breakdownResolver;
+	@Mock
+	SheetRowHelper sheetRows;
 
 	@InjectMocks
 	ReportSheetHelperImpl helper;
@@ -162,6 +166,67 @@ class ReportSheetHelperImplTest {
 		// Then: an empty grid is returned and the provider is never called
 		assertThat(result).isEmpty();
 		verify(sheets, never()).readSheetGrid(any(), any());
+	}
+
+	@Test
+	void shouldWidenMonthlyWindowToCampaignStartForEomTest() {
+		// Given: an EOM report whose flight window covers only June, over data starting in January
+		GeneratePayload payload = payloadWithReportType("EOM");
+		CampaignData data = campaignDataWithFlight(LocalDate.of(2025, 6, 1), LocalDate.of(2025, 6, 30));
+		when(sheetRows.detectDataDateRange(payload.adjRows()))
+				.thenReturn(new FlightDates(LocalDate.of(2025, 1, 5), LocalDate.of(2025, 6, 30)));
+
+		// When:
+		FlightDates monthly = helper.resolveMonthlyWindow(payload, data);
+
+		// Then: the monthly blocks run from the campaign's first delivery day to the reporting month's end
+		assertThat(monthly).isEqualTo(new FlightDates(LocalDate.of(2025, 1, 5), LocalDate.of(2025, 6, 30)));
+	}
+
+	@Test
+	void shouldKeepFlightWindowForMonthlyBlocksOnEocTest() {
+		// Given: a non-EOM report over the same data
+		GeneratePayload payload = payloadWithReportType("EOC");
+		CampaignData data = campaignDataWithFlight(LocalDate.of(2025, 6, 1), LocalDate.of(2025, 6, 30));
+
+		// When:
+		FlightDates monthly = helper.resolveMonthlyWindow(payload, data);
+
+		// Then: the flight window is used unchanged and the raw rows are never scanned
+		assertThat(monthly).isEqualTo(data.flightTs());
+		verify(sheetRows, never()).detectDataDateRange(any());
+	}
+
+	@Test
+	void shouldKeepFlightWindowForEomWhenDataStartsInsideItTest() {
+		// Given: an EOM report whose data never predates the reporting month
+		GeneratePayload payload = payloadWithReportType("EOM");
+		CampaignData data = campaignDataWithFlight(LocalDate.of(2025, 6, 1), LocalDate.of(2025, 6, 30));
+		when(sheetRows.detectDataDateRange(payload.adjRows()))
+				.thenReturn(new FlightDates(LocalDate.of(2025, 6, 3), LocalDate.of(2025, 6, 30)));
+
+		// When:
+		FlightDates monthly = helper.resolveMonthlyWindow(payload, data);
+
+		// Then: nothing is widened
+		assertThat(monthly).isEqualTo(data.flightTs());
+	}
+
+	private static GeneratePayload payloadWithReportType(String reportType) {
+		return new GeneratePayload(
+				"brief", reportType, "", List.of(), List.of(List.of("Date", "Impressions")), List.of(),
+				List.of(), List.of(), List.of(), null, "sheet-id", null, null, null);
+	}
+
+	private static CampaignData campaignDataWithFlight(LocalDate start, LocalDate end) {
+		return new CampaignData(
+				"", "", "", "", "",
+				new FlightDates(start, end),
+				"", "", "", "", "",
+				new Totals(0, 0, 0, 0, null, null),
+				Map.of(),
+				""
+		);
 	}
 
 	private static GeneratePayload payloadWithPacingInputs() {

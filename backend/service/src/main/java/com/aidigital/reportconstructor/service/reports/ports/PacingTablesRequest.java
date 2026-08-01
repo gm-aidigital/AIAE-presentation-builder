@@ -15,6 +15,10 @@ import java.util.Map;
  * @param bqRows                raw BigQuery export rows (the Adjustments / actuals grid)
  * @param lineItemMapping       tactic-number &rarr; line-item-id mapping
  * @param flightTs              resolved flight window, or {@code null}
+ * @param monthlyTs             window the Monthly pacing blocks pivot over, or {@code null} to reuse
+ *                              {@code flightTs}. EOM passes a wider window here — campaign start through the
+ *                              reporting month's end — because its {@code flightTs} covers a single month, which
+ *                              would collapse every monthly chart to one data point
  * @param tacticCount           number of active tactics (1..28)
  * @param distTacticNames       tactic-number &rarr; display name (from {@code {{tactic n}}})
  * @param distTacticImps        tactic-number &rarr; impressions (from {@code {{tactic n imps}}})
@@ -31,6 +35,7 @@ public record PacingTablesRequest(
 		List<List<String>> bqRows,
 		List<LineItemMapping> lineItemMapping,
 		FlightDates flightTs,
+		FlightDates monthlyTs,
 		int tacticCount,
 		Map<Integer, String> distTacticNames,
 		Map<Integer, Double> distTacticImps,

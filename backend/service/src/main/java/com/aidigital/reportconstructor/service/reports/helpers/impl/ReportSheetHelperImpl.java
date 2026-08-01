@@ -5,6 +5,7 @@ import com.aidigital.reportconstructor.service.reports.dto.BreakdownSelection;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.DeviceTable;
+import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTable;
 import com.aidigital.reportconstructor.service.reports.dto.GeoTable;
@@ -12,6 +13,7 @@ import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
 import com.aidigital.reportconstructor.service.reports.helpers.BreakdownSelectionResolver;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportNumberParser;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportSheetHelper;
+import com.aidigital.reportconstructor.service.reports.helpers.SheetRowHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.TacticExtractionHelper;
 import com.aidigital.reportconstructor.service.reports.ports.PacingTablesRequest;
 import com.aidigital.reportconstructor.service.reports.ports.SheetDeckProvider;
@@ -19,6 +21,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,10 +42,14 @@ public class ReportSheetHelperImpl implements ReportSheetHelper {
 	/** Max tactics the report template carries; media-plan tactic counts are clamped to this. */
 	private static final int MAX_TACTICS = 28;
 
+	/** Report-type code of the monthly (end-of-month) report. */
+	private static final String EOM_REPORT_TYPE = "EOM";
+
 	private final SheetDeckProvider sheets;
 	private final TacticExtractionHelper tacticExtraction;
 	private final ReportNumberParser reportNumbers;
 	private final BreakdownSelectionResolver breakdownResolver;
+	private final SheetRowHelper sheetRows;
 
 	@Override
 	public String buildSheet(
@@ -125,6 +132,7 @@ public class ReportSheetHelperImpl implements ReportSheetHelper {
 					payload.adjRows(),
 					payload.lineItemMapping(),
 					data.flightTs(),
+					resolveMonthlyWindow(payload, data),
 					tacticCount,
 					distNames,
 					distImps,
@@ -136,6 +144,30 @@ public class ReportSheetHelperImpl implements ReportSheetHelper {
 			log.error("[sheets] pacing tables step failed for {}", spreadsheetId, ex);
 			return List.of("Pacing tables failed: " + ex.getMessage());
 		}
+	}
+
+	/**
+	 * Resolves the window the Monthly pacing blocks pivot over. An EOM report's flight window covers a single
+	 * reporting month, so pivoting the monthly blocks over it yields one data point and a useless chart; for EOM
+	 * the monthly window therefore runs from the campaign's first delivery day (earliest date in the raw rows)
+	 * through the reporting month's end, while the daily blocks keep the reporting month only. EOC reports over
+	 * the whole flight already, so their monthly window is the flight window unchanged.
+	 *
+	 * @param payload the generation payload carrying the report type and the raw delivery rows
+	 * @param data    the aggregated campaign data carrying the resolved flight window
+	 * @return the window for the monthly blocks, or {@code null} when no flight window is known
+	 */
+	FlightDates resolveMonthlyWindow(GeneratePayload payload, CampaignData data) {
+		FlightDates flight = data == null ? null : data.flightTs();
+		if (flight == null || flight.end() == null || !EOM_REPORT_TYPE.equalsIgnoreCase(payload.reportType())) {
+			return flight;
+		}
+		FlightDates dataRange = sheetRows.detectDataDateRange(payload.adjRows());
+		LocalDate dataStart = dataRange == null ? null : dataRange.start();
+		if (dataStart == null || (flight.start() != null && dataStart.isAfter(flight.start()))) {
+			return flight;
+		}
+		return new FlightDates(dataStart, flight.end());
 	}
 
 	@Override
