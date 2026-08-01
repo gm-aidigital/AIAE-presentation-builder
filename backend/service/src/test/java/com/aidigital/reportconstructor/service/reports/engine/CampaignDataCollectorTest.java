@@ -89,14 +89,14 @@ class CampaignDataCollectorTest {
 
 	@Test
 	void collectForEomShouldResolvePlanFromRateAndMonthlyBudgetTest() {
-		// Given: a CPM tactic with a $3,100 monthly budget and $10 unit price. The user-entered Flight
-		// dates at Data Inputs span Jan 1 – Mar 31, 2026 (3 calendar months) — the full-flight target is
-		// monthlyBudget × flightMonthsTotal, converted to imps
+		// Given: a CPM tactic with a $3,100 monthly budget and $10 unit price — an EOM report always
+		// covers exactly one reporting month, so the monthly budget itself is the spend target, with no
+		// flight-length multiplier
 		List<List<String>> sheet = List.of(
 				List.of("Media"),
 				List.of("programmatic display")
 		);
-		DateFilter dateFilter = new DateFilter(DateFilterMode.RANGE, LocalDate.of(2026, 1, 1),
+		DateFilter dateFilter = new DateFilter(DateFilterMode.RANGE, LocalDate.of(2026, 3, 1),
 				LocalDate.of(2026, 3, 31));
 		LineItemMapping mapping = new LineItemMapping("Programmatic Display", null, 1, RateType.CPM, 10.0, 3100.0);
 
@@ -104,22 +104,20 @@ class CampaignDataCollectorTest {
 		CampaignData data = collector.collect(sheet, List.of(), List.of(), List.of(), List.of(mapping), dateFilter,
 				"EOM");
 
-		// Then: Estimates-sourced fields stay null, and the rate/budget-derived spend/imps are set
-		// to the full-flight target: 3100 * 3 = 9300 spend, 9300 / 10 * 1000 = 930,000 impressions.
-		// Elapsed and total are the same figure — this report always covers the whole flight window
-		// its plan is measured against, so there is no separate to-date proration.
-		assertThat(data.tactics().get(1).planSpend()).isEqualTo(9300.0);
-		assertThat(data.tactics().get(1).planImps()).isEqualTo(930_000.0);
+		// Then: Estimates-sourced fields stay null, and the rate/budget-derived spend/imps are the
+		// monthly figures unscaled: 3100 spend, 3100 / 10 * 1000 = 310,000 impressions
+		assertThat(data.tactics().get(1).planSpend()).isEqualTo(3100.0);
+		assertThat(data.tactics().get(1).planImps()).isEqualTo(310_000.0);
 		assertThat(data.tactics().get(1).planCtr()).isNull();
 		assertThat(data.tactics().get(1).planVcr()).isNull();
-		assertThat(data.eomMonthNumber()).isEqualTo(3);
-		assertThat(data.eomFlightMonthsTotal()).isEqualTo(3);
+		assertThat(data.eomMonthNumber()).isEqualTo(1);
+		assertThat(data.eomFlightMonthsTotal()).isEqualTo(1);
 	}
 
 	@Test
-	void collectForEomShouldLeavePlanUnresolvedWhenNoFlightDatesAreSetTest() {
-		// Given: the same rate/budget mapping, but no Flight dates were entered at Data Inputs — there
-		// is no way to derive the flight length, so no plan can be resolved
+	void collectForEomShouldResolvePlanEvenWithoutFlightDatesSetTest() {
+		// Given: the same rate/budget mapping, but no Flight dates entered at Data Inputs — the monthly
+		// budget is the plan regardless, since it is never multiplied by the flight window's length
 		List<List<String>> sheet = List.of(
 				List.of("Media"),
 				List.of("programmatic display")
@@ -130,9 +128,26 @@ class CampaignDataCollectorTest {
 		CampaignData data = collector.collect(sheet, List.of(), List.of(), List.of(), List.of(mapping), null, "EOM");
 
 		// Then:
+		assertThat(data.tactics().get(1).planSpend()).isEqualTo(3100.0);
+		assertThat(data.tactics().get(1).planImps()).isEqualTo(310_000.0);
+		assertThat(data.eomFlightMonthsTotal()).isNull();
+	}
+
+	@Test
+	void collectForEomShouldLeavePlanUnresolvedWhenMonthlyBudgetIsMissingTest() {
+		// Given: a mapping with a rate type and unit price but no monthly budget entered yet
+		List<List<String>> sheet = List.of(
+				List.of("Media"),
+				List.of("programmatic display")
+		);
+		LineItemMapping mapping = new LineItemMapping("Programmatic Display", null, 1, RateType.CPM, 10.0, null);
+
+		// When:
+		CampaignData data = collector.collect(sheet, List.of(), List.of(), List.of(), List.of(mapping), null, "EOM");
+
+		// Then:
 		assertThat(data.tactics().get(1).planSpend()).isNull();
 		assertThat(data.tactics().get(1).planImps()).isNull();
-		assertThat(data.eomFlightMonthsTotal()).isNull();
 	}
 
 	@Test

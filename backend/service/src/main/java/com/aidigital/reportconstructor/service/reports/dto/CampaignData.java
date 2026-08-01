@@ -23,12 +23,12 @@ import java.util.Map;
  * @param audienceSegs        audience segment targeting description
  * @param totals              aggregated delivery and performance metrics across all tactics
  * @param tactics              per-tactic data keyed by the tactic's ordinal index in the report
- * @param eomMonthNumber       EOM-only: 1-based index of the reporting month within the flight, derived
- *                            from the calendar months {@code flightTs} spans; {@code null} for EOC
- * @param eomFlightMonthsTotal EOM-only: total months the flight spans; the same {@code flightTs}-derived
- *                            figure as {@code eomMonthNumber} — this report always covers the whole
- *                            period its plan figures are measured against, so there is no separate
- *                            to-date/full-flight distinction; {@code null} for EOC
+ * @param eomMonthNumber       EOM-only: purely informational calendar-month count {@code flightTs} spans
+ *                            (an EOM report always covers a single reporting month); {@code null} for EOC
+ * @param eomFlightMonthsTotal EOM-only: the same figure as {@code eomMonthNumber} — kept as a separate
+ *                            field for the {@code {{eom_flight_months_total}}} token, but plays no part in
+ *                            any plan math: the monthly budget entered while matching already is the
+ *                            spend target for the reporting month; {@code null} for EOC
  * @param audienceTab         raw audience-tab source content used to build audience copy
  */
 public record CampaignData(

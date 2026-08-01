@@ -87,15 +87,15 @@ public class CampaignDataCollector {
 	 * @param estimatesRows   Estimates tab grid rows
 	 * @param lineItemMapping tactic-to-line-item mapping; for EOM this also carries each tactic's
 	 *                        rate/budget economics entered at matching time
-	 * @param dateFilter      user-confirmed Flight dates window entered at Data Inputs (the flight window;
-	 *                        for EOM this is also the sole source of the full-flight length — how many
-	 *                        calendar months it spans becomes both {@code eom_month_number} and
-	 *                        {@code eom_flight_months_total}, since this report always covers the whole
-	 *                        period its plan figures are measured against)
+	 * @param dateFilter      user-confirmed Flight dates window entered at Data Inputs (the flight window);
+	 *                        for EOM this is a single reporting month, and how many calendar months it spans
+	 *                        becomes the purely informational {@code eom_month_number}/{@code eom_flight_months_total}
+	 *                        (e.g. "Month 4" labels) — it plays no part in the plan math
 	 * @param reportType      report template code; {@code "EOM"} resolves plan figures from
-	 *                        {@code lineItemMapping}'s rate/budget fields (plus CTR/VCR/max-frequency
-	 *                        benchmarks still read from the Estimates tab), anything else keeps resolving
-	 *                        every plan figure from the Estimates tab.
+	 *                        {@code lineItemMapping}'s rate/budget fields directly — the monthly budget entered
+	 *                        at matching time IS the spend target for this one reporting month (plus
+	 *                        CTR/VCR/max-frequency benchmarks still read from the Estimates tab), anything else
+	 *                        keeps resolving every plan figure from the Estimates tab.
 	 * @return the aggregated campaign data
 	 */
 	public CampaignData collect(
@@ -259,16 +259,15 @@ public class CampaignDataCollector {
 
 		// ── 6c/7/8: aggregate delivery rows over the flight window ─────────────
 		boolean isEom = "EOM".equals(reportType);
-		// EOM-only: months the report covers, from the same user-entered Flight dates (Data Inputs)
-		// that also bound the actuals window — the full-flight target the user's monthly budget
-		// multiplies by. No separate elapsed-vs-total distinction: the report always covers the whole
-		// period being multiplied against, so this figure doubles as eomMonthNumber below.
+		// EOM-only: an EOM report always covers exactly one reporting month, so the monthly budget
+		// entered at matching time IS this month's spend target — nothing to multiply it by. This
+		// figure is purely informational (e.g. "Month 4" labels); it plays no part in the plan math.
 		Integer eomMonthNumber = isEom && flightTs != null
 				? ratePlanCalculator.monthsSpanned(flightTs.start(), flightTs.end()) : null;
 		Integer eomFlightMonthsTotal = eomMonthNumber;
 		Map<Integer, double[]> estimatesPlan = resolvePlanByTacticNum(tacticMap, estimatesByTactic);
 		Map<Integer, double[]> planByTacticNum = isEom
-				? resolveEomPlanByTacticNum(lineItemMapping, eomFlightMonthsTotal, estimatesPlan)
+				? resolveEomPlanByTacticNum(lineItemMapping, estimatesPlan)
 				: estimatesPlan;
 
 		LocalDate flightStart = flightTs != null ? flightTs.start() : null;
@@ -335,20 +334,16 @@ public class CampaignDataCollector {
 	}
 
 	/**
-	 * Resolves each EOM tactic's full-flight planned figures from the rate/budget economics entered by
-	 * the user at matching time (joined by {@code tacticNum}, never by name): the monthly budget times
-	 * the user-entered flight-months total gives the full-flight spend target, converted to Plan
-	 * Units by rate type. The per-tactic {@code plan ctd} / {@code proj} pacing resolvers prorate this
-	 * full-flight figure down to the elapsed months themselves (see {@link TacticResolvers}) — this
-	 * method resolves the un-prorated, whole-flight target only, mirroring the role
-	 * {@link #resolvePlanByTacticNum} plays for EOC. CTR/VCR/max-frequency benchmarks have no rate/budget
-	 * equivalent, so they still come from {@code estimatesPlanByTacticNum} (the Estimates tab) even
-	 * for EOM.
+	 * Resolves each EOM tactic's this-month planned figures from the rate/budget economics entered by
+	 * the user at matching time (joined by {@code tacticNum}, never by name): the monthly budget
+	 * <em>is</em> the spend target for the reporting month — an EOM report always covers exactly one
+	 * month, so there is nothing to multiply it by — converted to Plan Units by rate type, mirroring
+	 * the role {@link #resolvePlanByTacticNum} plays for EOC. CTR/VCR/max-frequency benchmarks have no
+	 * rate/budget equivalent, so they still come from {@code estimatesPlanByTacticNum} (the Estimates
+	 * tab) even for EOM.
 	 *
 	 * @param lineItemMapping         tactic-to-line-item mapping carrying each tactic's
 	 *                                rateType/unitPrice/monthlyBudget
-	 * @param eomFlightMonthsTotal    total months the flight spans, derived from the Flight dates entered
-	 *                                at Data Inputs; {@code null} or non-positive yields no plan figures at all
 	 * @param estimatesPlanByTacticNum tactic number to its Estimates-tab row, used only for the
 	 *                                CTR/VCR/max-frequency benchmarks (indices 2-4)
 	 * @return tactic number to its planned {@code {spend, imps, ctr, vcr, maxFreq, clicks, views}} row.
@@ -360,20 +355,16 @@ public class CampaignDataCollector {
 	 * {@link TacticResolvers#resolveTacticImpsPlan}). Omits tactics with no mapping entry.
 	 */
 	Map<Integer, double[]> resolveEomPlanByTacticNum(
-			List<LineItemMapping> lineItemMapping, Integer eomFlightMonthsTotal,
-			Map<Integer, double[]> estimatesPlanByTacticNum) {
+			List<LineItemMapping> lineItemMapping, Map<Integer, double[]> estimatesPlanByTacticNum) {
 		Map<Integer, double[]> out = new LinkedHashMap<>();
-		if (eomFlightMonthsTotal == null || eomFlightMonthsTotal <= 0) {
-			return out;
-		}
 		for (LineItemMapping m : lineItemMapping) {
 			Integer num = m.tacticNum();
 			if (num == null || num <= 0) {
 				continue;
 			}
-			Double fullBudget = m.monthlyBudget() == null ? null : m.monthlyBudget() * eomFlightMonthsTotal;
-			Double units = ratePlanCalculator.planUnits(fullBudget, m.unitPrice(), m.rateType());
-			double spend = fullBudget == null ? Double.NaN : fullBudget;
+			Double budget = m.monthlyBudget();
+			Double units = ratePlanCalculator.planUnits(budget, m.unitPrice(), m.rateType());
+			double spend = budget == null ? Double.NaN : budget;
 			double clicks = units != null && m.rateType() == RateType.CPC ? units : Double.NaN;
 			double views = units != null && m.rateType() == RateType.CPV ? units : Double.NaN;
 			double[] estimates = estimatesPlanByTacticNum.get(num);
@@ -390,9 +381,8 @@ public class CampaignDataCollector {
 			} else {
 				imps = Double.NaN;
 			}
-			log.info("[eom-plan] tacticNum={} rateType={} unitPrice={} monthlyBudget={} "
-							+ "flightMonthsTotal={} fullBudget={} units={} imps={}",
-					num, m.rateType(), m.unitPrice(), m.monthlyBudget(), eomFlightMonthsTotal, fullBudget, units, imps);
+			log.info("[eom-plan] tacticNum={} rateType={} unitPrice={} monthlyBudget={} units={} imps={}",
+					num, m.rateType(), m.unitPrice(), m.monthlyBudget(), units, imps);
 			out.putIfAbsent(num, new double[]{spend, imps, ctr, vcr, maxFreq, clicks, views});
 		}
 		return out;
