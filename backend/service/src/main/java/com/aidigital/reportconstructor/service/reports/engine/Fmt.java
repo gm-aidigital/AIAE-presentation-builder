@@ -55,6 +55,18 @@ public class Fmt {
 	}
 
 	/**
+	 * Two decimals with no thousands separator, so the string stays parseable as a plain number by
+	 * Google Sheets (a grouped {@code "1,200.00"} lands in a cell as text and drops out of any
+	 * {@code =SUM(...)} over that column). Used for the EOM unit-rate cell.
+	 *
+	 * @param v the metric value to format with two fractional digits
+	 * @return the value fixed to two decimal places, ungrouped
+	 */
+	public String dec2Plain(double v) {
+		return String.format(Locale.US, "%.2f", v);
+	}
+
+	/**
 	 * Percentage that collapses to an em-dash when {@code <= 0} (the CTR/VCR dash-fallback rule).
 	 *
 	 * @param v the rate value (e.g. CTR or VCR) to render as a percentage

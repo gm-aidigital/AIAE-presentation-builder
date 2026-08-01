@@ -105,11 +105,12 @@ public class SheetPlaceholderReaderImpl implements SheetPlaceholderReader {
 	/**
 	 * Summary-table column headers whose per-tactic token is not a {@code {{tactic n …}}} token, mapped
 	 * to the token format their value is emitted under ({@code %d} is the 1-based tactic number). The
-	 * EOM "Unit rate" column is filled from the {@code {{unit N rate}}} template token, so it is read
-	 * back under the same name.
+	 * EOM "Unit rate" / "Rate type" columns are filled from the {@code {{unit N rate}}} and
+	 * {@code {{rate type N}}} template tokens, so they are read back under the same names.
 	 */
 	private static final Map<String, String> SUMMARY_TACTIC_TOKEN_FORMATS = Map.of(
-			"Unit rate", "{{unit %d rate}}");
+			"Unit rate", "{{unit %d rate}}",
+			"Rate type", "{{rate type %d}}");
 
 	/**
 	 * Summary-table column headers mapped to the campaign-level total token read from the

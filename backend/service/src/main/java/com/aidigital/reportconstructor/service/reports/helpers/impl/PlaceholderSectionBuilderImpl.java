@@ -191,9 +191,11 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		m.put("{{tactic " + n + " imps}}", tacticResolvers.resolveTacticImps(n, tacticName, sheet, adj, data));
 		m.put("{{tactic " + n + " imps plan}}",
 				tacticResolvers.resolveTacticImpsPlan(n, tacticName, sheet, adj, data));
-		// The EOM summary table's "Unit rate" column: the price/rate type the user entered per tactic in
-		// the matching step. Its template token is {{unit N rate}}, not a "{{tactic N …}}" token.
+		// The EOM summary table's "Unit rate" / "Rate type" columns: the price and buying model the user
+		// entered per tactic in the matching step. Their template tokens are {{unit N rate}} and
+		// {{rate type N}}, not "{{tactic N …}}" tokens.
 		m.put("{{unit " + n + " rate}}", tacticResolvers.resolveTacticUnitRate(n, sheet, adj, lineItemMapping));
+		m.put("{{rate type " + n + "}}", tacticResolvers.resolveTacticRateType(n, sheet, adj, lineItemMapping));
 		m.put("{{tactic " + n + " reach}}", tacticResolvers.resolveTacticReach(n, sheet, adj, data));
 		m.put("{{tactic " + n + " ctr}}", tacticResolvers.resolveTacticCtr(n, tacticName, sheet, adj, data));
 		m.put("{{tactic " + n + " ctr plan}}", tacticResolvers.resolveTacticCtrPlan(n, tacticName, sheet, adj, data));
