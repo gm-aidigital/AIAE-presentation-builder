@@ -151,20 +151,21 @@ external:
     # an empty template id is what caused C000 "deck creation failed". Override
     # per-environment via env vars; the defaults keep generation working.
     slides-template-id: ${SLIDES_TEMPLATE_ID:11qzOC7mdbajjlrrVrC8Zv7W5P_SOHpgMV_eWSW56WI0}
-    # EOM (Tier 1&2) deck template. Falls back to slides-template-id (the EOC deck) only if
-    # this default is ever blanked out via an empty EOM_SLIDES_TEMPLATE_ID override.
-    eom-slides-template-id: ${EOM_SLIDES_TEMPLATE_ID:1Twb8J_beR4iwwuB3AC7bf-GnsJEOMsy5yfIvLy9gL-A}
-    # Slides an EOM deck must never ship (RealSlidesProvider#deleteReportTypeSlides). The EOM template is a
-    # copy of the EOC deck, so it still carries these EOC-only story slides; they are deleted after the deck
+    # EOM (Tier 1&2) deck template. Deliberately blank: EOM decks are built from the EOC template
+    # (slides-template-id) above, minus the EOC-only story slides dropped below. Set a non-blank
+    # EOM_SLIDES_TEMPLATE_ID to point EOM deck builds at a separate template instead.
+    eom-slides-template-id: ${EOM_SLIDES_TEMPLATE_ID:}
+    # Slides an EOM deck must never ship (RealSlidesProvider#deleteReportTypeSlides). The EOM deck is built
+    # from the EOC template, so it carries these EOC-only story slides; they are deleted after the deck
     # is built. Only applied when reportType = EOM.
     #
     # Preferred: name them by object id — ids survive the Drive copy the deck is made from, so unlike a title
-    # they cannot drift when the template's wording is edited. To collect an id, open the EOM template
-    # (1Twb8J_…), click the slide, and copy the "#slide=id.XXXX" part of the address bar; paste it with or
+    # they cannot drift when the template's wording is edited. To collect an id, open the deck template
+    # (11qzOC7…), click the slide, and copy the "#slide=id.XXXX" part of the address bar; paste it with or
     # without the "id." prefix. Ids configured but absent from the deck are skipped.
-    # Ids read from a presentations.get dump of the EOC template (11qzOC7…), which the EOM template was
-    # copied from — a Drive copy keeps every object id, the same assumption tactic-slide-object-ids above
-    # already relies on for EOM decks.
+    # Ids read from a presentations.get dump of the EOC template (11qzOC7…). If EOM is ever pointed at its
+    # own template again, a Drive copy keeps every object id — the same assumption tactic-slide-object-ids
+    # above already relies on.
     eom-drop-slide-object-ids:
       - "g3ef28aa56c3_0_2486"   # THE FREQUENCY & VELOCITY PLAY
       - "g3ef28aa56c3_0_3106"   # AWARENESS & MARKET SHARE DOMINANCE
