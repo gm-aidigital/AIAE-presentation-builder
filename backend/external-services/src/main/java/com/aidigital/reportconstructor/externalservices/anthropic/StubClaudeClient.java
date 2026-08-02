@@ -13,15 +13,16 @@ import com.aidigital.reportconstructor.service.reports.dto.ClaudeSheetBatch;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
 import com.aidigital.reportconstructor.service.reports.dto.TacticConclusion;
-import com.aidigital.reportconstructor.service.reports.dto.TacticConclusionInput;
 import com.aidigital.reportconstructor.service.reports.dto.TacticNarrativeDigest;
 import com.aidigital.reportconstructor.service.reports.dto.TacticThoughts;
 import com.aidigital.reportconstructor.service.reports.dto.TacticThoughtsInput;
+import com.aidigital.reportconstructor.service.reports.engine.Pivot;
 import com.aidigital.reportconstructor.service.reports.engine.ReportClaudeDefaults;
 import com.aidigital.reportconstructor.service.reports.ports.ClaudeClient;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * No-op Claude client — the only candidate when {@code ANTHROPIC_API_KEY} is
@@ -42,11 +43,6 @@ public class StubClaudeClient implements ClaudeClient {
 
 	@Override
 	public boolean isLive() {
-		return false;
-	}
-
-	@Override
-	public boolean perSectionCallsEnabled() {
 		return false;
 	}
 
@@ -86,7 +82,8 @@ public class StubClaudeClient implements ClaudeClient {
 	}
 
 	@Override
-	public ClaudeStrategic batchStrategicNarrative(CampaignData data, String brief) {
+	public ClaudeStrategic batchStrategicNarrative(
+			CampaignData data, String brief, Map<Integer, Pivot> monthlyPivots) {
 		return claudeDefaults.emptyStrategic();
 	}
 
@@ -102,14 +99,15 @@ public class StubClaudeClient implements ClaudeClient {
 
 	@Override
 	public ClaudeNarrative batchAlignNarrative(
-			ClaudeStrategic strategic, ClaudeResults results, List<String> breakdownDigest, String brief) {
+			ClaudeStrategic strategic, ClaudeResults results, List<String> breakdownDigest, String brief,
+			String reportingPeriod) {
 		// No live model: there is nothing to align, so echo the inputs back unchanged.
 		return new ClaudeNarrative(strategic, results);
 	}
 
 	@Override
 	public List<TacticConclusion> batchTacticConclusions(
-			CampaignData data, List<TacticConclusionInput> inputs, String brief) {
+			CampaignData data, List<Integer> tacticNums, String brief, Map<Integer, Pivot> dailyPivots) {
 		// No live model: no conclusions to generate, so every tactic falls back to sheet values.
 		return List.of();
 	}
@@ -128,7 +126,8 @@ public class StubClaudeClient implements ClaudeClient {
 
 	@Override
 	public ClaudeNarrative batchAlignCampaign(
-			ClaudeStrategic strategic, ClaudeResults results, List<String> breakdownDigest, String brief) {
+			ClaudeStrategic strategic, ClaudeResults results, List<String> breakdownDigest, String brief,
+			String reportingPeriod) {
 		// No live model: there is nothing to align, so echo the inputs back unchanged.
 		return new ClaudeNarrative(strategic, results);
 	}

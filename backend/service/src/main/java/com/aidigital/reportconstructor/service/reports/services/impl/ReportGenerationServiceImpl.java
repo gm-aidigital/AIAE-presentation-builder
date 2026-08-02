@@ -11,8 +11,8 @@ import com.aidigital.reportconstructor.service.reports.dto.CreativeTakeawayInput
 import com.aidigital.reportconstructor.service.reports.dto.DeviceInsightInput;
 import com.aidigital.reportconstructor.service.reports.dto.GeoInsightInput;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationInput;
+import com.aidigital.reportconstructor.service.reports.dto.BreakdownBullets;
 import com.aidigital.reportconstructor.service.reports.dto.TacticConclusion;
-import com.aidigital.reportconstructor.service.reports.dto.TacticConclusionInput;
 import com.aidigital.reportconstructor.service.reports.dto.TacticNarrativeDigest;
 import com.aidigital.reportconstructor.service.reports.dto.TacticThoughts;
 import com.aidigital.reportconstructor.service.reports.dto.TacticThoughtsInput;
@@ -27,6 +27,7 @@ import com.aidigital.reportconstructor.service.reports.dto.ClaudeUsage;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
 import com.aidigital.reportconstructor.service.reports.dto.GenerationTarget;
 import com.aidigital.reportconstructor.service.reports.dto.ProgressView;
+import com.aidigital.reportconstructor.service.reports.dto.SheetChartData;
 import com.aidigital.reportconstructor.service.reports.engine.Fmt;
 import com.aidigital.reportconstructor.service.reports.engine.ReportClaudeDefaults;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportFileNamer;
@@ -45,7 +46,12 @@ import com.aidigital.reportconstructor.service.reports.helpers.BreakdownThoughts
 import com.aidigital.reportconstructor.service.reports.helpers.SheetCampaignReader;
 import com.aidigital.reportconstructor.service.reports.helpers.SheetPlaceholderReader;
 import com.aidigital.reportconstructor.service.reports.helpers.TacticConclusionAssembler;
+import com.aidigital.reportconstructor.service.reports.dto.Tactic;
+import com.aidigital.reportconstructor.service.reports.engine.Pivot;
+import com.aidigital.reportconstructor.service.reports.helpers.SheetChartDataReader;
+import com.aidigital.reportconstructor.service.reports.helpers.TacticExtractionHelper;
 import com.aidigital.reportconstructor.service.reports.ports.ClaudeClient;
+import com.aidigital.reportconstructor.service.reports.ports.ClaudeClientFlavors;
 import com.aidigital.reportconstructor.service.reports.ports.SlidesProvider;
 import com.aidigital.reportconstructor.service.reports.ports.UserGoogleTokenProvider;
 import com.aidigital.reportconstructor.service.reports.services.PlaceholderResolverService;
@@ -119,7 +125,12 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	private final SheetPlaceholderReader placeholderReader;
 	private final SheetCampaignReader sheetCampaign;
 	private final PlaceholderResolverService placeholders;
-	private final ClaudeClient claude;
+	/**
+	 * Picks the Claude client whose prompts are written for this run's report type. Resolved once per run
+	 * into a local {@code claude}, because an end-of-month deck has to be written as a mid-flight status
+	 * while an end-of-campaign deck is a closing verdict, and the two need different prompt wording.
+	 */
+	private final ClaudeClientFlavors claudeClients;
 	private final SlidesProvider slides;
 	private final ObjectProvider<UserGoogleTokenProvider> userGoogleTokens;
 	private final ObjectProvider<ReportGenerationService> self;
@@ -143,6 +154,10 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	private final BreakdownThoughtsGate thoughtsGate;
 	/** Assembles the Step-3 thoughts inputs and Step-4 campaign digests from the Step-2 conclusions. */
 	private final TacticConclusionAssembler conclusionAssembler;
+	/** Reads the per-tactic daily/monthly pacing series back out of the reviewed sheet grid. */
+	private final SheetChartDataReader sheetChartData;
+	/** Derives each tactic's KPI series (clicks vs completions) from its name, as the chart step does. */
+	private final TacticExtractionHelper tacticExtraction;
 
 	/**
 	 * Validates the brief, then enqueues the job and launches the build through the
@@ -204,6 +219,8 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 
 			jobProgress.markJobRunningAtStep(jobId, 2, "Resolving placeholders");
 
+			// EOC and EOM send different prompt text for the same calls; the report type picks which.
+			ClaudeClient claude = claudeClients.forReportType(payload.reportType());
 			boolean live = claude.isLive();
 			// The brief is user-pasted and unbounded, and every batch below repeats it as context. Digest it
 			// once here and feed the digest everywhere instead: the campaign facts the copy must stay faithful
@@ -263,7 +280,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 			Map<String, String> flatReplacements =
 					placeholders.buildFlatReplacements(payload, data, ccA, ccB, ccC, primaryKpis, geoSummary,
 							null, briefDigest, frequencies, flatTacticCount);
-			fillFunnelStages(flatReplacements, flatTacticCount, live);
+			fillFunnelStages(claude, flatReplacements, flatTacticCount, live);
 			UserGoogleTokenProvider clerk = userGoogleTokens.getIfAvailable();
 			String userGoogleToken = clerk == null ? null : clerk.googleAccessToken(clerkUserId);
 			String fileName = fileNamer.buildFileName(
@@ -371,6 +388,8 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 			log.info("[report] job {} slides-from-sheet context tacticCount={} tactics={}",
 					jobId, tacticCount, describeTactics(data));
 		}
+		// EOC and EOM send different prompt text for the same calls; the report type picks which.
+		ClaudeClient claude = claudeClients.forReportType(payload.reportType());
 		boolean live = claude.isLive();
 		// Every call below repeats this text as context, so it is bounded to the digest budget before any of them
 		// sees it. The sheet's {{RFP info}} normally already holds step 1's digest, but it is a user-editable cell,
@@ -379,7 +398,15 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		String brief = live ? claude.digestBriefIfOversized(briefSource) : briefSource;
 		// Batch A: strategic narrative only (proposal + insights). Audience already lives in the sheet from the
 		// sheet-build step, so this flow never regenerates it — no duplicate Claude work across the two steps.
-		ClaudeStrategic ccA = live ? claude.batchStrategicNarrative(data, brief) : claudeDefaults.emptyStrategic();
+		// The pacing blocks the user reviewed, read straight off the same grid the charts are built from.
+		// An EOM deck's strategic insights are asked for as month-over-month movements and its per-tactic
+		// overviews argue the month's pacing off the daily curve — neither of which the month's own totals
+		// can express; the EOC wording ignores both series and is unaffected.
+		SheetChartData pacing = live
+				? readPacing(grid, data, tacticCount) : new SheetChartData(Map.of(), Map.of());
+		ClaudeStrategic ccA = live
+				? claude.batchStrategicNarrative(data, brief, pacing.monthlyPivots())
+				: claudeDefaults.emptyStrategic();
 
 		// Seed map for the breakdown data reads (tactic names, KPI types, gender split). The results copy is
 		// intentionally empty here: the per-tactic overviews come from Step 2 and the campaign results from
@@ -417,52 +444,29 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		BreakdownSectionInputs<AudienceInsightInput> aud = audF.join();
 		BreakdownSectionInputs<DeviceInsightInput> dev = devF.join();
 
-		// Step 2 (Claude) — ONE combined per-tactic call producing each tactic's overview and its enabled
-		// breakdown sections, replacing the old five separate section batches. Every tactic on the reviewed
-		// sheet is included so its overview (and the whole downstream results narrative) is always written from
-		// the EOC sheet figures + brief; the breakdown sections are attached only when present, as enrichment.
-		// When per-section calls are on, EVERY breakdown section is produced by its own dedicated per-tactic call
-		// (fanned out below), so all sections are stripped out of the big combined call — it then only writes each
-		// tactic's overview — to avoid asking for (and paying for) the same copy twice.
-		boolean perSection = live && claude.perSectionCallsEnabled();
-		List<TacticConclusionInput> conclusionInputs = assembleConclusionInputs(data, pub, cre, geo, aud, dev);
-		if (perSection) {
-			conclusionInputs = conclusionInputs.stream()
-					.map(i -> new TacticConclusionInput(i.tacticNum(), null, null, null, null, null))
-					.toList();
-		}
-		List<TacticConclusion> conclusions = live && !conclusionInputs.isEmpty()
-				? claude.batchTacticConclusions(data, conclusionInputs, brief) : List.of();
-		// Section copy source: the dedicated per-section fan-out when enabled, otherwise the combined call's
-		// bullets. In the per-section branch every section's calls are dispatched up front (across all sections
-		// and tactics) so they run maximally in parallel under the shared Claude concurrency limit, then joined.
-		Map<Integer, List<String>> pubInsights;
-		Map<Integer, List<String>> creInsights;
-		Map<Integer, List<String>> geoInsights;
-		Map<Integer, List<String>> audienceInsights;
-		Map<Integer, List<String>> devInsights;
-		if (perSection) {
+		// Step 2 (Claude) — the per-tactic conclusions call, which writes each tactic's overview and nothing
+		// else. Every tactic on the reviewed sheet is included so its overview (and the whole downstream results
+		// narrative) is always written from the EOC sheet figures + brief, whether or not it ran a breakdown.
+		List<Integer> conclusionTactics = conclusionTacticNums(data, pub, cre, geo, aud, dev);
+		List<TacticConclusion> conclusions = live && !conclusionTactics.isEmpty()
+				? claude.batchTacticConclusions(data, conclusionTactics, brief, pacing.dailyPivots()) : List.of();
+		// Breakdown slide copy: every section is produced by its own dedicated per-tactic call. All of them are
+		// dispatched up front (across all sections and tactics) so they run maximally in parallel under the
+		// shared Claude concurrency limit, then joined.
+		BreakdownBullets bullets = new BreakdownBullets(Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
+		if (live) {
 			var pubC = dispatchSection(pub.inputs(), usageScope, in -> claude.publisherSection(data, in, brief));
 			var creC = dispatchSection(cre.inputs(), usageScope, in -> claude.creativeSection(data, in, brief));
 			var geoC = dispatchSection(geo.inputs(), usageScope, in -> claude.geoSection(data, in, brief));
 			var audC = dispatchSection(aud.inputs(), usageScope, in -> claude.audienceSection(data, in, brief));
 			var devC = dispatchSection(dev.inputs(), usageScope, in -> claude.deviceSection(data, in, brief));
-			pubInsights = joinSection(pubC);
-			creInsights = joinSection(creC);
-			geoInsights = joinSection(geoC);
-			audienceInsights = joinSection(audC);
-			devInsights = joinSection(devC);
-		} else {
-			pubInsights = sectionBullets(conclusions, TacticConclusion::publisherBullets);
-			creInsights = sectionBullets(conclusions, TacticConclusion::creativeBullets);
-			geoInsights = sectionBullets(conclusions, TacticConclusion::geoBullets);
-			audienceInsights = sectionBullets(conclusions, TacticConclusion::audienceFields);
-			devInsights = sectionBullets(conclusions, TacticConclusion::deviceFields);
+			bullets = new BreakdownBullets(joinSection(pubC), joinSection(creC), joinSection(geoC),
+					joinSection(audC), joinSection(devC));
 		}
 
 		// Breakdown token map: the section data tokens first, then the Claude section tokens written from the
-		// combined call's conclusions. Each section only emits tokens for its own tactics, so the merge cannot
-		// collide. The warnings collect every tactic whose section shipped without its Claude copy.
+		// per-section calls. Each section only emits tokens for its own tactics, so the merge cannot collide.
+		// The warnings collect every tactic whose section shipped without its Claude copy.
 		Map<String, String> breakdownValues = new LinkedHashMap<>();
 		breakdownValues.putAll(pub.dataValues());
 		breakdownValues.putAll(cre.dataValues());
@@ -471,15 +475,15 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		breakdownValues.putAll(dev.dataValues());
 		List<String> jobWarnings = new ArrayList<>();
 		jobWarnings.addAll(publisherBreakdown.writePublisherObservations(breakdownValues, pub.tactics(),
-				pub.inputs().keySet(), pubInsights, prelim));
+				pub.inputs().keySet(), bullets.publisher(), prelim));
 		jobWarnings.addAll(creativeBreakdown.writeCreativeTakeaways(breakdownValues, cre.tactics(),
-				cre.inputs().keySet(), creInsights, prelim));
+				cre.inputs().keySet(), bullets.creative(), prelim));
 		jobWarnings.addAll(geoBreakdown.writeGeoInsights(breakdownValues, geo.tactics(),
-				geo.inputs().keySet(), geoInsights, prelim));
+				geo.inputs().keySet(), bullets.geo(), prelim));
 		jobWarnings.addAll(audienceBreakdown.writeAudienceInsights(breakdownValues, aud.tactics(),
-				aud.inputs().keySet(), audienceInsights, prelim));
+				aud.inputs().keySet(), bullets.audience(), prelim));
 		jobWarnings.addAll(deviceBreakdown.writeDeviceInsights(breakdownValues, dev.tactics(),
-				dev.inputs().keySet(), devInsights, prelim));
+				dev.inputs().keySet(), bullets.device(), prelim));
 
 		// Step 3 — per-tactic "thoughts on tactic performance" for the tactics with more than two breakdowns
 		// (the same gate the thoughts slide uses). One call per tactic, all dispatched at once so they run in
@@ -491,15 +495,15 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		List<TacticThoughts> thoughts = List.of();
 		if (live && !qualifying.isEmpty()) {
 			List<TacticThoughtsInput> thoughtsInputs = conclusionAssembler.toThoughtsInputs(
-					conclusions, namesByTactic, qualifying);
-			thoughts = joinThoughts(dispatchThoughts(thoughtsInputs, usageScope, brief));
+					conclusions, namesByTactic, qualifying, bullets);
+			thoughts = joinThoughts(dispatchThoughts(claude, thoughtsInputs, usageScope, brief));
 		}
 		writeThoughtsTokens(breakdownValues, qualifying, thoughts, prelim);
 
 		// Step 4 — campaign-level results (results overviews, performance thoughts, recommendations, frequency)
 		// from the per-tactic digests; the Step-2 overviews are merged back in for the tactic-overview slides.
 		List<TacticNarrativeDigest> digests =
-				conclusionAssembler.toCampaignDigests(conclusions, namesByTactic, thoughts);
+				conclusionAssembler.toCampaignDigests(conclusions, namesByTactic, thoughts, bullets);
 		// EOM decks drop the frequency slide entirely, so the frequency narrative ({{f_oppartunity}} /
 		// {{f_fact}} / {{f_storytelling}}) has nowhere to land: passing no frequencies keeps those three
 		// fields out of the prompt and out of the reply, instead of paying for copy that is deleted.
@@ -527,7 +531,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		if (live) {
 			List<String> breakdownDigest =
 					buildBreakdownDigest(List.of(new BreakdownValues(breakdownValues, List.of())));
-			ClaudeNarrative aligned = claude.batchAlignCampaign(ccA, ccC, breakdownDigest, brief);
+			ClaudeNarrative aligned = claude.batchAlignCampaign(ccA, ccC, breakdownDigest, brief, data.flightDates());
 			if (aligned != null) {
 				ccA = aligned.strategic();
 				ccC = aligned.results();
@@ -540,7 +544,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 				payload, data, ccA, ccC, frequencies, tacticCount, sheetValues);
 		// Funnel stages are inferred here, from the reviewed per-tactic goals, rather than from a scan of the
 		// source workbook. A value the user already put on the sheet wins and costs no call at all.
-		fillFunnelStages(flatReplacements, tacticCount, live);
+		fillFunnelStages(claude, flatReplacements, tacticCount, live);
 
 		jobProgress.markJobRunningAtStep(jobId, 6, "Building slide deck");
 		String fileName = fileNamer.buildFileName(
@@ -584,11 +588,32 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	}
 
 	/**
-	 * Assembles the Step-2 combined per-tactic input, one entry per tactic on the reviewed sheet, in ascending
-	 * tactic order. Every sheet tactic is included so its overview — and, through the digests, the whole
-	 * downstream campaign-results narrative — is always produced from the EOC sheet figures + brief, even when
-	 * no breakdown was selected. Each entry carries only the breakdown sections whose data block was non-empty
-	 * for that tactic (as enrichment); the rest are null and never requested.
+	 * Reads every tactic's daily and monthly pacing series back out of the reviewed sheet grid.
+	 *
+	 * <p>Same reader, same grid and same KPI-type derivation the chart step uses later in the run, so the
+	 * numbers the narrative reasons over are exactly the ones the pacing charts will plot. It is read here
+	 * rather than reused from the chart step because the narrative runs first, and both series come from the
+	 * one read the reader already does.
+	 *
+	 * @param grid        the reviewed workbook's first tab
+	 * @param data        parsed campaign data supplying the tactic names the KPI types are derived from
+	 * @param tacticCount number of active tactics on the sheet
+	 * @return both pacing pivot maps; empty when the grid carries no pacing blocks
+	 */
+	SheetChartData readPacing(List<List<String>> grid, CampaignData data, int tacticCount) {
+		Map<Integer, String> kpiTypes = new LinkedHashMap<>();
+		for (int n = 1; n <= tacticCount; n++) {
+			Tactic tactic = data == null || data.tactics() == null ? null : data.tactics().get(n);
+			kpiTypes.put(n, tacticExtraction.getTacticKpiSeries(tactic == null ? null : tactic.name()));
+		}
+		return sheetChartData.read(grid, tacticCount, kpiTypes);
+	}
+
+	/**
+	 * The tactic numbers the Step-2 conclusions call covers: every tactic on the reviewed sheet, plus any that
+	 * only a breakdown section knows about, in ascending order. Every sheet tactic is included so its overview —
+	 * and, through the digests, the whole downstream campaign-results narrative — is always produced from the
+	 * EOC sheet figures + brief, even when no breakdown was selected.
 	 *
 	 * @param data the parsed campaign data whose tactic keys are the full tactic set
 	 * @param pub  the publisher section inputs
@@ -596,9 +621,9 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	 * @param geo  the geo section inputs
 	 * @param aud  the audience section inputs
 	 * @param dev  the device section inputs
-	 * @return one {@link TacticConclusionInput} per sheet tactic, sections attached where present, ascending
+	 * @return every covered tactic number, ascending
 	 */
-	List<TacticConclusionInput> assembleConclusionInputs(
+	List<Integer> conclusionTacticNums(
 			CampaignData data,
 			BreakdownSectionInputs<PublisherObservationInput> pub,
 			BreakdownSectionInputs<CreativeTakeawayInput> cre,
@@ -614,13 +639,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		tactics.addAll(geo.inputs().keySet());
 		tactics.addAll(aud.inputs().keySet());
 		tactics.addAll(dev.inputs().keySet());
-		List<TacticConclusionInput> inputs = new ArrayList<>();
-		for (Integer n : tactics) {
-			inputs.add(new TacticConclusionInput(
-					n, pub.inputs().get(n), cre.inputs().get(n), geo.inputs().get(n),
-					aud.inputs().get(n), dev.inputs().get(n)));
-		}
-		return inputs;
+		return List.copyOf(tactics);
 	}
 
 	/**
@@ -656,13 +675,14 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	 * so every tactic runs in parallel (bounded by the transport's shared Claude concurrency limit) instead of
 	 * one after another.
 	 *
+	 * @param claude     the run's report-type-specific Claude client
 	 * @param inputs     one input per qualifying tactic, in slide order
 	 * @param usageScope the usage scope to run each call under so its tokens are billed to this job
 	 * @param brief      free-text campaign brief passed through to every call
 	 * @return the running futures, in input order
 	 */
 	List<CompletableFuture<TacticThoughts>> dispatchThoughts(
-			List<TacticThoughtsInput> inputs, ClaudeUsageScope usageScope, String brief) {
+			ClaudeClient claude, List<TacticThoughtsInput> inputs, ClaudeUsageScope usageScope, String brief) {
 		List<CompletableFuture<TacticThoughts>> futures = new ArrayList<>();
 		// Both scopes are read here, on the run's own thread, and bound around each call on its worker thread —
 		// otherwise a rejected tactic would leave neither its tokens nor its reason behind.
@@ -712,27 +732,6 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 			}
 		});
 		return out;
-	}
-
-	/**
-	 * Projects one breakdown section's bullets out of the Step-2 conclusions into the {@code tactic → bullets}
-	 * map the section write helpers expect, skipping a tactic whose section came back null (not requested, or no
-	 * usable reply).
-	 *
-	 * @param conclusions the Step-2 per-tactic conclusions
-	 * @param section     the accessor for the section's bullet list on a conclusion
-	 * @return tactic number → its section bullets, only for tactics whose section is non-null
-	 */
-	Map<Integer, List<String>> sectionBullets(
-			List<TacticConclusion> conclusions, Function<TacticConclusion, List<String>> section) {
-		Map<Integer, List<String>> bullets = new LinkedHashMap<>();
-		for (TacticConclusion c : conclusions) {
-			List<String> value = section.apply(c);
-			if (value != null) {
-				bullets.put(c.tacticNum(), value);
-			}
-		}
-		return bullets;
 	}
 
 	/**
@@ -977,11 +976,13 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	 * <p>A manual or media-plan value always wins: the map is only touched when the token is missing, blank
 	 * or a dash, so a reviewed value is never overwritten and costs no request at all.
 	 *
+	 * @param claude           the run's report-type-specific Claude client
 	 * @param flatReplacements the placeholder map to fill, mutated in place
 	 * @param tacticCount      number of real tactics whose {@code {{tactic n goal}}} values are read
 	 * @param live             whether a live Claude client is configured; no call is made when it is not
 	 */
-	void fillFunnelStages(Map<String, String> flatReplacements, int tacticCount, boolean live) {
+	void fillFunnelStages(
+			ClaudeClient claude, Map<String, String> flatReplacements, int tacticCount, boolean live) {
 		if (!live) {
 			return;
 		}

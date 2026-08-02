@@ -26,7 +26,7 @@ public interface DeviceBreakdownHelper {
 
 	/**
 	 * Reads the device blocks, fills the data-only slide tokens, and returns each tactic's
-	 * {@link DeviceInsightInput} — WITHOUT calling Claude — for the combined per-tactic call. The copy tokens
+	 * {@link DeviceInsightInput} — WITHOUT calling Claude — for the device section's per-tactic call. The copy tokens
 	 * are filled later with {@link #writeDeviceInsights}.
 	 *
 	 * @param sheetUrl         URL of the generated, user-reviewed Google Sheet
@@ -41,7 +41,7 @@ public interface DeviceBreakdownHelper {
 
 	/**
 	 * Writes the takeaway / what-worked / watch-out / recommendation tokens for every enabled tactic from the
-	 * strings the combined call produced, blanking a tactic that came back with none and warning for one that
+	 * strings the device section call produced, blanking a tactic that came back with none and warning for one that
 	 * had data but no strings.
 	 *
 	 * @param values           the accumulating token → value map to write into

@@ -28,7 +28,10 @@ import com.aidigital.reportconstructor.service.reports.helpers.ReportJobProgress
 import com.aidigital.reportconstructor.service.reports.helpers.ReportSheetHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.SheetCampaignReader;
 import com.aidigital.reportconstructor.service.reports.helpers.SheetPlaceholderReader;
+import com.aidigital.reportconstructor.service.reports.helpers.SheetChartDataReader;
+import com.aidigital.reportconstructor.service.reports.helpers.TacticExtractionHelper;
 import com.aidigital.reportconstructor.service.reports.ports.ClaudeClient;
+import com.aidigital.reportconstructor.service.reports.ports.ClaudeClientFlavors;
 import com.aidigital.reportconstructor.service.reports.ports.SlidesProvider;
 import com.aidigital.reportconstructor.service.reports.ports.UserGoogleTokenProvider;
 import com.aidigital.reportconstructor.service.reports.services.PlaceholderResolverService;
@@ -55,6 +58,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -81,6 +85,12 @@ class ReportGenerationServiceImplTest {
 	@Mock
 	ClaudeClient claude;
 	@Mock
+	ClaudeClientFlavors claudeClients;
+	@Mock
+	SheetChartDataReader sheetChartData;
+	@Mock
+	TacticExtractionHelper tacticExtraction;
+	@Mock
 	SlidesProvider slides;
 	@Mock
 	ObjectProvider<UserGoogleTokenProvider> userGoogleTokens;
@@ -105,13 +115,14 @@ class ReportGenerationServiceImplTest {
 
 	@BeforeEach
 	void setUp() {
+		lenient().when(claudeClients.forReportType(any())).thenReturn(claude);
 		service = new ReportGenerationServiceImpl(
 				jobProgress, warnings, chartHelper, sheetHelper, publisherBreakdown, creativeBreakdown, geoBreakdown, audienceBreakdown, deviceBreakdown, placeholderReader, sheetCampaign, placeholders,
-				claude, slides, userGoogleTokens, self, claudeDefaults, fileNamer,
+				claudeClients, slides, userGoogleTokens, self, claudeDefaults, fileNamer,
 				new ReportNumberParserImpl(), new Fmt(), new SimpleAsyncTaskExecutor(),
 				new ClaudeUsageTrackerImpl(new NoOpClaudeUsageEventService()), new ClaudeFailureLogImpl(),
 				new BreakdownSelectionResolverImpl(), new BreakdownThoughtsGateImpl(),
-				new TacticConclusionAssemblerImpl());
+				new TacticConclusionAssemblerImpl(), sheetChartData, tacticExtraction);
 	}
 
 	@Test
@@ -272,7 +283,7 @@ class ReportGenerationServiceImplTest {
 		verify(jobProgress).markJobDone(11L, "http://deck", "[]");
 		// And: the raw-grid collection and the offline Claude batches never run — no duplicate work
 		verify(placeholders, never()).collectData(any());
-		verify(claude, never()).batchStrategicNarrative(any(), any());
+		verify(claude, never()).batchStrategicNarrative(any(), any(), any());
 	}
 
 	@Test
@@ -340,7 +351,7 @@ class ReportGenerationServiceImplTest {
 				.thenReturn("Awareness, Consideration");
 
 		// When:
-		service.fillFunnelStages(flat, 2, true);
+		service.fillFunnelStages(claude, flat, 2, true);
 
 		// Then: the goals — never the source workbook — produced the funnel line
 		assertThat(flat).containsEntry("{{funnel_stages}}", "Awareness, Consideration");
@@ -355,7 +366,7 @@ class ReportGenerationServiceImplTest {
 		flat.put("{{tactic 1 goal}}", "Build awareness");
 
 		// When:
-		service.fillFunnelStages(flat, 1, true);
+		service.fillFunnelStages(claude, flat, 1, true);
 
 		// Then: a reviewed value is never overwritten and costs no request
 		assertThat(flat).containsEntry("{{funnel_stages}}", "Awareness, Conversion");
@@ -370,7 +381,7 @@ class ReportGenerationServiceImplTest {
 		flat.put("{{tactic 1 goal}}", "—");
 
 		// When:
-		service.fillFunnelStages(flat, 1, true);
+		service.fillFunnelStages(claude, flat, 1, true);
 
 		// Then:
 		assertThat(flat).containsEntry("{{funnel_stages}}", "—");

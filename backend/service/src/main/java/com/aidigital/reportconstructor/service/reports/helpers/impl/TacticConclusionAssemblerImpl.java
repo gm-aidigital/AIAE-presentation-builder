@@ -1,5 +1,6 @@
 package com.aidigital.reportconstructor.service.reports.helpers.impl;
 
+import com.aidigital.reportconstructor.service.reports.dto.BreakdownBullets;
 import com.aidigital.reportconstructor.service.reports.dto.TacticConclusion;
 import com.aidigital.reportconstructor.service.reports.dto.TacticNarrativeDigest;
 import com.aidigital.reportconstructor.service.reports.dto.TacticThoughts;
@@ -29,7 +30,8 @@ public class TacticConclusionAssemblerImpl implements TacticConclusionAssembler 
 
 	@Override
 	public List<TacticThoughtsInput> toThoughtsInputs(
-			List<TacticConclusion> conclusions, Map<Integer, String> tacticNames, Set<Integer> qualifyingTactics) {
+			List<TacticConclusion> conclusions, Map<Integer, String> tacticNames, Set<Integer> qualifyingTactics,
+			BreakdownBullets bullets) {
 		List<TacticThoughtsInput> inputs = new ArrayList<>();
 		if (conclusions == null || qualifyingTactics == null) {
 			return inputs;
@@ -43,18 +45,19 @@ public class TacticConclusionAssemblerImpl implements TacticConclusionAssembler 
 					c.tacticNum(),
 					names.get(c.tacticNum()),
 					c.overview(),
-					c.publisherBullets(),
-					c.creativeBullets(),
-					c.geoBullets(),
-					c.audienceFields(),
-					c.deviceFields()));
+					section(bullets == null ? null : bullets.publisher(), c.tacticNum()),
+					section(bullets == null ? null : bullets.creative(), c.tacticNum()),
+					section(bullets == null ? null : bullets.geo(), c.tacticNum()),
+					section(bullets == null ? null : bullets.audience(), c.tacticNum()),
+					section(bullets == null ? null : bullets.device(), c.tacticNum())));
 		}
 		return inputs;
 	}
 
 	@Override
 	public List<TacticNarrativeDigest> toCampaignDigests(
-			List<TacticConclusion> conclusions, Map<Integer, String> tacticNames, List<TacticThoughts> thoughts) {
+			List<TacticConclusion> conclusions, Map<Integer, String> tacticNames, List<TacticThoughts> thoughts,
+			BreakdownBullets bullets) {
 		List<TacticNarrativeDigest> digests = new ArrayList<>();
 		if (conclusions == null) {
 			return digests;
@@ -78,28 +81,44 @@ public class TacticConclusionAssemblerImpl implements TacticConclusionAssembler 
 				digests.add(new TacticNarrativeDigest(c.tacticNum(), name, c.overview(), tacticThoughts, List.of()));
 			} else {
 				digests.add(new TacticNarrativeDigest(
-						c.tacticNum(), name, c.overview(), null, breakdownDigestLines(c)));
+						c.tacticNum(), name, c.overview(), null, breakdownDigestLines(c.tacticNum(), bullets)));
 			}
 		}
 		return digests;
 	}
 
 	/**
-	 * Flattens a conclusion's non-blank breakdown strings into a bounded digest, in section order (publishers,
+	 * Flattens one tactic's non-blank breakdown strings into a bounded digest, in section order (publishers,
 	 * creative, geo, audience, device). Each string is already a self-contained slide sentence, so the campaign
 	 * call reads conclusions rather than raw grids. Used only for tactics without Step-3 thoughts.
 	 *
-	 * @param conclusion the tactic's Step-2 conclusion
+	 * @param tacticNum the tactic's 1-based number
+	 * @param bullets   the per-section slide copy the breakdown calls produced, or {@code null} when none ran
 	 * @return up to {@link #MAX_DIGEST_LINES} non-blank breakdown lines, in section order
 	 */
-	List<String> breakdownDigestLines(TacticConclusion conclusion) {
+	List<String> breakdownDigestLines(int tacticNum, BreakdownBullets bullets) {
 		List<String> lines = new ArrayList<>();
-		addNonBlank(lines, conclusion.publisherBullets());
-		addNonBlank(lines, conclusion.creativeBullets());
-		addNonBlank(lines, conclusion.geoBullets());
-		addNonBlank(lines, conclusion.audienceFields());
-		addNonBlank(lines, conclusion.deviceFields());
+		if (bullets == null) {
+			return lines;
+		}
+		addNonBlank(lines, section(bullets.publisher(), tacticNum));
+		addNonBlank(lines, section(bullets.creative(), tacticNum));
+		addNonBlank(lines, section(bullets.geo(), tacticNum));
+		addNonBlank(lines, section(bullets.audience(), tacticNum));
+		addNonBlank(lines, section(bullets.device(), tacticNum));
 		return lines.size() > MAX_DIGEST_LINES ? new ArrayList<>(lines.subList(0, MAX_DIGEST_LINES)) : lines;
+	}
+
+	/**
+	 * Reads one section's strings for one tactic, tolerating a null map so a run with no breakdowns at all is
+	 * handled the same way as a tactic whose section simply produced nothing.
+	 *
+	 * @param section   the section's tactic → strings map, possibly {@code null}
+	 * @param tacticNum the tactic's 1-based number
+	 * @return the tactic's strings for that section, or {@code null} when it has none
+	 */
+	List<String> section(Map<Integer, List<String>> section, int tacticNum) {
+		return section == null ? null : section.get(tacticNum);
 	}
 
 	/**

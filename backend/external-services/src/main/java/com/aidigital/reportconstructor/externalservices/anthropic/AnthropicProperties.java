@@ -33,8 +33,8 @@ public class AnthropicProperties {
 	private double temperature = 0.4;
 
 	/**
-	 * Tactics per Step-2 combined per-tactic conclusions call in the slides-from-sheet flow. Default 7: with
-	 * {@link #perSectionCallsEnabled} on, that call produces only each tactic's ~190-character overview, so a
+	 * Tactics per Step-2 per-tactic conclusions call in the slides-from-sheet flow. Default 7: that call
+	 * produces only each tactic's ~190-character overview (every breakdown section has its own call), so a
 	 * chunk of 7 still asks for a small reply while turning a 28-tactic deck's 28 calls into 4 — and lets the
 	 * model see neighbouring tactics rather than writing every overview blind. Chunks run concurrently, so a
 	 * larger chunk trades parallelism for context; raise it further only alongside a larger reply budget.
@@ -66,15 +66,6 @@ public class AnthropicProperties {
 	 * delay.
 	 */
 	private long retryBackoffMillis = 1000;
-
-	/**
-	 * When true, EACH breakdown section (publishers, creative, geo, audience, device) is produced by its own
-	 * small dedicated per-tactic call — a JSON object keyed field_1..field_N, read field by field with its own
-	 * retry — fanned out in parallel, instead of all sections coming from the big combined per-tactic
-	 * conclusions call (which then only writes each tactic's overview). Off by default so the combined path
-	 * stays the behaviour until the per-section path proves out on a real campaign.
-	 */
-	private boolean perSectionCallsEnabled = false;
 
 	/**
 	 * Extra attempts a per-section pilot call makes when its reply fails the positional contract (not a JSON
@@ -146,14 +137,6 @@ public class AnthropicProperties {
 
 	public void setRetryBackoffMillis(long retryBackoffMillis) {
 		this.retryBackoffMillis = retryBackoffMillis;
-	}
-
-	public boolean isPerSectionCallsEnabled() {
-		return perSectionCallsEnabled;
-	}
-
-	public void setPerSectionCallsEnabled(boolean perSectionCallsEnabled) {
-		this.perSectionCallsEnabled = perSectionCallsEnabled;
 	}
 
 	public int getSectionRetries() {

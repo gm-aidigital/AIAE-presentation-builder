@@ -21,7 +21,7 @@ public interface PublisherBreakdownHelper {
 	/**
 	 * Reads the publisher tables, fills the data-only slide tokens, and returns each tactic's
 	 * {@link PublisherObservationInput} — WITHOUT calling Claude. The flow uses this to gather every section's
-	 * inputs before making one combined per-tactic call, then fills the observation tokens with
+	 * inputs before making the publisher section's per-tactic call, then fills the observation tokens with
 	 * {@link #writePublisherObservations}.
 	 *
 	 * @param sheetUrl         URL of the generated, user-reviewed Google Sheet
@@ -35,13 +35,13 @@ public interface PublisherBreakdownHelper {
 			Map<String, String> flatReplacements, String userGoogleToken);
 
 	/**
-	 * Writes the KEY OBSERVATIONS tokens for every enabled tactic from the observations the combined call
+	 * Writes the KEY OBSERVATIONS tokens for every enabled tactic from the observations the publisher section call
 	 * produced, blanking a tactic that came back with none and warning for one that had rows but no bullets.
 	 *
 	 * @param values           the accumulating token → value map to write into
 	 * @param tactics          every tactic that enabled the Top Publishers breakdown
 	 * @param sentTactics      the tactics whose tables were non-empty and were actually sent to Claude
-	 * @param observations     tactic number → its four observation bullets, from the combined call
+	 * @param observations     tactic number → its four observation bullets, from the publisher section call
 	 * @param flatReplacements the deck's resolved placeholder map, source of each tactic's name for warnings
 	 * @return one warning per sent tactic that came back without observations; empty when all answered
 	 */

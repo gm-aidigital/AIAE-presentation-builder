@@ -21,7 +21,7 @@ public interface GeoBreakdownHelper {
 
 	/**
 	 * Reads the geo blocks, fills the data-only slide tokens, and returns each tactic's
-	 * {@link GeoInsightInput} — WITHOUT calling Claude — for the combined per-tactic call. Insight/reco tokens
+	 * {@link GeoInsightInput} — WITHOUT calling Claude — for the geo section's per-tactic call. Insight/reco tokens
 	 * are filled later with {@link #writeGeoInsights}.
 	 *
 	 * @param sheetUrl         URL of the generated, user-reviewed Google Sheet
@@ -36,7 +36,7 @@ public interface GeoBreakdownHelper {
 
 	/**
 	 * Writes the four WHAT THE MAP TELLS US insight tokens and the recommendation token for every enabled
-	 * tactic from the strings the combined call produced, blanking a tactic that came back with none and
+	 * tactic from the strings the geo section call produced, blanking a tactic that came back with none and
 	 * warning for one that had data but no strings.
 	 *
 	 * @param values           the accumulating token → value map to write into

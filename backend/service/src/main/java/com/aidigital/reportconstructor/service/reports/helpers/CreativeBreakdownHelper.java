@@ -20,7 +20,7 @@ public interface CreativeBreakdownHelper {
 
 	/**
 	 * Reads the creative blocks, fills the data-only slide tokens, and returns each tactic's
-	 * {@link CreativeTakeawayInput} — WITHOUT calling Claude — for the combined per-tactic call. Takeaway
+	 * {@link CreativeTakeawayInput} — WITHOUT calling Claude — for the creative section's per-tactic call. Takeaway
 	 * tokens are filled later with {@link #writeCreativeTakeaways}.
 	 *
 	 * @param sheetUrl         URL of the generated, user-reviewed Google Sheet
@@ -34,13 +34,13 @@ public interface CreativeBreakdownHelper {
 			Map<String, String> flatReplacements, String userGoogleToken);
 
 	/**
-	 * Writes the KEY TAKEAWAYS tokens for every enabled tactic from the takeaways the combined call produced,
+	 * Writes the KEY TAKEAWAYS tokens for every enabled tactic from the takeaways the creative section call produced,
 	 * blanking a tactic that came back with none and warning for one that had data but no bullets.
 	 *
 	 * @param values           the accumulating token → value map to write into
 	 * @param tactics          every tactic that enabled the Creative analysis breakdown
 	 * @param sentTactics      the tactics whose blocks were non-empty and were actually sent to Claude
-	 * @param takeaways        tactic number → its four takeaway bullets, from the combined call
+	 * @param takeaways        tactic number → its four takeaway bullets, from the creative section call
 	 * @param flatReplacements the deck's resolved placeholder map, source of each tactic's name for warnings
 	 * @return one warning per sent tactic that came back without takeaways; empty when all answered
 	 */

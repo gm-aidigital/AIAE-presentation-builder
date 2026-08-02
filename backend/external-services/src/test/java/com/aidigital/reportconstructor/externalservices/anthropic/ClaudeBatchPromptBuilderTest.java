@@ -11,7 +11,6 @@ import com.aidigital.reportconstructor.service.reports.dto.GeoTable;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationInput;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
 import com.aidigital.reportconstructor.service.reports.dto.Tactic;
-import com.aidigital.reportconstructor.service.reports.dto.TacticConclusionInput;
 import com.aidigital.reportconstructor.service.reports.dto.TacticNarrativeDigest;
 import com.aidigital.reportconstructor.service.reports.dto.Totals;
 import com.aidigital.reportconstructor.service.reports.engine.Fmt;
@@ -193,7 +192,7 @@ class ClaudeBatchPromptBuilderTest {
 	}
 
 	@Test
-	void shouldTellBothGeoPromptsTheTableIsOnlyTheTopMarketsTest() {
+	void shouldTellTheGeoSectionPromptTheTableIsOnlyTheTopMarketsTest() {
 		// Given: one tactic whose geo table lists 2 markets while the stat above it says 14 ran — the row count
 		// and the real footprint disagree, which is the case the copy must not read off the rows
 		Tactic ctv = new Tactic(
@@ -210,26 +209,50 @@ class ClaudeBatchPromptBuilderTest {
 						List.of(new GeoRow("New York", "400,000", "97.1%"),
 								new GeoRow("Los Angeles", "200,000", "96.4%"))));
 
-		// When: both paths that write geo copy build their prompt — the dedicated per-section call and the
-		// combined conclusions call
+		// When: the dedicated per-section call — the only path that writes geo copy — builds its prompt
 		String sectionPrompt = builder.buildGeoSectionPrompt(geo, data, "Drive awareness.", 140).orElseThrow();
-		String combinedPrompt = builder.buildTacticConclusionsPrompt(
-						data, List.of(new TacticConclusionInput(1, null, null, geo, null, null)),
-						"Drive awareness.", 160, 160, 160, 140, 200, 140, 200, 140)
-				.orElseThrow();
 
-		// Then: each one states that the table is a top list and names the stat that does carry total coverage,
-		// so a two-row table never ships as "delivery ran across two markets"
+		// Then: it states that the table is a top list and names the stat that does carry total coverage, so a
+		// two-row table never ships as "delivery ran across two markets"
 		assertThat(sectionPrompt).contains(
 				"The table lists only this tactic's TOP markets, NOT every market it ran in",
 				"never state or imply a total market count from the number of rows",
 				"The 'Markets activated' stat above the table is the only figure for total coverage");
-		assertThat(combinedPrompt).contains(
-				"The table lists only this tactic's TOP markets, NOT every market it ran in",
-				"The 'Markets activated' stat above the table is the only figure for total coverage");
 
 		// And: the stat the rule points at is actually in the data block, under the label the rule quotes
 		assertThat(sectionPrompt).contains("Markets activated: 14");
+	}
+
+	@Test
+	void shouldAskTheConclusionsPromptForOverviewsOnlyTest() {
+		// Given: one tactic with performance figures on the sheet
+		Tactic ctv = new Tactic(
+				"CTV", "CTV", null,
+				5000.0, 1_000_000.0, 0.0, 1_000_000.0, null, 98.0, null, null,
+				null, null, null, null, null, null, null, null);
+		CampaignData data = new CampaignData(
+				"Acme", "Spring Launch", "US", "Awareness", "Jan 1 - Mar 31",
+				null, "$500,000", "Reach", "CTV", "25-44", "Auto intenders",
+				new Totals(0, 0, 0, 0, null, null), Map.of(1, ctv), null);
+
+		// When: the Step-2 conclusions prompt is built for that tactic
+		String prompt = builder.buildTacticConclusionsPrompt(data, List.of(1), "Drive awareness.").orElseThrow();
+
+		// Then: it asks for the one overview field and carries the tactic's performance line
+		assertThat(prompt).contains(
+				"carrying exactly ONE field: \"overview\"",
+				"{\"tactic_1\": {\"overview\": \"...\"}",
+				"tactic_1 — CTV",
+				"PERFORMANCE (for overview):");
+
+		// And: no breakdown section is described or requested — every section has its own call
+		assertThat(prompt)
+				.doesNotContain("top_publishers")
+				.doesNotContain("=== creative")
+				.doesNotContain("=== geo")
+				.doesNotContain("=== audience")
+				.doesNotContain("=== device")
+				.doesNotContain("[GEO ANALYSIS]");
 	}
 
 }

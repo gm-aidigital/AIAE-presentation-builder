@@ -26,7 +26,7 @@ public interface AudienceBreakdownHelper {
 
 	/**
 	 * Reads the audience blocks, fills the data-only slide tokens, and returns each tactic's
-	 * {@link AudienceInsightInput} — WITHOUT calling Claude — for the combined per-tactic call. The copy
+	 * {@link AudienceInsightInput} — WITHOUT calling Claude — for the audience section's per-tactic call. The copy
 	 * tokens are filled later with {@link #writeAudienceInsights}.
 	 *
 	 * @param sheetUrl         URL of the generated, user-reviewed Google Sheet
@@ -41,7 +41,7 @@ public interface AudienceBreakdownHelper {
 
 	/**
 	 * Writes the takeaway / what-worked / watch-out / recommendation tokens for every enabled tactic from the
-	 * strings the combined call produced, blanking a tactic that came back with none and warning for one that
+	 * strings the audience section call produced, blanking a tactic that came back with none and warning for one that
 	 * had data but no strings.
 	 *
 	 * @param values           the accumulating token → value map to write into
