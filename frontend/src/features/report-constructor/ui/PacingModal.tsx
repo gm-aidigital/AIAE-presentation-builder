@@ -61,7 +61,8 @@ function evenLine(even: EvenPacing): string {
 export function PacingModal({ open, onClose, onConfirm }: Props) {
     const { mapping, setPacing, mediaPlan, elevate, dateStart, dateEnd } = useWizard();
     const rows: MappingEntry[] = useMemo(() => mapping ?? [], [mapping]);
-    const seeded = useRef(false);
+    // Tactic numbers whose rate has already been pre-filled from the plan during this opening.
+    const seeded = useRef<Set<number>>(new Set());
     const [evenly, setEvenly] = useState(false);
     // Budgets typed by hand before "Evenly paced" was switched on, so switching it back off
     // returns the user's own numbers instead of leaving the derived ones behind.
@@ -126,10 +127,11 @@ export function PacingModal({ open, onClose, onConfirm }: Props) {
 
     // Buy type and rate come from the media plan's "Rate Type" / "Unit Price" columns. The buy type is
     // authoritative (the row shows it read-only, so state must always match what is displayed); the rate is
-    // only seeded, since the user may override it with the final negotiated one.
+    // a real pre-filled value, not a placeholder, since the row only counts as ready once it carries one —
+    // the user may still overwrite it with the final negotiated rate.
     useEffect(() => {
         if (!open) {
-            seeded.current = false;
+            seeded.current.clear();
             setEvenly(false);
             return;
         }
@@ -139,16 +141,18 @@ export function PacingModal({ open, onClose, onConfirm }: Props) {
             const patch: Partial<Pick<MappingEntry, "rateType" | "unitPrice">> = {};
             const rateType = normalizeRateType(budgets[i]?.rateType);
             if (rateType && m.rateType !== rateType) patch.rateType = rateType;
-            // Seeded once per opening: after that an empty rate field is the user clearing it to
-            // retype, and refilling it mid-edit would fight them.
-            if (!seeded.current && m.unitPrice === undefined && budgets[i]?.unitPrice) {
-                patch.unitPrice = budgets[i]!.unitPrice;
+            // Seeded once per row per opening — and only once its plan price is actually parsed, so a
+            // media plan that lands late still fills in. After that an empty rate field is the user
+            // clearing it to retype, and refilling it mid-edit would fight them.
+            const planPrice = budgets[i]?.unitPrice ?? 0;
+            if (planPrice > 0 && m.unitPrice == null && !seeded.current.has(m.tacticNum)) {
+                seeded.current.add(m.tacticNum);
+                patch.unitPrice = planPrice;
             }
             if (Object.keys(patch).length === 0) return m;
             changed = true;
             return { ...m, ...patch };
         });
-        seeded.current = true;
         if (changed) setPacing(next);
     }, [open, rows, budgets, setPacing]);
 
@@ -201,7 +205,7 @@ export function PacingModal({ open, onClose, onConfirm }: Props) {
                         </label>
                         <span className="pacing-even__note">
                             {evenAvailable
-                                ? "Fills each budget from the plan spend spread over the tactic's live days — first day with delivery in the raw data through the plan's Flight End — billed to the reporting window."
+                                ? "Fills each budget from the plan spend, spread over the tactic's live days (first delivery in the raw data → the plan's Flight End) and billed to the reporting window."
                                 : "Needs a Flight End in the media plan, matched line items with delivery in the raw data, and confirmed flight dates."}
                         </span>
                     </div>
