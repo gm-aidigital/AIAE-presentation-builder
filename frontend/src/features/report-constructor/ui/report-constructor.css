@@ -624,6 +624,22 @@
   padding: 8px; outline: none; transition: border-color 0.15s, box-shadow 0.15s;
 }
 .pacing-select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-light); }
+.pacing-select--missing { border-color: var(--orange); }
+.pacing-buytype {
+  display: flex; flex-direction: column; gap: 2px; align-items: flex-start;
+  padding: 6px 10px; border-radius: 6px; background: var(--blue-light);
+  border: 1px solid transparent;
+}
+.pacing-buytype__value { font-family: var(--rc-mono); font-size: 13px; font-weight: 700; color: var(--blue); }
+.pacing-buytype__src {
+  font-family: var(--rc-mono); font-size: 9px; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--text-muted);
+}
+.pacing-reset {
+  align-self: flex-start; border: 0; background: none; padding: 0; cursor: pointer;
+  font-family: var(--rc-mono); font-size: 10px; color: var(--blue); text-decoration: underline;
+}
+.pacing-reset:hover { opacity: 0.75; }
 .pacing-foot__actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
 .pacing-foot__warn { font-size: 11px; color: var(--orange); max-width: 280px; line-height: 1.4; }
 

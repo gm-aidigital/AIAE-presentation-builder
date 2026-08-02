@@ -29,15 +29,20 @@ function compactUnits(n: number): string {
     return grouped.format(Math.round(n));
 }
 
-/** The media plan's own figures for a tactic, e.g. "plan: $1,500 · 250K @ $6 CPM". */
+/** Formats a plan rate the way the media plan writes it, e.g. "$32.80". */
+function rateLabel(price: number): string {
+    return `$${price.toFixed(2)}`;
+}
+
+/**
+ * The media plan's own budget/volume for a tactic, e.g. "plan: $1,500 · 250K units".
+ * The plan's rate and buy type are omitted here — they have their own cells in the row.
+ */
 function planLine(b: TacticBudget | undefined): string {
     if (!b) return "";
     const seg: string[] = [];
     if (b.amount > 0) seg.push(usd.format(Math.round(b.amount)));
-    if (b.units > 0) {
-        const rate = b.rateType ? ` @ $${b.unitPrice} ${b.rateType.toUpperCase()}` : "";
-        seg.push(`${compactUnits(b.units)}${rate}`);
-    }
+    if (b.units > 0) seg.push(`${compactUnits(b.units)} units`);
     return seg.length > 0 ? `plan: ${seg.join(" · ")}` : "";
 }
 
@@ -56,17 +61,16 @@ export function PacingModal({ open, onClose, onConfirm }: Props) {
         [mediaPlan, rows]
     );
 
-    // Seed buy type and rate from the media plan for rows the user hasn't touched. A value shown only as
-    // an input fallback is never submitted, so the defaults are written into real state instead.
+    // Buy type and rate come from the media plan's "Rate Type" / "Unit Price" columns. The buy type is
+    // authoritative (the row shows it read-only, so state must always match what is displayed); the rate is
+    // only seeded, since the user may override it with the final negotiated one.
     useEffect(() => {
         if (!open || rows.length === 0) return;
         let changed = false;
         const next = rows.map((m, i) => {
             const patch: Partial<Pick<MappingEntry, "rateType" | "unitPrice">> = {};
-            if (m.rateType === undefined) {
-                const rateType = normalizeRateType(budgets[i]?.rateType);
-                if (rateType) patch.rateType = rateType;
-            }
+            const rateType = normalizeRateType(budgets[i]?.rateType);
+            if (rateType && m.rateType !== rateType) patch.rateType = rateType;
             if (m.unitPrice === undefined && budgets[i]?.unitPrice) {
                 patch.unitPrice = budgets[i]!.unitPrice;
             }
@@ -106,9 +110,9 @@ export function PacingModal({ open, onClose, onConfirm }: Props) {
                     <div>
                         <div className="match-modal-title">Pacing &amp; rates</div>
                         <div className="match-modal-desc">
-                            For every tactic, enter the budget being paced this month, how it's bought and the
-                            final rate. These drive the pacing figures in the deck — the media plan's own numbers
-                            are shown as a reference under each tactic.
+                            Enter the budget being paced this month for every tactic. Buy type and rate are read
+                            from the media plan (Rate Type / Unit Price) — the buy type is fixed, the rate can be
+                            adjusted if the final negotiated one differs.
                         </div>
                     </div>
                 </div>
@@ -122,12 +126,15 @@ export function PacingModal({ open, onClose, onConfirm }: Props) {
                                 <span>Tactic</span>
                                 <span>Monthly budget</span>
                                 <span>Buy type</span>
-                                <span>Rate</span>
+                                <span>Rate (editable)</span>
                             </div>
                             {rows.map((row, idx) => {
                                 const done = pacingRowComplete(row);
                                 const units = estimatedUnits(row);
                                 const plan = planLine(budgets[idx]);
+                                const planRateType = normalizeRateType(budgets[idx]?.rateType);
+                                const planPrice = budgets[idx]?.unitPrice ?? 0;
+                                const rateEdited = planPrice > 0 && row.unitPrice !== planPrice;
                                 return (
                                     <div
                                         key={row.tacticNum}
@@ -159,25 +166,36 @@ export function PacingModal({ open, onClose, onConfirm }: Props) {
                                             />
                                         </label>
 
-                                        <select
-                                            className="pacing-select"
-                                            aria-label={`Buy type for ${row.tacticName}`}
-                                            value={row.rateType ?? ""}
-                                            onChange={(e) =>
-                                                update(idx, {
-                                                    rateType: (e.target.value || undefined) as
-                                                        | MappingEntry["rateType"]
-                                                        | undefined,
-                                                })
-                                            }
-                                        >
-                                            <option value="">Select…</option>
-                                            {RATE_TYPES.map((rt) => (
-                                                <option key={rt} value={rt}>
-                                                    {rt}
-                                                </option>
-                                            ))}
-                                        </select>
+                                        {planRateType ? (
+                                            <div
+                                                className="pacing-buytype"
+                                                title="Read from the media plan's Rate Type column"
+                                            >
+                                                <span className="pacing-buytype__value">{planRateType}</span>
+                                                <span className="pacing-buytype__src">from plan</span>
+                                            </div>
+                                        ) : (
+                                            <select
+                                                className="pacing-select pacing-select--missing"
+                                                aria-label={`Buy type for ${row.tacticName}`}
+                                                title="No Rate Type in the media plan for this tactic — pick one"
+                                                value={row.rateType ?? ""}
+                                                onChange={(e) =>
+                                                    update(idx, {
+                                                        rateType: (e.target.value || undefined) as
+                                                            | MappingEntry["rateType"]
+                                                            | undefined,
+                                                    })
+                                                }
+                                            >
+                                                <option value="">Select…</option>
+                                                {RATE_TYPES.map((rt) => (
+                                                    <option key={rt} value={rt}>
+                                                        {rt}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        )}
 
                                         <div className="pacing-row__rate">
                                             <label className="pacing-field">
@@ -211,6 +229,15 @@ export function PacingModal({ open, onClose, onConfirm }: Props) {
                                                       }`
                                                     : RATE_UNIT[row.rateType ?? ""] ?? ""}
                                             </div>
+                                            {rateEdited && row.unitPrice !== undefined && (
+                                                <button
+                                                    type="button"
+                                                    className="pacing-reset"
+                                                    onClick={() => update(idx, { unitPrice: planPrice })}
+                                                >
+                                                    reset to plan {rateLabel(planPrice)}
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
                                 );
