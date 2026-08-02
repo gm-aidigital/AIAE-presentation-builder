@@ -723,7 +723,7 @@ public class CampaignResolvers {
 
 	/**
 	 * Resolves total investment, auto-computing from the BigQuery spend total
-	 * (currency-formatted) when no manual value is present.
+	 * (currency-formatted, keeping cents when the amount is fractional) when no manual value is present.
 	 *
 	 * @param sheetRows Media Plan tab rows
 	 * @param adjRows   manual Adjustments tab rows (checked first)
@@ -743,7 +743,7 @@ public class CampaignResolvers {
 		}
 		double spend = data.totals().spend();
 		if (spend > 0) {
-			return new Resolved("Total investment (auto: BQ spend)", fmt.money(spend), "adj");
+			return new Resolved("Total investment (auto: BQ spend)", fmt.moneyExact(spend), "adj");
 		}
 		return new Resolved("Total investment (auto: BQ spend)", null, "not_found");
 	}
@@ -943,8 +943,8 @@ public class CampaignResolvers {
 			return new Resolved("Total investment plan ctd (auto: sum of tactic plans, prorated)", null, "not_found");
 		}
 		double planCtd = pacing.planCtd(totalPlan, months[0], months[1]);
-		return new Resolved("Total investment plan ctd (auto: sum of tactic plans, prorated)", fmt.money(planCtd),
-				"adj");
+		return new Resolved("Total investment plan ctd (auto: sum of tactic plans, prorated)",
+				fmt.moneyExact(planCtd), "adj");
 	}
 
 	/**

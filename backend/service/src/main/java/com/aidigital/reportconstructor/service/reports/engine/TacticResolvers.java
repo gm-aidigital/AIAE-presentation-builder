@@ -56,7 +56,10 @@ public class TacticResolvers {
 
 	/**
 	 * Resolves the spend value for tactic {@code n}, preferring a manual Adjustments override,
-	 * then the Media Plan sheet, then the BigQuery-derived cost formatted as a dollar amount.
+	 * then the Media Plan sheet, then the BigQuery-derived cost. Rendered as a bare two-decimal
+	 * amount ({@code "4732.31"}) like the planned spend beside it, so the delivered spend keeps its
+	 * cents instead of being rounded to whole dollars and the summary table's money columns stay
+	 * real numbers for the totals row's {@code =SUM(...)} and the template's currency formatting.
 	 *
 	 * @param n          one-based tactic index used to build the {@code "Tactic N spend:"} lookup label
 	 * @param tacticName display name of the tactic (unused for spend; kept for resolver-signature parity)
@@ -78,7 +81,7 @@ public class TacticResolvers {
 		}
 		Tactic t = tactic(data, n);
 		if (t != null && t.spend() > 0) {
-			return new Resolved(label + " (auto: BQ Cost)", "$" + fmt.intGroup(t.spend()), "adj");
+			return new Resolved(label + " (auto: BQ Cost)", fmt.dec2Plain(t.spend()), "adj");
 		}
 		return new Resolved(label, null, "not_found");
 	}
