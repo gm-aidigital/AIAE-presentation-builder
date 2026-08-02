@@ -602,7 +602,17 @@
 .pacing-row--done { border-color: rgba(174, 243, 63, 0.8); background: var(--lime-light); }
 .pacing-row__tactic { display: flex; align-items: flex-start; gap: 10px; min-width: 0; padding-top: 6px; }
 .pacing-row__names { min-width: 0; }
-.pacing-row__rate { display: flex; flex-direction: column; gap: 4px; }
+.pacing-row__rate, .pacing-row__budget { display: flex; flex-direction: column; gap: 4px; }
+.pacing-even {
+  display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+  margin: 14px 24px 0; padding: 10px 13px;
+  background: var(--blue-light); border-radius: 8px;
+}
+.pacing-even__toggle { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; }
+.pacing-even__toggle input:disabled { cursor: default; }
+.pacing-even__toggle:has(input:disabled) { cursor: default; opacity: 0.6; }
+.pacing-even__label { font-size: 13px; font-weight: 700; color: var(--blue); white-space: nowrap; }
+.pacing-even__note { flex: 1; min-width: 220px; font-size: 11px; line-height: 1.45; color: var(--text-muted); }
 .pacing-row__hint {
   font-family: var(--rc-mono); font-size: 10px; color: var(--text-muted);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -635,11 +645,6 @@
   font-family: var(--rc-mono); font-size: 9px; letter-spacing: 0.06em;
   text-transform: uppercase; color: var(--text-muted);
 }
-.pacing-reset {
-  align-self: flex-start; border: 0; background: none; padding: 0; cursor: pointer;
-  font-family: var(--rc-mono); font-size: 10px; color: var(--blue); text-decoration: underline;
-}
-.pacing-reset:hover { opacity: 0.75; }
 .pacing-foot__actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
 .pacing-foot__warn { font-size: 11px; color: var(--orange); max-width: 280px; line-height: 1.4; }
 

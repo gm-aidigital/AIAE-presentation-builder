@@ -4,6 +4,7 @@
 //   • the distinguishing "tail" of a BigQuery Level-1 naming string (right panel).
 // No I/O — string + grid logic only, so they stay unit-testable.
 import type { Rows2D } from "@/shared/api/types";
+import { parseSheetDate } from "./sheetDates";
 
 export interface TacticBudget {
     /** Planned units (impressions or clicks) as parsed from the plan. */
@@ -14,6 +15,10 @@ export interface TacticBudget {
     rateType: string;
     /** Derived spend: CPM divides units by 1000, everything else is units × price. */
     amount: number;
+    /** Flight Start from the plan as ISO yyyy-MM-dd; null when absent or unparseable. */
+    flightStart: string | null;
+    /** Flight End from the plan as ISO yyyy-MM-dd; null when absent or unparseable. */
+    flightEnd: string | null;
 }
 
 function normName(value: string): string {
@@ -77,6 +82,10 @@ export function normalizeRateType(rateType: string | undefined): "CPM" | "CPC" |
     return upper === "CPM" || upper === "CPC" || upper === "CPV" ? upper : undefined;
 }
 
+// Header spellings that carry the negotiated rate. "rate type" is deliberately absent —
+// it names the buy type, not the price.
+const PRICE_HEADERS = new Set(["unit price", "unit cost", "unit rate", "rate", "net rate", "cpm", "cpm rate"]);
+
 function headerIndex(header: string[], predicate: (h: string) => boolean): number {
     return header.findIndex((h) => predicate(normName(h ?? "")));
 }
@@ -112,18 +121,37 @@ export function extractTacticBudgets(rows: Rows2D | null, tacticNames: string[])
     const header = rows[mediaRow] ?? [];
     const rateCol = headerIndex(header, (h) => h === "rate type");
     const unitsCol = headerIndex(header, (h) => h.startsWith("units"));
-    const priceCol = headerIndex(header, (h) => h === "unit price");
+    const priceCol = headerIndex(header, (h) => PRICE_HEADERS.has(h) || h.startsWith("unit price"));
+    const startCol = headerIndex(header, (h) => h.startsWith("flight start") || h === "start date" || h === "start");
+    const endCol = headerIndex(header, (h) => h.startsWith("flight end") || h === "end date" || h === "end");
 
-    // Collect candidate tactic rows (non-empty Media cell) in document order.
+    // Collect candidate tactic rows (non-empty Media cell) in document order. Flight dates carry
+    // down: plans often write them once and leave the cells below blank for the same flight.
     const candidates: { name: string; budget: TacticBudget }[] = [];
+    let lastStart: string | null = null;
+    let lastEnd: string | null = null;
     for (let i = mediaRow + 1; i < rows.length; i++) {
         const row = rows[i] ?? [];
+        const start = parseSheetDate(row[startCol]);
+        const end = parseSheetDate(row[endCol]);
+        if (start) lastStart = start;
+        if (end) lastEnd = end;
         const media = (row[mediaCol] ?? "").trim();
         if (!media) continue;
         const units = parseNumber(row[unitsCol]);
         const unitPrice = parseNumber(row[priceCol]);
         const rateType = (row[rateCol] ?? "").trim();
-        candidates.push({ name: media, budget: { units, unitPrice, rateType, amount: deriveAmount(units, unitPrice, rateType) } });
+        candidates.push({
+            name: media,
+            budget: {
+                units,
+                unitPrice,
+                rateType,
+                amount: deriveAmount(units, unitPrice, rateType),
+                flightStart: start ?? lastStart,
+                flightEnd: end ?? lastEnd,
+            },
+        });
     }
 
     // Sequential name match: advance a pointer so repeated names line up in order.
