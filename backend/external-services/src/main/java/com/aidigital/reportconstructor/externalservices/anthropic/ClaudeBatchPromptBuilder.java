@@ -1662,7 +1662,7 @@ public class ClaudeBatchPromptBuilder {
 				+ "EXACTLY 2 SENTENCES, past tense, ≤" + overviewLimit
 				+ " chars: sentence 1 = overall result + key metric vs "
 				+ "plan + a cause; sentence 2 = which tactic(s) led vs lagged, each with a reason. "
-				+ tacticNamingRule()
+				+ tacticNamingRule() + groupNamingRule()
 				+ "Client-facing tone: lead with what was achieved, frame gaps as external constraints. },\n";
 	}
 
@@ -1675,6 +1675,23 @@ public class ClaudeBatchPromptBuilder {
 	String tacticNamingRule() {
 		return "Refer to a tactic by the display name given after its number below (e.g. 'CTV'), NEVER as "
 				+ "'Tactic 7'; when a tactic has no name, describe it without a label. ";
+	}
+
+	/**
+	 * The rule keeping a group's overview off the internal group number: the grouping is a deck-layout device
+	 * (one summary slide per seven tactics) and means nothing to the client reading the slide, so copy opening
+	 * with "Group 1 …" reads as a leaked internal label.
+	 *
+	 * <p>Shared by the results-overview spec and the alignment schema so both passes are held to it in the
+	 * same words; without it the alignment pass can reintroduce the label the first pass was told to avoid.
+	 *
+	 * @return the naming rule, space-terminated so it reads inline within a field spec
+	 */
+	String groupNamingRule() {
+		return "NEVER name the group in the text — no 'Group 1', 'group 2', 'this group', 'the group': the "
+				+ "grouping is an internal slide-layout device. Write about the tactics themselves, or about "
+				+ "the campaign/these tactics collectively (e.g. 'CTV/OTT, GeoFencing and Native Video "
+				+ "delivered …' or 'These three tactics …'). ";
 	}
 
 	/**
@@ -2014,7 +2031,7 @@ public class ClaudeBatchPromptBuilder {
 		return "  \"results_overviews\": object,     // Keyed by group number as strings ("
 				+ groupKeys + "). One entry per key listed, no more, no fewer. Each: EXACTLY "
 				+ "2 sentences, past tense, ≤380 chars. Must pay off the same storyline with its own group's "
-				+ "numbers.\n";
+				+ "numbers. " + groupNamingRule() + "\n";
 	}
 
 	/**

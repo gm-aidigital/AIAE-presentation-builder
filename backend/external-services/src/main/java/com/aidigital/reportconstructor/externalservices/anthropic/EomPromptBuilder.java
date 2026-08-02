@@ -430,7 +430,7 @@ public class EomPromptBuilder extends ClaudeBatchPromptBuilder {
 				+ " chars: sentence 1 = how the group paced against the month's plan (ahead of, on, or behind "
 				+ "pace) + the key metric that shows it + a cause; sentence 2 = which tactic(s) led the pace and "
 				+ "which trailed it, each with a reason. Past tense for the month's delivery, but no closing "
-				+ "verdict — every tactic is still live. " + tacticNamingRule()
+				+ "verdict — every tactic is still live. " + tacticNamingRule() + groupNamingRule()
 				+ "Client-facing tone: lead with what was achieved this month, and present a tactic behind pace "
 				+ "as a normal fluctuation of a running flight with the remaining months to close it. },\n";
 	}
@@ -548,7 +548,7 @@ public class EomPromptBuilder extends ClaudeBatchPromptBuilder {
 		return "  \"results_overviews\": object,     // Keyed by group number as strings ("
 				+ groupKeys + "). One entry per key listed, no more, no fewer. Each: EXACTLY "
 				+ "2 sentences, ≤380 chars, about how that group paced this month — no closing verdict. Must pay "
-				+ "off the same storyline with its own group's numbers.\n";
+				+ "off the same storyline with its own group's numbers. " + groupNamingRule() + "\n";
 	}
 
 	/**

@@ -265,6 +265,55 @@ class EomPromptBuilderTest {
 	}
 
 	@Test
+	void shouldKeepTheInternalGroupNumberOutOfBothPassesOverviewsTest() {
+		// Given: the Step-4 call and the Step-5 pass that rewrites what it produced
+		CampaignData data = campaign(1, 1);
+		List<TacticNarrativeDigest> digests = List.of(
+				new TacticNarrativeDigest(1, "CTV", "CTV paced to 101% of the month's impression target.",
+						List.of(), List.of()));
+		ClaudeStrategic strategic = new ClaudeStrategic(
+				null, null, "Throughout July we continued running CTV across auto intenders.", List.of());
+		ClaudeResults results = new ClaudeResults(
+				Map.of(1, "Group 1 paced to full budget in July."),
+				List.of(), Map.of(), List.of(), null, null, null);
+
+		// When:
+		String batchC = builder
+				.buildCampaignResultsPrompt(data, "Drive awareness.", null, digests).orElseThrow();
+		String batchD = builder
+				.alignPrompt(strategic, results, List.of(), "Drive awareness.", "Jul 1 - Jul 31, 2026")
+				.orElseThrow();
+
+		// Then: neither pass may open the slide's copy with the deck-layout label the client never sees
+		for (String prompt : List.of(batchC, batchD)) {
+			assertThat(prompt).contains(builder.groupNamingRule());
+			assertThat(prompt).contains("NEVER name the group in the text — no 'Group 1'");
+		}
+	}
+
+	@Test
+	void shouldKeepTheInternalGroupNumberOutOfTheEndOfCampaignOverviewsTooTest() {
+		// Given: an EOC run of the same two calls
+		CampaignData data = campaign(null, null);
+		List<TacticNarrativeDigest> digests = List.of(
+				new TacticNarrativeDigest(1, "CTV", "CTV delivered 101% of its impression plan.",
+						List.of(), List.of()));
+		ClaudeStrategic strategic = new ClaudeStrategic(
+				null, null, "We ran CTV across auto intenders.", List.of());
+		ClaudeResults results = new ClaudeResults(
+				Map.of(1, "CTV delivered 101% of its impression plan."),
+				List.of(), Map.of(), List.of(), null, null, null);
+
+		// When:
+		String batchC = eoc.buildCampaignResultsPrompt(data, "Drive awareness.", null, digests).orElseThrow();
+		String batchD = eoc.buildBatchDPrompt(strategic, results, List.of(), "Drive awareness.").orElseThrow();
+
+		// Then: the label leaks the same way at end of campaign, so both passes carry the shared rule
+		assertThat(batchC).contains(eoc.groupNamingRule());
+		assertThat(batchD).contains(eoc.groupNamingRule());
+	}
+
+	@Test
 	void shouldKeepTheCampaignResultsContractTheEocPromptUsesTest() {
 		// Given: the same Step-4 call described by both builders
 		CampaignData data = campaign(1, 1);
