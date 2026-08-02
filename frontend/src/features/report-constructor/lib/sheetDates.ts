@@ -35,7 +35,7 @@ function iso(year: number, month: number, day: number): string | null {
 export function parseSheetDate(raw: string | undefined | null): string | null {
     if (!raw) return null;
     const s = raw
-        .replace(/ /g, " ")
+        .replace(/\u00A0/g, " ")
         .trim()
         .replace(/[T ]\d{1,2}:\d{2}(:\d{2})?.*$/, "")
         .trim();

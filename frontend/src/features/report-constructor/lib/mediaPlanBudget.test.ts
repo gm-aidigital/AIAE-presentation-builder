@@ -64,6 +64,38 @@ describe("extractTacticBudgets", () => {
         expect(budgets[2]?.rateType).toBe("CPC");
     });
 
+    it("should read the flight window and carry it down blank cells test", () => {
+        // Given: a plan whose second Programmatic Display row leaves the flight cells blank
+        const rows = [
+            HEADER,
+            ["2026-06-08", "2026-09-30", "See Geo Tab", "Programmatic Display", "3P", "CPM", "9142858", "7.0"],
+            ["", "", "See Geo Tab", "Programmatic Display", "Whitelist", "CPM", "1200000", "10.0"],
+        ];
+
+        // When
+        const budgets = extractTacticBudgets(rows, ["Programmatic Display", "Programmatic Display"]);
+
+        // Then: both rows describe the same flight
+        expect(budgets[0]?.flightStart).toBe("2026-06-08");
+        expect(budgets[0]?.flightEnd).toBe("2026-09-30");
+        expect(budgets[1]?.flightEnd).toBe("2026-09-30");
+    });
+
+    it("should leave the flight window null when the plan has no dates test", () => {
+        // Given: a plan with no Flight Start/End columns at all
+        const rows = [
+            ["Media", "Rate Type", "Units (Imps/ Clicks)", "Unit Price"],
+            ["Google SEM", "CPC", "3429", "3.5"],
+        ];
+
+        // When
+        const budgets = extractTacticBudgets(rows, ["Google SEM"]);
+
+        // Then
+        expect(budgets[0]?.flightStart).toBeNull();
+        expect(budgets[0]?.flightEnd).toBeNull();
+    });
+
     it("should return nulls when no Media header exists test", () => {
         // Given: a grid with no "Media" column
         // When

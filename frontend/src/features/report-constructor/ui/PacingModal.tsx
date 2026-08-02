@@ -112,7 +112,11 @@ export function PacingModal({ open, onClose, onConfirm }: Props) {
 
     const toggleEvenly = useCallback(() => {
         if (!evenly) {
-            manual.current = Object.fromEntries(rows.map((m) => [m.tacticNum, m.monthlyBudget]));
+            const typed: Record<number, number | undefined> = {};
+            rows.forEach((m) => {
+                typed[m.tacticNum] = m.monthlyBudget;
+            });
+            manual.current = typed;
             setEvenly(true);
             return;
         }
@@ -262,11 +266,7 @@ export function PacingModal({ open, onClose, onConfirm }: Props) {
                                                 />
                                             </label>
                                             <div className="pacing-row__hint">
-                                                {evenRow
-                                                    ? evenLine(even)
-                                                    : evenly
-                                                      ? "no even pacing — enter by hand"
-                                                      : ""}
+                                                {!evenly ? "" : even ? evenLine(even) : "no even pacing — by hand"}
                                             </div>
                                         </div>
 
