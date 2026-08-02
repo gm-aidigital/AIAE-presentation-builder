@@ -72,7 +72,12 @@ export function AppNav() {
 
     return (
         <header className="app-nav">
-            <button type="button" className="app-nav__brand" onClick={() => navigate("/reports/new")}>
+            <button
+                type="button"
+                className="app-nav__brand"
+                title="Start a new report from scratch"
+                onClick={() => navigate("/reports/new", { state: { reset: Date.now() } })}
+            >
                 <BrandLogo />
                 <span className="app-nav__product">Report Constructor</span>
             </button>

@@ -167,6 +167,23 @@ export function PacingModal({ open, onClose, onConfirm }: Props) {
         setPacing(rows.map((m, i) => (i === idx ? { ...m, ...patch } : m)));
     }
 
+    /**
+     * Budget edits win over the even spread: typing in the column while "Evenly paced" is on
+     * switches the toggle off and keeps the derived numbers as the starting point, so the user
+     * edits one budget instead of having the change silently overwritten.
+     */
+    function updateBudget(idx: number, budget: number | undefined) {
+        if (evenly) {
+            const kept: Record<number, number | undefined> = {};
+            rows.forEach((m, i) => {
+                kept[m.tacticNum] = i === idx ? budget : m.monthlyBudget;
+            });
+            manual.current = kept;
+            setEvenly(false);
+        }
+        update(idx, { monthlyBudget: budget });
+    }
+
     const ready = rows.filter(pacingRowComplete).length;
     const allReady = pacingComplete(rows);
 
@@ -251,21 +268,18 @@ export function PacingModal({ open, onClose, onConfirm }: Props) {
                                                     min="0"
                                                     className="pacing-field__input"
                                                     placeholder="0"
-                                                    readOnly={evenRow}
                                                     title={
                                                         evenRow
-                                                            ? "Derived from the even pacing — turn the toggle off to type a budget"
+                                                            ? "Derived from the even pacing — typing here switches the toggle off and keeps your number"
                                                             : undefined
                                                     }
                                                     aria-label={`Monthly budget for ${row.tacticName}`}
                                                     value={row.monthlyBudget ?? ""}
                                                     onChange={(e) =>
-                                                        update(idx, {
-                                                            monthlyBudget:
-                                                                e.target.value === ""
-                                                                    ? undefined
-                                                                    : Number(e.target.value),
-                                                        })
+                                                        updateBudget(
+                                                            idx,
+                                                            e.target.value === "" ? undefined : Number(e.target.value)
+                                                        )
                                                     }
                                                 />
                                             </label>
