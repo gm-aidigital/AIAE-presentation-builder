@@ -260,7 +260,7 @@ export function PacingModal({ open, onClose, onConfirm }: Props) {
                             {rows.map((row, idx) => {
                                 const done = pacingRowComplete(row);
                                 const units = estimatedUnits(row);
-                                const plan = planLine(budgets[idx]);
+                                const plan = planLine(budgets[idx] ?? undefined);
                                 const planRateType = normalizeRateType(budgets[idx]?.rateType);
                                 const planPrice = budgets[idx]?.unitPrice ?? 0;
                                 const even = evens[idx];
