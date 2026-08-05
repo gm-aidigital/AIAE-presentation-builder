@@ -518,6 +518,25 @@ public class RealSlidesProvider implements SlidesProvider {
 	}
 
 	@Override
+	public int countSlides(String presentationId, String userGoogleAccessToken) {
+		boolean asUser = userGoogleAccessToken != null && !userGoogleAccessToken.isBlank();
+		Slides slidesClient = asUser ? buildSlides(userGoogleAccessToken) : slides;
+		try {
+			// Object ids only: the count is all that is wanted and pulling page elements would ship the
+			// whole deck's content back for a single integer.
+			Presentation deck = retrier.execute(
+					slidesClient.presentations().get(presentationId).setFields(MASTER_FIELDS),
+					"countSlides get " + presentationId);
+			return deck.getSlides() == null ? 0 : deck.getSlides().size();
+		} catch (IOException ex) {
+			// Measuring a finished deck is bookkeeping, not delivery: a report that shipped must not be
+			// reported as failed because its slide count could not be read.
+			log.warn("[slides] countSlides failed for {}: {}", presentationId, ex.getMessage());
+			return 0;
+		}
+	}
+
+	@Override
 	public void deleteMasterSlides(String presentationId, String userGoogleAccessToken) {
 		if (breakdownMasterIds.isEmpty() && thoughtsMasterId.isBlank()) {
 			return;

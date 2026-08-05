@@ -1,8 +1,11 @@
 package com.aidigital.reportconstructor.admin.mappers;
 
+import com.aidigital.reportconstructor.api.v1.model.AdminActiveUsersPeriodV1;
 import com.aidigital.reportconstructor.api.v1.model.AdminDayVolumeV1;
 import com.aidigital.reportconstructor.api.v1.model.AdminFailedJobV1;
+import com.aidigital.reportconstructor.api.v1.model.AdminSavingsV1;
 import com.aidigital.reportconstructor.api.v1.model.AdminStatsV1;
+import com.aidigital.reportconstructor.api.v1.model.AdminTokenPeriodV1;
 import com.aidigital.reportconstructor.api.v1.model.AdminTokenDayV1;
 import com.aidigital.reportconstructor.api.v1.model.AdminTokenLabelV1;
 import com.aidigital.reportconstructor.api.v1.model.AdminTokenTotalsV1;
@@ -10,9 +13,12 @@ import com.aidigital.reportconstructor.api.v1.model.AdminTotalsV1;
 import com.aidigital.reportconstructor.api.v1.model.AdminTypeStatV1;
 import com.aidigital.reportconstructor.api.v1.model.AdminUserStatV1;
 import com.aidigital.reportconstructor.config.ApplicationMapperConfig;
+import com.aidigital.reportconstructor.service.admin.dto.AdminActiveUsersPeriod;
 import com.aidigital.reportconstructor.service.admin.dto.AdminDayVolume;
 import com.aidigital.reportconstructor.service.admin.dto.AdminFailedJob;
+import com.aidigital.reportconstructor.service.admin.dto.AdminSavings;
 import com.aidigital.reportconstructor.service.admin.dto.AdminStats;
+import com.aidigital.reportconstructor.service.admin.dto.AdminTokenPeriod;
 import com.aidigital.reportconstructor.service.admin.dto.AdminTokenDay;
 import com.aidigital.reportconstructor.service.admin.dto.AdminTokenLabel;
 import com.aidigital.reportconstructor.service.admin.dto.AdminTokenTotals;
@@ -90,6 +96,30 @@ public interface AdminStatsApiMapper {
 	 * @return the V1 per-stage DTO
 	 */
 	AdminTokenLabelV1 toTokenLabel(AdminTokenLabel tokenLabel);
+
+	/**
+	 * Converts the modelled savings block into its V1 DTO.
+	 *
+	 * @param savings the service savings figure
+	 * @return the V1 savings DTO
+	 */
+	AdminSavingsV1 toSavings(AdminSavings savings);
+
+	/**
+	 * Converts a token trend bucket into its V1 DTO.
+	 *
+	 * @param period the service trend bucket
+	 * @return the V1 trend bucket DTO
+	 */
+	AdminTokenPeriodV1 toTokenPeriod(AdminTokenPeriod period);
+
+	/**
+	 * Converts an active-users bucket into its V1 DTO.
+	 *
+	 * @param period the service active-users bucket
+	 * @return the V1 active-users DTO
+	 */
+	AdminActiveUsersPeriodV1 toActiveUsersPeriod(AdminActiveUsersPeriod period);
 
 	/**
 	 * Converts a failed-job row into its V1 DTO.

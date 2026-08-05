@@ -95,6 +95,25 @@ public class ReportJobEntity extends IdAwareEntity {
 	@Column(name = "claude_model")
 	private String claudeModel;
 
+	/**
+	 * Every token the run consumed, summed by the database from the four columns above.
+	 *
+	 * <p>Read-only here because the column is {@code GENERATED ALWAYS} — it exists so "order the
+	 * reports by token spend" is an indexed {@code ORDER BY} rather than a sort the server performs
+	 * after fetching every row. Writing to it is not merely unnecessary, it is rejected by Postgres.
+	 */
+	@Column(name = "total_tokens", insertable = false, updatable = false)
+	private Long totalTokens;
+
+	/**
+	 * Slides the finished deck shipped with, counted after the surplus template slides were deleted.
+	 * Drives the saved-hours figure, whose manual baseline is quoted per slide. Null for a sheet-only
+	 * run, for a run that failed before the deck existed, and for jobs older than this column — all of
+	 * which fall back to the configured per-report-type slide default rather than counting as zero.
+	 */
+	@Column(name = "slide_count")
+	private Integer slideCount;
+
 	@Column(name = "created_at", nullable = false)
 	private OffsetDateTime createdAt;
 

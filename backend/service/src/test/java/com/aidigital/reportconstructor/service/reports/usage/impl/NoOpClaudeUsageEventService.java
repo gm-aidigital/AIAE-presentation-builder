@@ -1,6 +1,7 @@
 package com.aidigital.reportconstructor.service.reports.usage.impl;
 
 import com.aidigital.reportconstructor.domain.reports.entities.ClaudeUsageEventEntity;
+import com.aidigital.reportconstructor.domain.reports.projections.ClaudeLabelUsage;
 import com.aidigital.reportconstructor.service.reports.usage.ClaudeUsageEventService;
 
 import java.util.ArrayList;
@@ -22,6 +23,17 @@ public class NoOpClaudeUsageEventService implements ClaudeUsageEventService {
 	@Override
 	public List<ClaudeUsageEventEntity> listAll() {
 		return List.copyOf(saved);
+	}
+
+	@Override
+	public List<ClaudeLabelUsage> byLabel() {
+		// The aggregate queries are the database's job; collaborators under test only ever record.
+		return List.of();
+	}
+
+	@Override
+	public List<ClaudeLabelUsage> unattributed() {
+		return List.of();
 	}
 
 	@Override

@@ -1,8 +1,12 @@
 package com.aidigital.reportconstructor.service.reports.helpers;
 
 import com.aidigital.reportconstructor.domain.reports.entities.ReportJobEntity;
+import com.aidigital.reportconstructor.domain.reports.projections.JobOwner;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeUsage;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -55,6 +59,17 @@ public interface ReportJobProgressHelper {
 	void recordTokenUsage(Long jobId, ClaudeUsage usage);
 
 	/**
+	 * Stamps the number of slides a finished deck shipped with, for the admin dashboard's saved-hours
+	 * figure. A no-op when the job no longer exists or when the count is not positive — an unmeasured
+	 * deck must leave the column null so the savings calculation falls back to the configured
+	 * per-report-type default, rather than treating the report as having produced nothing.
+	 *
+	 * @param jobId      id of the job to stamp
+	 * @param slideCount slides in the finished deck, after surplus template slides were deleted
+	 */
+	void recordSlideCount(Long jobId, int slideCount);
+
+	/**
 	 * Lists a single owner's jobs, newest first, for the "My reports" history screen.
 	 *
 	 * @param userId internal owner id whose jobs are listed
@@ -65,9 +80,72 @@ public interface ReportJobProgressHelper {
 	/**
 	 * Lists every job, newest first, for team-wide admin aggregation.
 	 *
+	 * <p>Reads the whole table, so it is not a dashboard query: the admin figures are aggregated from
+	 * the {@code usage_daily} rollup instead. Kept for the paths that genuinely need every row.
+	 *
 	 * @return all jobs ordered newest first
 	 */
 	List<ReportJobEntity> listAllJobs();
+
+	/**
+	 * Counts jobs currently queued or running.
+	 *
+	 * <p>Read live rather than from the rollup: an in-flight job's whole point is that it is happening
+	 * now, and a rollup refreshed on a timer would report it minutes late.
+	 *
+	 * @return the number of jobs in flight
+	 */
+	int countInFlight();
+
+	/**
+	 * Counts jobs that ended in error.
+	 *
+	 * @return the number of failed jobs
+	 */
+	int countFailed();
+
+	/**
+	 * Lists the most recent job issues — hard failures and reports that shipped with warnings.
+	 *
+	 * @param limit how many of each kind to return at most
+	 * @return the matching jobs, newest first, failures and degraded reports interleaved by date
+	 */
+	List<ReportJobEntity> listRecentIssues(int limit);
+
+	/**
+	 * Lists every job issue — hard failures and reports that shipped with warnings — unbounded.
+	 *
+	 * <p>For the admin action that clears the whole failures list: it must reach every failure, not
+	 * just the page the dashboard shows. Reads only jobs that are actually issues, so it stays bounded
+	 * by the thing the caller is asking about rather than by the size of the jobs table.
+	 *
+	 * @return the matching jobs, newest first
+	 */
+	List<ReportJobEntity> listAllIssues();
+
+	/**
+	 * Reports when the earliest job was created, so a full rollup rebuild knows how far back to reach.
+	 *
+	 * @return the earliest creation timestamp, or {@code null} when no job exists
+	 */
+	OffsetDateTime earliestJobCreatedAt();
+
+	/**
+	 * Lists every distinct report owner with the email last recorded for it, so the per-user dashboard
+	 * table can label rollup rows that key on the internal id alone.
+	 *
+	 * @return one row per owner
+	 */
+	List<JobOwner> listOwners();
+
+	/**
+	 * Lists one page of deliverable report jobs — everything except a slide-deck flow's intermediate
+	 * sheet step — in the order the page request asks for.
+	 *
+	 * @param pageable the page and sort order to apply
+	 * @return the requested page, with the unfiltered total attached
+	 */
+	Page<ReportJobEntity> listDeliverables(Pageable pageable);
 
 	/**
 	 * Moves a job to {@code running} at the given pipeline step and updates its progress label.

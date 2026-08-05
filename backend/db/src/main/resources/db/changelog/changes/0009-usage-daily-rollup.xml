@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+	Pre-aggregated daily usage, one row per (day, user, report type, target, model).
+
+	The admin dashboard used to load every `report_jobs` row — JSONB payloads and all — into memory
+	and aggregate it with Java streams on each request. That is fine at a few thousand reports and
+	falls over well before a hundred thousand. This table is the answer: the month, week,
+	week-over-week, month-over-month and active-user series are all derivable from it with a single
+	indexed scan over a handful of rows per day, and the raw payloads are never read.
+
+	The grain is chosen so that no decision is baked into the stored numbers:
+
+	- `owner_user_id` stays in the key rather than being summed away, which makes
+	  `count(distinct owner_user_id)` per month a *true* active-user count, not an approximation.
+	- `target` and `report_type_code` stay in the key so the read side can apply ReportCountPolicy
+	  itself — a slide-deck flow's intermediate SHEET step must not count as its own report, and
+	  that rule belongs in one Java class rather than being frozen into a rollup column.
+	- `claude_model` stays in the key so cost can be computed at read time from the configured list
+	  prices. Storing a cost column instead would freeze today's prices into history and force a
+	  full rebuild every time a price changes.
+
+	This is a cache, not a source of truth: every row is recomputed from `report_jobs` by an
+	idempotent upsert, so a corrupted or missing day is fixed by rebuilding it rather than by
+	repairing it in place. Token figures are summed from the per-job stamps — the same source the
+	spend-by-user and all-reports views read — so a report's spend still reads identically wherever
+	it is shown. The per-pipeline-stage breakdown stays event-sourced against
+	`claude_usage_events`, because the per-job stamp carries no stage detail.
+-->
+<databaseChangeLog
+		xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+		xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+		xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+														https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+	<changeSet id="usage-daily-initial" author="agent">
+		<preConditions onFail="MARK_RAN">
+			<not>
+				<tableExists tableName="usage_daily"/>
+			</not>
+		</preConditions>
+
+		<createTable tableName="usage_daily">
+			<column name="id" type="BIGINT" autoIncrement="true">
+				<constraints primaryKey="true" nullable="false"/>
+			</column>
+
+			<!--
+				Grain. Every key column is NOT NULL: the rebuild folds a missing value to a placeholder
+				('OTHER', 'UNKNOWN') because a null in a key column would make the unique constraint stop
+				de-duplicating, and the upsert would insert a fresh row on every refresh.
+			-->
+			<column name="day" type="DATE">
+				<constraints nullable="false"/>
+			</column>
+			<column name="owner_user_id" type="TEXT">
+				<constraints nullable="false"/>
+			</column>
+			<column name="report_type_code" type="TEXT">
+				<constraints nullable="false"/>
+			</column>
+			<column name="target" type="TEXT">
+				<constraints nullable="false"/>
+			</column>
+			<column name="claude_model" type="TEXT">
+				<constraints nullable="false"/>
+			</column>
+
+			<column name="jobs" type="INTEGER" defaultValueNumeric="0">
+				<constraints nullable="false"/>
+			</column>
+			<!-- Denominator for the per-report averages: jobs that actually carry token counts. -->
+			<column name="jobs_with_usage" type="INTEGER" defaultValueNumeric="0">
+				<constraints nullable="false"/>
+			</column>
+			<column name="failed_jobs" type="INTEGER" defaultValueNumeric="0">
+				<constraints nullable="false"/>
+			</column>
+
+			<column name="claude_calls" type="BIGINT" defaultValueNumeric="0">
+				<constraints nullable="false"/>
+			</column>
+			<column name="input_tokens" type="BIGINT" defaultValueNumeric="0">
+				<constraints nullable="false"/>
+			</column>
+			<column name="output_tokens" type="BIGINT" defaultValueNumeric="0">
+				<constraints nullable="false"/>
+			</column>
+			<column name="cache_write_tokens" type="BIGINT" defaultValueNumeric="0">
+				<constraints nullable="false"/>
+			</column>
+			<column name="cache_read_tokens" type="BIGINT" defaultValueNumeric="0">
+				<constraints nullable="false"/>
+			</column>
+
+			<!--
+				Slides those jobs shipped and the wall-clock seconds they took, for the savings figure.
+				`jobs_with_slides` is the denominator that keeps a sheet-only run — which produces no deck
+				and therefore no slide count — from dragging the per-report slide average down.
+			-->
+			<column name="slides" type="BIGINT" defaultValueNumeric="0">
+				<constraints nullable="false"/>
+			</column>
+			<column name="jobs_with_slides" type="INTEGER" defaultValueNumeric="0">
+				<constraints nullable="false"/>
+			</column>
+			<column name="generation_seconds" type="BIGINT" defaultValueNumeric="0">
+				<constraints nullable="false"/>
+			</column>
+
+			<!-- When this row was last rebuilt, so a stale rollup is visible rather than silent. -->
+			<column name="refreshed_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="CURRENT_TIMESTAMP">
+				<constraints nullable="false"/>
+			</column>
+		</createTable>
+
+		<!--
+			The natural key. The rebuild clears a day window and re-inserts it rather than upserting
+			(jobs can be deleted, and an upsert would strand their contribution), so this constraint is
+			a guard against a double rebuild rather than a conflict target.
+		-->
+		<addUniqueConstraint
+				tableName="usage_daily"
+				columnNames="day, owner_user_id, report_type_code, target, claude_model"
+				constraintName="uq_usage_daily_grain"/>
+
+		<!-- Every series query scans a date window and then groups, so the day must lead. -->
+		<createIndex tableName="usage_daily" indexName="idx_usage_daily_day">
+			<column name="day" descending="true"/>
+		</createIndex>
+	</changeSet>
+
+</databaseChangeLog>

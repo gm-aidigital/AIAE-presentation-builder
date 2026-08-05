@@ -58,4 +58,12 @@ public class StubSlidesProvider implements SlidesProvider {
 	public void deleteReportTypeSlides(String presentationId, String reportType, String userGoogleAccessToken) {
 		// No-op: the stub never clones a real deck, so there are no report-type slides to delete.
 	}
+
+	@Override
+	public int countSlides(String presentationId, String userGoogleAccessToken) {
+		// The stub links at the untouched template, so there is no run-specific deck to measure. Zero
+		// leaves the job's slide count unstamped and the savings figure falls back to the configured
+		// per-report-type default, rather than recording a real report as having shipped no slides.
+		return 0;
+	}
 }

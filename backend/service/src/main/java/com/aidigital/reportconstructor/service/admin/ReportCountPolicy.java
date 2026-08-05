@@ -40,7 +40,35 @@ public class ReportCountPolicy {
 	 * @return true when the job is a slide-deck flow's intermediate {@code SHEET} step
 	 */
 	public boolean isIntermediateSheet(ReportJobEntity job) {
-		return SHEET_TARGET.equals(job.getTarget()) && isSlideDeckType(job.getReportTypeCode());
+		return isIntermediateSheet(job.getTarget(), job.getReportTypeCode());
+	}
+
+	/**
+	 * Tells whether a (target, report type) pair describes a slide-deck flow's intermediate review
+	 * sheet rather than a report.
+	 *
+	 * <p>The pair form exists for the {@code usage_daily} rollup, whose rows are groups of jobs rather
+	 * than jobs. Keeping both forms on this one class is the point: the rollup stores the two columns
+	 * and asks the same question of them, so the rule stays in one place instead of being duplicated
+	 * into SQL.
+	 *
+	 * @param target         the job's generation target, possibly {@code null} or a placeholder
+	 * @param reportTypeCode the job's report type code, possibly {@code null}
+	 * @return true when the pair is a slide-deck flow's intermediate {@code SHEET} step
+	 */
+	public boolean isIntermediateSheet(String target, String reportTypeCode) {
+		return SHEET_TARGET.equals(target) && isSlideDeckType(reportTypeCode);
+	}
+
+	/**
+	 * Tells whether a (target, report type) pair counts as a standalone report.
+	 *
+	 * @param target         the job's generation target, possibly {@code null} or a placeholder
+	 * @param reportTypeCode the job's report type code, possibly {@code null}
+	 * @return true unless the pair is a slide-deck flow's intermediate sheet step
+	 */
+	public boolean isCountableReport(String target, String reportTypeCode) {
+		return !isIntermediateSheet(target, reportTypeCode);
 	}
 
 	/**

@@ -107,21 +107,22 @@ class AdminFailuresServiceImplTest {
 
 	@Test
 	void shouldClearEveryIssueButLeaveCleanReportsUntouchedTest() {
-		// Given: a hard failure, a degraded report, and a clean completed report.
+		// Given: a hard failure and a degraded report. The clean report is deliberately absent —
+		// clearing the list reads only the jobs that are issues rather than scanning every job, so a
+		// clean report never reaches this code at all.
 		when(adminAccessPolicy.isAdmin("admin@aidigital.com")).thenReturn(true);
 		ReportJobEntity failed = job(1L, "error", null);
 		ReportJobEntity degraded = job(2L, "done", "[\"blank slide\"]");
-		ReportJobEntity clean = job(3L, "done", null);
-		when(jobs.listAllJobs()).thenReturn(List.of(failed, degraded, clean));
+		when(jobs.listAllIssues()).thenReturn(List.of(failed, degraded));
 
 		// When:
 		service.clearFailures("admin@aidigital.com");
 
-		// Then: the failure is deleted, the degraded report loses its warnings, the clean one is left.
+		// Then: the failure is deleted with its usage rows, and the degraded report keeps its report
+		// but loses its warnings.
 		verify(usageEvents).deleteByJobId(1L);
 		verify(jobs).deleteJob(1L);
 		verify(jobs).clearJobWarnings(2L);
-		verify(jobs, never()).deleteJob(3L);
-		verify(jobs, never()).clearJobWarnings(3L);
+		verify(jobs, never()).deleteJob(2L);
 	}
 }

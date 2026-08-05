@@ -108,6 +108,32 @@ app:
         output-per-mtok: 75.00
         cache-write-per-mtok: 18.75
         cache-read-per-mtok: 1.50
+  # The dashboard's "time and money saved" figure. Both numbers are assumptions about work that did
+  # not happen, which is why they live here: they are the two things a reader will argue with, and
+  # they must be arguable without a deploy. At 15 min/slide a 25-slide deck is 6h15m of manual work
+  # and a 16-slide deck is 4h.
+  savings:
+    hourly-rate-usd: ${APP_SAVINGS_HOURLY_RATE:14.00}
+    manual-minutes-per-slide: ${APP_SAVINGS_MINUTES_PER_SLIDE:15}
+    # Assumed for reports whose deck was never measured — runs older than slide counting, or whose
+    # deck could not be read. Without these they would count as zero-slide reports and silently
+    # understate the figure.
+    default-slides-by-type:
+      EOC: 25
+      EOM: 16
+    default-slides: 20
+    subtract-generation-time: true
+  # The usage_daily rollup the dashboard's figures are derived from.
+  usage-rollup:
+    # Recomputed days per refresh. More than one: a job created just before midnight can be updated
+    # just after it, and clearing failures deletes jobs whose day must be rebuilt without them.
+    trailing-days: ${APP_ROLLUP_TRAILING_DAYS:3}
+    # How stale the rollup may get before a dashboard request rebuilds it itself, rather than waiting
+    # for the timer. This is what makes a report that finished a minute ago show up.
+    staleness-seconds: ${APP_ROLLUP_STALENESS_SECONDS:120}
+    # History the trend series read. At 400 days a month-over-month series still has a full previous
+    # year to compare against.
+    history-days: ${APP_ROLLUP_HISTORY_DAYS:400}
   security:
     cors:
       allowed-origins: "${APP_SECURITY_CORS_ALLOWED_ORIGINS:https://*.replit.dev,https://*.repl.co,http://localhost:5173,http://localhost:5000}"

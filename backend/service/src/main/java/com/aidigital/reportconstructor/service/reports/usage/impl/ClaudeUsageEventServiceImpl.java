@@ -1,6 +1,7 @@
 package com.aidigital.reportconstructor.service.reports.usage.impl;
 
 import com.aidigital.reportconstructor.domain.reports.entities.ClaudeUsageEventEntity;
+import com.aidigital.reportconstructor.domain.reports.projections.ClaudeLabelUsage;
 import com.aidigital.reportconstructor.domain.reports.repositories.ClaudeUsageEventRepository;
 import com.aidigital.reportconstructor.service.reports.usage.ClaudeUsageEventService;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +29,18 @@ public class ClaudeUsageEventServiceImpl implements ClaudeUsageEventService {
 	@Override
 	public List<ClaudeUsageEventEntity> listAll() {
 		return events.findAll();
+	}
+
+	@Transactional(readOnly = true)
+	@Override
+	public List<ClaudeLabelUsage> byLabel() {
+		return events.aggregateByLabel();
+	}
+
+	@Transactional(readOnly = true)
+	@Override
+	public List<ClaudeLabelUsage> unattributed() {
+		return events.aggregateUnattributed();
 	}
 
 	@Transactional

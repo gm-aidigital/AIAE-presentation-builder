@@ -463,19 +463,55 @@ paths:
     get:
       tags: [ Admin ]
       operationId: listAllReports
-      summary: List every user's report jobs, newest first (admin only)
+      summary: List a page of every user's report jobs (admin only)
       description: |
-        Team-wide report history — the same rows as "My reports" but across all
-        users, with the owner email/name on each row. Admin allow-list gated.
+        Team-wide report history — the same rows as "My reports" but across all users, with the
+        owner email/name on each row. Admin allow-list gated.
+
+        Paged and sorted by the database. `total` is the count of all deliverable reports, not the
+        length of this page, so a table can size its pager without a second request.
+
+        `sort` accepts `createdAt` (default), `tokens`, `slides`, `owner`, `type` and `status`; an
+        unrecognised value falls back to `createdAt` rather than failing, so a stale bookmark still
+        loads. Cost is intentionally not a sort key: it is computed at read time from the configured
+        list prices, so there is no column for the database to order by — `tokens` is the closest
+        server-side answer.
       security:
         - bearerAuth: [ ]
+      parameters:
+        - name: page
+          in: query
+          required: false
+          description: "Zero-based page index. Negative values are read as the first page."
+          schema: { type: integer, format: int32, minimum: 0, default: 0 }
+        - name: size
+          in: query
+          required: false
+          description: "Rows per page, clamped to at most 200."
+          schema: { type: integer, format: int32, minimum: 1, maximum: 200, default: 50 }
+        - name: sort
+          in: query
+          required: false
+          description: "Column to order by."
+          schema:
+            type: string
+            enum: [ createdAt, tokens, slides, owner, type, status ]
+            default: createdAt
+        - name: dir
+          in: query
+          required: false
+          description: "Order direction."
+          schema:
+            type: string
+            enum: [ asc, desc ]
+            default: desc
       responses:
         "200":
-          description: All report jobs, newest first.
+          description: One page of report jobs, in the requested order.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ReportListV1"
+                $ref: "#/components/schemas/AdminReportPageV1"
         "401":
           $ref: "#/components/responses/UnauthorizedV1"
         "403":
@@ -1136,6 +1172,21 @@ components:
         costUsd: { type: number, format: double, description: "Estimated cost of this report's tokens in USD at configured list prices." }
 
     # ── Admin management (admins by email) ──────────────────────────────────────
+    AdminReportPageV1:
+      type: object
+      description: |
+        One page of the team-wide report history. `total` counts every deliverable report in the
+        whole history, not the rows in this page — that is what lets the table say "50 of 12,480".
+      required: [ total, page, size, hasMore, reports ]
+      properties:
+        total: { type: integer, format: int64, description: "Deliverable reports in the whole history." }
+        page: { type: integer, format: int32, description: "Zero-based index of this page." }
+        size: { type: integer, format: int32, description: "Rows per page that was applied, after clamping." }
+        hasMore: { type: boolean, description: "Whether another page follows this one." }
+        reports:
+          type: array
+          items: { $ref: "#/components/schemas/ReportSummaryV1" }
+
     AdminSourceV1:
       type: string
       description: |
@@ -1171,10 +1222,20 @@ components:
     # ── Admin dashboard (team statistics + technical health) ────────────────────
     AdminStatsV1:
       type: object
-      required: [ updatedAt, totals, byUser, byType, weekly, tokens, tokenWeekly, byLabel, failures ]
+      required:
+        [ updatedAt, totals, savings, byUser, byType, weekly, tokens, tokenWeekly,
+          tokensByWeek, tokensByMonth, activeUsersWeeks, activeUsersMonths, byLabel, failures ]
       properties:
         updatedAt: { type: string, format: date-time, description: "When the aggregation was computed." }
+        rollupUpdatedAt:
+          type: string
+          format: date-time
+          description: |
+            When the `usage_daily` rollup these figures are derived from was last rebuilt. Absent when
+            the rollup has never been built. Everything except `totals.running`/`totals.failed` and
+            `failures` is as fresh as this timestamp, not as fresh as `updatedAt`.
         totals: { $ref: "#/components/schemas/AdminTotalsV1" }
+        savings: { $ref: "#/components/schemas/AdminSavingsV1" }
         byUser:
           type: array
           items: { $ref: "#/components/schemas/AdminUserStatV1" }
@@ -1190,6 +1251,22 @@ components:
           type: array
           description: "Claude token spend for each of the last 7 days, oldest first."
           items: { $ref: "#/components/schemas/AdminTokenDayV1" }
+        tokensByWeek:
+          type: array
+          description: "Token spend per ISO week with week-over-week comparison, oldest first."
+          items: { $ref: "#/components/schemas/AdminTokenPeriodV1" }
+        tokensByMonth:
+          type: array
+          description: "Token spend per calendar month with month-over-month comparison, oldest first."
+          items: { $ref: "#/components/schemas/AdminTokenPeriodV1" }
+        activeUsersWeeks:
+          type: array
+          description: "Active users per ISO week with week-over-week comparison, oldest first."
+          items: { $ref: "#/components/schemas/AdminActiveUsersPeriodV1" }
+        activeUsersMonths:
+          type: array
+          description: "Active users per calendar month with month-over-month comparison, oldest first."
+          items: { $ref: "#/components/schemas/AdminActiveUsersPeriodV1" }
         byLabel:
           type: array
           description: "Measured token spend per pipeline stage (batch tag), most expensive first."
@@ -1239,6 +1316,88 @@ components:
         date: { type: string, format: date }
         label: { type: string, description: "Short weekday label, e.g. 'Mon'." }
         count: { type: integer, format: int32 }
+
+    AdminSavingsV1:
+      type: object
+      description: |
+        What the generated reports would have cost to build by hand, and what that is worth.
+
+        Every figure here is a modelled counterfactual, not a measurement. The two assumptions it
+        rests on — `hourlyRateUsd` and `minutesPerSlide` — are returned with it so a reader can
+        re-derive the number or disagree with it, rather than being handed a dollar amount with no
+        visible basis. `manualHoursFor25Slides`/`manualHoursFor16Slides` apply the same baseline to
+        two fixed deck sizes so it can be checked against decks people remember building.
+
+        Reports whose deck was never measured (runs older than slide counting, or whose deck could
+        not be read) are modelled at the configured per-type default rather than counted as zero
+        slides; `slidesMeasured` shows how much of `slidesTotal` is real.
+      required:
+        [ reportsCounted, slidesTotal, slidesMeasured, avgSlidesPerReport, manualHours,
+          automationHours, savedHours, savedUsd, savedHoursThisMonth, savedUsdThisMonth,
+          hourlyRateUsd, minutesPerSlide, manualHoursFor25Slides, manualHoursFor16Slides ]
+      properties:
+        reportsCounted: { type: integer, format: int32, description: "Reports the figure covers." }
+        slidesTotal: { type: integer, format: int64, description: "Slides those reports shipped, measured where known and modelled where not." }
+        slidesMeasured: { type: integer, format: int64, description: "Of those, the slides actually counted in a finished deck." }
+        avgSlidesPerReport: { type: number, format: double }
+        manualHours: { type: number, format: double, description: "Hours the same output would have cost by hand." }
+        automationHours: { type: number, format: double, description: "Wall-clock hours the generated runs actually took." }
+        savedHours: { type: number, format: double, description: "manualHours less automationHours, floored at zero." }
+        savedUsd: { type: number, format: double, description: "savedHours valued at hourlyRateUsd." }
+        savedHoursThisMonth: { type: number, format: double }
+        savedUsdThisMonth: { type: number, format: double }
+        hourlyRateUsd: { type: number, format: double, description: "The loaded hourly rate the saving is valued at." }
+        minutesPerSlide: { type: integer, format: int32, description: "Manual baseline one slide is assumed to cost." }
+        manualHoursFor25Slides: { type: number, format: double }
+        manualHoursFor16Slides: { type: number, format: double }
+
+    AdminTokenPeriodV1:
+      type: object
+      description: |
+        One bucket of a token trend — a week or a month — carrying both its own figures and the
+        comparison with the bucket before it.
+
+        The previous period travels with the row rather than being left for the client to look up:
+        a bucket in which nothing happened is absent from the series entirely, so indexing backwards
+        into the array would silently compare across the gap. `prev*` and the deltas are absent for
+        the first bucket, and a delta is also absent when the previous bucket was zero — a rise from
+        nothing is not a percentage.
+      required: [ key, start, label, reports, inputTokens, outputTokens, cacheTokens, totalTokens, costUsd ]
+      properties:
+        key: { type: string, description: "Stable bucket id: '2026-W32' for a week, '2026-08' for a month." }
+        start: { type: string, format: date, description: "First day of the bucket." }
+        label: { type: string, description: "Short human label, e.g. 'Aug 3' or 'Aug 2026'." }
+        reports: { type: integer, format: int32 }
+        inputTokens: { type: integer, format: int64 }
+        outputTokens: { type: integer, format: int64 }
+        cacheTokens: { type: integer, format: int64, description: "Prompt-cache write + read tokens." }
+        totalTokens: { type: integer, format: int64 }
+        costUsd: { type: number, format: double }
+        prevTotalTokens: { type: integer, format: int64 }
+        tokensDeltaPct: { type: number, format: double, description: "Signed percentage change in tokens against the previous bucket." }
+        prevReports: { type: integer, format: int32 }
+        reportsDeltaPct: { type: number, format: double }
+        prevCostUsd: { type: number, format: double }
+        costDeltaPct: { type: number, format: double }
+
+    AdminActiveUsersPeriodV1:
+      type: object
+      description: |
+        Active users in one bucket — a week or a month — with the comparison against the bucket
+        before it. "Active" means the user generated at least one report in the bucket, counted once
+        however many they generated, so the counts are deliberately not additive across buckets.
+
+        `newUsers` is the growth signal the raw count hides: a flat month-over-month total can be the
+        same people returning, or an equal number arriving and leaving.
+      required: [ key, start, label, activeUsers, newUsers ]
+      properties:
+        key: { type: string, description: "Stable bucket id: '2026-W32' for a week, '2026-08' for a month." }
+        start: { type: string, format: date }
+        label: { type: string }
+        activeUsers: { type: integer, format: int32 }
+        newUsers: { type: integer, format: int32, description: "Of those, the ones who had never generated anything before." }
+        prevActive: { type: integer, format: int32 }
+        deltaPct: { type: number, format: double, description: "Signed percentage change against the previous bucket." }
 
     # ── Claude token consumption (admin "Token consumption" tab) ────────────────
     AdminTokenTotalsV1:

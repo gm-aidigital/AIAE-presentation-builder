@@ -1,6 +1,6 @@
 package com.aidigital.reportconstructor.service.admin;
 
-import com.aidigital.reportconstructor.domain.reports.entities.ClaudeUsageEventEntity;
+import com.aidigital.reportconstructor.domain.reports.projections.ClaudeLabelUsage;
 import com.aidigital.reportconstructor.service.admin.dto.AdminTokenLabel;
 import com.aidigital.reportconstructor.service.reports.enums.ClaudeUsageStatus;
 import com.aidigital.reportconstructor.service.reports.usage.ClaudeCostCalculator;
@@ -8,7 +8,6 @@ import com.aidigital.reportconstructor.service.reports.usage.config.ClaudeModelP
 import com.aidigital.reportconstructor.service.reports.usage.config.ClaudePricingProperties;
 import org.junit.jupiter.api.Test;
 
-import java.time.OffsetDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -16,40 +15,32 @@ import static org.assertj.core.api.Assertions.assertThat;
 class AdminTokenAggregatorTest {
 
 	/**
-	 * Builds a measured event.
+	 * Builds a measured aggregate row, as the grouped query returns it.
 	 *
-	 * @param jobId     report job the call belongs to, or {@code null}
-	 * @param label     batch tag
-	 * @param createdAt when the call happened
-	 * @param input     plain input tokens
-	 * @param output    output tokens
-	 * @return the event
+	 * @param label  batch tag
+	 * @param calls  how many calls the row covers
+	 * @param input  plain input tokens
+	 * @param output output tokens
+	 * @return the aggregate row
 	 */
-	ClaudeUsageEventEntity measured(Long jobId, String label, OffsetDateTime createdAt, long input, long output) {
-		ClaudeUsageEventEntity event = new ClaudeUsageEventEntity();
-		event.setJobId(jobId);
-		event.setLabel(label);
-		event.setStatus(ClaudeUsageStatus.RECORDED.getCode());
-		event.setCreatedAt(createdAt);
-		event.setInputTokens(input);
-		event.setOutputTokens(output);
-		event.setModel("claude-sonnet-4-6");
-		return event;
+	ClaudeLabelUsage measured(String label, long calls, long input, long output) {
+		return new ClaudeLabelUsage(
+				label, ClaudeUsageStatus.RECORDED.getCode(), "claude-sonnet-4-6",
+				calls, input, output, 0L, 0L);
 	}
 
 	/**
-	 * Builds an event for a call that was billed but whose reply never arrived.
+	 * Builds an aggregate row for calls that were billed but whose replies never arrived.
 	 *
-	 * @param jobId          report job the call belongs to
 	 * @param label          batch tag
-	 * @param createdAt      when the call happened
+	 * @param calls          how many such calls the row covers
 	 * @param estimatedInput locally estimated prompt size
-	 * @return the event
+	 * @return the aggregate row
 	 */
-	ClaudeUsageEventEntity lost(Long jobId, String label, OffsetDateTime createdAt, long estimatedInput) {
-		ClaudeUsageEventEntity event = measured(jobId, label, createdAt, estimatedInput, 0);
-		event.setStatus(ClaudeUsageStatus.ESTIMATED.getCode());
-		return event;
+	ClaudeLabelUsage lost(String label, long calls, long estimatedInput) {
+		return new ClaudeLabelUsage(
+				label, ClaudeUsageStatus.ESTIMATED.getCode(), "claude-sonnet-4-6",
+				calls, estimatedInput, 0L, 0L, 0L);
 	}
 
 	/**
@@ -71,14 +62,13 @@ class AdminTokenAggregatorTest {
 	@Test
 	void shouldGroupSpendByPipelineStageMostExpensiveFirstTest() {
 		// Given: a cheap batch, an expensive one, and a stage that lost a call.
-		OffsetDateTime now = OffsetDateTime.now();
-		List<ClaudeUsageEventEntity> events = List.of(
-				measured(1L, "BatchA", now, 100, 50),
-				measured(1L, "BatchC", now, 5_000, 1_000),
-				lost(1L, "BatchGeo", now, 900));
+		List<ClaudeLabelUsage> rows = List.of(
+				measured("BatchA", 1, 100, 50),
+				measured("BatchC", 1, 5_000, 1_000),
+				lost("BatchGeo", 1, 900));
 
 		// When:
-		List<AdminTokenLabel> byLabel = aggregator().byLabel(events);
+		List<AdminTokenLabel> byLabel = aggregator().byLabel(rows);
 
 		// Then: stages are ranked by measured tokens, and a stage that only ever lost calls still
 		// appears — with zero measured spend and its lost call counted.

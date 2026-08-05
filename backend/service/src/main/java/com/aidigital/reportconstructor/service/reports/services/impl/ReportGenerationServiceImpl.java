@@ -322,6 +322,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 					slideUrl, payload, data, flatReplacements, userGoogleToken);
 
 			jobProgress.recordArtifact(jobId, fileName, payload.sheetUrl());
+			recordSlideCount(jobId, slideUrl, userGoogleToken);
 			jobProgress.markJobDone(jobId, slideUrl, warnings.serializeWarnings(chartWarnings));
 		} catch (Exception ex) {
 			log.error("[report] job {} failed", jobId, ex);
@@ -330,6 +331,24 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 			recordUsage(jobId, usageScope);
 			usageTracker.clear();
 			failureLog.clear();
+		}
+	}
+
+	/**
+	 * Measures the finished deck and stamps its slide count onto the job, for the admin dashboard's
+	 * saved-hours figure. Runs after the surplus template slides have been deleted, so the number is
+	 * what the client receives. Like token accounting, this is bookkeeping: a deck that shipped must
+	 * never be reported as failed because its slides could not be counted.
+	 *
+	 * @param jobId           id of the job that just finished
+	 * @param slideUrl        the finished deck
+	 * @param userGoogleToken signed-in user's Google OAuth token, or {@code null} for the service account
+	 */
+	void recordSlideCount(Long jobId, String slideUrl, String userGoogleToken) {
+		try {
+			jobProgress.recordSlideCount(jobId, slides.countSlides(slideUrl, userGoogleToken));
+		} catch (Exception ex) {
+			log.warn("[report] job {} slide count could not be recorded: {}", jobId, ex.getMessage());
 		}
 	}
 
@@ -592,6 +611,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		}
 
 		jobProgress.recordArtifact(jobId, fileName, payload.sheetUrl());
+		recordSlideCount(jobId, slideUrl, userGoogleToken);
 		jobProgress.markJobDone(jobId, slideUrl, warnings.serializeWarnings(jobWarnings));
 	}
 

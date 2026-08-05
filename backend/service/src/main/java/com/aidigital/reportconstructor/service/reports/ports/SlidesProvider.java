@@ -110,4 +110,16 @@ public interface SlidesProvider {
 	 *                              service account when blank
 	 */
 	void deleteReportTypeSlides(String presentationId, String reportType, String userGoogleAccessToken);
+
+	/**
+	 * Counts the slides a finished deck contains. Called once the surplus template slides have been
+	 * deleted, so the number is what the client actually receives — which is what the admin
+	 * dashboard's saved-hours figure is quoted against.
+	 *
+	 * @param presentationId        the finished deck to measure
+	 * @param userGoogleAccessToken optional signed-in user's Google OAuth token; falls back to the
+	 *                              service account when blank
+	 * @return the number of slides in the deck, or 0 when the deck cannot be measured
+	 */
+	int countSlides(String presentationId, String userGoogleAccessToken);
 }

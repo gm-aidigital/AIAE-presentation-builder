@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+	Slide count per run, plus the indexes the admin dashboard's aggregation needs.
+
+	`slide_count` is what turns token spend into a savings figure: the manual baseline is quoted
+	per slide, so without the real number of slides a report produced the saved-hours column would
+	be a flat per-report guess. Nullable — jobs that ran before this column existed fall back to a
+	configured per-report-type default rather than being counted as zero-slide reports.
+
+	The indexes exist because the dashboard stopped loading whole tables into memory: it now asks
+	Postgres to aggregate, and every one of those queries either orders by `created_at` or filters
+	on `status` first. `claude_usage_events` gets the same treatment for the per-pipeline-stage
+	breakdown, which groups by label over a date window.
+-->
+<databaseChangeLog
+		xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+		xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+		xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+														https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+	<changeSet id="report-jobs-slide-count" author="agent">
+		<preConditions onFail="MARK_RAN">
+			<not>
+				<columnExists tableName="report_jobs" columnName="slide_count"/>
+			</not>
+		</preConditions>
+
+		<addColumn tableName="report_jobs">
+			<column name="slide_count" type="INTEGER"/>
+		</addColumn>
+	</changeSet>
+
+	<!--
+		A stored generated column, so "sort the reports by how many tokens they burned" is an ORDER BY
+		the database can answer on an index rather than something the server has to compute after
+		fetching every row. Generated rather than written by the application: the four source columns
+		are stamped in one place and this can never drift from them.
+
+		Cost deliberately gets no such column — prices change, and a stored cost would freeze the
+		prices of the day it was written into history. Cost stays computed at read time.
+	-->
+	<changeSet id="report-jobs-total-tokens" author="agent">
+		<preConditions onFail="MARK_RAN">
+			<not>
+				<columnExists tableName="report_jobs" columnName="total_tokens"/>
+			</not>
+		</preConditions>
+
+		<sql>
+			ALTER TABLE report_jobs
+				ADD COLUMN total_tokens BIGINT
+					GENERATED ALWAYS AS (
+						COALESCE(input_tokens, 0) + COALESCE(output_tokens, 0)
+							+ COALESCE(cache_write_tokens, 0) + COALESCE(cache_read_tokens, 0)
+					) STORED
+		</sql>
+		<rollback>
+			ALTER TABLE report_jobs DROP COLUMN total_tokens
+		</rollback>
+	</changeSet>
+
+	<changeSet id="report-jobs-total-tokens-index" author="agent">
+		<preConditions onFail="MARK_RAN">
+			<not>
+				<indexExists tableName="report_jobs" indexName="idx_report_jobs_total_tokens"/>
+			</not>
+		</preConditions>
+
+		<createIndex tableName="report_jobs" indexName="idx_report_jobs_total_tokens">
+			<column name="total_tokens" descending="true"/>
+		</createIndex>
+	</changeSet>
+
+	<changeSet id="report-jobs-created-at-index" author="agent">
+		<preConditions onFail="MARK_RAN">
+			<not>
+				<indexExists tableName="report_jobs" indexName="idx_report_jobs_created_at"/>
+			</not>
+		</preConditions>
+
+		<createIndex tableName="report_jobs" indexName="idx_report_jobs_created_at">
+			<column name="created_at" descending="true"/>
+		</createIndex>
+	</changeSet>
+
+	<changeSet id="report-jobs-status-created-index" author="agent">
+		<preConditions onFail="MARK_RAN">
+			<not>
+				<indexExists tableName="report_jobs" indexName="idx_report_jobs_status_created"/>
+			</not>
+		</preConditions>
+
+		<createIndex tableName="report_jobs" indexName="idx_report_jobs_status_created">
+			<column name="status"/>
+			<column name="created_at" descending="true"/>
+		</createIndex>
+	</changeSet>
+
+	<changeSet id="claude-usage-events-label-created-index" author="agent">
+		<preConditions onFail="MARK_RAN">
+			<not>
+				<indexExists tableName="claude_usage_events" indexName="idx_claude_usage_events_label_created"/>
+			</not>
+		</preConditions>
+
+		<createIndex tableName="claude_usage_events" indexName="idx_claude_usage_events_label_created">
+			<column name="label"/>
+			<column name="created_at" descending="true"/>
+		</createIndex>
+	</changeSet>
+
+</databaseChangeLog>

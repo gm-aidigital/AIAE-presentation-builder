@@ -39,7 +39,7 @@ public class AdminFailuresServiceImpl implements AdminFailuresService {
 	@Override
 	public void clearFailures(String callerEmail) {
 		requireAdmin(callerEmail);
-		for (ReportJobEntity job : jobs.listAllJobs()) {
+		for (ReportJobEntity job : jobs.listAllIssues()) {
 			if (isIssue(job)) {
 				clearIssue(job);
 			}

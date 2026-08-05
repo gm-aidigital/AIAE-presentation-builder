@@ -5,11 +5,12 @@ import com.aidigital.reportconstructor.admin.mappers.AdminStatsApiMapper;
 import com.aidigital.reportconstructor.api.v1.AdminApi;
 import com.aidigital.reportconstructor.api.v1.model.AddAdminRequestV1;
 import com.aidigital.reportconstructor.api.v1.model.AdminListV1;
+import com.aidigital.reportconstructor.api.v1.model.AdminReportPageV1;
 import com.aidigital.reportconstructor.api.v1.model.AdminStatsV1;
-import com.aidigital.reportconstructor.api.v1.model.ReportListV1;
 import com.aidigital.reportconstructor.api.v1.model.ReportSummaryV1;
 import com.aidigital.reportconstructor.reports.mappers.ReportsApiMapper;
 import com.aidigital.reportconstructor.security.AppUserFactory;
+import com.aidigital.reportconstructor.service.admin.dto.AdminReportPage;
 import com.aidigital.reportconstructor.service.admin.services.AdminFailuresService;
 import com.aidigital.reportconstructor.service.admin.services.AdminManagementService;
 import com.aidigital.reportconstructor.service.admin.services.AdminReportsService;
@@ -58,9 +59,16 @@ public class AdminController implements AdminApi {
 	}
 
 	@Override
-	public ResponseEntity<ReportListV1> listAllReports() {
-		List<ReportSummaryV1> reports = reportsMapper.toSummaries(adminReports.allReports(caller().email()));
-		return ResponseEntity.ok(new ReportListV1().total(reports.size()).reports(reports));
+	public ResponseEntity<AdminReportPageV1> listAllReports(
+			Integer page, Integer size, String sort, String dir) {
+		AdminReportPage found = adminReports.allReports(caller().email(), page, size, sort, dir);
+		List<ReportSummaryV1> reports = reportsMapper.toSummaries(found.reports());
+		return ResponseEntity.ok(new AdminReportPageV1()
+				.total(found.total())
+				.page(found.page())
+				.size(found.size())
+				.hasMore(found.hasMore())
+				.reports(reports));
 	}
 
 	@Override
