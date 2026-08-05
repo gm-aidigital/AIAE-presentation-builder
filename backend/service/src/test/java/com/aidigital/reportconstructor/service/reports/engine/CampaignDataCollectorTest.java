@@ -232,4 +232,169 @@ class CampaignDataCollectorTest {
 		assertThat(data.eomMonthNumber()).isNull();
 		assertThat(data.eomFlightMonthsTotal()).isNull();
 	}
+
+	@Test
+	void collectShouldRenumberTheReportAroundTheExcludedPlanRowsTest() {
+		// Given: a plan repeating "Display" around one "Audio", with the Audio line dropped at matching
+		// time — the two surviving rows arrive renumbered 1..2, each pinned to its own plan position
+		List<List<String>> sheet = List.of(
+				List.of("Media"),
+				List.of("programmatic display"),
+				List.of("programmatic audio"),
+				List.of("programmatic display")
+		);
+		List<List<String>> estimates = List.of(
+				List.of("Media", "Total Cost", "Impressions"),
+				List.of("programmatic display", "100000", "500000"),
+				List.of("programmatic audio", "200000", "700000"),
+				List.of("programmatic display", "300000", "900000")
+		);
+		List<LineItemMapping> mapping = List.of(
+				new LineItemMapping("Programmatic Display", "li-1", 1, null, null, null, 1),
+				new LineItemMapping("Programmatic Display", "li-3", 2, null, null, null, 3));
+
+		// When:
+		CampaignData data = collector.collect(sheet, List.of(), List.of(), estimates, mapping, null, "EOC");
+
+		// Then: the report has exactly two tactics, and the second one carries the third plan row's
+		// figures — the dropped Audio row does not hand its Estimates line to the Display below it
+		assertThat(data.tactics()).containsOnlyKeys(1, 2);
+		assertThat(data.tactics().get(1).planSpend()).isEqualTo(100000.0);
+		assertThat(data.tactics().get(2).planSpend()).isEqualTo(300000.0);
+		assertThat(data.tactics().get(2).planImps()).isEqualTo(900000.0);
+		assertThat(data.tacticsList()).doesNotContain("Audio");
+	}
+
+	@Test
+	void collectShouldKeepUnmappedDeliveryOutOfTheCampaignTotalsTest() {
+		// Given: three delivered line items, only two of which the user kept on the matching screen
+		List<List<String>> sheet = List.of(
+				List.of("Media"),
+				List.of("programmatic display"),
+				List.of("programmatic audio")
+		);
+		List<List<String>> bq = List.of(
+				List.of("Date", "Channel", "Cost", "Impressions", "Clicks", "Line Item ID"),
+				List.of("2026-03-01", "Display", "50", "1000", "10", "li-1"),
+				List.of("2026-03-01", "Audio", "70", "2000", "20", "li-2"),
+				List.of("2026-03-01", "Video", "90", "4000", "40", "li-9")
+		);
+		List<LineItemMapping> mapping = List.of(
+				new LineItemMapping("Programmatic Display", "li-1", 1, null, null, null, 1),
+				new LineItemMapping("Programmatic Audio", "li-2", 2, null, null, null, 2));
+
+		// When:
+		CampaignData data = collector.collect(sheet, bq, List.of(), List.of(), mapping, null, "EOC");
+
+		// Then: the unclaimed line item is absent from the campaign totals, which add up to exactly the
+		// two reported tactics
+		assertThat(data.totals().spend()).isEqualTo(120.0);
+		assertThat(data.totals().imps()).isEqualTo(3000.0);
+		assertThat(data.totals().clicks()).isEqualTo(30.0);
+	}
+
+	@Test
+	void collectShouldStillCountEveryDeliveryRowWhenNothingWasMatchedTest() {
+		// Given: the same export with no line-item mapping at all (nothing was matched)
+		List<List<String>> sheet = List.of(
+				List.of("Media"),
+				List.of("programmatic display")
+		);
+		List<List<String>> bq = List.of(
+				List.of("Date", "Channel", "Cost", "Impressions", "Clicks", "Line Item ID"),
+				List.of("2026-03-01", "Display", "50", "1000", "10", "li-1"),
+				List.of("2026-03-01", "Video", "90", "4000", "40", "li-9")
+		);
+
+		// When:
+		CampaignData data = collector.collect(sheet, bq, List.of(), List.of(), List.of(), null, "EOC");
+
+		// Then: totals cover the whole export, as before matching existed
+		assertThat(data.totals().spend()).isEqualTo(140.0);
+		assertThat(data.totals().imps()).isEqualTo(5000.0);
+	}
+
+	@Test
+	void collectShouldFallBackToTheWholeExportWhenNoRowResolvesToAMappedLineItemTest() {
+		// Given: an export whose delivery rows carry no line-item id at all, matched against a mapping
+		// that does (a naming format this parser cannot read, or an export from another campaign)
+		List<List<String>> sheet = List.of(
+				List.of("Media"),
+				List.of("programmatic display")
+		);
+		List<List<String>> bq = List.of(
+				List.of("Date", "Channel", "Cost", "Impressions", "Clicks"),
+				List.of("2026-03-01", "Display", "50", "1000", "10"),
+				List.of("2026-03-02", "Display", "70", "2000", "20")
+		);
+		List<LineItemMapping> mapping = List.of(
+				new LineItemMapping("Programmatic Display", "li-1", 1, null, null, null, 1));
+
+		// When:
+		CampaignData data = collector.collect(sheet, bq, List.of(), List.of(), mapping, null, "EOC");
+
+		// Then: the campaign totals still describe the export instead of collapsing to zero
+		assertThat(data.totals().spend()).isEqualTo(120.0);
+		assertThat(data.totals().imps()).isEqualTo(3000.0);
+	}
+
+	@Test
+	void collectShouldKeepEstimatesAlignedWhenNoRowWasExcludedTest() {
+		// Given: the repeated-name plan with a full mapping — nothing excluded, so every tactic must
+		// keep exactly the Estimates line its own plan row carries
+		List<List<String>> sheet = List.of(
+				List.of("Media"),
+				List.of("programmatic display"),
+				List.of("programmatic audio"),
+				List.of("programmatic display")
+		);
+		List<List<String>> estimates = List.of(
+				List.of("Media", "Total Cost", "Impressions"),
+				List.of("programmatic display", "100000", "500000"),
+				List.of("programmatic audio", "200000", "700000"),
+				List.of("programmatic display", "300000", "900000")
+		);
+		List<LineItemMapping> mapping = List.of(
+				new LineItemMapping("Programmatic Display", "li-1", 1, null, null, null, 1),
+				new LineItemMapping("Programmatic Audio", "li-2", 2, null, null, null, 2),
+				new LineItemMapping("Programmatic Display", "li-3", 3, null, null, null, 3));
+
+		// When:
+		CampaignData data = collector.collect(sheet, List.of(), List.of(), estimates, mapping, null, "EOC");
+
+		// Then: identical to the no-mapping case — the exclusion path changes nothing when nothing is dropped
+		assertThat(data.tactics().get(1).planSpend()).isEqualTo(100000.0);
+		assertThat(data.tactics().get(2).planSpend()).isEqualTo(200000.0);
+		assertThat(data.tactics().get(3).planSpend()).isEqualTo(300000.0);
+		assertThat(data.tactics().get(3).planImps()).isEqualTo(900000.0);
+	}
+
+	@Test
+	void collectShouldReadThePlansReachColumnPerTacticAndSkipExcludedRowsTest() {
+		// Given: an Estimates tab with a Reach column per line item, and the middle line dropped at
+		// matching time
+		List<List<String>> sheet = List.of(
+				List.of("Media"),
+				List.of("programmatic display"),
+				List.of("programmatic audio"),
+				List.of("programmatic ctv")
+		);
+		List<List<String>> estimates = List.of(
+				List.of("Media", "Total Cost", "Impressions", "Reach"),
+				List.of("programmatic display", "100000", "500000", "120000"),
+				List.of("programmatic audio", "200000", "700000", "300000"),
+				List.of("programmatic ctv", "300000", "900000", "80000")
+		);
+		List<LineItemMapping> mapping = List.of(
+				new LineItemMapping("Programmatic Display", "li-1", 1, null, null, null, 1),
+				new LineItemMapping("Programmatic CTV", "li-3", 2, null, null, null, 3));
+
+		// When:
+		CampaignData data = collector.collect(sheet, List.of(), List.of(), estimates, mapping, null, "EOC");
+
+		// Then: each reported tactic carries its own line's reach, and the dropped line contributes none
+		assertThat(data.tactics().get(1).planReach()).isEqualTo(120000.0);
+		assertThat(data.tactics().get(2).planReach()).isEqualTo(80000.0);
+		assertThat(data.tactics()).containsOnlyKeys(1, 2);
+	}
 }

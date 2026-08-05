@@ -537,6 +537,23 @@
 }
 .match-remove-btn:hover { background: rgba(217,48,37,0.25); }
 
+/* Excluding a plan line: it stays visible (and restorable) but reads as struck from the report. */
+.match-tactic-row.excluded { background: var(--gray-light); border-style: dashed; opacity: 0.6; }
+.match-tactic-row.excluded .match-tactic-name { text-decoration: line-through; color: var(--gray); }
+.match-exclude-btn {
+  width: 20px; height: 20px; border-radius: 5px; border: 1px solid var(--border);
+  background: var(--white); color: var(--gray); cursor: pointer; display: grid; place-items: center;
+  font-size: 11px; line-height: 1; flex-shrink: 0; transition: all 0.15s;
+}
+.match-exclude-btn:hover { border-color: var(--red); color: var(--red); background: rgba(217,48,37,0.08); }
+.match-restore-btn {
+  border: 1px solid var(--border); border-radius: 5px; background: var(--white);
+  color: var(--text-muted); cursor: pointer; padding: 3px 8px; flex-shrink: 0;
+  font-family: var(--rc-mono); font-size: 10px; letter-spacing: 0.4px; text-transform: uppercase;
+  transition: all 0.15s;
+}
+.match-restore-btn:hover { border-color: var(--blue-border); color: var(--blue); background: var(--blue-light); }
+
 .match-ids-pool {
   border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
   max-height: 380px; overflow-y: auto;

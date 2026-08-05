@@ -40,7 +40,7 @@ function budgetLine(b: TacticBudget): string {
 }
 
 export function MatchModal({ open, matchData, running, onClose, onRun, onConfirm }: Props) {
-    const { mapping, setMapping, mediaPlan } = useWizard();
+    const { mapping, setMapping, mediaPlan, excludedTactics, toggleTacticExcluded } = useWizard();
     const [dragOver, setDragOver] = useState<number | null>(null);
 
     // Budget/volume per tactic, aligned to the mapping order so duplicated
@@ -60,10 +60,19 @@ export function MatchModal({ open, matchData, running, onClose, onRun, onConfirm
     const rows: MappingEntry[] = mapping ?? [];
     const idNamings = matchData?.idNamings ?? {};
     const allIds = matchData?.uniqueIds ?? [];
-    const usedIds = new Set(rows.map((m) => m.lineItemId).filter(Boolean) as string[]);
+    // Dropped rows release their ID back to the pool: the report is not about that line item any more,
+    // so it must be free to be assigned to a tactic that is being reported.
+    const isExcluded = (row: MappingEntry) => excludedTactics.includes(row.tacticNum);
+    const kept = rows.filter((m) => !isExcluded(m));
+    const usedIds = new Set(kept.map((m) => m.lineItemId).filter(Boolean) as string[]);
     const pool = allIds.filter((id) => !usedIds.has(id));
-    const matched = rows.filter((m) => m.lineItemId).length;
-    const unmatched = rows.filter((m) => !m.lineItemId);
+    const matched = kept.filter((m) => m.lineItemId).length;
+    const unmatched = kept.filter((m) => !m.lineItemId);
+    const excludedCount = rows.length - kept.length;
+    // Position in the report — dropped rows are skipped, so the numbers stay 1..N with no gaps, exactly
+    // as the deck and the sheet will number them.
+    const reportNums = new Map<number, number>();
+    kept.forEach((m, i) => reportNums.set(m.tacticNum, i + 1));
 
     function assign(idx: number, id: string) {
         setMapping(
@@ -103,7 +112,8 @@ export function MatchModal({ open, matchData, running, onClose, onRun, onConfirm
                         <div className="match-modal-desc">
                             Left — tactics from the media plan. Right — all Line Item IDs found in BQ. Drag the
                             right ID onto a tactic, or click "Re-run" to let the system try to match
-                            automatically.
+                            automatically. Use ✕ on a plan line the report is not about: it is left out
+                            entirely — no slides, no numbers, no narrative.
                         </div>
                     </div>
                 </div>
@@ -128,34 +138,40 @@ export function MatchModal({ open, matchData, running, onClose, onRun, onConfirm
                                 <div className="match-panel-label">
                                     <span>Tactics from media plan</span>
                                     <span>
-                                        {matched}/{rows.length}
+                                        {matched}/{kept.length}
+                                        {excludedCount > 0 && ` · ${excludedCount} excluded`}
                                     </span>
                                 </div>
                                 {rows.length === 0 && (
                                     <div className="match-empty">No tactics found under the "Media" cell</div>
                                 )}
                                 {rows.map((row, idx) => {
-                                    const hasId = !!row.lineItemId;
+                                    const excluded = isExcluded(row);
+                                    const hasId = !!row.lineItemId && !excluded;
                                     const naming = hasId ? idNamings[row.lineItemId as string]?.naming ?? "" : "";
                                     return (
                                         <div
                                             key={row.tacticNum}
                                             className={`match-tactic-row${hasId ? " has-id" : ""}${
-                                                dragOver === idx ? " drag-over" : ""
-                                            }`}
+                                                excluded ? " excluded" : ""
+                                            }${dragOver === idx ? " drag-over" : ""}`}
                                             onDragOver={(e) => {
+                                                if (excluded) return;
                                                 e.preventDefault();
                                                 setDragOver(idx);
                                             }}
                                             onDragLeave={() => setDragOver((d) => (d === idx ? null : d))}
                                             onDrop={(e) => {
+                                                if (excluded) return;
                                                 e.preventDefault();
                                                 setDragOver(null);
                                                 const id = e.dataTransfer.getData("text/plain");
                                                 if (id) assign(idx, id);
                                             }}
                                         >
-                                            <span className="match-tactic-num">{row.tacticNum}</span>
+                                            <span className="match-tactic-num">
+                                                {excluded ? "—" : reportNums.get(row.tacticNum)}
+                                            </span>
                                             <div style={{ flex: 1, minWidth: 0 }}>
                                                 <div className="match-tactic-name">{row.tacticName}</div>
                                                 {budgets[idx] && budgetLine(budgets[idx] as TacticBudget) && (
@@ -185,15 +201,36 @@ export function MatchModal({ open, matchData, running, onClose, onRun, onConfirm
                                             </div>
                                             <div className="match-tactic-badge">
                                                 <span className={`match-id-pill${hasId ? "" : " empty"}`}>
-                                                    {hasId ? row.lineItemId : "drop here"}
+                                                    {excluded
+                                                        ? "not reported"
+                                                        : hasId
+                                                          ? row.lineItemId
+                                                          : "drop here"}
                                                 </span>
                                                 {hasId && (
                                                     <button
                                                         className="match-remove-btn"
-                                                        title="Remove ID"
+                                                        title="Unlink this ID"
                                                         onClick={() => remove(idx)}
                                                     >
                                                         ×
+                                                    </button>
+                                                )}
+                                                {excluded ? (
+                                                    <button
+                                                        className="match-restore-btn"
+                                                        title="Put this line back into the report"
+                                                        onClick={() => toggleTacticExcluded(row.tacticNum)}
+                                                    >
+                                                        Restore
+                                                    </button>
+                                                ) : (
+                                                    <button
+                                                        className="match-exclude-btn"
+                                                        title="Exclude this line from the report — no slides, no numbers, no narrative"
+                                                        onClick={() => toggleTacticExcluded(row.tacticNum)}
+                                                    >
+                                                        ✕
                                                     </button>
                                                 )}
                                             </div>
@@ -268,11 +305,25 @@ export function MatchModal({ open, matchData, running, onClose, onRun, onConfirm
                         </button>
                         <span className="match-stats">
                             {matchData
-                                ? `${matched}/${rows.length} matched · ${allIds.length} unique IDs in BQ`
+                                ? `${matched}/${kept.length} matched · ${allIds.length} unique IDs in BQ` +
+                                  (excludedCount > 0 ? ` · ${excludedCount} line(s) excluded` : "")
                                 : ""}
                         </span>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "8px" }}>
+                        {rows.length > 0 && kept.length === 0 && (
+                            <div
+                                style={{
+                                    fontSize: "11px",
+                                    color: "var(--red)",
+                                    textAlign: "right",
+                                    maxWidth: "300px",
+                                    lineHeight: 1.4,
+                                }}
+                            >
+                                Every plan line is excluded — restore at least one to build a report.
+                            </div>
+                        )}
                         {unmatched.length > 0 && (
                             <div
                                 style={{
@@ -293,7 +344,7 @@ export function MatchModal({ open, matchData, running, onClose, onRun, onConfirm
                             </button>
                             <button
                                 className="btn-match-confirm"
-                                disabled={!matchData || rows.length === 0}
+                                disabled={!matchData || kept.length === 0}
                                 onClick={onConfirm}
                             >
                                 <IconCheck />

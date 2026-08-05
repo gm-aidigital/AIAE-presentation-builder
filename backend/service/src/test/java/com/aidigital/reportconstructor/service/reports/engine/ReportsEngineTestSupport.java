@@ -1,10 +1,12 @@
 package com.aidigital.reportconstructor.service.reports.engine;
 
+import com.aidigital.reportconstructor.service.reports.helpers.EffectiveTacticsHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.LineItemNamingHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.MediaPlanTacticExtractor;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportNumberParser;
 import com.aidigital.reportconstructor.service.reports.helpers.SheetRowHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.TacticExtractionHelper;
+import com.aidigital.reportconstructor.service.reports.helpers.impl.EffectiveTacticsHelperImpl;
 import com.aidigital.reportconstructor.service.reports.helpers.impl.LineItemNamingHelperImpl;
 import com.aidigital.reportconstructor.service.reports.helpers.impl.MediaPlanTacticExtractorImpl;
 import com.aidigital.reportconstructor.service.reports.helpers.impl.PlaceholderClaudeGateImpl;
@@ -31,6 +33,10 @@ public final class ReportsEngineTestSupport {
 
 	static MediaPlanTacticExtractor mediaPlanTacticExtractor() {
 		return new MediaPlanTacticExtractorImpl(tacticCatalog(), sheetRowHelper());
+	}
+
+	static EffectiveTacticsHelper effectiveTacticsHelper() {
+		return new EffectiveTacticsHelperImpl(mediaPlanTacticExtractor());
 	}
 
 	static SheetRowHelper sheetRowHelper() {
@@ -63,7 +69,8 @@ public final class ReportsEngineTestSupport {
 	}
 
 	public static PlaceholderSectionBuilderImpl placeholderSectionBuilder() {
-		return new PlaceholderSectionBuilderImpl(campaignResolvers(), tacticResolvers(), tacticExtractionHelper());
+		return new PlaceholderSectionBuilderImpl(campaignResolvers(), tacticResolvers(), tacticExtractionHelper(),
+				effectiveTacticsHelper());
 	}
 
 	public static PlaceholderClaudeGateImpl placeholderClaudeGate() {
@@ -72,7 +79,7 @@ public final class ReportsEngineTestSupport {
 
 	public static CampaignDataCollector campaignDataCollector() {
 		return new CampaignDataCollector(sheetRowHelper(), tacticExtractionHelper(), campaignResolvers(),
-				ratePlanCalculator());
+				ratePlanCalculator(), effectiveTacticsHelper());
 	}
 
 	public static ChartPivot chartPivot() {

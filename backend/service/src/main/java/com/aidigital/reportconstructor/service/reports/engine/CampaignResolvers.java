@@ -350,6 +350,21 @@ public class CampaignResolvers {
 	 * "not_found"}
 	 */
 	public Resolved resolveTacticsList(List<List<String>> sheetRows, List<List<String>> adjRows) {
+		return resolveTacticsList(sheetRows, adjRows, List.of());
+	}
+
+	/**
+	 * Resolves the tactics list from the tactics the report actually covers, falling back to a scan of
+	 * the rows below the "Media" header when the caller has no such list (nothing matched yet).
+	 *
+	 * @param sheetRows      Media Plan tab rows scanned for the "Media" column
+	 * @param adjRows        manual Adjustments tab rows (checked first)
+	 * @param effectiveNames tactic names the report covers, in report order; empty to scan the plan
+	 * @return a {@link Resolved} comma-joined list of normalised tactic display names, or a null-valued {@code
+	 * "not_found"}
+	 */
+	public Resolved resolveTacticsList(List<List<String>> sheetRows, List<List<String>> adjRows,
+	                                   List<String> effectiveNames) {
 
 		String fromAdj = sheetUtils.findLabelValue(adjRows, "Tactics list:");
 		if (fromAdj != null) {
@@ -361,6 +376,10 @@ public class CampaignResolvers {
 		}
 
 		Map<String, String> known = tacticExtraction.knownTacticsWhitelist();
+		if (effectiveNames != null && !effectiveNames.isEmpty()) {
+			return new Resolved("Tactics list (auto: reported tactics)",
+					joinDeduplicated(effectiveNames, known), "sheet");
+		}
 		int mediaRowIdx = -1;
 		int mediaColIdx = -1;
 		outer:
@@ -404,6 +423,33 @@ public class CampaignResolvers {
 			return new Resolved("Tactics list (auto: rows below \"Media\")", null, "not_found");
 		}
 		return new Resolved("Tactics list (auto: rows below \"Media\")", joinTacticsList(result), "sheet");
+	}
+
+	/**
+	 * De-duplicates tactic names by their canonical form and joins them for {@code {{tactics_list}}}.
+	 * Names outside the whitelist keep their own spelling rather than being dropped — by the time a
+	 * name reaches here it is already a tactic the report is built around.
+	 *
+	 * @param names the tactic names in report order
+	 * @param known the canonical-name whitelist, keyed by lowercased name
+	 * @return the comma-joined, de-duplicated display names
+	 */
+	String joinDeduplicated(List<String> names, Map<String, String> known) {
+
+		Map<String, Boolean> seen = new LinkedHashMap<>();
+		List<String> result = new ArrayList<>();
+		for (String name : names) {
+			if (name == null || name.isBlank()) {
+				continue;
+			}
+			String canonical = known.getOrDefault(name.trim().toLowerCase(Locale.ROOT), name.trim());
+			String canonicalKey = canonical.toLowerCase(Locale.ROOT);
+			if (!seen.containsKey(canonicalKey)) {
+				seen.put(canonicalKey, true);
+				result.add(tacticExtraction.normalizeTacticDisplayName(canonical));
+			}
+		}
+		return joinTacticsList(result);
 	}
 
 	/**
@@ -1161,6 +1207,20 @@ public class CampaignResolvers {
 	 */
 	public Resolved resolveReach(List<List<String>> estimatesRows, List<List<String>> sheetRows,
 	                             List<List<String>> adjRows) {
+		return resolveReach(estimatesRows, sheetRows, adjRows, null);
+	}
+
+	/**
+	 * Resolves the campaign reach, preferring the figure summed from the reported tactics.
+	 *
+	 * @param estimatesRows Estimates tab rows
+	 * @param sheetRows     Media Plan / Proposal tab rows
+	 * @param adjRows       manual Adjustments tab rows (checked first)
+	 * @param reachPlan     the reach computed once by {@link #computeFrequencies}, or {@code null}
+	 * @return a {@link Resolved} reach string, or a null-valued {@code "not_found"}
+	 */
+	public Resolved resolveReach(List<List<String>> estimatesRows, List<List<String>> sheetRows,
+	                             List<List<String>> adjRows, Double reachPlan) {
 
 		String fromAdj = sheetUtils.findLabelValue(adjRows, "Reach:");
 		if (fromAdj != null) {
@@ -1169,6 +1229,9 @@ public class CampaignResolvers {
 		String fromSheet = sheetUtils.findLabelValue(sheetRows, "Reach:");
 		if (fromSheet != null) {
 			return new Resolved("Reach:", fromSheet, "sheet");
+		}
+		if (reachPlan != null && reachPlan > 0) {
+			return new Resolved("Reach (auto: summed over the reported tactics)", fmt.intGroup(reachPlan), "sheet");
 		}
 		String fromEstimates = bottomReach(estimatesRows);
 		if (fromEstimates != null) {
@@ -1194,6 +1257,20 @@ public class CampaignResolvers {
 	 */
 	public Resolved resolveReachShort(List<List<String>> estimatesRows, List<List<String>> sheetRows,
 	                                  List<List<String>> adjRows) {
+		return resolveReachShort(estimatesRows, sheetRows, adjRows, null);
+	}
+
+	/**
+	 * Resolves the compact campaign reach, preferring the figure summed from the reported tactics.
+	 *
+	 * @param estimatesRows Estimates tab rows
+	 * @param sheetRows     Media Plan / Proposal tab rows
+	 * @param adjRows       manual Adjustments tab rows (checked first)
+	 * @param reachPlan     the reach computed once by {@link #computeFrequencies}, or {@code null}
+	 * @return a {@link Resolved} compact reach string, or a null-valued {@code "not_found"}
+	 */
+	public Resolved resolveReachShort(List<List<String>> estimatesRows, List<List<String>> sheetRows,
+	                                  List<List<String>> adjRows, Double reachPlan) {
 
 		String fromAdj = sheetUtils.findLabelValue(adjRows, "Reach short:");
 		if (fromAdj != null) {
@@ -1202,6 +1279,10 @@ public class CampaignResolvers {
 		String fromSheet = sheetUtils.findLabelValue(sheetRows, "Reach short:");
 		if (fromSheet != null) {
 			return new Resolved("Reach short:", fromSheet, "sheet");
+		}
+		if (reachPlan != null && reachPlan > 0) {
+			return new Resolved("Reach short (auto: summed over the reported tactics)", fmt.compact(reachPlan),
+					"sheet");
 		}
 		Double fromEstimates = bottomReachValue(estimatesRows);
 		if (fromEstimates != null) {
@@ -1519,16 +1600,19 @@ public class CampaignResolvers {
 	                                              String marketVolume) {
 
 		Double imps = numericTotalImps(sheetRows, adjRows, data);
-		Double reach = numericReach(estimatesRows, sheetRows, adjRows);
+		// Drawn once here and carried on the result, so the frequency, {{reach}} and {{reach_p}} all
+		// describe the same campaign reach instead of each redrawing the de-duplication factor.
+		Double summed = summedPlanReach(data);
+		Double reach = numericReach(estimatesRows, sheetRows, adjRows, summed);
 		if (imps == null || imps <= 0 || reach == null || reach <= 0) {
-			return new CampaignFrequencies(null, null, null, null);
+			return new CampaignFrequencies(null, null, null, null, reach);
 		}
 		String plan = String.valueOf((long) Math.ceil(imps / reach));
 		double reachFact = reachFactFrom(reach);
 		String fact = freq2(imps / reachFact);
 		Double marketVolumeNum = numericMarketVolume(marketVolume, sheetRows, adjRows);
 		Double remainingAudience = marketVolumeNum == null ? null : Math.max(marketVolumeNum - reachFact, 0);
-		return new CampaignFrequencies(plan, fact, reachFact, remainingAudience);
+		return new CampaignFrequencies(plan, fact, reachFact, remainingAudience, reach);
 	}
 
 	/**
@@ -1564,14 +1648,72 @@ public class CampaignResolvers {
 	Double numericReach(List<List<String>> estimatesRows, List<List<String>> sheetRows,
 	                    List<List<String>> adjRows) {
 
+		return numericReach(estimatesRows, sheetRows, adjRows, null);
+	}
+
+	/**
+	 * Resolves the numeric campaign reach, preferring a reach already summed from the reported tactics.
+	 *
+	 * @param estimatesRows Estimates tab rows (primary reach source)
+	 * @param sheetRows     Media Plan / Proposal tab rows (manual override and Estimates fallback)
+	 * @param adjRows       manual Adjustments tab rows (checked first)
+	 * @param summedReach   reach summed from the reported tactics, or {@code null} when unavailable
+	 * @return the reach count, or {@code null} when no reach value is present
+	 */
+	Double numericReach(List<List<String>> estimatesRows, List<List<String>> sheetRows,
+	                    List<List<String>> adjRows, Double summedReach) {
+
 		String manual = coalesce(sheetUtils.findLabelValue(adjRows, "Reach:"),
 				sheetUtils.findLabelValue(sheetRows, "Reach:"));
 		Double parsed = parseReachCell(manual);
 		if (parsed != null) {
 			return parsed;
 		}
+		if (summedReach != null && summedReach > 0) {
+			return summedReach;
+		}
 		Double fromEstimates = bottomReachValue(estimatesRows);
 		return fromEstimates != null ? fromEstimates : bottomReachValue(sheetRows);
+	}
+
+	/**
+	 * Sums the media plan's per-tactic Reach figures across the tactics the report covers and
+	 * de-duplicates the sum once, so a plan line the user dropped at matching time contributes no reach.
+	 *
+	 * <p>Reach does not add up cleanly — the same person is reached by several tactics — so the sum is
+	 * scaled by a fresh random factor in {@code [0.72, 0.88]}, the same approximation the plan's own
+	 * multi-tactic total rests on. Drawn once per report and carried on
+	 * {@link CampaignFrequencies#reachPlan()} so every reach placeholder shows the same number.
+	 *
+	 * @param data campaign data whose tactics carry the per-tactic planned reach
+	 * @return the de-duplicated planned reach, or {@code null} when no reported tactic has a Reach figure
+	 */
+	Double summedPlanReach(CampaignData data) {
+
+		if (data == null || data.tactics() == null) {
+			return null;
+		}
+		double sum = 0;
+		boolean any = false;
+		for (Tactic t : data.tactics().values()) {
+			if (t.planReach() != null && t.planReach() > 0) {
+				sum += t.planReach();
+				any = true;
+			}
+		}
+		if (!any || sum <= 0) {
+			return null;
+		}
+		return sum * planReachDedupeFactor();
+	}
+
+	/**
+	 * Returns the de-duplication factor applied to summed per-tactic reach, redrawn on every call.
+	 *
+	 * @return a factor in {@code [0.72, 0.88]}
+	 */
+	double planReachDedupeFactor() {
+		return ThreadLocalRandom.current().nextDouble(0.72, 0.88);
 	}
 
 	/**

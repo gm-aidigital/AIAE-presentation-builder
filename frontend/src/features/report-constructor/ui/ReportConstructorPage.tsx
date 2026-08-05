@@ -3,6 +3,7 @@ import { MEDIA_PLAN_FALLBACK_TAB, MEDIA_PLAN_PRIMARY_TAB, readSheetSummary, read
 import type { GenerateRequest, LineItemMatchResult, Rows2D, SheetReadResult, SheetSummaryRow } from "@/shared/api/types";
 import { WizardProvider, useWizard } from "@/shared/wizard/WizardContext";
 import { extractTacticBudgets, looksLikeMediaPlan, type TacticBudget } from "../lib/mediaPlanBudget";
+import { keepActive, toPayloadMapping } from "../lib/tacticSelection";
 import { eomWindow } from "../lib/reportingMonth";
 import { useDetectDateRange } from "../api/useDetectDateRange";
 import { useMatchLineItems } from "../api/useMatchLineItems";
@@ -319,10 +320,18 @@ function PageInner() {
             showToast("Run matching first", true);
             return;
         }
+        if (w.activeMapping.length === 0) {
+            showToast("Every plan line is excluded — restore at least one", true);
+            return;
+        }
         w.confirmMatch();
         setMatchOpen(false);
-        const matched = w.mapping.filter((m) => m.lineItemId).length;
-        showToast(`Mapping confirmed — ${matched}/${w.mapping.length} tactics`);
+        const matched = w.activeMapping.filter((m) => m.lineItemId).length;
+        const dropped = w.mapping.length - w.activeMapping.length;
+        showToast(
+            `Mapping confirmed — ${matched}/${w.activeMapping.length} tactics` +
+                (dropped > 0 ? ` · ${dropped} line(s) excluded` : "")
+        );
     }
 
     // ── Pacing ────────────────────────────────────────────────────────────
@@ -337,7 +346,7 @@ function PageInner() {
     function confirmPacing() {
         w.confirmPacing();
         setPacingOpen(false);
-        showToast(`Pacing confirmed — ${w.mapping?.length ?? 0} tactics`);
+        showToast(`Pacing confirmed — ${w.activeMapping.length} tactics`);
     }
 
     // ── Step 2 → 3 gate ───────────────────────────────────────────────────
@@ -370,26 +379,32 @@ function PageInner() {
     }
 
     // ── Derived tactics + review rows ─────────────────────────────────────
+    // Parsed over the whole media plan — excluded lines included — so repeated tactic names keep
+    // lining up with their own plan row; the dropped entries are filtered out right after.
     const budgets = useMemo(
         () => extractTacticBudgets(w.mediaPlan?.sheetRows ?? null, (w.mapping ?? []).map((m) => m.tacticName)),
         [w.mediaPlan, w.mapping]
     );
+    const activeBudgets = useMemo(
+        () => keepActive(budgets, w.mapping ?? [], w.excludedTactics),
+        [budgets, w.mapping, w.excludedTactics]
+    );
 
     const tactics: TacticView[] = useMemo(
         () =>
-            (w.mapping ?? []).map((m, i) => ({
+            w.activeMapping.map((m, i) => ({
                 tacticNum: m.tacticNum,
                 name: m.tacticName,
                 channel: m.expectedChannel ?? "",
-                meta: budgetLine(budgets[i] ?? null),
+                meta: budgetLine(activeBudgets[i] ?? null),
                 on: breakdowns[m.tacticNum] ?? DEFAULT_BREAKDOWNS,
             })),
-        [w.mapping, budgets, breakdowns]
+        [w.activeMapping, activeBudgets, breakdowns]
     );
 
     const reviewRows: ReviewRow[] = useMemo(
         () =>
-            (w.mapping ?? []).map((m, i) => {
+            w.activeMapping.map((m, i) => {
                 const s = summaryRows?.[i] ?? null;
                 return {
                     tactic: m.tacticName,
@@ -404,22 +419,24 @@ function PageInner() {
                     unitFact: s?.unitFact ?? null,
                 };
             }),
-        [w.mapping, summaryRows]
+        [w.activeMapping, summaryRows]
     );
 
     // Enabled sections per tactic, dropped to the ones the tactic's channel actually supports (Meta,
     // TikTok, Google Search and Performance Max have no publisher or device split).
+    // Numbered like the payload mapping (1..N over the reported tactics), while the toggle state
+    // stays keyed by the row's own plan number so restoring a line brings its toggles back with it.
     const breakdownSelections = useMemo(
         () =>
-            (w.mapping ?? []).map((m) => {
+            w.activeMapping.map((m, i) => {
                 const state = breakdowns[m.tacticNum] ?? DEFAULT_BREAKDOWNS;
                 const allowed = allowedBreakdowns(m.tacticName, m.expectedChannel ?? "");
                 return {
-                    tacticNum: m.tacticNum,
+                    tacticNum: i + 1,
                     breakdowns: BREAKDOWNS.filter((b) => allowed.includes(b.id) && state[b.id]).map((b) => b.id),
                 };
             }),
-        [w.mapping, breakdowns]
+        [w.activeMapping, breakdowns]
     );
 
     // True when any tactic has at least one breakdown section enabled — those slides need the user to
@@ -448,7 +465,7 @@ function PageInner() {
             audienceRows: w.mediaPlan?.audienceRows ?? [],
             estimatesRows: w.mediaPlan?.estimatesRows ?? [],
             geoRows: w.mediaPlan?.geoRows ?? [],
-            lineItemMapping: w.mapping ?? undefined,
+            lineItemMapping: w.mapping ? toPayloadMapping(w.activeMapping) : undefined,
             // Step-3 breakdown toggles → the backend clears the sections a tactic didn't enable on the
             // generated sheet's "Breakdowns" tab. One entry per mapped tactic (empty list = none enabled).
             breakdownSelections,

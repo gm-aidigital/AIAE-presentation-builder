@@ -8,6 +8,7 @@ import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
 import com.aidigital.reportconstructor.service.reports.dto.LineItemMapping;
 import com.aidigital.reportconstructor.service.reports.dto.Totals;
 import com.aidigital.reportconstructor.service.reports.helpers.BreakdownSelectionResolver;
+import com.aidigital.reportconstructor.service.reports.helpers.EffectiveTacticsHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportNumberParser;
 import com.aidigital.reportconstructor.service.reports.helpers.SheetRowHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.TacticExtractionHelper;
@@ -41,6 +42,8 @@ class ReportSheetHelperImplTest {
 	SheetDeckProvider sheets;
 	@Mock
 	TacticExtractionHelper tacticExtraction;
+	@Mock
+	EffectiveTacticsHelper effectiveTactics;
 	@Mock
 	ReportNumberParser reportNumbers;
 	@Mock
@@ -119,7 +122,7 @@ class ReportSheetHelperImplTest {
 	@Test
 	void shouldBuildPacingTablesRequestFromPayloadAndPlaceholdersTest() {
 		GeneratePayload payload = payloadWithPacingInputs();
-		when(tacticExtraction.countTacticsInMediaPlan(payload.sheetRows())).thenReturn(1);
+		when(effectiveTactics.effectiveTacticCount(payload.sheetRows(), payload.lineItemMapping())).thenReturn(1);
 		when(tacticExtraction.getTacticKpiSeries("Display")).thenReturn("ctr");
 		when(reportNumbers.parseReportNumber("500")).thenReturn(500.0);
 		when(reportNumbers.parseReportNumber("1,234")).thenReturn(1234.0);

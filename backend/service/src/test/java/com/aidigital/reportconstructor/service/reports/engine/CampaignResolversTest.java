@@ -3,6 +3,7 @@ package com.aidigital.reportconstructor.service.reports.engine;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
 import com.aidigital.reportconstructor.service.reports.dto.Recommendation;
+import com.aidigital.reportconstructor.service.reports.dto.Tactic;
 import com.aidigital.reportconstructor.service.reports.dto.Totals;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -507,5 +508,69 @@ class CampaignResolversTest {
 
 	private static List<List<String>> labelRow(String label, String value) {
 		return List.of(List.of(label, value, "", ""));
+	}
+
+	@Test
+	void summedPlanReachShouldAddUpTheReportedTacticsAndDeduplicateTest() {
+		// Given: two reported tactics carrying 100,000 and 60,000 planned reach
+		CampaignData data = new CampaignData(
+				null, null, null, null, null, null, null, null, null, null, null,
+				new Totals(0, 0, 0, 0, null, null),
+				Map.of(1, planReachTactic("Display", 100000.0), 2, planReachTactic("CTV", 60000.0)), null
+		);
+
+		// When:
+		Double reach = resolvers.summedPlanReach(data);
+
+		// Then: the sum, scaled down once into the 0.72–0.88 de-duplication band
+		assertThat(reach).isNotNull();
+		assertThat(reach).isBetween(160000.0 * 0.72, 160000.0 * 0.88);
+	}
+
+	@Test
+	void summedPlanReachShouldBeAbsentWhenNoReportedTacticCarriesReachTest() {
+		// Given: tactics with planned spend but no Reach column in the plan
+		CampaignData data = new CampaignData(
+				null, null, null, null, null, null, null, null, null, null, null,
+				new Totals(0, 0, 0, 0, null, null),
+				Map.of(1, planSpendTactic("Display", 100000.0)), null
+		);
+
+		// When / Then: the caller falls back to the plan's own reach figure
+		assertThat(resolvers.summedPlanReach(data)).isNull();
+	}
+
+	@Test
+	void computeFrequenciesShouldReuseTheSummedReachForEveryReachPlaceholderTest() {
+		// Given: a plan whose bottom row claims 400,000 reach while the reported tactics sum to 160,000
+		List<List<String>> estimates = List.of(
+				List.of("Media", "Impressions", "Reach"),
+				List.of("Totals", "1,000,000", "400,000"));
+		CampaignData data = new CampaignData(
+				null, null, null, null, null, null, null, null, null, null, null,
+				new Totals(0, 1000000, 0, 0, null, null),
+				Map.of(1, planReachTactic("Display", 100000.0), 2, planReachTactic("CTV", 60000.0)), null
+		);
+
+		// When:
+		CampaignFrequencies freq = resolvers.computeFrequencies(estimates, List.of(), List.of(), data, null);
+
+		// Then: the reach carried on the result is the summed one, and {{reach}} shows that same number
+		assertThat(freq.reachPlan()).isBetween(160000.0 * 0.72, 160000.0 * 0.88);
+		Resolved reach = resolvers.resolveReach(estimates, List.of(), List.of(), freq.reachPlan());
+		assertThat(reach.value()).isEqualTo(String.format("%,d", Math.round(freq.reachPlan())));
+		assertThat(reach.label()).contains("summed over the reported tactics");
+	}
+
+	/** A reported tactic carrying only planned spend. */
+	private Tactic planSpendTactic(String name, double planSpend) {
+		return new Tactic(name, name, null, 0, 0, 0, 0, null, null, null, null, planSpend, null, null, null, null,
+				null, null, null, null, null, null, null);
+	}
+
+	/** A reported tactic carrying only planned reach. */
+	private Tactic planReachTactic(String name, double planReach) {
+		return new Tactic(name, name, null, 0, 0, 0, 0, null, null, null, null, null, null, null, null, null,
+				null, null, null, null, null, null, planReach);
 	}
 }

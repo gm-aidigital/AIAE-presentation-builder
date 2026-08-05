@@ -866,6 +866,15 @@ components:
       required: [ tacticNum, tacticName, autoMatched ]
       properties:
         tacticNum: { type: integer, format: int32 }
+        planTacticNum:
+          type: integer
+          format: int32
+          description: |
+            1-based position this tactic occupies in the media plan's Media column, before the
+            user excluded any rows at matching time. Equal to tacticNum when nothing is excluded;
+            after an exclusion the surviving tactics are renumbered 1..N in tacticNum while this
+            field still points at their original plan row, which is what the plan-side figures
+            (Estimates tab) are aligned by. Absent means "same as tacticNum".
         tacticName: { type: string }
         lineItemId: { type: string, description: "Matched line-item id, or null when unmatched." }
         namingSample: { type: string, description: "Sample Level-1 naming for the matched id (display only)." }

@@ -14,6 +14,7 @@ import com.aidigital.reportconstructor.service.reports.dto.SheetChartData;
 import com.aidigital.reportconstructor.service.reports.dto.Totals;
 import com.aidigital.reportconstructor.service.reports.engine.Pivot;
 import com.aidigital.reportconstructor.service.reports.helpers.BreakdownSelectionResolver;
+import com.aidigital.reportconstructor.service.reports.helpers.EffectiveTacticsHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportNumberParser;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportSheetHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.SheetChartDataReader;
@@ -53,6 +54,8 @@ class ReportGenerationChartHelperImplTest {
 	SlidesProvider slides;
 	@Mock
 	TacticExtractionHelper tacticExtraction;
+	@Mock
+	EffectiveTacticsHelper effectiveTactics;
 	@Mock
 	ReportNumberParser reportNumbers;
 	@Mock
@@ -237,7 +240,7 @@ class ReportGenerationChartHelperImplTest {
 	@Test
 	void shouldTrimTacticsWhenPresentationIdPresentTest() {
 		GeneratePayload payload = payloadWithChartInputs();
-		when(tacticExtraction.countTacticsInMediaPlan(payload.sheetRows())).thenReturn(3);
+		when(effectiveTactics.effectiveTacticCount(payload.sheetRows(), payload.lineItemMapping())).thenReturn(3);
 
 		helper.trimUnusedTactics("https://docs.google.com/presentation/d/deck-id/edit", payload, "token");
 

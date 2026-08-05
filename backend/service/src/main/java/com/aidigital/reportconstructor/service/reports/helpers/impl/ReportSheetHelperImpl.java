@@ -11,6 +11,7 @@ import com.aidigital.reportconstructor.service.reports.dto.CreativeTable;
 import com.aidigital.reportconstructor.service.reports.dto.GeoTable;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
 import com.aidigital.reportconstructor.service.reports.helpers.BreakdownSelectionResolver;
+import com.aidigital.reportconstructor.service.reports.helpers.EffectiveTacticsHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportNumberParser;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportSheetHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.SheetRowHelper;
@@ -47,6 +48,7 @@ public class ReportSheetHelperImpl implements ReportSheetHelper {
 
 	private final SheetDeckProvider sheets;
 	private final TacticExtractionHelper tacticExtraction;
+	private final EffectiveTacticsHelper effectiveTactics;
 	private final ReportNumberParser reportNumbers;
 	private final BreakdownSelectionResolver breakdownResolver;
 	private final SheetRowHelper sheetRows;
@@ -64,7 +66,7 @@ public class ReportSheetHelperImpl implements ReportSheetHelper {
 		if (spreadsheetId == null) {
 			return;
 		}
-		int tacticCount = Math.clamp(tacticExtraction.countTacticsInMediaPlan(payload.sheetRows()), 1, MAX_TACTICS);
+		int tacticCount = Math.clamp(effectiveTactics.effectiveTacticCount(payload.sheetRows(), payload.lineItemMapping()), 1, MAX_TACTICS);
 		try {
 			sheets.trimTactics(spreadsheetId, tacticCount, userGoogleToken);
 		} catch (RuntimeException ex) {
@@ -114,7 +116,7 @@ public class ReportSheetHelperImpl implements ReportSheetHelper {
 			return List.of("Pacing tables skipped — could not determine spreadsheet id from " + sheetUrl);
 		}
 
-		int tacticCount = Math.clamp(tacticExtraction.countTacticsInMediaPlan(payload.sheetRows()), 1, MAX_TACTICS);
+		int tacticCount = Math.clamp(effectiveTactics.effectiveTacticCount(payload.sheetRows(), payload.lineItemMapping()), 1, MAX_TACTICS);
 
 		Map<Integer, String> distNames = new LinkedHashMap<>();
 		Map<Integer, Double> distImps = new LinkedHashMap<>();

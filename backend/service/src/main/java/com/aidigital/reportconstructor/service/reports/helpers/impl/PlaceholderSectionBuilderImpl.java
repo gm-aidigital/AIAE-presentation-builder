@@ -8,10 +8,12 @@ import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
 import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
 import com.aidigital.reportconstructor.service.reports.dto.LineItemMapping;
 import com.aidigital.reportconstructor.service.reports.dto.Placeholder;
+import com.aidigital.reportconstructor.service.reports.dto.PlanTactic;
 import com.aidigital.reportconstructor.service.reports.dto.PreviewSection;
 import com.aidigital.reportconstructor.service.reports.engine.CampaignResolvers;
 import com.aidigital.reportconstructor.service.reports.engine.Resolved;
 import com.aidigital.reportconstructor.service.reports.engine.TacticResolvers;
+import com.aidigital.reportconstructor.service.reports.helpers.EffectiveTacticsHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.PlaceholderSectionBuilder;
 import com.aidigital.reportconstructor.service.reports.helpers.TacticExtractionHelper;
 import lombok.RequiredArgsConstructor;
@@ -38,6 +40,7 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 	private final CampaignResolvers campaignResolvers;
 	private final TacticResolvers tacticResolvers;
 	private final TacticExtractionHelper tacticExtraction;
+	private final EffectiveTacticsHelper effectiveTactics;
 
 	@Override
 	public List<PreviewSection> buildSections(
@@ -56,7 +59,10 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		List<List<String>> sheet = payload.sheetRows();
 		List<List<String>> adj = payload.adjRows();
 		String reportType = payload.reportType();
-		List<String> mediaTactics = tacticExtraction.extractTacticsFromMedia(sheet);
+		// The tactics the report covers, not every row the plan carries: rows the user dropped at
+		// matching time must not name a slide or appear in the campaign tactics list.
+		List<String> mediaTactics = effectiveTactics.effectiveTactics(sheet, payload.lineItemMapping())
+				.stream().map(PlanTactic::name).toList();
 
 		List<PreviewSection> sections = new ArrayList<>();
 
@@ -77,7 +83,7 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		start.put("{{market volume}}", campaignResolvers.resolveMarketVolume(payload.marketVolume(), sheet, adj));
 		start.put("{{geo_locations}}", campaignResolvers.resolveGeoLocations(sheet, adj, geoSummary));
 		start.put("{{funnel_stages}}", campaignResolvers.resolveFunnelStages(sheet, adj, funnelSummary));
-		start.put("{{tactics_list}}", campaignResolvers.resolveTacticsList(sheet, adj));
+		start.put("{{tactics_list}}", campaignResolvers.resolveTacticsList(sheet, adj, mediaTactics));
 		// The digest — not the raw brief — is what the sheet carries, so the slides-from-sheet step reads
 		// back the same condensed context every batch of this step already ran on. It falls back to the raw
 		// brief when Claude is stubbed or the digest call failed.
@@ -97,8 +103,11 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 				campaignResolvers.resolveStrategicInsights(sheet, adj, ccA.strategicInsights())));
 
 		Map<String, Resolved> totals = new LinkedHashMap<>();
-		totals.put("{{reach}}", campaignResolvers.resolveReach(payload.estimatesRows(), sheet, adj));
-		totals.put("{{reach_p}}", campaignResolvers.resolveReachShort(payload.estimatesRows(), sheet, adj));
+		// The reach the frequency was computed from, so every reach placeholder shows the same number.
+		totals.put("{{reach}}", campaignResolvers.resolveReach(payload.estimatesRows(), sheet, adj,
+				frequencies.reachPlan()));
+		totals.put("{{reach_p}}", campaignResolvers.resolveReachShort(payload.estimatesRows(), sheet, adj,
+				frequencies.reachPlan()));
 		totals.put("{{reach_f}}", campaignResolvers.resolveReachFact(frequencies.reachFact(), sheet, adj));
 		totals.put("{{reach_f_pres}}", campaignResolvers.resolveReachFactShort(frequencies.reachFact(), sheet, adj));
 		totals.put("{{total imps}}", campaignResolvers.resolveTotalImps(sheet, adj, data));

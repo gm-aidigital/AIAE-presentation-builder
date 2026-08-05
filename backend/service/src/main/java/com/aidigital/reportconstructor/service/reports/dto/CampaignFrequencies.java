@@ -19,7 +19,24 @@ package com.aidigital.reportconstructor.service.reports.dto;
  *                             computable
  * @param remainingAudience the addressable market volume minus {@code reachFact} — the in-market audience still
  *                             available for upcoming flights, or {@code null} when the market volume is unknown
+ * @param reachPlan         the campaign's planned reach behind {@code plan}, summed from the reported tactics'
+ *                             own Reach figures and de-duplicated once by a random factor, or {@code null} when
+ *                             the media plan carries no per-tactic reach. Carried here for the same reason as
+ *                             {@code reachFact}: {@code {{reach}} / {{reach_p}}} must resolve to the exact number
+ *                             the frequency was computed from, not draw their own factor.
  */
-public record CampaignFrequencies(String plan, String fact, Double reachFact, Double remainingAudience) {
+public record CampaignFrequencies(String plan, String fact, Double reachFact, Double remainingAudience,
+                                  Double reachPlan) {
 
+	/**
+	 * Backward-compatible constructor for callers that predate the summed plan reach.
+	 *
+	 * @param plan              planned frequency, or {@code null}
+	 * @param fact              actual frequency, or {@code null}
+	 * @param reachFact         the actual reach behind {@code fact}, or {@code null}
+	 * @param remainingAudience the market volume left after {@code reachFact}, or {@code null}
+	 */
+	public CampaignFrequencies(String plan, String fact, Double reachFact, Double remainingAudience) {
+		this(plan, fact, reachFact, remainingAudience, null);
+	}
 }

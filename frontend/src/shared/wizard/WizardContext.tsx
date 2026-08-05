@@ -48,6 +48,13 @@ interface WizardContextValue {
     mediaPlan: MediaPlanState | null;
     elevate: ElevateState | null;
     mapping: MappingEntry[] | null;
+    // Media-plan rows the user dropped on the matching screen (by their original tacticNum). A media
+    // plan often carries line items this report is not about; a dropped row keeps its place in
+    // `mapping` — so the plan-order figures stay aligned and the drop stays undoable — but is absent
+    // from `activeMapping`, which is what every later step and the generate payload are built from.
+    excludedTactics: number[];
+    /** The tactics the report actually covers: `mapping` minus the excluded rows, in plan order. */
+    activeMapping: MappingEntry[];
     matchConfirmed: boolean;
     // EOM pacing (monthly budget + buy type + final rate per tactic) is confirmed in its own
     // dialog, separately from the line-item mapping, so editing one never re-opens the other.
@@ -72,6 +79,8 @@ interface WizardContextValue {
     connectElevate(value: ElevateState): void;
     disconnectElevate(): void;
     setMapping(mapping: MappingEntry[]): void;
+    /** Drops a media-plan row from the report, or puts it back; identified by its original tacticNum. */
+    toggleTacticExcluded(tacticNum: number): void;
     confirmMatch(): void;
     resetMatch(): void;
     /** Writes the pacing fields (monthly budget, rate type, unit price) without touching the confirmed mapping. */
@@ -94,6 +103,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     const [mediaPlan, setMediaPlan] = useState<MediaPlanState | null>(null);
     const [elevate, setElevate] = useState<ElevateState | null>(null);
     const [mapping, setMappingState] = useState<MappingEntry[] | null>(null);
+    const [excludedTactics, setExcludedTactics] = useState<number[]>([]);
     const [matchConfirmed, setMatchConfirmed] = useState(false);
     const [pacingConfirmed, setPacingConfirmed] = useState(false);
     const [dateStart, setDateStart] = useState("");
@@ -104,9 +114,17 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     // Re-matching rebuilds the tactic list, so any pacing entered against the old list is stale too.
     const invalidateMatch = useCallback(() => {
         setMappingState(null);
+        setExcludedTactics([]);
         setMatchConfirmed(false);
         setPacingConfirmed(false);
     }, []);
+
+    // The report's tactic list. Kept in plan order: the renumbering to a dense 1..N happens once, at
+    // the edge where the generate payload is built, so nothing in the UI has to track two numberings.
+    const activeMapping = useMemo(
+        () => (mapping ?? []).filter((m) => !excludedTactics.includes(m.tacticNum)),
+        [mapping, excludedTactics]
+    );
 
     // Reconnecting/disconnecting the Elevate raw data replaces the "Basic" tab the
     // date window is derived from, so any previously confirmed window is stale.
@@ -127,6 +145,8 @@ export function WizardProvider({ children }: { children: ReactNode }) {
             mediaPlan,
             elevate,
             mapping,
+            excludedTactics,
+            activeMapping,
             matchConfirmed,
             pacingConfirmed,
             dateStart,
@@ -160,6 +180,17 @@ export function WizardProvider({ children }: { children: ReactNode }) {
             },
             setMapping: (m) => {
                 setMappingState(m);
+                // A fresh match rebuilds the tactic list, so the old row numbers no longer mean anything.
+                setExcludedTactics([]);
+                setMatchConfirmed(false);
+                setPacingConfirmed(false);
+            },
+            // Dropping or restoring a row changes which tactics the report covers, so the mapping has
+            // to be confirmed again — and the pacing with it, since its rows follow the same list.
+            toggleTacticExcluded: (tacticNum) => {
+                setExcludedTactics((prev) =>
+                    prev.includes(tacticNum) ? prev.filter((n) => n !== tacticNum) : [...prev, tacticNum]
+                );
                 setMatchConfirmed(false);
                 setPacingConfirmed(false);
             },
@@ -194,6 +225,8 @@ export function WizardProvider({ children }: { children: ReactNode }) {
             mediaPlan,
             elevate,
             mapping,
+            excludedTactics,
+            activeMapping,
             matchConfirmed,
             pacingConfirmed,
             dateStart,

@@ -51,6 +51,9 @@ public class LineItemMatchResultMapper {
 				namingSample = meta == null ? null : meta.getNaming();
 			}
 			MappingEntryV1 entry = new MappingEntryV1(idx, s.tactic(), auto);
+			// Nothing has been excluded yet, so the report slot and the media-plan position coincide;
+			// the UI keeps this one pinned while renumbering tacticNum as the user drops rows.
+			entry.setPlanTacticNum(idx);
 			entry.setLineItemId(s.lineItemId() == null || s.lineItemId().isBlank() ? null : s.lineItemId());
 			entry.setNamingSample(namingSample);
 			mapping.add(entry);

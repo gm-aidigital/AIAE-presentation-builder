@@ -10,6 +10,7 @@ import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
 import com.aidigital.reportconstructor.service.reports.dto.SheetChartData;
 import com.aidigital.reportconstructor.service.reports.engine.Pivot;
 import com.aidigital.reportconstructor.service.reports.helpers.BreakdownSelectionResolver;
+import com.aidigital.reportconstructor.service.reports.helpers.EffectiveTacticsHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportGenerationChartHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportNumberParser;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportSheetHelper;
@@ -50,6 +51,7 @@ public class ReportGenerationChartHelperImpl implements ReportGenerationChartHel
 	private final ChartProvider charts;
 	private final SlidesProvider slides;
 	private final TacticExtractionHelper tacticExtraction;
+	private final EffectiveTacticsHelper effectiveTactics;
 	private final ReportNumberParser reportNumbers;
 	private final SheetChartDataReader sheetChartData;
 	private final BreakdownSelectionResolver breakdownResolver;
@@ -73,7 +75,7 @@ public class ReportGenerationChartHelperImpl implements ReportGenerationChartHel
 			return List.of("Charts skipped — could not determine presentation id from " + slideUrl);
 		}
 
-		int tacticCount = Math.clamp(tacticExtraction.countTacticsInMediaPlan(payload.sheetRows()), 1, MAX_TACTICS);
+		int tacticCount = Math.clamp(effectiveTactics.effectiveTacticCount(payload.sheetRows(), payload.lineItemMapping()), 1, MAX_TACTICS);
 		String campaignTitle = campaignTitle(flatReplacements);
 
 		Map<Integer, String> distNames = new LinkedHashMap<>();
@@ -206,7 +208,7 @@ public class ReportGenerationChartHelperImpl implements ReportGenerationChartHel
 
 	@Override
 	public void trimUnusedTactics(String slideUrl, GeneratePayload payload, String userGoogleToken) {
-		int tacticCount = Math.clamp(tacticExtraction.countTacticsInMediaPlan(payload.sheetRows()), 1, MAX_TACTICS);
+		int tacticCount = Math.clamp(effectiveTactics.effectiveTacticCount(payload.sheetRows(), payload.lineItemMapping()), 1, MAX_TACTICS);
 		trimUnusedTactics(slideUrl, tacticCount, userGoogleToken);
 	}
 

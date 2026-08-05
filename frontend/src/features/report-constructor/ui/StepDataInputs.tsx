@@ -184,12 +184,14 @@ export function StepDataInputs({
     const needsMarketVolume = !isEom;
     const datesDone = !!w.dateStart && !!w.dateEnd;
     const bothConnected = !!w.mediaPlan && !!w.elevate;
-    const matched = (w.mapping ?? []).filter((m) => m.lineItemId).length;
-    const matchTotal = (w.mapping ?? []).length;
+    // Counts describe the tactics being reported, so a plan line the user excluded at matching time
+    // neither counts as unmatched nor blocks the pacing gate.
+    const matched = w.activeMapping.filter((m) => m.lineItemId).length;
+    const matchTotal = w.activeMapping.length;
     // Pacing is an EOM-only input and is entered per tactic, so it only appears once matching
     // produced the tactic list.
     const needsPacing = isEom && matchTotal > 0;
-    const pacingReady = pacingReadyCount(w.mapping);
+    const pacingReady = pacingReadyCount(w.activeMapping);
 
     return (
         <div className="rc-content">

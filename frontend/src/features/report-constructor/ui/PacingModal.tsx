@@ -4,6 +4,7 @@ import { useWizard } from "@/shared/wizard/WizardContext";
 import { evenPacedBudget, firstDeliveryDateByLineItem, type EvenPacing } from "../lib/evenPacing";
 import { extractTacticBudgets, normalizeRateType, type TacticBudget } from "../lib/mediaPlanBudget";
 import { estimatedUnits, pacingComplete, pacingRowComplete } from "../lib/pacing";
+import { keepActive } from "../lib/tacticSelection";
 import { IconBolt, IconCheck } from "./icons";
 
 const RATE_TYPES = ["CPM", "CPC", "CPV"] as const;
@@ -59,8 +60,19 @@ function evenLine(even: EvenPacing): string {
  * Flight End) and billed to the reporting window.
  */
 export function PacingModal({ open, onClose, onConfirm }: Props) {
-    const { mapping, setPacing, mediaPlan, elevate, dateStart, dateEnd } = useWizard();
-    const rows: MappingEntry[] = useMemo(() => mapping ?? [], [mapping]);
+    const { mapping, activeMapping, excludedTactics, setPacing, mediaPlan, elevate, dateStart, dateEnd } =
+        useWizard();
+    // Pacing is entered only for the tactics being reported; a plan line excluded at matching time has
+    // no budget to enter. Edits are merged back into the full mapping so the excluded rows survive a
+    // restore with whatever was already typed against them.
+    const rows: MappingEntry[] = activeMapping;
+    const commit = useCallback(
+        (nextRows: MappingEntry[]) => {
+            const byNum = new Map(nextRows.map((m) => [m.tacticNum, m]));
+            setPacing((mapping ?? []).map((m) => byNum.get(m.tacticNum) ?? m));
+        },
+        [mapping, setPacing]
+    );
     // Tactic numbers whose rate has already been pre-filled from the plan during this opening.
     const seeded = useRef<Set<number>>(new Set());
     const [evenly, setEvenly] = useState(false);
@@ -68,10 +80,16 @@ export function PacingModal({ open, onClose, onConfirm }: Props) {
     // returns the user's own numbers instead of leaving the derived ones behind.
     const manual = useRef<Record<number, number | undefined>>({});
 
-    // Media-plan figures aligned to the mapping order, so repeated tactic names each keep their own row.
+    // Media-plan figures parsed over every plan line, excluded ones included, so repeated tactic names
+    // each keep their own row; only the reported tactics are kept.
     const budgets = useMemo(
-        () => extractTacticBudgets(mediaPlan?.sheetRows ?? null, rows.map((m) => m.tacticName)),
-        [mediaPlan, rows]
+        () =>
+            keepActive(
+                extractTacticBudgets(mediaPlan?.sheetRows ?? null, (mapping ?? []).map((m) => m.tacticName)),
+                mapping ?? [],
+                excludedTactics
+            ),
+        [mediaPlan, mapping, excludedTactics]
     );
 
     // First day each matched line item actually delivered — the real flight start, which is
@@ -108,8 +126,8 @@ export function PacingModal({ open, onClose, onConfirm }: Props) {
             changed = true;
             return { ...m, monthlyBudget: budget };
         });
-        if (changed) setPacing(next);
-    }, [open, evenly, rows, evens, setPacing]);
+        if (changed) commit(next);
+    }, [open, evenly, rows, evens, commit]);
 
     const toggleEvenly = useCallback(() => {
         if (!evenly) {
@@ -122,8 +140,8 @@ export function PacingModal({ open, onClose, onConfirm }: Props) {
             return;
         }
         setEvenly(false);
-        setPacing(rows.map((m) => ({ ...m, monthlyBudget: manual.current[m.tacticNum] })));
-    }, [evenly, rows, setPacing]);
+        commit(rows.map((m) => ({ ...m, monthlyBudget: manual.current[m.tacticNum] })));
+    }, [evenly, rows, commit]);
 
     // Buy type and rate come from the media plan's "Rate Type" / "Unit Price" columns. The buy type is
     // authoritative (the row shows it read-only, so state must always match what is displayed); the rate is
@@ -153,8 +171,8 @@ export function PacingModal({ open, onClose, onConfirm }: Props) {
             changed = true;
             return { ...m, ...patch };
         });
-        if (changed) setPacing(next);
-    }, [open, rows, budgets, setPacing]);
+        if (changed) commit(next);
+    }, [open, rows, budgets, commit]);
 
     useEffect(() => {
         document.body.style.overflow = open ? "hidden" : "";
@@ -164,7 +182,7 @@ export function PacingModal({ open, onClose, onConfirm }: Props) {
     }, [open]);
 
     function update(idx: number, patch: Partial<Pick<MappingEntry, "rateType" | "unitPrice" | "monthlyBudget">>) {
-        setPacing(rows.map((m, i) => (i === idx ? { ...m, ...patch } : m)));
+        commit(rows.map((m, i) => (i === idx ? { ...m, ...patch } : m)));
     }
 
     /**
@@ -253,7 +271,7 @@ export function PacingModal({ open, onClose, onConfirm }: Props) {
                                         className={`pacing-row${done ? " pacing-row--done" : ""}`}
                                     >
                                         <div className="pacing-row__tactic">
-                                            <span className="match-tactic-num">{row.tacticNum}</span>
+                                            <span className="match-tactic-num">{idx + 1}</span>
                                             <div className="pacing-row__names">
                                                 <div className="match-tactic-name">{row.tacticName}</div>
                                                 {plan && <div className="match-tactic-meta">{plan}</div>}
