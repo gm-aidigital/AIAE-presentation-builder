@@ -21,7 +21,7 @@
 
 	This is a cache, not a source of truth: every row is recomputed from `report_jobs` by an
 	idempotent upsert, so a corrupted or missing day is fixed by rebuilding it rather than by
-	repairing it in place. Token figures are summed from the per-job stamps — the same source the
+	repairing it in place, and two rebuilds racing converge instead of colliding. Token figures are summed from the per-job stamps — the same source the
 	spend-by-user and all-reports views read — so a report's spend still reads identically wherever
 	it is shown. The per-pipeline-stage breakdown stays event-sourced against
 	`claude_usage_events`, because the per-job stamp carries no stage detail.
@@ -114,9 +114,9 @@
 		</createTable>
 
 		<!--
-			The natural key. The rebuild clears a day window and re-inserts it rather than upserting
-			(jobs can be deleted, and an upsert would strand their contribution), so this constraint is
-			a guard against a double rebuild rather than a conflict target.
+			The natural key, and the conflict target the rebuild upserts on. Named for that reason: the
+			rebuild says ON CONFLICT ON CONSTRAINT uq_usage_daily_grain, so renaming this constraint
+			breaks the rebuild rather than merely loosening an invariant.
 		-->
 		<addUniqueConstraint
 				tableName="usage_daily"

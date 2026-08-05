@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Keeps the {@code usage_daily} rollup current.
@@ -35,6 +36,16 @@ public class UsageRollupRefresher {
 	 * anything a viewer actually notices is picked up by {@link #ensureFresh()} long before this.
 	 */
 	private static final long REFRESH_INTERVAL_MS = 600_000L;
+
+	/**
+	 * Whether a rebuild is running right now.
+	 *
+	 * <p>Single-flight rather than a lock: a caller that finds one already in progress skips its own
+	 * and reads whatever the rollup currently holds, which is at worst a few minutes stale. Queuing
+	 * behind it would make one slow rebuild stall every dashboard request behind it, and running both
+	 * would have them fight over the same rows for no gain — they compute the same answer.
+	 */
+	private final AtomicBoolean rebuilding = new AtomicBoolean();
 
 	private final UsageDailyService rollup;
 	private final UsageRollupProperties props;
@@ -78,13 +89,22 @@ public class UsageRollupRefresher {
 	 * Rebuilds the last {@link UsageRollupProperties#getTrailingDays()} days of the rollup.
 	 */
 	void refreshTrailingWindow() {
+		if (!rebuilding.compareAndSet(false, true)) {
+			log.debug("[rollup] trailing window rebuild skipped, one is already running");
+			return;
+		}
 		LocalDate today = LocalDate.now();
 		try {
 			int rows = rollup.rebuild(
 					today.minusDays(Math.max(1, props.getTrailingDays())), today.plusDays(1));
 			log.debug("[rollup] trailing window rebuilt, {} row(s)", rows);
 		} catch (Exception ex) {
-			log.warn("[rollup] trailing window rebuild failed: {}", ex.getMessage());
+			// The rollup is a cache over data that is still intact in report_jobs. A failed rebuild
+			// means slightly stale figures, which is a far smaller problem than a dashboard that
+			// returns an error — so this is logged and swallowed, never rethrown.
+			log.warn("[rollup] trailing window rebuild failed", ex);
+		} finally {
+			rebuilding.set(false);
 		}
 	}
 
@@ -92,11 +112,20 @@ public class UsageRollupRefresher {
 	 * Rebuilds the whole rollup from the earliest report job.
 	 */
 	void rebuildEverything() {
+		if (!rebuilding.compareAndSet(false, true)) {
+			log.debug("[rollup] full rebuild skipped, one is already running");
+			return;
+		}
 		try {
 			int rows = rollup.rebuildAll();
 			log.info("[rollup] full rebuild wrote {} row(s)", rows);
 		} catch (Exception ex) {
-			log.warn("[rollup] full rebuild failed: {}", ex.getMessage());
+			// Swallowed for the same reason as the trailing window; see the note there. Logged with the
+			// stack trace rather than just the message, because this is the one place a broken rebuild
+			// can be diagnosed from.
+			log.warn("[rollup] full rebuild failed", ex);
+		} finally {
+			rebuilding.set(false);
 		}
 	}
 

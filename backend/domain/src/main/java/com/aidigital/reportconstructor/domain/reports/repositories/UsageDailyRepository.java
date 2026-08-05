@@ -28,11 +28,12 @@ import java.util.List;
 public interface UsageDailyRepository extends JpaRepository<UsageDailyEntity, Long> {
 
 	/**
-	 * Drops every rollup row in a day window, so the window can be rebuilt from scratch.
+	 * Drops every rollup row in a day window.
 	 *
-	 * <p>Rebuilding is delete-then-insert rather than an upsert because jobs can disappear: an admin
-	 * clearing failures deletes job rows, and an upsert would leave their contribution behind forever
-	 * as a row that no longer has anything to recompute it.
+	 * <p>Runs before the rebuild so that grains which no longer exist stop being reported: an admin
+	 * clearing failures deletes job rows, and a rebuild alone would leave their contribution behind
+	 * forever as a row nothing recomputes. It is a cleanup, not the mechanism that makes room — the
+	 * rebuild itself upserts, so it stays correct even when this deleted nothing.
 	 *
 	 * @param from first day to clear, inclusive
 	 * @param to   day to stop at, exclusive
@@ -45,6 +46,15 @@ public interface UsageDailyRepository extends JpaRepository<UsageDailyEntity, Lo
 	/**
 	 * Rebuilds a day window of the rollup straight from {@code report_jobs}, in the database.
 	 *
+	 * <p>Upserts rather than assuming the window was cleared first. Delete-then-insert looks
+	 * equivalent and is not: it is only correct if nothing else writes the same grain in between, and
+	 * two rebuilds overlapping — a dashboard request and the timer, or two admins refreshing — is
+	 * exactly that. The second one's DELETE runs before the first one's rows are visible, so it clears
+	 * nothing and then collides on {@code uq_usage_daily_grain}. Because every row here is recomputed
+	 * from scratch, {@code DO UPDATE} converges on the same answer whichever rebuild wins, and running
+	 * this twice is simply a no-op the second time. That is the property a rebuildable cache is
+	 * supposed to have.
+	 *
 	 * <p>The day a job belongs to is its {@code created_at} rendered in the database session's time
 	 * zone, so the dashboard's days line up with the server's calendar rather than with UTC.
 	 * Generation seconds are floored at zero: a clock adjustment between a job's creation and its
@@ -52,7 +62,7 @@ public interface UsageDailyRepository extends JpaRepository<UsageDailyEntity, Lo
 	 *
 	 * @param from first day to rebuild, inclusive
 	 * @param to   day to stop at, exclusive
-	 * @return the number of rollup rows written
+	 * @return the number of rollup rows written or refreshed
 	 */
 	@Modifying
 	@Query(nativeQuery = true, value = """
@@ -82,6 +92,19 @@ public interface UsageDailyRepository extends JpaRepository<UsageDailyEntity, Lo
 			FROM report_jobs j
 			WHERE CAST(j.created_at AS date) >= :from AND CAST(j.created_at AS date) < :to
 			GROUP BY 1, 2, 3, 4, 5
+			ON CONFLICT ON CONSTRAINT uq_usage_daily_grain DO UPDATE SET
+				jobs = EXCLUDED.jobs,
+				jobs_with_usage = EXCLUDED.jobs_with_usage,
+				failed_jobs = EXCLUDED.failed_jobs,
+				claude_calls = EXCLUDED.claude_calls,
+				input_tokens = EXCLUDED.input_tokens,
+				output_tokens = EXCLUDED.output_tokens,
+				cache_write_tokens = EXCLUDED.cache_write_tokens,
+				cache_read_tokens = EXCLUDED.cache_read_tokens,
+				slides = EXCLUDED.slides,
+				jobs_with_slides = EXCLUDED.jobs_with_slides,
+				generation_seconds = EXCLUDED.generation_seconds,
+				refreshed_at = EXCLUDED.refreshed_at
 			""")
 	int rebuildWindow(@Param("from") LocalDate from, @Param("to") LocalDate to);
 

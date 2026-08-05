@@ -25,6 +25,7 @@ import com.aidigital.reportconstructor.service.reports.helpers.ReportJobProgress
 import com.aidigital.reportconstructor.service.reports.usage.ClaudeUsageEventService;
 import com.aidigital.reportconstructor.service.reports.usage.UsageDailyService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -43,6 +44,7 @@ import java.util.List;
  *
  * <p>All figures are derived; nothing is faked.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AdminStatsServiceImpl implements AdminStatsService {
@@ -71,14 +73,31 @@ public class AdminStatsServiceImpl implements AdminStatsService {
 		if (!adminAccessPolicy.isAdmin(callerEmail)) {
 			throw new AppException(ErrorReason.C004, "Admin access required");
 		}
-		// A report that finished a minute ago must be visible; the refresh timer alone would leave it
-		// out until its next tick. When that rebuild actually moves the numbers, the snapshot built on
-		// the old ones goes with it — the freshness check itself stays outside the cache, so a cache
-		// hit can never mean nobody looked.
-		if (rollupRefresher.ensureFresh()) {
+		if (refreshRollup()) {
 			statsCache.invalidate();
 		}
 		return statsCache.snapshot(this::assemble);
+	}
+
+	/**
+	 * Brings the rollup up to date before the figures are read, and reports whether it moved.
+	 *
+	 * <p>A report that finished a minute ago must be visible, and the refresh timer alone would leave
+	 * it out until its next tick. But refreshing a cache is not what the caller asked for: the numbers
+	 * behind it are still intact in {@code report_jobs}, so a refresh that fails must degrade to
+	 * slightly stale figures rather than to an error page. The refresher already swallows its own
+	 * failures; this is the outer guarantee, so that nothing escaping it can turn a working dashboard
+	 * into a 500.
+	 *
+	 * @return true when the rollup was rebuilt, so anything derived from it is now stale
+	 */
+	boolean refreshRollup() {
+		try {
+			return rollupRefresher.ensureFresh();
+		} catch (Exception ex) {
+			log.warn("[admin] usage rollup could not be refreshed; serving the figures as they stand", ex);
+			return false;
+		}
 	}
 
 	/**
