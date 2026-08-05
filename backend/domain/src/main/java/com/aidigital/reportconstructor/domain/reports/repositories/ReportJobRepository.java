@@ -69,8 +69,15 @@ public interface ReportJobRepository extends JpaRepository<ReportJobEntity, Long
 	 * Lists the most recent jobs that completed but recorded generation warnings, i.e. reports that
 	 * shipped degraded.
 	 *
-	 * <p>An empty JSON array is stored for a clean run, so the emptiness test is on the rendered text
-	 * rather than on null alone.
+	 * <p>A clean run stores an empty JSON array rather than null, so null alone does not identify a
+	 * degraded report and {@code '[]'} has to be excluded too.
+	 *
+	 * <p>There is deliberately no {@code <> ''} test beside it. {@code warnings_json} is {@code jsonb},
+	 * so every literal it is compared against is parsed as JSON — and an empty string is not valid
+	 * JSON, which made the whole query fail on the literal before it ever looked at a row. It could not
+	 * have matched anything either: a jsonb column cannot hold an empty string, because Postgres would
+	 * have rejected it on write. The comparison against {@code '[]'} is safe for the same reason it is
+	 * also exact — jsonb compares by parsed value, so a stored {@code "[ ]"} still matches.
 	 *
 	 * @param pageable bound on how many are returned
 	 * @return the matching jobs, newest first
@@ -78,7 +85,6 @@ public interface ReportJobRepository extends JpaRepository<ReportJobEntity, Long
 	@Query("""
 			select j from ReportJobEntity j
 			where j.warningsJson is not null
-				and j.warningsJson <> ''
 				and j.warningsJson <> '[]'
 			order by j.createdAt desc
 			""")
