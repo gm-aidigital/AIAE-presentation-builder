@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useCallback, useState } from "react";
 import { EmptyState } from "@/shared/ui/EmptyState";
 import { ErrorAlert } from "@/shared/ui/ErrorAlert";
 import { LoadingBlock } from "@/shared/ui/LoadingBlock";
@@ -11,11 +11,17 @@ import type {
     AdminUserStat,
     ReportSummary,
 } from "@/shared/api/types";
-import { formatTokens, formatUsd } from "../lib/tokenFormat";
+import { formatDelta, formatTokens, formatUsd } from "../lib/tokenFormat";
+import { useTableSort } from "../lib/useTableSort";
 import { useAdminStats } from "../api/useAdminStats";
+import type { ReportSortKey } from "../api/useAllReports";
 import { useAllReports } from "../api/useAllReports";
 import { useAddAdmin, useAdmins, useRemoveAdmin } from "../api/useAdmins";
 import { useClearFailures, useResolveFailure } from "../api/useFailures";
+import { ActiveUsersTrend } from "./ActiveUsersTrend";
+import { SavingsPanel } from "./SavingsPanel";
+import { SortHeader } from "./SortHeader";
+import { TrendTable } from "./TrendTable";
 import "./admin-dashboard.css";
 
 const dateFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -91,6 +97,11 @@ export function AdminDashboardPage() {
     const stats = useAdminStats();
 
     const updated = stats.data ? updatedFmt.format(new Date(stats.data.updatedAt)) : "…";
+    // Everything except the live job counters and the failures list comes from the usage rollup, so
+    // that is the timestamp worth showing when the two differ.
+    const rollupUpdated = stats.data?.rollupUpdatedAt
+        ? updatedFmt.format(new Date(stats.data.rollupUpdatedAt))
+        : null;
 
     return (
         <div className="ad">
@@ -99,7 +110,12 @@ export function AdminDashboardPage() {
                     <div>
                         <div className="ad__eyebrow">
                             <span className="ad__chip">Admin</span>
-                            <span className="ad__updated">Updated {updated}</span>
+                            <span
+                                className="ad__updated"
+                                title={rollupUpdated ? `Figures computed from usage rolled up at ${rollupUpdated}` : undefined}
+                            >
+                                Updated {rollupUpdated ?? updated}
+                            </span>
                         </div>
                         <h1 className="ad__title">Dashboard</h1>
                     </div>
@@ -141,14 +157,40 @@ function OverviewTab({
     const { data, isLoading, isError, error } = query;
     const { data: version } = useVersionQuery();
 
+    // One row per person, so this table is sorted in the browser. The paged report history is not —
+    // see the note on useTableSort.
+    const userValue = useCallback(
+        (u: AdminUserStat, key: string) => {
+            switch (key) {
+                case "total":
+                    return u.total;
+                case "month":
+                    return u.thisMonth;
+                case "last":
+                    return u.lastActivity;
+                default:
+                    return u.email ?? u.name;
+            }
+        },
+        [],
+    );
+    const { sort, sorted: sortedUsers, toggle } = useTableSort<AdminUserStat, string>(
+        data?.byUser ?? [],
+        userValue,
+        { key: "total", dir: "desc" },
+    );
+
     if (isLoading) return <LoadingBlock label="Loading statistics…" />;
     if (isError || !data) {
         return <ErrorAlert message={error instanceof Error ? error.message : "Could not load statistics"} />;
     }
 
-    const { totals, byUser, byType, weekly } = data;
+    const { totals, byUser, byType, weekly, savings, activeUsersMonths } = data;
     const maxType = Math.max(1, ...byType.map((t: AdminTypeStat) => t.count));
     const maxWeek = Math.max(1, ...weekly.map((d) => d.count));
+    // The latest month is last in the series; its own month-over-month delta is the growth figure
+    // the "Active users" card is really about.
+    const latestMonth = activeUsersMonths.at(-1);
 
     return (
         <>
@@ -164,9 +206,13 @@ function OverviewTab({
                     <div className="ad-stat__delta">created so far</div>
                 </div>
                 <div className="ad-stat">
-                    <div className="ad-stat__num">{totals.activeUsers}</div>
+                    <div className="ad-stat__num">{latestMonth?.activeUsers ?? totals.activeUsers}</div>
                     <div className="ad-stat__label">Active users</div>
-                    <div className="ad-stat__delta">with a report</div>
+                    <div className="ad-stat__delta">
+                        {latestMonth
+                            ? `${formatDelta(latestMonth.deltaPct)} vs last month · ${totals.activeUsers} all time`
+                            : "with a report"}
+                    </div>
                 </div>
                 <button
                     type="button"
@@ -181,6 +227,8 @@ function OverviewTab({
                 </button>
             </div>
 
+            <SavingsPanel savings={savings} />
+
             <div className="ad__body">
                 <div className="ad-users">
                     <div className="ad-users__head">
@@ -188,11 +236,11 @@ function OverviewTab({
                         <span className="ad-users__count">{byUser.length} active</span>
                     </div>
                     <div className="ad-users__grid">
-                        <div className="ad-users__th">User</div>
-                        <div className="ad-users__th">Total</div>
-                        <div className="ad-users__th">This month</div>
-                        <div className="ad-users__th">Last</div>
-                        {byUser.map((u: AdminUserStat, i: number) => (
+                        <SortHeader label="User" columnKey="user" activeKey={sort.key} dir={sort.dir} onSort={toggle} />
+                        <SortHeader label="Total" columnKey="total" activeKey={sort.key} dir={sort.dir} onSort={toggle} />
+                        <SortHeader label="This month" columnKey="month" activeKey={sort.key} dir={sort.dir} onSort={toggle} />
+                        <SortHeader label="Last" columnKey="last" activeKey={sort.key} dir={sort.dir} onSort={toggle} />
+                        {sortedUsers.map((u: AdminUserStat, i: number) => (
                             <div className="ad-users__rowcontents" key={u.userId ?? u.email ?? i}>
                                 <div className="ad-users__user">
                                     <span className="ad-users__avatar" style={{ background: `var(--rc-avatar-${(i % 6) + 1})` }}>
@@ -212,6 +260,11 @@ function OverviewTab({
                 </div>
 
                 <div className="ad-rail">
+                    <div className="ad-rail__card">
+                        <div className="ad-rail__title">Active users by month</div>
+                        <ActiveUsersTrend periods={activeUsersMonths} />
+                    </div>
+
                     <div className="ad-rail__card">
                         <div className="ad-rail__title">By report type</div>
                         <div className="ad-types">
@@ -282,6 +335,29 @@ function OverviewTab({
 /** Claude token consumption — totals, averages, cost, the week's trend, and who spent what. */
 function TokensTab({ query }: { query: ReturnType<typeof useAdminStats> }) {
     const { data, isLoading, isError, error } = query;
+    const [trendUnit, setTrendUnit] = useState<"week" | "month">("month");
+
+    const spendValue = useCallback((u: AdminUserStat, key: string) => {
+        switch (key) {
+            case "input":
+                return u.inputTokens + u.cacheTokens;
+            case "output":
+                return u.outputTokens;
+            case "total":
+                return u.totalTokens;
+            case "cost":
+                return u.costUsd;
+            case "reports":
+                return u.total;
+            default:
+                return u.email ?? u.name;
+        }
+    }, []);
+    const spenders = (data?.byUser ?? []).filter((u) => u.totalTokens > 0);
+    const { sort, sorted: byUser, toggle } = useTableSort<AdminUserStat, string>(spenders, spendValue, {
+        key: "total",
+        dir: "desc",
+    });
 
     if (isLoading) return <LoadingBlock label="Loading token consumption…" />;
     if (isError || !data) {
@@ -289,8 +365,9 @@ function TokensTab({ query }: { query: ReturnType<typeof useAdminStats> }) {
     }
 
     const t = data.tokens;
-    const byUser = [...data.byUser].filter((u) => u.totalTokens > 0).sort((a, b) => b.totalTokens - a.totalTokens);
     const maxDayTokens = Math.max(1, ...data.tokenWeekly.map((d) => d.totalTokens));
+    const trendPeriods = trendUnit === "week" ? data.tokensByWeek : data.tokensByMonth;
+    const latestTrend = trendPeriods.at(-1);
 
     if (t.reportsWithUsage === 0 && t.claudeCalls === 0 && t.unknownCalls === 0) {
         return (
@@ -374,11 +451,11 @@ function TokensTab({ query }: { query: ReturnType<typeof useAdminStats> }) {
                         <span className="ad-users__count">{byUser.length} with usage</span>
                     </div>
                     <div className="ad-users__grid ad-users__grid--tokens">
-                        <div className="ad-users__th">User</div>
-                        <div className="ad-users__th">Input</div>
-                        <div className="ad-users__th">Output</div>
-                        <div className="ad-users__th">Total</div>
-                        <div className="ad-users__th">Cost</div>
+                        <SortHeader label="User" columnKey="user" activeKey={sort.key} dir={sort.dir} onSort={toggle} />
+                        <SortHeader label="Input" columnKey="input" activeKey={sort.key} dir={sort.dir} onSort={toggle} />
+                        <SortHeader label="Output" columnKey="output" activeKey={sort.key} dir={sort.dir} onSort={toggle} />
+                        <SortHeader label="Total" columnKey="total" activeKey={sort.key} dir={sort.dir} onSort={toggle} />
+                        <SortHeader label="Cost" columnKey="cost" activeKey={sort.key} dir={sort.dir} onSort={toggle} />
                         {byUser.map((u: AdminUserStat, i: number) => (
                             <div className="ad-users__rowcontents" key={u.userId ?? u.email ?? i}>
                                 <div className="ad-users__user">
@@ -405,6 +482,34 @@ function TokensTab({ query }: { query: ReturnType<typeof useAdminStats> }) {
                 </div>
 
                 <div className="ad-rail">
+                    <div className="ad-rail__card">
+                        <div className="ad-rail__head">
+                            <span className="ad-rail__title">
+                                Trend {trendUnit === "week" ? "week over week" : "month over month"}
+                            </span>
+                            <div className="ad-toggle" role="group" aria-label="Trend granularity">
+                                {(["week", "month"] as const).map((unit) => (
+                                    <button
+                                        key={unit}
+                                        type="button"
+                                        className={`ad-toggle__btn${trendUnit === unit ? " ad-toggle__btn--active" : ""}`}
+                                        aria-pressed={trendUnit === unit}
+                                        onClick={() => setTrendUnit(unit)}
+                                    >
+                                        {unit === "week" ? "Weekly" : "Monthly"}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        <TrendTable periods={trendPeriods} unitLabel={trendUnit === "week" ? "weeks" : "months"} />
+                        {latestTrend && (
+                            <p className="ad-rail__note">
+                                Latest {trendUnit}: {formatTokens(latestTrend.totalTokens)} tokens,{" "}
+                                {formatDelta(latestTrend.tokensDeltaPct)} against the {trendUnit} before.
+                            </p>
+                        )}
+                    </div>
+
                     <div className="ad-rail__card">
                         <div className="ad-rail__title">By pipeline stage</div>
                         <div className="ad-stages">
@@ -643,22 +748,70 @@ function FailuresTab({ query }: { query: ReturnType<typeof useAdminStats> }) {
     );
 }
 
-/** Team-wide report history — every user's reports in one list. */
+/** Columns the report history offers, in the order they appear above the list. */
+const REPORT_SORTS: { key: ReportSortKey; label: string }[] = [
+    { key: "createdAt", label: "Date" },
+    { key: "tokens", label: "Tokens" },
+    { key: "slides", label: "Slides" },
+    { key: "owner", label: "Owner" },
+    { key: "type", label: "Type" },
+    { key: "status", label: "Status" },
+];
+
+/** How many rows one page of the history holds. */
+const REPORTS_PAGE_SIZE = 50;
+
+/** Team-wide report history — every user's reports, one page at a time. */
 function AllReportsTab() {
-    const { data, isLoading, isError, error } = useAllReports();
+    const [page, setPage] = useState(0);
+    const [sort, setSort] = useState<ReportSortKey>("createdAt");
+    const [dir, setDir] = useState<"asc" | "desc">("desc");
+
+    const { data, isLoading, isError, error, isFetching } = useAllReports({
+        page,
+        size: REPORTS_PAGE_SIZE,
+        sort,
+        dir,
+    });
     const reports = data?.reports ?? [];
+    const total = data?.total ?? 0;
+
+    /** A new column starts at its big end; clicking the active column flips it. Either way, back to page 1. */
+    function sortBy(key: ReportSortKey) {
+        setDir(key === sort && dir === "desc" ? "asc" : "desc");
+        setSort(key);
+        setPage(0);
+    }
 
     if (isLoading) return <LoadingBlock label="Loading all reports…" />;
     if (isError) return <ErrorAlert message={error instanceof Error ? error.message : "Could not load reports"} />;
-    if (reports.length === 0) return <EmptyState message="No reports created yet." />;
+    if (total === 0) return <EmptyState message="No reports created yet." />;
+
+    const first = page * REPORTS_PAGE_SIZE + 1;
+    const last = page * REPORTS_PAGE_SIZE + reports.length;
 
     return (
         <div className="ad-reports">
             <div className="ad-reports__head">
                 <span className="ad-reports__title">All reports</span>
-                <span className="ad-reports__count">{data?.total ?? reports.length} total</span>
+                <span className="ad-reports__count">
+                    {first}–{last} of {total.toLocaleString("en-US")}
+                </span>
             </div>
-            <div className="ad-reports__list">
+            <div className="ad-reports__sorts" role="group" aria-label="Sort reports by">
+                <span className="ad-reports__sortlabel">Sort by</span>
+                {REPORT_SORTS.map((column) => (
+                    <SortHeader
+                        key={column.key}
+                        label={column.label}
+                        columnKey={column.key}
+                        activeKey={sort}
+                        dir={dir}
+                        onSort={(key) => sortBy(key as ReportSortKey)}
+                    />
+                ))}
+            </div>
+            <div className={`ad-reports__list${isFetching ? " ad-reports__list--busy" : ""}`}>
                 {reports.map((r: ReportSummary) => (
                     <div key={r.jobId} className="ad-reports__row">
                         <span className="ad-reports__badge" style={{ background: typeColor(r.type ?? "") }}>
@@ -714,6 +867,25 @@ function AllReportsTab() {
                         </button>
                     </div>
                 ))}
+            </div>
+            <div className="ad-reports__pager">
+                <button
+                    type="button"
+                    className="ad-reports__page"
+                    disabled={page === 0 || isFetching}
+                    onClick={() => setPage((current) => Math.max(0, current - 1))}
+                >
+                    ← Newer
+                </button>
+                <span className="ad-reports__pagenum">Page {page + 1}</span>
+                <button
+                    type="button"
+                    className="ad-reports__page"
+                    disabled={!data?.hasMore || isFetching}
+                    onClick={() => setPage((current) => current + 1)}
+                >
+                    Older →
+                </button>
             </div>
         </div>
     );

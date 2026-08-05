@@ -1044,3 +1044,350 @@
     font-size: 13px;
     color: var(--rc-mute);
 }
+
+/* ── Sortable column headings ────────────────────────────────────────────────
+   Buttons rather than styled cells, so the tables sort from the keyboard. The
+   arrow is a permanent third state (↕) on inactive columns: an arrow that only
+   appears on hover leaves a mouse-less reader no way to know the column is
+   sortable at all. */
+.ad-sort {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 12px 22px;
+    border: none;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--rc-mute);
+    background: var(--rc-sheet-head);
+    cursor: pointer;
+    text-align: left;
+}
+
+.ad-sort:hover {
+    color: var(--rc-ink);
+}
+
+.ad-sort:focus-visible {
+    outline: 2px solid var(--rc-blue);
+    outline-offset: -2px;
+}
+
+.ad-sort--right {
+    justify-content: flex-end;
+}
+
+.ad-sort--active {
+    color: var(--rc-ink);
+}
+
+.ad-sort__arrow {
+    font-size: 11px;
+    opacity: 0.45;
+}
+
+.ad-sort--active .ad-sort__arrow {
+    opacity: 1;
+    color: var(--rc-blue);
+}
+
+/* ── Week / month granularity toggle ─────────────────────────────────────── */
+.ad-rail__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 18px;
+}
+
+.ad-rail__head .ad-rail__title {
+    margin-bottom: 0;
+}
+
+.ad-toggle {
+    display: inline-flex;
+    padding: 2px;
+    border: 1px solid var(--rc-card-border);
+    border-radius: 999px;
+    background: var(--rc-sheet-head);
+}
+
+.ad-toggle__btn {
+    padding: 5px 12px;
+    border: none;
+    border-radius: 999px;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--rc-mute);
+    background: transparent;
+    cursor: pointer;
+}
+
+.ad-toggle__btn--active {
+    color: var(--rc-ink);
+    background: var(--rc-white);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 8%);
+}
+
+/* ── Period trend tables (tokens by week/month, active users by month) ───── */
+.ad-trend__grid {
+    display: grid;
+    grid-template-columns: 1.6fr 0.7fr 0.9fr 0.8fr 0.9fr;
+    align-items: center;
+    font-size: 13px;
+}
+
+.ad-trend__grid--users {
+    grid-template-columns: 1.6fr 0.8fr 0.7fr 0.8fr;
+}
+
+.ad-trend__th {
+    padding: 0 0 8px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--rc-mute);
+}
+
+.ad-trend__th:not(:first-child),
+.ad-trend__num,
+.ad-trend__delta {
+    text-align: right;
+}
+
+/* display:contents lets one map item span every column as a row. */
+.ad-trend__rowcontents {
+    display: contents;
+}
+
+.ad-trend__period,
+.ad-trend__num,
+.ad-trend__delta {
+    padding: 9px 0;
+    border-top: 1px solid var(--rc-line-3);
+    min-width: 0;
+}
+
+.ad-trend__period {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding-right: 14px;
+}
+
+.ad-trend__label {
+    font-weight: 600;
+    color: var(--rc-ink);
+}
+
+/* A bar under the label rather than its own column: the shape of the series is
+   worth seeing, but not at the cost of a column the numbers need. */
+.ad-trend__track {
+    height: 4px;
+    border-radius: 999px;
+    background: var(--rc-line-3);
+    overflow: hidden;
+}
+
+.ad-trend__fill {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: var(--rc-blue);
+}
+
+.ad-trend__num {
+    font-variant-numeric: tabular-nums;
+    color: var(--rc-ink);
+    padding-left: 10px;
+}
+
+.ad-trend__delta {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    padding-left: 10px;
+}
+
+/* Colour marks direction, not goodness: more tokens is not good news and more
+   active users is not bad news, and the same component renders both. The sign is
+   always printed too — colour alone would be the only signal for a reader who
+   cannot tell these two apart. */
+.ad-trend__delta--up {
+    color: var(--rc-blue);
+}
+
+.ad-trend__delta--down {
+    color: var(--rc-orange);
+}
+
+.ad-trend__delta--flat {
+    color: var(--rc-mute);
+}
+
+/* ── Savings panel ───────────────────────────────────────────────────────── */
+.ad-savings {
+    margin: 0 0 26px;
+    padding: 22px;
+    border: 1px solid var(--rc-tint-2);
+    border-radius: 14px;
+    background: var(--rc-tint);
+}
+
+.ad-savings__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+}
+
+.ad-savings__title {
+    font-weight: 700;
+    font-size: 16px;
+    letter-spacing: -0.02em;
+    color: var(--rc-ink);
+}
+
+.ad-savings__basis {
+    font-size: 12px;
+    color: var(--rc-mute);
+}
+
+.ad-savings__figures {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 18px;
+    margin-bottom: 18px;
+}
+
+.ad-savings__num {
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    color: var(--rc-ink);
+}
+
+.ad-savings__figure--hero .ad-savings__num {
+    font-size: 34px;
+    color: var(--rc-blue);
+}
+
+.ad-savings__label {
+    margin-top: 2px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--rc-ink);
+}
+
+.ad-savings__sub {
+    margin-top: 2px;
+    font-size: 12px;
+    color: var(--rc-mute);
+}
+
+.ad-savings__detail {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 8px 22px;
+    margin: 0;
+    padding-top: 16px;
+    border-top: 1px solid var(--rc-tint-2);
+}
+
+.ad-savings__row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 13px;
+}
+
+.ad-savings__row dt {
+    color: var(--rc-mute);
+}
+
+.ad-savings__row dd {
+    margin: 0;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--rc-ink);
+}
+
+.ad-savings__note {
+    margin: 16px 0 0;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--rc-mute);
+}
+
+/* ── Report history: sort row and pager ──────────────────────────────────── */
+.ad-reports__sorts {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 0 22px 12px;
+}
+
+.ad-reports__sorts .ad-sort {
+    width: auto;
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: transparent;
+}
+
+.ad-reports__sorts .ad-sort--active {
+    background: var(--rc-sheet-head);
+}
+
+.ad-reports__sortlabel {
+    margin-right: 6px;
+    font-size: 12px;
+    color: var(--rc-mute);
+}
+
+/* Dim, not blank: the page stays readable while the next one loads, so paging
+   does not flash an empty table between requests. */
+.ad-reports__list--busy {
+    opacity: 0.55;
+}
+
+.ad-reports__pager {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    padding: 18px 22px;
+    border-top: 1px solid var(--rc-line-3);
+}
+
+.ad-reports__page {
+    padding: 8px 16px;
+    border: 1px solid var(--rc-card-border);
+    border-radius: 10px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--rc-ink);
+    background: var(--rc-white);
+    cursor: pointer;
+}
+
+.ad-reports__page:disabled {
+    color: var(--rc-mute);
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.ad-reports__pagenum {
+    font-size: 13px;
+    color: var(--rc-mute);
+    font-variant-numeric: tabular-nums;
+}
