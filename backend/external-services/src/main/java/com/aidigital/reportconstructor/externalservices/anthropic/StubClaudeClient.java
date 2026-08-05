@@ -149,6 +149,12 @@ public class StubClaudeClient implements ClaudeClient {
 	}
 
 	@Override
+	public String digestChangeLog(String changeLog) {
+		// No live model: the caller falls back to the raw change log, exactly as it behaved before the digest step.
+		return null;
+	}
+
+	@Override
 	public String digestBriefIfOversized(String brief) {
 		// No live model to digest with, so the brief passes through unchanged.
 		return brief;

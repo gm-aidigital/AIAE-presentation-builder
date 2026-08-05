@@ -180,7 +180,7 @@ class ReportGenerationServiceImplTest {
 		GeneratePayload payload = new GeneratePayload(
 				"Campaign brief.", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), null, "", null, null, null);
 		when(claude.isLive()).thenReturn(false);
-		when(placeholders.buildFlatReplacements(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt()))
+		when(placeholders.buildFlatReplacements(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt()))
 				.thenReturn(Map.of());
 		when(fileNamer.buildFileName(any(), any(), any())).thenReturn("deck-file");
 		when(slides.createDeck(eq("7"), eq("deck-file"), any(), any(), isNull())).thenReturn("http://deck");
@@ -194,7 +194,7 @@ class ReportGenerationServiceImplTest {
 		// The deck placeholder map is bounded to the real tactic count (here the collector yields none, so 1),
 		// never the full 28 template slots — this is what keeps createDeck's find-replace from timing out.
 		verify(placeholders).buildFlatReplacements(
-				any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(1));
+				any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(1));
 	}
 
 	@Test
@@ -204,7 +204,7 @@ class ReportGenerationServiceImplTest {
 				"Campaign brief.", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), null, "", null, null, null);
 		when(claude.isLive()).thenReturn(false);
 		when(claudeDefaults.emptySheetBatch()).thenReturn(new ClaudeSheetBatch(null, null, Map.of()));
-		when(placeholders.buildFlatReplacements(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt()))
+		when(placeholders.buildFlatReplacements(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt()))
 				.thenReturn(Map.of());
 		when(fileNamer.buildFileName(any(), any(), any())).thenReturn("sheet-file");
 		when(sheetHelper.buildSheet("9", "sheet-file", Map.of(), "standard", null)).thenReturn("http://sheet");
@@ -222,9 +222,50 @@ class ReportGenerationServiceImplTest {
 		// so 1), not all 28 slots — the ~800-request find-replace was the createSheet "Read timed out" cause.
 		// Unused slots' leftover tokens are blanked by a single regex pass in createSheet.
 		verify(placeholders).buildFlatReplacements(
-				any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(1));
+				any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(1));
 		verifyNoInteractions(slides);
 		verifyNoInteractions(chartHelper);
+	}
+
+	@Test
+	void shouldDigestTheChangeLogSeparatelyAndWriteItIntoTheSheetTest() {
+		// Given: a run with both a brief and a change log, and a live model that condenses each of them.
+		// The two are digested by separate calls: folded into the brief's prompt, the change log came back
+		// dropped as commentary, so its content reached neither the sheet nor any later batch.
+		GeneratePayload payload = new GeneratePayload(
+				"Campaign brief.", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(),
+				List.of(), null, "", null, null, "Shifted 20% of Display budget to CTV on Jul 3.");
+		when(claude.isLive()).thenReturn(true);
+		when(claude.digestBrief("Campaign brief.")).thenReturn("Digested brief.");
+		when(claude.digestChangeLog("Shifted 20% of Display budget to CTV on Jul 3."))
+				.thenReturn("Jul 3: Display budget moved to CTV.");
+		when(claudeDefaults.emptySheetBatch()).thenReturn(new ClaudeSheetBatch(null, null, Map.of()));
+		when(claudeDefaults.emptyResults())
+				.thenReturn(new ClaudeResults(Map.of(), List.of(), Map.of(), List.of(), null, null, null));
+		when(placeholders.buildFlatReplacements(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt()))
+				.thenReturn(Map.of());
+		when(fileNamer.buildFileName(any(), any(), any())).thenReturn("sheet-file");
+		when(sheetHelper.buildSheet("21", "sheet-file", Map.of(), "standard", null)).thenReturn("http://sheet");
+		when(sheetHelper.writePacingTables(eq("http://sheet"), eq(payload), any(), eq(Map.of()), isNull()))
+				.thenReturn(List.of());
+		when(warnings.serializeWarnings(List.of())).thenReturn("[]");
+
+		// When:
+		service.run(21L, payload, "clerk-1", "user@x.com", GenerationTarget.SHEET);
+
+		// Then: the brief's own digest call sees the brief alone, and the change log gets its own call
+		verify(claude).digestBrief("Campaign brief.");
+		verify(claude).digestChangeLog("Shifted 20% of Display budget to CTV on Jul 3.");
+
+		// Then: the sheet is written with the condensed change log beside the condensed brief, so step 2 reads
+		// back the exact text this step reasoned over
+		ArgumentCaptor<String> briefDigest = ArgumentCaptor.forClass(String.class);
+		ArgumentCaptor<String> changeLogDigest = ArgumentCaptor.forClass(String.class);
+		verify(placeholders).buildFlatReplacements(
+				any(), any(), any(), any(), any(), any(), any(), any(),
+				briefDigest.capture(), changeLogDigest.capture(), any(), anyInt());
+		assertThat(briefDigest.getValue()).isEqualTo("Digested brief.");
+		assertThat(changeLogDigest.getValue()).isEqualTo("Jul 3: Display budget moved to CTV.");
 	}
 
 	@Test
@@ -242,7 +283,7 @@ class ReportGenerationServiceImplTest {
 		when(placeholderReader.readPlaceholders(grid)).thenReturn(sheetValues);
 		when(claude.isLive()).thenReturn(false);
 		when(placeholders.buildFlatReplacements(
-				any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt())).thenReturn(narrative);
+				any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt())).thenReturn(narrative);
 		when(fileNamer.buildFileName(any(), any(), any())).thenReturn("deck-file");
 		when(slides.createDeck(eq("11"), eq("deck-file"), any(), any(), isNull())).thenReturn("http://deck");
 		// Step 2 reads (no Claude call): each section returns no enabled tactics, so no tokens and no writes.

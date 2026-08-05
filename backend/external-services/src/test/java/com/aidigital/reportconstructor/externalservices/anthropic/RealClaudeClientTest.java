@@ -1145,6 +1145,52 @@ class RealClaudeClientTest {
 	}
 
 	@Test
+	void digestChangeLogCondensesTheLogThroughItsOwnCallTest() throws Exception {
+		// Given: a change log and its digest reply. It gets its own call rather than being appended to the brief:
+		// a brief-shaped prompt reads an appended change-log section as commentary and drops it.
+		ClaudeResponseNormalizer normalizer = new ClaudeResponseNormalizer();
+		ClaudeBatchPromptBuilder promptBuilder = new ClaudeBatchPromptBuilder(normalizer, new Fmt());
+		RealClaudeClient client = new RealClaudeClient(
+				messagesClient, promptBuilder, normalizer, compressionService, new ReportClaudeDefaults(),
+				new WorkbookGeoFilter(), new PromptTokenEstimator(), new ClaudeFailureLogImpl(),
+				new AnthropicProperties());
+		String changeLog = "Shifted 20% of Display budget to CTV on Jul 3 after CTV VCR held above 95%.";
+		String expectedPrompt = promptBuilder.buildChangeLogDigestPrompt(changeLog, 1500).orElseThrow();
+		when(messagesClient.callRaw(eq(expectedPrompt), eq(900), eq(60), eq("ChangeLogDigest")))
+				.thenReturn(json.readTree(
+						"{\"content\":[{\"type\":\"text\",\"text\":\"Jul 3: 20% of Display budget moved to CTV; "
+								+ "CTV VCR above 95%.\"}]}"));
+
+		// When:
+		String digest = client.digestChangeLog(changeLog);
+		String blank = client.digestChangeLog("   ");
+
+		// Then: the log is condensed, and a blank log never reaches the model
+		assertThat(digest).isEqualTo("Jul 3: 20% of Display budget moved to CTV; CTV VCR above 95%.");
+		assertThat(blank).isNull();
+	}
+
+	@Test
+	void digestChangeLogFallsBackToNullWhenTheCallFailsTest() {
+		// Given: a change log whose digest call comes back with nothing
+		ClaudeResponseNormalizer normalizer = new ClaudeResponseNormalizer();
+		ClaudeBatchPromptBuilder promptBuilder = new ClaudeBatchPromptBuilder(normalizer, new Fmt());
+		RealClaudeClient client = new RealClaudeClient(
+				messagesClient, promptBuilder, normalizer, compressionService, new ReportClaudeDefaults(),
+				new WorkbookGeoFilter(), new PromptTokenEstimator(), new ClaudeFailureLogImpl(),
+				new AnthropicProperties());
+		String changeLog = "Shifted budget mid-flight.";
+		String expectedPrompt = promptBuilder.buildChangeLogDigestPrompt(changeLog, 1500).orElseThrow();
+		when(messagesClient.callRaw(eq(expectedPrompt), eq(900), eq(60), eq("ChangeLogDigest"))).thenReturn(null);
+
+		// When:
+		String digest = client.digestChangeLog(changeLog);
+
+		// Then: null, so the caller keeps the raw log rather than losing the mid-flight changes entirely
+		assertThat(digest).isNull();
+	}
+
+	@Test
 	void digestBriefIfOversizedBoundsALongBriefAndLeavesACompactOneAloneTest() throws Exception {
 		// Given: a brief context far past the 2000-character digest budget — the shape the sheet's user-editable
 		// {{RFP info}} cell or a pasted change log can produce — and a compact one that is already fine

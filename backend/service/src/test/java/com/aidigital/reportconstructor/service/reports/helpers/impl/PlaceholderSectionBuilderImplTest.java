@@ -31,7 +31,7 @@ class PlaceholderSectionBuilderImplTest {
 		List<PreviewSection> sections = builder.buildSections(
 				payload, data,
 				claudeDefaults.emptyStrategic(), claudeDefaults.emptyTactical(), claudeDefaults.emptyResults(),
-				null, null, null, null,
+				null, null, null, null, null,
 				new CampaignFrequencies(null, null, null, null), 28
 		);
 
@@ -65,7 +65,7 @@ class PlaceholderSectionBuilderImplTest {
 		List<PreviewSection> sections = builder.buildSections(
 				payload, data,
 				claudeDefaults.emptyStrategic(), claudeDefaults.emptyTactical(), claudeDefaults.emptyResults(),
-				null, null, null, null,
+				null, null, null, null, null,
 				new CampaignFrequencies(null, null, null, null), 28
 		);
 
@@ -83,7 +83,7 @@ class PlaceholderSectionBuilderImplTest {
 		List<PreviewSection> sections = builder.buildSections(
 				payload, data,
 				claudeDefaults.emptyStrategic(), claudeDefaults.emptyTactical(), claudeDefaults.emptyResults(),
-				null, null, null, null,
+				null, null, null, null, null,
 				new CampaignFrequencies(null, null, null, null), 28
 		);
 
@@ -102,7 +102,7 @@ class PlaceholderSectionBuilderImplTest {
 		List<PreviewSection> sections = builder.buildSections(
 				payload, data,
 				claudeDefaults.emptyStrategic(), claudeDefaults.emptyTactical(), claudeDefaults.emptyResults(),
-				null, null, null, null,
+				null, null, null, null, null,
 				new CampaignFrequencies(null, null, null, null), 2
 		);
 
@@ -124,7 +124,7 @@ class PlaceholderSectionBuilderImplTest {
 		List<PreviewSection> sections = builder.buildSections(
 				payload, emptyCampaignData(),
 				claudeDefaults.emptyStrategic(), ccB, claudeDefaults.emptyResults(),
-				null, null, null, null,
+				null, null, null, null, null,
 				new CampaignFrequencies(null, null, null, null), 1
 		);
 
@@ -153,7 +153,7 @@ class PlaceholderSectionBuilderImplTest {
 		List<PreviewSection> sections = builder.buildSections(
 				payload, emptyCampaignData(),
 				claudeDefaults.emptyStrategic(), ccB, claudeDefaults.emptyResults(),
-				null, null, null, null,
+				null, null, null, null, null,
 				new CampaignFrequencies(null, null, null, null), 1
 		);
 

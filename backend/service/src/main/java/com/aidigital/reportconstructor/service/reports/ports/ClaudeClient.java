@@ -277,10 +277,25 @@ public interface ClaudeClient {
 	 * once. The digest is written into the EOC sheet's {@code {{RFP info}}} field, so the slides-from-sheet
 	 * step reads it back instead of digesting again — and the user can edit it like any other sheet value.
 	 *
-	 * @param brief the free-text campaign brief, optionally with its change-log section appended
+	 * @param brief the free-text campaign brief
 	 * @return the digest, or {@code null} when the caller should fall back to the raw brief
 	 */
 	String digestBrief(String brief);
+
+	/**
+	 * Free-text change log → compact digest of the mid-flight changes, or {@code null} when the change log is
+	 * blank or the call fails.
+	 *
+	 * <p>The change log gets exactly the treatment the brief gets, and for the same reasons: the user pastes an
+	 * unbounded wall of text, every later batch repeats it as context, and the sheet should carry the condensed
+	 * version the prompts actually run on rather than the raw paste. It is digested by its own call instead of
+	 * being appended to the brief and digested together, because a brief-shaped prompt reliably drops it — the
+	 * model reads it as commentary rather than campaign fact.
+	 *
+	 * @param changeLog the free-text log of mid-flight changes and optimisations
+	 * @return the digest, or {@code null} when the caller should fall back to the raw change log
+	 */
+	String digestChangeLog(String changeLog);
 
 	/**
 	 * Bounds a brief before it becomes prompt context: text already inside the digest budget is returned
@@ -288,7 +303,8 @@ public interface ClaudeClient {
 	 *
 	 * <p>Step 1 digests the brief and writes the digest into the sheet, so the slides step normally reads back
 	 * something already compact. Normally — not always: the sheet's {@code {{RFP info}}} cell is user-editable
-	 * and could hold a pasted wall of text, the change log is appended raw and unbounded, and an older sheet
+	 * and could hold a pasted wall of text, the change-log cell beside it is user-editable in the same way, and
+	 * an older sheet
 	 * (or a run where Claude was stubbed) carries no digest at all and falls back to the raw brief. Every one of
 	 * those paths puts the full text into the cached prefix of every call the run makes, which is exactly what
 	 * digesting was meant to avoid — so the slides step re-bounds the text here rather than trusting it.

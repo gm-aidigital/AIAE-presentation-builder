@@ -1887,7 +1887,7 @@ public class ClaudeBatchPromptBuilder {
 	 * prompts. Digesting it once means the campaign context is paid for once at full length and carried
 	 * everywhere else at a fraction of the tokens, while the facts the copy must stay faithful to survive.
 	 *
-	 * @param brief    the free-text campaign brief, optionally with its change-log section appended
+	 * @param brief    the free-text campaign brief
 	 * @param maxChars the character budget the digest must fit into
 	 * @return the prompt asking for the digest, or empty when the brief is blank
 	 */
@@ -1913,6 +1913,46 @@ public class ClaudeBatchPromptBuilder {
 						+ "- Output in English regardless of the input language.\n\n"
 						+ "Return ONLY the digest text.\n\n"
 						+ "=== CAMPAIGN BRIEF ===\n" + brief);
+	}
+
+	/**
+	 * Builds the change-log digest prompt: condenses the free-text log of mid-flight changes into the compact
+	 * form written back into the sheet and read as context by every later batch.
+	 *
+	 * <p>Kept separate from {@link #buildBriefDigestPrompt} rather than folded into it: a brief digest is asked
+	 * for the campaign's fixed facts and reliably drops an appended change-log section as commentary, and the
+	 * two texts answer different questions — the brief says what was promised, the log says what was changed
+	 * mid-flight and what it did to delivery.
+	 *
+	 * @param changeLog the free-text change log entered on the inputs step
+	 * @param maxChars  the character budget the digest must fit into
+	 * @return the prompt asking for the digest, or empty when the change log is blank
+	 */
+	public Optional<String> buildChangeLogDigestPrompt(String changeLog, int maxChars) {
+		if (!normalizer.notBlank(changeLog)) {
+			return Optional.empty();
+		}
+		return Optional.of(
+				"You are condensing an advertising campaign's mid-flight change log into the working context "
+						+ "that every later copywriting step will read instead of the full log.\n\n"
+						+ "Write a compact digest of at most " + maxChars + " characters. Rules:\n"
+						+ "- KEEP every change and optimisation the log records: what was changed, when, on "
+						+ "which tactic, channel, publisher, creative, audience or budget line, why it was "
+						+ "changed, and what it did to delivery or performance.\n"
+						+ "- KEEP the performance observations the log makes about how tactics, formats, "
+						+ "publishers, devices or creatives behaved. This log is written by the person running "
+						+ "the campaign and those observations are the report's account of what happened; they "
+						+ "are content, not commentary.\n"
+						+ "- KEEP every number, date, name and metric exactly as written.\n"
+						+ "- DROP boilerplate, agency pleasantries, and repetition: where several sentences make "
+						+ "the same point, keep it once.\n"
+						+ "- Do NOT invent, infer or extrapolate a single fact. If the log does not say it, it "
+						+ "is not in the digest.\n"
+						+ "- Write dense declarative sentences grouped by topic, no bullet characters, no "
+						+ "markdown, no headings, no preamble.\n"
+						+ "- Output in English regardless of the input language.\n\n"
+						+ "Return ONLY the digest text.\n\n"
+						+ "=== CHANGE LOG ===\n" + changeLog);
 	}
 
 	/**

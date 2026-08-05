@@ -73,6 +73,15 @@ public class SheetPlaceholderReaderImpl implements SheetPlaceholderReader {
 	private static final String RFP_TOKEN = "{{RFP info}}";
 
 	/**
+	 * Prefix of the change-log block's label cell. Matched as a prefix, and the value taken from either the
+	 * cell to the right or the cell below, because this one label is spelled differently across template
+	 * revisions ({@code "Change log"}, {@code "Change log:"}, {@code "Change Log Input"}) and laid out both
+	 * ways — and a miss here is silent: the slides step would simply run without the change log.
+	 */
+	private static final String CHANGE_LOG_LABEL_PREFIX = "change log";
+	private static final String CHANGE_LOG_TOKEN = "{{change log}}";
+
+	/**
 	 * Summary-table column headers mapped to the per-tactic token suffix. The value is
 	 * assembled as {@code "{{tactic " + n + suffix + "}}"}; the tactic-name column uses
 	 * an empty suffix ({@code {{tactic n}}}). The en dash in the benchmark token matches
@@ -159,8 +168,8 @@ public class SheetPlaceholderReaderImpl implements SheetPlaceholderReader {
 	}
 
 	/**
-	 * Reads the top info block: each {@link #INFO_LABEL_TOKENS} label's right-hand value and
-	 * the {@link #RFP_TOKEN} value beneath the {@link #RFP_HEADER} header.
+	 * Reads the top info block: each {@link #INFO_LABEL_TOKENS} label's right-hand value, the
+	 * {@link #RFP_TOKEN} value beneath the {@link #RFP_HEADER} header, and the change-log block.
 	 *
 	 * @param grid the workbook grid
 	 * @param out  the accumulating placeholder map
@@ -170,6 +179,36 @@ public class SheetPlaceholderReaderImpl implements SheetPlaceholderReader {
 			emit(out, e.getValue(), rows.findLabelValue(grid, e.getKey()));
 		}
 		emit(out, RFP_TOKEN, rows.findLabelValueBelow(grid, RFP_HEADER));
+		emit(out, CHANGE_LOG_TOKEN, findChangeLogValue(grid));
+	}
+
+	/**
+	 * Finds the change-log text: locates the first cell whose text starts with
+	 * {@link #CHANGE_LOG_LABEL_PREFIX} and returns the value to its right, or — when that cell is empty —
+	 * the value beneath it. Tolerating both layouts is deliberate; see the constant's note.
+	 *
+	 * @param grid the workbook grid
+	 * @return the change-log text, or {@code null} when the sheet carries no change-log block or it is empty
+	 */
+	String findChangeLogValue(List<List<String>> grid) {
+		for (int r = 0; r < grid.size(); r++) {
+			List<String> row = grid.get(r);
+			if (row == null) {
+				continue;
+			}
+			for (int c = 0; c < row.size(); c++) {
+				if (!rows.cellAt(row, c).toLowerCase(Locale.ROOT).startsWith(CHANGE_LOG_LABEL_PREFIX)) {
+					continue;
+				}
+				String right = rows.cellAt(row, c + 1);
+				if (!right.isEmpty()) {
+					return right;
+				}
+				String below = r + 1 < grid.size() ? rows.cellAt(grid.get(r + 1), c) : "";
+				return below.isEmpty() ? null : below;
+			}
+		}
+		return null;
 	}
 
 	/**

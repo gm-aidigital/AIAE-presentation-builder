@@ -51,7 +51,7 @@ public class PlaceholderResolverServiceImpl implements PlaceholderResolverServic
 		List<PreviewSection> sections = sectionBuilder.buildSections(
 				payload, data,
 				claudeDefaults.emptyStrategic(), claudeDefaults.emptyTactical(), claudeDefaults.emptyResults(),
-				null, null, null, null,
+				null, null, null, null, null,
 				frequencies, tacticCount(data)
 		);
 
@@ -87,11 +87,12 @@ public class PlaceholderResolverServiceImpl implements PlaceholderResolverServic
 			String geoSummary,
 			String funnelSummary,
 			String briefDigest,
+			String changeLogDigest,
 			CampaignFrequencies frequencies,
 			int tacticCount
 	) {
 		List<PreviewSection> sections = sectionBuilder.buildSections(payload, data, ccA, ccB, ccC, primaryKpis,
-				geoSummary, funnelSummary, briefDigest, frequencies, tacticCount);
+				geoSummary, funnelSummary, briefDigest, changeLogDigest, frequencies, tacticCount);
 		return valueFlattener.buildFlatReplacements(sections);
 	}
 

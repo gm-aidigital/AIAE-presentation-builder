@@ -45,6 +45,45 @@ class SheetPlaceholderReaderImplTest {
 	}
 
 	@Test
+	void shouldReadChangeLogFromEitherLayoutTest() {
+		// Given: the real EOC/EOM info-block shape — "Change log" is a merged H1:J1 header with the text in the
+		// merged block beneath it, so the API returns the header only in H1 and the covered cells come back
+		// empty (this is the same mechanic the "RFP Input" block already relies on). The second sheet is the
+		// label-beside-value spelling, tolerated because a miss here is silent: the slides step would simply
+		// run without the change log.
+		List<List<String>> below = List.of(
+				List.of("Info", "", "", "RFP Input", "", "", "", "Change log", "", ""),
+				List.of("Client name:", "Acme", "", "Brief text.", "", "", "", "Shifted budget to CTV on Jul 3."));
+		List<List<String>> beside = List.of(
+				List.of("Change Log:", "Paused Native on Aug 1."));
+
+		// When:
+		Map<String, String> fromBelow = reader.readPlaceholders(below);
+		Map<String, String> fromBeside = reader.readPlaceholders(beside);
+
+		// Then: the slides step reads back the same change-log text the sheet step wrote, and the neighbouring
+		// RFP block is unaffected
+		assertThat(fromBelow)
+				.containsEntry("{{change log}}", "Shifted budget to CTV on Jul 3.")
+				.containsEntry("{{RFP info}}", "Brief text.");
+		assertThat(fromBeside).containsEntry("{{change log}}", "Paused Native on Aug 1.");
+	}
+
+	@Test
+	void shouldNotEmitChangeLogWhenTheSheetCarriesNoneTest() {
+		// Given: a sheet with an empty change-log block — the user left the field blank
+		List<List<String>> grid = List.of(
+				List.of("Change log", ""),
+				List.of("", ""));
+
+		// When:
+		Map<String, String> out = reader.readPlaceholders(grid);
+
+		// Then: no entry at all, so the generation step falls back to the payload rather than to an empty string
+		assertThat(out).doesNotContainKey("{{change log}}");
+	}
+
+	@Test
 	void shouldReadSummaryTableTacticsAndTotalsTest() {
 		// Given: a summary header row, two tactic rows, then a totals row
 		List<List<String>> grid = List.of(

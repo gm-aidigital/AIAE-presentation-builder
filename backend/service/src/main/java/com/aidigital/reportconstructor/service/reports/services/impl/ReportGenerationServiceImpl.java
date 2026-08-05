@@ -215,7 +215,6 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 
 			jobProgress.markJobRunningAtStep(jobId, 1, "Reading sheet data");
 			CampaignData data = placeholders.collectData(payload);
-			String rawBrief = combineBriefWithChangeLog(payload.brief(), payload.changeLog());
 
 			jobProgress.markJobRunningAtStep(jobId, 2, "Resolving placeholders");
 
@@ -226,8 +225,16 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 			// once here and feed the digest everywhere instead: the campaign facts the copy must stay faithful
 			// to survive, the token cost of the raw text is paid a single time, and the digest is written into
 			// the sheet's {{RFP info}} so the slides step reads it back rather than digesting again.
-			String briefDigest = live ? claude.digestBrief(rawBrief) : null;
-			String brief = briefDigest == null || briefDigest.isBlank() ? rawBrief : briefDigest;
+			String briefDigest = live ? claude.digestBrief(payload.brief()) : null;
+			// The change log gets its own digest call rather than riding along inside the brief's: asked to
+			// condense a brief, the model treats an appended change-log section as commentary and drops it, so
+			// the log's content never reached the sheet or the later batches. Digested separately it lands in
+			// {{change log}} in the sheet and in the context below, exactly like the brief.
+			String changeLogDigest = live ? claude.digestChangeLog(payload.changeLog()) : null;
+			String changeLogText = changeLogDigest == null || changeLogDigest.isBlank()
+					? payload.changeLog() : changeLogDigest;
+			String briefText = briefDigest == null || briefDigest.isBlank() ? payload.brief() : briefDigest;
+			String brief = combineBriefWithChangeLog(briefText, changeLogText);
 			CampaignFrequencies frequencies = placeholders.computeFrequencies(payload, data);
 
 			ClaudeStrategic ccA;
@@ -279,7 +286,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 			int flatTacticCount = maxTacticNumber(data);
 			Map<String, String> flatReplacements =
 					placeholders.buildFlatReplacements(payload, data, ccA, ccB, ccC, primaryKpis, geoSummary,
-							null, briefDigest, frequencies, flatTacticCount);
+							null, briefDigest, changeLogDigest, frequencies, flatTacticCount);
 			fillFunnelStages(claude, flatReplacements, flatTacticCount, live);
 			UserGoogleTokenProvider clerk = userGoogleTokens.getIfAvailable();
 			String userGoogleToken = clerk == null ? null : clerk.googleAccessToken(clerkUserId);
@@ -370,15 +377,16 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		int tacticCount = deriveTacticCount(sheetValues);
 
 		jobProgress.markJobRunningAtStep(jobId, 3, "Claude — narrative");
-		// The change log is read back from the reviewed sheet (never the payload) so any edit the user made
-		// in the sheet wins, consistent with the sheet-as-source contract of this flow.
-		// The brief context is the digest step 1 wrote into {{RFP info}}, read back from the reviewed sheet for
-		// the same reason the change log is: any edit the user made there wins, and the two steps then run on
-		// exactly the same campaign context. The payload's raw brief is the fallback when the sheet carries no
-		// digest (older sheet, or Claude stubbed when step 1 ran).
+		// Both halves of the campaign context — the brief digest in {{RFP info}} and the change-log digest in
+		// {{change log}} — are read back from the reviewed sheet, so any edit the user made there wins and the
+		// two steps run on exactly the same text. The payload's raw values are the fallback when the sheet
+		// carries neither (older sheet, or Claude stubbed when step 1 ran).
 		String sheetBrief = sheetValues.get(RFP_INFO_TOKEN);
 		String briefContext = sheetBrief == null || sheetBrief.isBlank() ? payload.brief() : sheetBrief;
-		String briefSource = combineBriefWithChangeLog(briefContext, sheetValues.get(CHANGE_LOG_TOKEN));
+		String sheetChangeLog = sheetValues.get(CHANGE_LOG_TOKEN);
+		String changeLogContext = sheetChangeLog == null || sheetChangeLog.isBlank()
+				? payload.changeLog() : sheetChangeLog;
+		String briefSource = combineBriefWithChangeLog(briefContext, changeLogContext);
 		CampaignData data = sheetCampaign.read(sheetValues, tacticCount);
 		// Frequencies are reconstructed from the reviewed sheet — never the raw media plan — and without a
 		// fresh random reach uplift, so the Claude frequency narrative and the deck's frequency figures both
@@ -921,7 +929,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 			CampaignFrequencies frequencies, int tacticCount, Map<String, String> sheetValues) {
 		GeneratePayload narrativePayload = narrativeOnly(payload);
 		Map<String, String> narrative = placeholders.buildFlatReplacements(
-				narrativePayload, data, ccA, claudeDefaults.emptyTactical(), ccC, null, null, null, null,
+				narrativePayload, data, ccA, claudeDefaults.emptyTactical(), ccC, null, null, null, null, null,
 				frequencies, tacticCount);
 		Map<String, String> flat = new LinkedHashMap<>(narrative);
 		flat.putAll(sheetValues);

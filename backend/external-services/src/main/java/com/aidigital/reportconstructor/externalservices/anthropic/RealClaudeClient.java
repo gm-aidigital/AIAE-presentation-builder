@@ -281,6 +281,15 @@ public class RealClaudeClient implements ClaudeClient {
 	/** Per-request HTTP timeout for the brief digest. */
 	private static final int BRIEF_DIGEST_TIMEOUT_SEC = 60;
 
+	/**
+	 * Character budget of the change-log digest. Smaller than the brief's: the log answers the narrower
+	 * question of what changed mid-flight, and it rides alongside the brief digest in the same context.
+	 */
+	private static final int CHANGE_LOG_DIGEST_LIMIT = 1500;
+
+	/** Output budget for the change-log digest, with head-room for the model writing past the character limit. */
+	private static final int CHANGE_LOG_DIGEST_MAX_TOKENS = 900;
+
 	private final AnthropicMessagesClient messagesClient;
 	private final ClaudeBatchPromptBuilder promptBuilder;
 	private final ClaudeResponseNormalizer normalizer;
@@ -1645,6 +1654,28 @@ public class RealClaudeClient implements ClaudeClient {
 			return null;
 		}
 		return normalizer.normalizeC(text.trim(), BRIEF_DIGEST_LIMIT);
+	}
+
+	@Override
+	public String digestChangeLog(String changeLog) {
+		var prompt = promptBuilder.buildChangeLogDigestPrompt(changeLog, CHANGE_LOG_DIGEST_LIMIT);
+		if (prompt.isEmpty()) {
+			return null;
+		}
+		JsonNode resp = messagesClient.callRaw(
+				prompt.get(), CHANGE_LOG_DIGEST_MAX_TOKENS, BRIEF_DIGEST_TIMEOUT_SEC, "ChangeLogDigest");
+		if (resp == null) {
+			log.warn("[claude:ChangeLogDigest] digest failed; the raw change log is used as context instead");
+			return null;
+		}
+		String text = normalizer.extractText(resp);
+		if (text == null || text.isBlank()) {
+			return null;
+		}
+		String digest = normalizer.normalizeC(text.trim(), CHANGE_LOG_DIGEST_LIMIT);
+		log.info("[claude:ChangeLogDigest] change log digested for the sheet and the prompts: {} chars -> {}",
+				changeLog.length(), digest == null ? 0 : digest.length());
+		return digest;
 	}
 
 	@Override

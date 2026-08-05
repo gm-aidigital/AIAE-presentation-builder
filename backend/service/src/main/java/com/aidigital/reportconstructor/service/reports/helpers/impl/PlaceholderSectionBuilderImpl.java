@@ -53,6 +53,7 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 			String geoSummary,
 			String funnelSummary,
 			String briefDigest,
+			String changeLogDigest,
 			CampaignFrequencies frequencies,
 			int tacticCount
 	) {
@@ -89,7 +90,12 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		// brief when Claude is stubbed or the digest call failed.
 		String rfpBrief = briefDigest == null || briefDigest.isBlank() ? payload.brief() : briefDigest;
 		start.put("{{RFP info}}", campaignResolvers.resolveRfpInfo(sheet, adj, rfpBrief));
-		start.put("{{change log}}", campaignResolvers.resolveChangeLog(sheet, adj, payload.changeLog()));
+		// Same contract as the brief above: the sheet carries the digest the prompts run on, not the raw paste,
+		// so the slides-from-sheet step reads back exactly the change-log text this step reasoned over — and the
+		// user reviews and edits that text like any other sheet value.
+		String changeLogText = changeLogDigest == null || changeLogDigest.isBlank()
+				? payload.changeLog() : changeLogDigest;
+		start.put("{{change log}}", campaignResolvers.resolveChangeLog(sheet, adj, changeLogText));
 		sections.add(buildPreviewSection("Start", start));
 
 		Map<String, Resolved> overview = new LinkedHashMap<>();
