@@ -1292,33 +1292,9 @@
     color: var(--rc-mute);
 }
 
-.ad-savings__detail {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 8px 22px;
-    margin: 0;
-    padding-top: 16px;
-    border-top: 1px solid var(--rc-tint-2);
-}
 
-.ad-savings__row {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 10px;
-    font-size: 13px;
-}
 
-.ad-savings__row dt {
-    color: var(--rc-mute);
-}
 
-.ad-savings__row dd {
-    margin: 0;
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-    color: var(--rc-ink);
-}
 
 .ad-savings__note {
     margin: 16px 0 0;
@@ -1390,4 +1366,177 @@
     font-size: 13px;
     color: var(--rc-mute);
     font-variant-numeric: tabular-nums;
+}
+
+/* ── Date range picker ───────────────────────────────────────────────────────
+   Sits in the header because it governs the whole screen, not one card. The
+   panel is anchored right so it opens inward and never pushes the page wide. */
+.ad-range {
+    position: relative;
+}
+
+.ad-range__trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 14px;
+    border: 1px solid var(--rc-card-border);
+    border-radius: 10px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--rc-ink);
+    background: var(--rc-white);
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.ad-range__trigger:hover {
+    border-color: var(--rc-blue);
+}
+
+.ad-range__trigger:focus-visible {
+    outline: 2px solid var(--rc-blue);
+    outline-offset: 2px;
+}
+
+.ad-range__icon {
+    font-size: 14px;
+}
+
+.ad-range__caret {
+    font-size: 10px;
+    color: var(--rc-mute);
+}
+
+.ad-range__panel {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 20;
+    min-width: 280px;
+    padding: 14px;
+    border: 1px solid var(--rc-card-border);
+    border-radius: 14px;
+    background: var(--rc-white);
+    box-shadow: 0 12px 32px rgb(0 0 0 / 12%);
+}
+
+.ad-range__presets {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+
+.ad-range__preset {
+    padding: 8px 10px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    font: inherit;
+    font-size: 13px;
+    color: var(--rc-ink);
+    background: var(--rc-sheet-head);
+    cursor: pointer;
+    text-align: left;
+}
+
+.ad-range__preset:hover {
+    border-color: var(--rc-card-border);
+}
+
+.ad-range__preset--active {
+    color: var(--rc-white);
+    background: var(--rc-blue);
+}
+
+.ad-range__custom {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--rc-line-3);
+}
+
+.ad-range__field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.ad-range__label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--rc-mute);
+}
+
+.ad-range__input {
+    padding: 7px 9px;
+    border: 1px solid var(--rc-card-border);
+    border-radius: 8px;
+    font: inherit;
+    font-size: 13px;
+    color: var(--rc-ink);
+    background: var(--rc-white);
+}
+
+.ad-range__apply {
+    grid-column: 1 / -1;
+    padding: 9px;
+    border: none;
+    border-radius: 9px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--rc-white);
+    background: var(--rc-blue);
+    cursor: pointer;
+}
+
+.ad-range__apply:disabled {
+    background: var(--rc-mute);
+    cursor: not-allowed;
+}
+
+/* ── Volume chart ────────────────────────────────────────────────────────────
+   Bars are flexed so any bucket count fills the card; the labels reserve their
+   own line so thinning them out cannot change the chart's height. */
+.ad-chart__plot {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    min-height: 104px;
+}
+
+.ad-chart__col {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.ad-chart__bar {
+    width: 100%;
+    max-width: 34px;
+    border-radius: 4px;
+    background: var(--rc-blue);
+}
+
+.ad-chart__label {
+    font-size: 10px;
+    line-height: 1.2;
+    color: var(--rc-mute);
+    white-space: nowrap;
+    min-height: 12px;
+}
+
+.ad-chart__unit {
+    margin-top: 10px;
+    font-size: 11px;
+    color: var(--rc-mute);
+    text-align: right;
 }

@@ -44,27 +44,29 @@ public interface UsageDailyService {
 	 * needs to price tokens and to decide which jobs count as reports.
 	 *
 	 * @param from first day to include, inclusive
+	 * @param to   last day to include, inclusive
 	 * @return one row per (day, report type, target, model), oldest first
 	 */
-	List<UsageDailyBucket> byDay(LocalDate from);
+	List<UsageDailyBucket> byDay(LocalDate from, LocalDate to);
 
 	/**
 	 * Sums the rollup by user, keeping the same read-side dimensions as {@link #byDay}.
 	 *
-	 * @param from       first day to include, inclusive
-	 * @param monthStart first day of the current calendar month, for the row's "this month" slice
+	 * @param from first day to include, inclusive
+	 * @param to   last day to include, inclusive
 	 * @return one row per (user, report type, target, model)
 	 */
-	List<UsageDailyUserRow> byUser(LocalDate from, LocalDate monthStart);
+	List<UsageDailyUserRow> byUser(LocalDate from, LocalDate to);
 
 	/**
 	 * Lists the distinct (day, user) pairs in a window, from which active users are counted for any
 	 * bucket granularity.
 	 *
 	 * @param from first day to include, inclusive
+	 * @param to   last day to include, inclusive
 	 * @return one pair per day a user was active on, oldest first
 	 */
-	List<UsageActiveDay> activeDays(LocalDate from);
+	List<UsageActiveDay> activeDays(LocalDate from, LocalDate to);
 
 	/**
 	 * Reports when the rollup was last rebuilt, so the dashboard can show how fresh its figures are.

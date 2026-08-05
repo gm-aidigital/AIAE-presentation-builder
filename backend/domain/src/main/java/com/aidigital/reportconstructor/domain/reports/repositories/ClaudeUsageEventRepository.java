@@ -4,7 +4,9 @@ import com.aidigital.reportconstructor.domain.reports.entities.ClaudeUsageEventE
 import com.aidigital.reportconstructor.domain.reports.projections.ClaudeLabelUsage;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 
 /**
@@ -31,8 +33,10 @@ public interface ClaudeUsageEventRepository extends JpaRepository<ClaudeUsageEve
 	 *
 	 * <p>This is the projection query the class comment above anticipated. The table grows by a few
 	 * dozen rows per report, so reading it whole to add it up in Java stopped being cheap; grouping in
-	 * SQL returns a row per stage instead of a row per call, and the all-time figure stays all-time.
+	 * SQL returns a row per stage instead of a row per call.
 	 *
+	 * @param from first moment to include, inclusive
+	 * @param to   moment to stop at, exclusive
 	 * @return one row per (stage, status, model)
 	 */
 	@Query("""
@@ -41,9 +45,11 @@ public interface ClaudeUsageEventRepository extends JpaRepository<ClaudeUsageEve
 				sum(e.inputTokens), sum(e.outputTokens),
 				sum(e.cacheWriteTokens), sum(e.cacheReadTokens))
 			from ClaudeUsageEventEntity e
+			where e.createdAt >= :from and e.createdAt < :to
 			group by e.label, e.status, e.model
 			""")
-	List<ClaudeLabelUsage> aggregateByLabel();
+	List<ClaudeLabelUsage> aggregateByLabel(
+			@Param("from") OffsetDateTime from, @Param("to") OffsetDateTime to);
 
 	/**
 	 * Aggregates the spend of calls that belong to no report job.
@@ -52,6 +58,8 @@ public interface ClaudeUsageEventRepository extends JpaRepository<ClaudeUsageEve
 	 * billed but never stamped onto a job. They are therefore absent from the {@code usage_daily}
 	 * rollup, and without this query the dashboard's headline total would quietly omit them.
 	 *
+	 * @param from first moment to include, inclusive
+	 * @param to   moment to stop at, exclusive
 	 * @return one row per (stage, status, model) among calls with no job
 	 */
 	@Query("""
@@ -60,8 +68,9 @@ public interface ClaudeUsageEventRepository extends JpaRepository<ClaudeUsageEve
 				sum(e.inputTokens), sum(e.outputTokens),
 				sum(e.cacheWriteTokens), sum(e.cacheReadTokens))
 			from ClaudeUsageEventEntity e
-			where e.jobId is null
+			where e.jobId is null and e.createdAt >= :from and e.createdAt < :to
 			group by e.label, e.status, e.model
 			""")
-	List<ClaudeLabelUsage> aggregateUnattributed();
+	List<ClaudeLabelUsage> aggregateUnattributed(
+			@Param("from") OffsetDateTime from, @Param("to") OffsetDateTime to);
 }

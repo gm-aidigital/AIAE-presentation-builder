@@ -41,17 +41,16 @@ class UsageProjectionsTest {
 	}
 
 	@Test
-	void shouldCarryAUserRowWithItsCurrentMonthSliceTest() {
+	void shouldCarryAUserRowInTheOrderTheQueryBuildsItTest() {
 		UsageDailyUserRow row = new UsageDailyUserRow(
 				"user_abc", "EOM", "SLIDES_FROM_SHEET", "claude-sonnet-4-6",
-				9L, 2L, 8L, 300L, 40_000L, 6_000L, 1_000L, 20_000L, 140L, 8L, 5_400L);
+				9L, 8L, 300L, 40_000L, 6_000L, 1_000L, 20_000L, 140L, 8L, 5_400L);
 
 		assertThat(row.ownerUserId()).isEqualTo("user_abc");
 		assertThat(row.jobs()).isEqualTo(9L);
-		// The month slice is a subset of the all-time count, taken in the same pass, so it can never
-		// exceed it.
-		assertThat(row.monthJobs()).isEqualTo(2L).isLessThanOrEqualTo(row.jobs());
-		assertThat(row.jobsWithUsage()).isEqualTo(8L);
+		// Jobs carrying usage are a subset of the jobs themselves, counted in the same pass, so this
+		// can never exceed it.
+		assertThat(row.jobsWithUsage()).isEqualTo(8L).isLessThanOrEqualTo(row.jobs());
 		assertThat(row.claudeCalls()).isEqualTo(300L);
 		assertThat(row.outputTokens()).isEqualTo(6_000L);
 		assertThat(row.slides()).isEqualTo(140L);

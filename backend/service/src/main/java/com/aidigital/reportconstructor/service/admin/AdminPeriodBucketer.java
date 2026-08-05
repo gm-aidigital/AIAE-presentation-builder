@@ -20,6 +20,12 @@ import java.util.Locale;
 @Component
 public class AdminPeriodBucketer {
 
+	/** Longest window still charted one bar per day. */
+	private static final int CHART_DAILY_MAX_DAYS = 45;
+
+	/** Longest window still charted one bar per week. */
+	private static final int CHART_WEEKLY_MAX_DAYS = 210;
+
 	/**
 	 * First day of the bucket a date belongs to.
 	 *
@@ -28,9 +34,11 @@ public class AdminPeriodBucketer {
 	 * @return the bucket's first day
 	 */
 	public LocalDate startOf(LocalDate day, AdminPeriodUnit unit) {
-		return unit == AdminPeriodUnit.MONTH
-				? day.withDayOfMonth(1)
-				: day.minusDays(day.getDayOfWeek().getValue() - 1L);
+		return switch (unit) {
+			case DAY -> day;
+			case MONTH -> day.withDayOfMonth(1);
+			case WEEK -> day.minusDays(day.getDayOfWeek().getValue() - 1L);
+		};
 	}
 
 	/**
@@ -42,7 +50,11 @@ public class AdminPeriodBucketer {
 	 */
 	public LocalDate previousStart(LocalDate day, AdminPeriodUnit unit) {
 		LocalDate start = startOf(day, unit);
-		return unit == AdminPeriodUnit.MONTH ? start.minusMonths(1) : start.minusWeeks(1);
+		return switch (unit) {
+			case DAY -> start.minusDays(1);
+			case MONTH -> start.minusMonths(1);
+			case WEEK -> start.minusWeeks(1);
+		};
 	}
 
 	/**
@@ -53,11 +65,12 @@ public class AdminPeriodBucketer {
 	 * @return {@code 2026-W32} for a week, {@code 2026-08} for a month
 	 */
 	public String keyOf(LocalDate day, AdminPeriodUnit unit) {
-		if (unit == AdminPeriodUnit.MONTH) {
-			return String.format(Locale.ROOT, "%04d-%02d", day.getYear(), day.getMonthValue());
-		}
-		return String.format(Locale.ROOT, "%04d-W%02d",
-				day.get(IsoFields.WEEK_BASED_YEAR), day.get(IsoFields.WEEK_OF_WEEK_BASED_YEAR));
+		return switch (unit) {
+			case DAY -> day.toString();
+			case MONTH -> String.format(Locale.ROOT, "%04d-%02d", day.getYear(), day.getMonthValue());
+			case WEEK -> String.format(Locale.ROOT, "%04d-W%02d",
+					day.get(IsoFields.WEEK_BASED_YEAR), day.get(IsoFields.WEEK_OF_WEEK_BASED_YEAR));
+		};
 	}
 
 	/**
@@ -73,5 +86,22 @@ public class AdminPeriodBucketer {
 		return unit == AdminPeriodUnit.MONTH
 				? month + " " + start.getYear()
 				: month + " " + start.getDayOfMonth();
+	}
+
+	/**
+	 * Picks the bucket size a volume chart should use for a span of days.
+	 *
+	 * <p>Separate from the trend granularity: a trend table of thirty rows is fine to scroll, a chart
+	 * of thirty bars is fine to look at, and a chart of four hundred is neither. The thresholds are
+	 * about how many bars fit, not about how people reason.
+	 *
+	 * @param days how many days the window covers
+	 * @return the unit whose buckets keep the chart readable
+	 */
+	public AdminPeriodUnit chartUnitFor(long days) {
+		if (days <= CHART_DAILY_MAX_DAYS) {
+			return AdminPeriodUnit.DAY;
+		}
+		return days <= CHART_WEEKLY_MAX_DAYS ? AdminPeriodUnit.WEEK : AdminPeriodUnit.MONTH;
 	}
 }

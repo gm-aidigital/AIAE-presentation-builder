@@ -2,12 +2,11 @@ import type { AdminSavings } from "@/shared/api/types";
 import { formatHours, formatUsd } from "../lib/tokenFormat";
 
 /**
- * What the generated reports would have cost to build by hand, and what that is worth.
+ * What the selected window's reports would have cost to build by hand, and what that is worth.
  *
  * The panel states its own assumptions rather than only its conclusion. Every figure here is a
  * model, and a dollar amount with no visible basis is a number nobody can check or argue with — so
- * the rate and the per-slide baseline are printed alongside, and the two reference deck sizes give
- * a reader something to compare against decks they remember building.
+ * the rate and the per-slide baseline are printed alongside it.
  */
 export function SavingsPanel({ savings }: { savings: AdminSavings }) {
     const modelled = Math.max(0, savings.slidesTotal - savings.slidesMeasured);
@@ -16,7 +15,12 @@ export function SavingsPanel({ savings }: { savings: AdminSavings }) {
         <div className="ad-savings">
             <div className="ad-savings__head">
                 <span className="ad-savings__title">Time and money saved</span>
-                <span className="ad-savings__basis">
+                <span
+                    className="ad-savings__basis"
+                    title={`${formatHours(savings.manualHours)} of manual work, less the ${formatHours(
+                        savings.automationHours,
+                    )} the runs actually took`}
+                >
                     {savings.minutesPerSlide} min/slide · {formatUsd(savings.hourlyRateUsd)}/hour
                 </span>
             </div>
@@ -25,12 +29,14 @@ export function SavingsPanel({ savings }: { savings: AdminSavings }) {
                 <div className="ad-savings__figure ad-savings__figure--hero">
                     <div className="ad-savings__num">{formatHours(savings.savedHours)}</div>
                     <div className="ad-savings__label">Hours saved</div>
-                    <div className="ad-savings__sub">{formatHours(savings.savedHoursThisMonth)} this month</div>
+                    <div className="ad-savings__sub">
+                        vs {formatHours(savings.manualHours)} by hand
+                    </div>
                 </div>
                 <div className="ad-savings__figure">
                     <div className="ad-savings__num">{formatUsd(savings.savedUsd)}</div>
                     <div className="ad-savings__label">Value of that time</div>
-                    <div className="ad-savings__sub">{formatUsd(savings.savedUsdThisMonth)} this month</div>
+                    <div className="ad-savings__sub">at {formatUsd(savings.hourlyRateUsd)}/hour</div>
                 </div>
                 <div className="ad-savings__figure">
                     <div className="ad-savings__num">{savings.slidesTotal.toLocaleString("en-US")}</div>
@@ -40,25 +46,6 @@ export function SavingsPanel({ savings }: { savings: AdminSavings }) {
                     </div>
                 </div>
             </div>
-
-            <dl className="ad-savings__detail">
-                <div className="ad-savings__row">
-                    <dt>By hand</dt>
-                    <dd>{formatHours(savings.manualHours)}</dd>
-                </div>
-                <div className="ad-savings__row">
-                    <dt>Generated in</dt>
-                    <dd>{formatHours(savings.automationHours)}</dd>
-                </div>
-                <div className="ad-savings__row">
-                    <dt>A 25-slide deck by hand</dt>
-                    <dd>{formatHours(savings.manualHoursFor25Slides)}</dd>
-                </div>
-                <div className="ad-savings__row">
-                    <dt>A 16-slide deck by hand</dt>
-                    <dd>{formatHours(savings.manualHoursFor16Slides)}</dd>
-                </div>
-            </dl>
 
             <p className="ad-savings__note">
                 A modelled comparison, not a measurement. The generated runs' own wall-clock time is already

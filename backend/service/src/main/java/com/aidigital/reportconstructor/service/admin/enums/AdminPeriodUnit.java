@@ -8,6 +8,9 @@ package com.aidigital.reportconstructor.service.admin.enums;
  */
 public enum AdminPeriodUnit {
 
+	/** A single calendar day. Only used for the volume chart over a short window. */
+	DAY("day"),
+
 	/** ISO week, running Monday to Sunday. */
 	WEEK("week"),
 

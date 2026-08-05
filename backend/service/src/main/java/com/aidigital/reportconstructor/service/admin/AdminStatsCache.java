@@ -1,5 +1,6 @@
 package com.aidigital.reportconstructor.service.admin;
 
+import com.aidigital.reportconstructor.service.admin.dto.AdminDateRange;
 import com.aidigital.reportconstructor.service.admin.dto.AdminStats;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
@@ -16,8 +17,9 @@ import java.util.function.Supplier;
  * work at all. A time-to-live would have to choose between those two, and would be wrong in one
  * direction or the other.
  *
- * <p>Two admins refreshing the page therefore share one assembly pass rather than each triggering
- * their own five queries and fold.
+ * <p>Two admins looking at the same dates therefore share one assembly pass rather than each
+ * triggering their own queries and fold. Different dates are different answers, so the window is the
+ * cache key — otherwise switching the range would hand back the previous window's figures.
  */
 @Component
 public class AdminStatsCache {
@@ -31,11 +33,12 @@ public class AdminStatsCache {
 	 * <p>Takes a supplier rather than the stats themselves so a hit never does the work: passing an
 	 * already-assembled value would defeat the point of asking.
 	 *
+	 * @param range    the window being reported on, and the cache key
 	 * @param assemble builds the snapshot when the cache has none
 	 * @return the snapshot
 	 */
-	@Cacheable(cacheNames = CACHE_NAME, key = "'snapshot'")
-	public AdminStats snapshot(Supplier<AdminStats> assemble) {
+	@Cacheable(cacheNames = CACHE_NAME, key = "#range")
+	public AdminStats snapshot(AdminDateRange range, Supplier<AdminStats> assemble) {
 		return assemble.get();
 	}
 

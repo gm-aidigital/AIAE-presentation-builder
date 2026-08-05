@@ -37,6 +37,47 @@ public class AdminActiveUsersBuilder {
 	private final RollupUsageMath math;
 
 	/**
+	 * Counts the distinct users active on or after a day.
+	 *
+	 * @param activeDays distinct (day, user) pairs
+	 * @param from       first day of the window, inclusive
+	 * @return how many distinct users were active in it
+	 */
+	public int activeInWindow(List<UsageActiveDay> activeDays, LocalDate from) {
+		Set<String> users = new LinkedHashSet<>();
+		for (UsageActiveDay active : activeDays) {
+			if (!active.day().isBefore(from)) {
+				users.add(active.ownerUserId());
+			}
+		}
+		return users.size();
+	}
+
+	/**
+	 * Counts the users whose first ever activity falls inside the window.
+	 *
+	 * <p>Needs the pairs from before the window as well as inside it — that is the whole point. Someone
+	 * who has been generating reports for a year is active this month, not new this month, and only
+	 * the earlier history can tell those apart.
+	 *
+	 * @param activeDays distinct (day, user) pairs, including history before the window
+	 * @param from       first day of the window, inclusive
+	 * @return how many of the window's users had never appeared before it
+	 */
+	public int newInWindow(List<UsageActiveDay> activeDays, LocalDate from) {
+		Set<String> before = new HashSet<>();
+		Set<String> during = new LinkedHashSet<>();
+		for (UsageActiveDay active : activeDays) {
+			if (active.day().isBefore(from)) {
+				before.add(active.ownerUserId());
+			} else {
+				during.add(active.ownerUserId());
+			}
+		}
+		return (int) during.stream().filter(user -> !before.contains(user)).count();
+	}
+
+	/**
 	 * Builds an active-user series at the given granularity, oldest first.
 	 *
 	 * @param activeDays distinct (day, user) pairs, in any order

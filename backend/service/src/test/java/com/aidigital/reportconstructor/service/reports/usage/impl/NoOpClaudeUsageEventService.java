@@ -4,6 +4,7 @@ import com.aidigital.reportconstructor.domain.reports.entities.ClaudeUsageEventE
 import com.aidigital.reportconstructor.domain.reports.projections.ClaudeLabelUsage;
 import com.aidigital.reportconstructor.service.reports.usage.ClaudeUsageEventService;
 
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -26,13 +27,13 @@ public class NoOpClaudeUsageEventService implements ClaudeUsageEventService {
 	}
 
 	@Override
-	public List<ClaudeLabelUsage> byLabel() {
+	public List<ClaudeLabelUsage> byLabel(OffsetDateTime from, OffsetDateTime to) {
 		// The aggregate queries are the database's job; collaborators under test only ever record.
 		return List.of();
 	}
 
 	@Override
-	public List<ClaudeLabelUsage> unattributed() {
+	public List<ClaudeLabelUsage> unattributed(OffsetDateTime from, OffsetDateTime to) {
 		return List.of();
 	}
 

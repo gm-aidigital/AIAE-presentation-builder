@@ -8,7 +8,6 @@ import com.aidigital.reportconstructor.service.reports.usage.ClaudeCostCalculato
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -36,21 +35,18 @@ public class AdminRollupTokenTotals {
 	 * @param days         daily rollup rows
 	 * @param unattributed per-call aggregates for calls belonging to no report job
 	 * @param byLabel      per-call aggregates for every stage, from which lost calls are counted
-	 * @param today        reference date for the "this month" window
 	 * @return the aggregated token totals
 	 */
 	public AdminTokenTotals totals(
 			List<UsageDailyBucket> days, List<ClaudeLabelUsage> unattributed,
-			List<ClaudeLabelUsage> byLabel, LocalDate today) {
+			List<ClaudeLabelUsage> byLabel) {
 		long reportsWithUsage = 0;
 		long calls = 0;
 		long input = 0;
 		long output = 0;
 		long cacheWrite = 0;
 		long cacheRead = 0;
-		long tokensThisMonth = 0;
 		double cost = 0d;
-		double costThisMonth = 0d;
 
 		for (UsageDailyBucket day : days) {
 			// Every job that carries usage contributes its spend, including a slide-deck flow's
@@ -64,12 +60,7 @@ public class AdminRollupTokenTotals {
 			output += math.value(day.outputTokens());
 			cacheWrite += math.value(day.cacheWriteTokens());
 			cacheRead += math.value(day.cacheReadTokens());
-			double dayCost = math.costUsd(day);
-			cost += dayCost;
-			if (isSameMonth(day.day(), today)) {
-				tokensThisMonth += math.totalTokens(day);
-				costThisMonth += dayCost;
-			}
+			cost += math.costUsd(day);
 		}
 
 		// Calls with no job are invisible to the rollup, so they are added into the headline rather than
@@ -114,8 +105,6 @@ public class AdminRollupTokenTotals {
 				cacheRead,
 				total,
 				cost,
-				tokensThisMonth,
-				costThisMonth,
 				perReport(total, reportsWithUsage),
 				perReport(input + cacheWrite + cacheRead, reportsWithUsage),
 				perReport(output, reportsWithUsage),
@@ -180,17 +169,5 @@ public class AdminRollupTokenTotals {
 	 */
 	long value(Long aggregate) {
 		return aggregate == null ? 0L : aggregate;
-	}
-
-	/**
-	 * Tells whether a day falls in the same calendar month as the reference date.
-	 *
-	 * @param day       the day under test
-	 * @param reference the reference date
-	 * @return true when both share a year and a month
-	 */
-	boolean isSameMonth(LocalDate day, LocalDate reference) {
-		return day != null && day.getYear() == reference.getYear()
-				&& day.getMonth() == reference.getMonth();
 	}
 }

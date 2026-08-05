@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 
 /**
@@ -33,14 +34,14 @@ public class ClaudeUsageEventServiceImpl implements ClaudeUsageEventService {
 
 	@Transactional(readOnly = true)
 	@Override
-	public List<ClaudeLabelUsage> byLabel() {
-		return events.aggregateByLabel();
+	public List<ClaudeLabelUsage> byLabel(OffsetDateTime from, OffsetDateTime to) {
+		return events.aggregateByLabel(from, to);
 	}
 
 	@Transactional(readOnly = true)
 	@Override
-	public List<ClaudeLabelUsage> unattributed() {
-		return events.aggregateUnattributed();
+	public List<ClaudeLabelUsage> unattributed(OffsetDateTime from, OffsetDateTime to) {
+		return events.aggregateUnattributed(from, to);
 	}
 
 	@Transactional

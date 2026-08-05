@@ -51,20 +51,20 @@ public class UsageDailyServiceImpl implements UsageDailyService {
 
 	@Transactional(readOnly = true)
 	@Override
-	public List<UsageDailyBucket> byDay(LocalDate from) {
-		return rollup.aggregateByDay(from);
+	public List<UsageDailyBucket> byDay(LocalDate from, LocalDate to) {
+		return rollup.aggregateByDay(from, to);
 	}
 
 	@Transactional(readOnly = true)
 	@Override
-	public List<UsageDailyUserRow> byUser(LocalDate from, LocalDate monthStart) {
-		return rollup.aggregateByUser(from, monthStart);
+	public List<UsageDailyUserRow> byUser(LocalDate from, LocalDate to) {
+		return rollup.aggregateByUser(from, to);
 	}
 
 	@Transactional(readOnly = true)
 	@Override
-	public List<UsageActiveDay> activeDays(LocalDate from) {
-		return rollup.activeDays(from);
+	public List<UsageActiveDay> activeDays(LocalDate from, LocalDate to) {
+		return rollup.activeDays(from, to);
 	}
 
 	@Transactional(readOnly = true)

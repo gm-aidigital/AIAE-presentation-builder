@@ -24,6 +24,10 @@ import java.util.Map;
  * <p>As elsewhere, report counts exclude a slide-deck flow's intermediate sheet step while token
  * sums keep every job — so a user's real spend shows even though the sheet step does not add to
  * their report tally.
+ *
+ * <p>The rows cover the selected window; "last activity" is the exception and is always the user's
+ * genuine last run, because a date clamped to the window would be a different fact wearing the same
+ * label.
  */
 @Component
 @RequiredArgsConstructor
@@ -50,11 +54,11 @@ public class AdminRollupUserStats {
 
 		for (UsageDailyUserRow row : rows) {
 			String userId = row.ownerUserId();
-			// [0] reports, [1] this month, [2] input, [3] output, [4] cache
+			// [0] reports, [1] slides, [2] input, [3] output, [4] cache
 			long[] counter = counters.computeIfAbsent(userId, k -> new long[5]);
 			if (math.isCountable(row)) {
 				counter[0] += math.value(row.jobs());
-				counter[1] += math.value(row.monthJobs());
+				counter[1] += math.value(row.slides());
 			}
 			counter[2] += math.value(row.inputTokens());
 			counter[3] += math.value(row.outputTokens());
@@ -74,7 +78,7 @@ public class AdminRollupUserStats {
 					email,
 					displayNameHelper.fromEmail(email),
 					(int) counter[0],
-					(int) counter[1],
+					counter[1],
 					// From the jobs table, not the rollup: the rollup's grain is a day and would only ever
 					// be able to say "that Tuesday".
 					lastActivity == null ? null : lastActivity.toLocalDateTime(),

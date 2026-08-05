@@ -1,18 +1,23 @@
 package com.aidigital.reportconstructor.service.admin.dto;
 
 /**
- * Headline counters for the admin dashboard's stat cards.
+ * The dashboard's headline counters.
  *
- * @param reportsTotal all report jobs ever created
- * @param thisMonth    jobs created in the current calendar month
- * @param activeUsers  distinct users who created at least one report
- * @param running      jobs currently queued or running (technical health)
- * @param failed       jobs that ended in error (technical health)
+ * <p>Split by what they are about, not by what they look like. {@code reports}, {@code activeUsers}
+ * and {@code newUsers} describe the selected window and move when the date range moves.
+ * {@code running} and {@code failed} deliberately do not: a job queued right now is not a fact about
+ * July, and scoping it to a past window would report zero while work was in flight.
+ *
+ * @param reports     reports created in the window
+ * @param activeUsers distinct users who created one, counted once each
+ * @param newUsers    of those, the ones who had never created a report before the window
+ * @param running     jobs queued or running right now, regardless of the window
+ * @param failed      jobs that ended in error, regardless of the window
  */
 public record AdminTotals(
-		int reportsTotal,
-		int thisMonth,
+		int reports,
 		int activeUsers,
+		int newUsers,
 		int running,
 		int failed) {
 }

@@ -388,12 +388,32 @@ paths:
       operationId: getAdminStats
       summary: Team-wide report statistics and technical health (admin only)
       description: |
-        Aggregates the `report_jobs` table across all users into totals, a per-user
-        breakdown, counts by report type, and a 7-day volume series, plus technical
-        health counters. Authorized ONLY when the caller's email is on the server
-        `app.admin.emails` allow-list; everyone else gets 403.
+        Aggregates team-wide usage for one window of dates: totals, a per-user breakdown, counts by
+        report type, a chartable volume/token series, week-over-week and month-over-month trends,
+        active-user growth, and the modelled time and money saved — plus live technical health
+        counters. Authorized ONLY when the caller's email is on the server `app.admin.emails`
+        allow-list; everyone else gets 403.
+
+        `from`/`to` are inclusive and both optional. Absent, reversed or out-of-range dates are
+        resolved rather than rejected: a missing end is filled in, reversed ends are swapped, and the
+        window is clamped to the history actually retained. The window really used comes back in
+        `range`, so a client never labels one window's figures with another's.
+
+        Everything is scoped to that window except `totals.running`/`totals.failed` and `failures`,
+        which describe the system right now — a job queued this minute is not a fact about July.
       security:
         - bearerAuth: [ ]
+      parameters:
+        - name: from
+          in: query
+          required: false
+          description: "First day to report on, inclusive. Defaults to 29 days before `to`."
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          required: false
+          description: "Last day to report on, inclusive. Defaults to today."
+          schema: { type: string, format: date }
       responses:
         "200":
           description: Aggregated admin dashboard payload.
@@ -1223,7 +1243,7 @@ components:
     AdminStatsV1:
       type: object
       required:
-        [ updatedAt, totals, savings, byUser, byType, weekly, tokens, tokenWeekly,
+        [ updatedAt, range, totals, savings, byUser, byType, series, seriesUnit, tokens,
           tokensByWeek, tokensByMonth, activeUsersWeeks, activeUsersMonths, byLabel, failures ]
       properties:
         updatedAt: { type: string, format: date-time, description: "When the aggregation was computed." }
@@ -1234,6 +1254,7 @@ components:
             When the `usage_daily` rollup these figures are derived from was last rebuilt. Absent when
             the rollup has never been built. Everything except `totals.running`/`totals.failed` and
             `failures` is as fresh as this timestamp, not as fresh as `updatedAt`.
+        range: { $ref: "#/components/schemas/AdminRangeV1" }
         totals: { $ref: "#/components/schemas/AdminTotalsV1" }
         savings: { $ref: "#/components/schemas/AdminSavingsV1" }
         byUser:
@@ -1242,15 +1263,17 @@ components:
         byType:
           type: array
           items: { $ref: "#/components/schemas/AdminTypeStatV1" }
-        weekly:
+        series:
           type: array
-          description: "Report volume for each of the last 7 days, oldest first."
-          items: { $ref: "#/components/schemas/AdminDayVolumeV1" }
+          description: |
+            Report volume and token spend across the window, bucketed for charting, oldest first. The
+            bucket size is chosen from the span so the chart stays readable — see `seriesUnit`.
+          items: { $ref: "#/components/schemas/AdminTokenPeriodV1" }
+        seriesUnit:
+          type: string
+          enum: [ day, week, month ]
+          description: "Bucket size `series` uses."
         tokens: { $ref: "#/components/schemas/AdminTokenTotalsV1" }
-        tokenWeekly:
-          type: array
-          description: "Claude token spend for each of the last 7 days, oldest first."
-          items: { $ref: "#/components/schemas/AdminTokenDayV1" }
         tokensByWeek:
           type: array
           description: "Token spend per ISO week with week-over-week comparison, oldest first."
@@ -1276,26 +1299,51 @@ components:
           description: "The most recent job issues — hard failures and degraded (warning) reports — newest first."
           items: { $ref: "#/components/schemas/AdminFailedJobV1" }
 
+    AdminRangeV1:
+      type: object
+      description: |
+        The window the figures actually cover, after the requested dates were resolved and clamped.
+        Sent back because what was asked for and what was answered can differ, and a screen that
+        labels one window's figures with another's is worse than one that shows nothing.
+      required: [ from, to, suggestedUnit ]
+      properties:
+        from: { type: string, format: date, description: "First day covered, inclusive." }
+        to: { type: string, format: date, description: "Last day covered, inclusive." }
+        suggestedUnit:
+          type: string
+          enum: [ week, month ]
+          description: |
+            The trend granularity this span reads best at — weeks for a short window, months for a
+            long one. A default, not a rule: the client may show the other one.
+
     AdminTotalsV1:
       type: object
-      required: [ reportsTotal, thisMonth, activeUsers, running, failed ]
+      description: |
+        Headline counters, split by what they are about. `reports`, `activeUsers` and `newUsers`
+        describe the selected window. `running` and `failed` deliberately do not — a job queued right
+        now is not a fact about a past window, and scoping it would report zero while work is in
+        flight.
+      required: [ reports, activeUsers, newUsers, running, failed ]
       properties:
-        reportsTotal: { type: integer, format: int32, description: "All report jobs ever created." }
-        thisMonth: { type: integer, format: int32, description: "Jobs created in the current calendar month." }
-        activeUsers: { type: integer, format: int32, description: "Distinct users who created a report." }
-        running: { type: integer, format: int32, description: "Jobs currently queued or running (technical)." }
-        failed: { type: integer, format: int32, description: "Jobs that ended in error (technical)." }
+        reports: { type: integer, format: int32, description: "Reports created in the window." }
+        activeUsers: { type: integer, format: int32, description: "Distinct users who created one, counted once each." }
+        newUsers: { type: integer, format: int32, description: "Of those, the ones who had never created a report before the window." }
+        running: { type: integer, format: int32, description: "Jobs queued or running right now, regardless of the window." }
+        failed: { type: integer, format: int32, description: "Jobs that ended in error, regardless of the window." }
 
     AdminUserStatV1:
       type: object
-      required: [ email, name, total, thisMonth, inputTokens, outputTokens, cacheTokens, totalTokens, costUsd ]
+      required: [ email, name, total, slides, inputTokens, outputTokens, cacheTokens, totalTokens, costUsd ]
       properties:
         userId: { type: string }
         email: { type: string }
         name: { type: string, description: "Display name (falls back to the email local part)." }
-        total: { type: integer, format: int32 }
-        thisMonth: { type: integer, format: int32 }
-        lastActivity: { type: string, format: date-time, description: "Timestamp of the user's most recent report." }
+        total: { type: integer, format: int32, description: "Reports the user created in the window." }
+        slides: { type: integer, format: int64, description: "Slides those reports shipped, measured where known and modelled where not." }
+        lastActivity:
+          type: string
+          format: date-time
+          description: "The user's most recent report overall — deliberately not clamped to the window."
         inputTokens: { type: integer, format: int64, description: "Plain (uncached) Claude input tokens across the user's reports." }
         outputTokens: { type: integer, format: int64, description: "Claude output tokens across the user's reports." }
         cacheTokens: { type: integer, format: int64, description: "Prompt-cache write + read tokens across the user's reports." }
@@ -1309,32 +1357,23 @@ components:
         type: { type: string, description: "Report type code (uppercased); 'OTHER' when unknown." }
         count: { type: integer, format: int32 }
 
-    AdminDayVolumeV1:
-      type: object
-      required: [ date, label, count ]
-      properties:
-        date: { type: string, format: date }
-        label: { type: string, description: "Short weekday label, e.g. 'Mon'." }
-        count: { type: integer, format: int32 }
-
     AdminSavingsV1:
       type: object
       description: |
-        What the generated reports would have cost to build by hand, and what that is worth.
+        What the generated reports would have cost to build by hand over the selected window, and
+        what that is worth.
 
         Every figure here is a modelled counterfactual, not a measurement. The two assumptions it
         rests on — `hourlyRateUsd` and `minutesPerSlide` — are returned with it so a reader can
         re-derive the number or disagree with it, rather than being handed a dollar amount with no
-        visible basis. `manualHoursFor25Slides`/`manualHoursFor16Slides` apply the same baseline to
-        two fixed deck sizes so it can be checked against decks people remember building.
+        visible basis.
 
         Reports whose deck was never measured (runs older than slide counting, or whose deck could
         not be read) are modelled at the configured per-type default rather than counted as zero
         slides; `slidesMeasured` shows how much of `slidesTotal` is real.
       required:
         [ reportsCounted, slidesTotal, slidesMeasured, avgSlidesPerReport, manualHours,
-          automationHours, savedHours, savedUsd, savedHoursThisMonth, savedUsdThisMonth,
-          hourlyRateUsd, minutesPerSlide, manualHoursFor25Slides, manualHoursFor16Slides ]
+          automationHours, savedHours, savedUsd, hourlyRateUsd, minutesPerSlide ]
       properties:
         reportsCounted: { type: integer, format: int32, description: "Reports the figure covers." }
         slidesTotal: { type: integer, format: int64, description: "Slides those reports shipped, measured where known and modelled where not." }
@@ -1344,17 +1383,13 @@ components:
         automationHours: { type: number, format: double, description: "Wall-clock hours the generated runs actually took." }
         savedHours: { type: number, format: double, description: "manualHours less automationHours, floored at zero." }
         savedUsd: { type: number, format: double, description: "savedHours valued at hourlyRateUsd." }
-        savedHoursThisMonth: { type: number, format: double }
-        savedUsdThisMonth: { type: number, format: double }
         hourlyRateUsd: { type: number, format: double, description: "The loaded hourly rate the saving is valued at." }
         minutesPerSlide: { type: integer, format: int32, description: "Manual baseline one slide is assumed to cost." }
-        manualHoursFor25Slides: { type: number, format: double }
-        manualHoursFor16Slides: { type: number, format: double }
 
     AdminTokenPeriodV1:
       type: object
       description: |
-        One bucket of a token trend — a week or a month — carrying both its own figures and the
+        One bucket of a trend — a day, a week or a month — carrying both its own figures and the
         comparison with the bucket before it.
 
         The previous period travels with the row rather than being left for the client to look up:
@@ -1364,7 +1399,7 @@ components:
         nothing is not a percentage.
       required: [ key, start, label, reports, inputTokens, outputTokens, cacheTokens, totalTokens, costUsd ]
       properties:
-        key: { type: string, description: "Stable bucket id: '2026-W32' for a week, '2026-08' for a month." }
+        key: { type: string, description: "Stable bucket id: '2026-08-03' for a day, '2026-W32' for a week, '2026-08' for a month." }
         start: { type: string, format: date, description: "First day of the bucket." }
         label: { type: string, description: "Short human label, e.g. 'Aug 3' or 'Aug 2026'." }
         reports: { type: integer, format: int32 }
@@ -1410,7 +1445,7 @@ components:
         counts and would otherwise drag the mean down.
       required:
         [ reportsWithUsage, claudeCalls, inputTokens, outputTokens, cacheWriteTokens, cacheReadTokens,
-          totalTokens, costUsd, tokensThisMonth, costThisMonthUsd, avgTokensPerReport, avgInputPerReport,
+          totalTokens, costUsd, avgTokensPerReport, avgInputPerReport,
           avgOutputPerReport, avgCostPerReportUsd, unknownCalls, estimatedTokens, estimatedCostUsd,
           unattributedCalls, unattributedTokens, unattributedCostUsd ]
       properties:
@@ -1422,8 +1457,6 @@ components:
         cacheReadTokens: { type: integer, format: int64, description: "Input tokens served from the prompt cache." }
         totalTokens: { type: integer, format: int64, description: "Every token above, summed." }
         costUsd: { type: number, format: double, description: "Estimated total cost in USD." }
-        tokensThisMonth: { type: integer, format: int64 }
-        costThisMonthUsd: { type: number, format: double }
         avgTokensPerReport: { type: integer, format: int64 }
         avgInputPerReport: { type: integer, format: int64, description: "Mean input-side tokens (plain + cache) per report." }
         avgOutputPerReport: { type: integer, format: int64 }
@@ -1460,15 +1493,6 @@ components:
         totalTokens: { type: integer, format: int64 }
         costUsd: { type: number, format: double }
         unknownCalls: { type: integer, format: int64, description: "Calls of this stage whose reply never arrived." }
-
-    AdminTokenDayV1:
-      type: object
-      required: [ date, label, totalTokens, costUsd ]
-      properties:
-        date: { type: string, format: date }
-        label: { type: string, description: "Short weekday label, e.g. 'Mon'." }
-        totalTokens: { type: integer, format: int64 }
-        costUsd: { type: number, format: double }
 
     AdminFailedJobV1:
       type: object

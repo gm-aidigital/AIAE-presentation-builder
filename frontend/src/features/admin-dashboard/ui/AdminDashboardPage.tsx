@@ -11,7 +11,9 @@ import type {
     AdminUserStat,
     ReportSummary,
 } from "@/shared/api/types";
-import { formatDelta, formatTokens, formatUsd } from "../lib/tokenFormat";
+import { formatDelta, formatHours, formatTokens, formatUsd } from "../lib/tokenFormat";
+import type { DateRange } from "../lib/dateRange";
+import { defaultRange, formatRange, suggestedUnit } from "../lib/dateRange";
 import { useTableSort } from "../lib/useTableSort";
 import { useAdminStats } from "../api/useAdminStats";
 import type { ReportSortKey } from "../api/useAllReports";
@@ -19,9 +21,11 @@ import { useAllReports } from "../api/useAllReports";
 import { useAddAdmin, useAdmins, useRemoveAdmin } from "../api/useAdmins";
 import { useClearFailures, useResolveFailure } from "../api/useFailures";
 import { ActiveUsersTrend } from "./ActiveUsersTrend";
+import { DateRangePicker } from "./DateRangePicker";
 import { SavingsPanel } from "./SavingsPanel";
 import { SortHeader } from "./SortHeader";
 import { TrendTable } from "./TrendTable";
+import { VolumeChart } from "./VolumeChart";
 import "./admin-dashboard.css";
 
 const dateFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -94,7 +98,10 @@ function lastActivityLabel(iso: string | undefined): string {
 /** Screen 7 — admin-only team statistics, all-reports history, and admin management. */
 export function AdminDashboardPage() {
     const [tab, setTab] = useState<Tab>("overview");
-    const stats = useAdminStats();
+    // One window for the whole screen, held here rather than per tab: switching between Overview and
+    // Token consumption to compare the same dates should not mean setting them twice.
+    const [range, setRange] = useState<DateRange>(() => defaultRange());
+    const stats = useAdminStats(range);
 
     const updated = stats.data ? updatedFmt.format(new Date(stats.data.updatedAt)) : "…";
     // Everything except the live job counters and the failures list comes from the usage rollup, so
@@ -119,6 +126,9 @@ export function AdminDashboardPage() {
                         </div>
                         <h1 className="ad__title">Dashboard</h1>
                     </div>
+                    {(tab === "overview" || tab === "tokens") && (
+                        <DateRangePicker value={range} onChange={setRange} />
+                    )}
                 </div>
 
                 <div className="ad-tabs" role="tablist">
@@ -136,8 +146,10 @@ export function AdminDashboardPage() {
                     ))}
                 </div>
 
-                {tab === "overview" && <OverviewTab query={stats} onShowFailures={() => setTab("failures")} />}
-                {tab === "tokens" && <TokensTab query={stats} />}
+                {tab === "overview" && (
+                    <OverviewTab query={stats} range={range} onShowFailures={() => setTab("failures")} />
+                )}
+                {tab === "tokens" && <TokensTab query={stats} range={range} />}
                 {tab === "reports" && <AllReportsTab />}
                 {tab === "failures" && <FailuresTab query={stats} />}
                 {tab === "admins" && <AdminsTab />}
@@ -146,12 +158,14 @@ export function AdminDashboardPage() {
     );
 }
 
-/** The statistics overview (cards + by-user + by-type + weekly + technical). */
+/** The statistics overview for the selected window (cards + savings + by-user + by-type + chart). */
 function OverviewTab({
     query,
+    range,
     onShowFailures,
 }: {
     query: ReturnType<typeof useAdminStats>;
+    range: DateRange;
     onShowFailures: () => void;
 }) {
     const { data, isLoading, isError, error } = query;
@@ -164,8 +178,8 @@ function OverviewTab({
             switch (key) {
                 case "total":
                     return u.total;
-                case "month":
-                    return u.thisMonth;
+                case "slides":
+                    return u.slides;
                 case "last":
                     return u.lastActivity;
                 default:
@@ -185,34 +199,30 @@ function OverviewTab({
         return <ErrorAlert message={error instanceof Error ? error.message : "Could not load statistics"} />;
     }
 
-    const { totals, byUser, byType, weekly, savings, activeUsersMonths } = data;
+    const { totals, byType, savings, activeUsersMonths, series, seriesUnit } = data;
     const maxType = Math.max(1, ...byType.map((t: AdminTypeStat) => t.count));
-    const maxWeek = Math.max(1, ...weekly.map((d) => d.count));
-    // The latest month is last in the series; its own month-over-month delta is the growth figure
-    // the "Active users" card is really about.
-    const latestMonth = activeUsersMonths.at(-1);
 
     return (
         <>
             <div className="ad__stats">
                 <div className="ad-stat ad-stat--hero">
-                    <div className="ad-stat__num">{totals.reportsTotal}</div>
-                    <div className="ad-stat__label">Reports total</div>
-                    <div className="ad-stat__delta">{totals.thisMonth} this month</div>
+                    <div className="ad-stat__num">{totals.reports}</div>
+                    <div className="ad-stat__label">Reports</div>
+                    <div className="ad-stat__delta">
+                        {savings.slidesTotal.toLocaleString("en-US")} slides · {formatRange(range)}
+                    </div>
                 </div>
                 <div className="ad-stat">
-                    <div className="ad-stat__num">{totals.thisMonth}</div>
-                    <div className="ad-stat__label">This month</div>
-                    <div className="ad-stat__delta">created so far</div>
-                </div>
-                <div className="ad-stat">
-                    <div className="ad-stat__num">{latestMonth?.activeUsers ?? totals.activeUsers}</div>
+                    <div className="ad-stat__num">{totals.activeUsers}</div>
                     <div className="ad-stat__label">Active users</div>
                     <div className="ad-stat__delta">
-                        {latestMonth
-                            ? `${formatDelta(latestMonth.deltaPct)} vs last month · ${totals.activeUsers} all time`
-                            : "with a report"}
+                        {totals.newUsers > 0 ? `${totals.newUsers} new in this period` : "no first-timers"}
                     </div>
+                </div>
+                <div className="ad-stat">
+                    <div className="ad-stat__num">{formatHours(savings.savedHours)}</div>
+                    <div className="ad-stat__label">Hours saved</div>
+                    <div className="ad-stat__delta">{formatUsd(savings.savedUsd)} of time</div>
                 </div>
                 <button
                     type="button"
@@ -238,7 +248,7 @@ function OverviewTab({
                     <div className="ad-users__grid">
                         <SortHeader label="User" columnKey="user" activeKey={sort.key} dir={sort.dir} onSort={toggle} />
                         <SortHeader label="Total" columnKey="total" activeKey={sort.key} dir={sort.dir} onSort={toggle} />
-                        <SortHeader label="This month" columnKey="month" activeKey={sort.key} dir={sort.dir} onSort={toggle} />
+                        <SortHeader label="Slides" columnKey="slides" activeKey={sort.key} dir={sort.dir} onSort={toggle} />
                         <SortHeader label="Last" columnKey="last" activeKey={sort.key} dir={sort.dir} onSort={toggle} />
                         {sortedUsers.map((u: AdminUserStat, i: number) => (
                             <div className="ad-users__rowcontents" key={u.userId ?? u.email ?? i}>
@@ -252,7 +262,7 @@ function OverviewTab({
                                     </div>
                                 </div>
                                 <div className="ad-users__total">{u.total}</div>
-                                <div className="ad-users__month">{u.thisMonth}</div>
+                                <div className="ad-users__month">{u.slides.toLocaleString("en-US")}</div>
                                 <div className="ad-users__last">{lastActivityLabel(u.lastActivity)}</div>
                             </div>
                         ))}
@@ -290,19 +300,8 @@ function OverviewTab({
                     </div>
 
                     <div className="ad-rail__card ad-rail__card--tint">
-                        <div className="ad-rail__title">This week</div>
-                        <div className="ad-week">
-                            {weekly.map((d) => (
-                                <div className="ad-week__col" key={d.date}>
-                                    <div
-                                        className="ad-week__bar"
-                                        style={{ height: `${Math.max(6, Math.round((d.count / maxWeek) * 76))}px` }}
-                                        title={`${d.count} report${d.count === 1 ? "" : "s"}`}
-                                    />
-                                    <span className="ad-week__label">{d.label}</span>
-                                </div>
-                            ))}
-                        </div>
+                        <div className="ad-rail__title">Reports over the period</div>
+                        <VolumeChart series={series} unit={seriesUnit} />
                     </div>
 
                     <div className="ad-rail__card">
@@ -321,8 +320,8 @@ function OverviewTab({
                                 <dd>{totals.failed}</dd>
                             </div>
                             <div className="ad-tech__row">
-                                <dt>Reports total</dt>
-                                <dd>{totals.reportsTotal}</dd>
+                                <dt>Reports in period</dt>
+                                <dd>{totals.reports}</dd>
                             </div>
                         </dl>
                     </div>
@@ -333,9 +332,12 @@ function OverviewTab({
 }
 
 /** Claude token consumption — totals, averages, cost, the week's trend, and who spent what. */
-function TokensTab({ query }: { query: ReturnType<typeof useAdminStats> }) {
+function TokensTab({ query, range }: { query: ReturnType<typeof useAdminStats>; range: DateRange }) {
     const { data, isLoading, isError, error } = query;
-    const [trendUnit, setTrendUnit] = useState<"week" | "month">("month");
+    // The granularity follows the window unless the reader overrides it: thirteen weekly bars for a
+    // quarter is not a trend anyone reads, and two monthly stubs for a fortnight is not one either.
+    const [unitOverride, setUnitOverride] = useState<"week" | "month" | null>(null);
+    const trendUnit = unitOverride ?? suggestedUnit(range);
 
     const spendValue = useCallback((u: AdminUserStat, key: string) => {
         switch (key) {
@@ -365,7 +367,6 @@ function TokensTab({ query }: { query: ReturnType<typeof useAdminStats> }) {
     }
 
     const t = data.tokens;
-    const maxDayTokens = Math.max(1, ...data.tokenWeekly.map((d) => d.totalTokens));
     const trendPeriods = trendUnit === "week" ? data.tokensByWeek : data.tokensByMonth;
     const latestTrend = trendPeriods.at(-1);
 
@@ -401,7 +402,7 @@ function TokensTab({ query }: { query: ReturnType<typeof useAdminStats> }) {
                     <div className="ad-stat__num">{formatUsd(t.costUsd)}</div>
                     <div className="ad-stat__label">Estimated cost</div>
                     <div className="ad-stat__delta">
-                        {formatUsd(t.costThisMonthUsd)} this month
+                        {formatRange(range)}
                         {t.unknownCalls > 0 && ` · +~${formatUsd(t.estimatedCostUsd)} unmeasured`}
                     </div>
                 </div>
@@ -494,7 +495,7 @@ function TokensTab({ query }: { query: ReturnType<typeof useAdminStats> }) {
                                         type="button"
                                         className={`ad-toggle__btn${trendUnit === unit ? " ad-toggle__btn--active" : ""}`}
                                         aria-pressed={trendUnit === unit}
-                                        onClick={() => setTrendUnit(unit)}
+                                        onClick={() => setUnitOverride(unit)}
                                     >
                                         {unit === "week" ? "Weekly" : "Monthly"}
                                     </button>
@@ -566,21 +567,8 @@ function TokensTab({ query }: { query: ReturnType<typeof useAdminStats> }) {
                     </div>
 
                     <div className="ad-rail__card ad-rail__card--tint">
-                        <div className="ad-rail__title">Tokens this week</div>
-                        <div className="ad-week">
-                            {data.tokenWeekly.map((d) => (
-                                <div className="ad-week__col" key={d.date}>
-                                    <div
-                                        className="ad-week__bar"
-                                        style={{
-                                            height: `${Math.max(6, Math.round((d.totalTokens / maxDayTokens) * 76))}px`,
-                                        }}
-                                        title={`${formatTokens(d.totalTokens)} tokens · ${formatUsd(d.costUsd)}`}
-                                    />
-                                    <span className="ad-week__label">{d.label}</span>
-                                </div>
-                            ))}
-                        </div>
+                        <div className="ad-rail__title">Tokens over the period</div>
+                        <VolumeChart series={data.series} unit={data.seriesUnit} metric="tokens" />
                     </div>
 
                     <div className="ad-rail__card">
@@ -601,10 +589,6 @@ function TokensTab({ query }: { query: ReturnType<typeof useAdminStats> }) {
                             <div className="ad-tech__row">
                                 <dt>Cache read</dt>
                                 <dd>{t.cacheReadTokens.toLocaleString("en-US")}</dd>
-                            </div>
-                            <div className="ad-tech__row">
-                                <dt>Tokens this month</dt>
-                                <dd>{t.tokensThisMonth.toLocaleString("en-US")}</dd>
                             </div>
                             <div className="ad-tech__row">
                                 <dt>Measured calls</dt>

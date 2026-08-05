@@ -9,9 +9,9 @@ import java.time.LocalDateTime;
  * @param userId       internal owner id
  * @param email        owner email (may be {@code null} for legacy rows)
  * @param name         display name derived from the email local part
- * @param total        total reports the user created
- * @param thisMonth    reports the user created this calendar month
- * @param lastActivity local date-time of the user's most recent report, or {@code null}
+ * @param total        reports the user created in the selected window
+ * @param slides       slides those reports shipped, measured where known and modelled where not
+ * @param lastActivity the user's most recent report overall, not clamped to the window
  * @param inputTokens  plain input tokens across the user's reports
  * @param outputTokens output tokens across the user's reports
  * @param cacheTokens  cache write + read tokens across the user's reports
@@ -23,7 +23,7 @@ public record AdminUserStat(
 		String email,
 		String name,
 		int total,
-		int thisMonth,
+		long slides,
 		LocalDateTime lastActivity,
 		long inputTokens,
 		long outputTokens,

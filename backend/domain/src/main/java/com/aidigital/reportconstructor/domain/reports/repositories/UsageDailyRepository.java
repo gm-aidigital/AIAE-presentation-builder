@@ -117,6 +117,7 @@ public interface UsageDailyRepository extends JpaRepository<UsageDailyEntity, Lo
 	 * reduced the volume to a handful of rows per day.
 	 *
 	 * @param from first day to include, inclusive
+	 * @param to   last day to include, inclusive
 	 * @return one row per (day, report type, target, model), oldest first
 	 */
 	@Query("""
@@ -127,53 +128,48 @@ public interface UsageDailyRepository extends JpaRepository<UsageDailyEntity, Lo
 				sum(u.cacheWriteTokens), sum(u.cacheReadTokens),
 				sum(u.slides), sum(u.jobsWithSlides), sum(u.generationSeconds))
 			from UsageDailyEntity u
-			where u.day >= :from
+			where u.day >= :from and u.day <= :to
 			group by u.day, u.reportTypeCode, u.target, u.claudeModel
 			order by u.day asc
 			""")
-	List<UsageDailyBucket> aggregateByDay(@Param("from") LocalDate from);
+	List<UsageDailyBucket> aggregateByDay(@Param("from") LocalDate from, @Param("to") LocalDate to);
 
 	/**
 	 * Sums the rollup by user, keeping the same read-side dimensions as {@link #aggregateByDay}.
 	 *
-	 * <p>The current-month slice is a conditional sum inside the same pass rather than a second query,
-	 * so the "this month" and all-time columns of a row are read from one consistent snapshot.
-	 *
-	 * @param from       first day to include, inclusive
-	 * @param monthStart first day of the current calendar month
+	 * @param from first day to include, inclusive
+	 * @param to   last day to include, inclusive
 	 * @return one row per (user, report type, target, model)
 	 */
 	@Query("""
 			select new com.aidigital.reportconstructor.domain.reports.projections.UsageDailyUserRow(
 				u.ownerUserId, u.reportTypeCode, u.target, u.claudeModel,
-				sum(u.jobs),
-				sum(case when u.day >= :monthStart then u.jobs else 0 end),
-				sum(u.jobsWithUsage),
+				sum(u.jobs), sum(u.jobsWithUsage),
 				sum(u.claudeCalls), sum(u.inputTokens), sum(u.outputTokens),
 				sum(u.cacheWriteTokens), sum(u.cacheReadTokens),
 				sum(u.slides), sum(u.jobsWithSlides), sum(u.generationSeconds))
 			from UsageDailyEntity u
-			where u.day >= :from
+			where u.day >= :from and u.day <= :to
 			group by u.ownerUserId, u.reportTypeCode, u.target, u.claudeModel
 			""")
-	List<UsageDailyUserRow> aggregateByUser(
-			@Param("from") LocalDate from, @Param("monthStart") LocalDate monthStart);
+	List<UsageDailyUserRow> aggregateByUser(@Param("from") LocalDate from, @Param("to") LocalDate to);
 
 	/**
 	 * Lists the distinct (day, user) pairs in a window, from which active users are counted for any
 	 * bucket granularity.
 	 *
 	 * @param from first day to include, inclusive
+	 * @param to   last day to include, inclusive
 	 * @return one pair per day a user was active on, oldest first
 	 */
 	@Query("""
 			select distinct new com.aidigital.reportconstructor.domain.reports.projections.UsageActiveDay(
 				u.day, u.ownerUserId)
 			from UsageDailyEntity u
-			where u.day >= :from
+			where u.day >= :from and u.day <= :to
 			order by u.day asc
 			""")
-	List<UsageActiveDay> activeDays(@Param("from") LocalDate from);
+	List<UsageActiveDay> activeDays(@Param("from") LocalDate from, @Param("to") LocalDate to);
 
 	/**
 	 * Reports when the rollup was last rebuilt, so a stale dashboard can say so rather than present

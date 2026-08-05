@@ -6,7 +6,6 @@ import com.aidigital.reportconstructor.service.admin.dto.AdminSavings;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -24,6 +23,9 @@ import java.util.List;
  * than counted as zero-slide reports, and how many slides were genuinely measured is reported so the
  * proportion of modelling is visible. And the automation's own runtime is subtracted rather than
  * ignored: the pipeline is fast, not free.
+ *
+ * <p>Everything is scoped to the window the dashboard is showing, so the figure answers "what did we
+ * save over these dates" rather than quietly mixing in months nobody asked about.
  */
 @Component
 @RequiredArgsConstructor
@@ -35,29 +37,20 @@ public class AdminSavingsCalculator {
 	/** Seconds in an hour, as a divisor for the measured generation time. */
 	private static final double SECONDS_PER_HOUR = 3600d;
 
-	/** Deck sizes the baseline is also reported against, so it can be checked against familiar decks. */
-	private static final int LARGE_DECK_SLIDES = 25;
-
-	/** The smaller of the two reference deck sizes. */
-	private static final int SMALL_DECK_SLIDES = 16;
-
 	private final SavingsProperties props;
 	private final RollupUsageMath math;
 
 	/**
 	 * Computes the savings figure from the daily rollup.
 	 *
-	 * @param days  daily rollup rows
-	 * @param today reference date for the "this month" slice
+	 * @param days daily rollup rows already restricted to the window
 	 * @return the savings block, all-zero when no report counts
 	 */
-	public AdminSavings calculate(List<UsageDailyBucket> days, LocalDate today) {
+	public AdminSavings calculate(List<UsageDailyBucket> days) {
 		long reports = 0;
 		long slides = 0;
 		long slidesMeasured = 0;
 		long generationSeconds = 0;
-		long monthSlides = 0;
-		long monthGenerationSeconds = 0;
 
 		for (UsageDailyBucket day : days) {
 			if (!math.isCountable(day)) {
@@ -73,17 +66,11 @@ public class AdminSavingsCalculator {
 			slides += daySlides;
 			slidesMeasured += math.value(day.slides());
 			generationSeconds += daySeconds;
-			if (isSameMonth(day.day(), today)) {
-				monthSlides += daySlides;
-				monthGenerationSeconds += daySeconds;
-			}
 		}
 
 		double manualHours = manualHours(slides);
 		double automationHours = automationHours(generationSeconds);
 		double savedHours = Math.max(0d, manualHours - automationHours);
-		double savedMonthHours = Math.max(0d,
-				manualHours(monthSlides) - automationHours(monthGenerationSeconds));
 
 		return new AdminSavings(
 				(int) reports,
@@ -94,12 +81,8 @@ public class AdminSavingsCalculator {
 				automationHours,
 				savedHours,
 				savedHours * props.getHourlyRateUsd(),
-				savedMonthHours,
-				savedMonthHours * props.getHourlyRateUsd(),
 				props.getHourlyRateUsd(),
-				props.getManualMinutesPerSlide(),
-				manualHours(LARGE_DECK_SLIDES),
-				manualHours(SMALL_DECK_SLIDES));
+				props.getManualMinutesPerSlide());
 	}
 
 	/**
@@ -147,17 +130,5 @@ public class AdminSavingsCalculator {
 	 */
 	double automationHours(long generationSeconds) {
 		return props.isSubtractGenerationTime() ? generationSeconds / SECONDS_PER_HOUR : 0d;
-	}
-
-	/**
-	 * Tells whether a day falls in the same calendar month as the reference date.
-	 *
-	 * @param day       the day under test
-	 * @param reference the reference date
-	 * @return true when both share a year and a month
-	 */
-	boolean isSameMonth(LocalDate day, LocalDate reference) {
-		return day != null && day.getYear() == reference.getYear()
-				&& day.getMonth() == reference.getMonth();
 	}
 }

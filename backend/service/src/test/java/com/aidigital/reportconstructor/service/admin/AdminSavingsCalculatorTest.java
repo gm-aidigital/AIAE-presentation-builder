@@ -54,7 +54,7 @@ class AdminSavingsCalculatorTest {
 		List<UsageDailyBucket> days = List.of(day(TODAY, 1, 20, 1, 360));
 
 		// When:
-		AdminSavings savings = calculator().calculate(days, TODAY);
+		AdminSavings savings = calculator().calculate(days);
 
 		// Then: 20 slides × 15 min = 5 hours by hand, less the 0.1 h the run actually took.
 		assertThat(savings.manualHours()).isEqualTo(5d);
@@ -70,7 +70,7 @@ class AdminSavingsCalculatorTest {
 		List<UsageDailyBucket> days = List.of(day(TODAY, 2, 20, 1, 0));
 
 		// When:
-		AdminSavings savings = calculator().calculate(days, TODAY);
+		AdminSavings savings = calculator().calculate(days);
 
 		// Then: the unmeasured one is modelled at the EOC default of 25 rather than counted as zero —
 		// a report that predates slide counting saved time, and recording it as nothing would
@@ -86,7 +86,7 @@ class AdminSavingsCalculatorTest {
 		List<UsageDailyBucket> days = List.of(day(TODAY, 1, 1, 1, 36_000));
 
 		// When:
-		AdminSavings savings = calculator().calculate(days, TODAY);
+		AdminSavings savings = calculator().calculate(days);
 
 		// Then: the saving floors at zero rather than going negative — the automation costing more
 		// than it saved is worth showing as "no saving", not as a debt.
@@ -95,31 +95,32 @@ class AdminSavingsCalculatorTest {
 	}
 
 	@Test
-	void shouldRestrictTheMonthlySliceToTheCurrentMonthTest() {
-		// Given: one report last month and one this month, each with 20 measured slides.
+	void shouldCoverEveryDayTheCallerHandedItTest() {
+		// Given: two days of reports, each with 20 measured slides. Restricting to a window is the
+		// caller's job — by the time rows reach here they are already the window.
 		List<UsageDailyBucket> days = List.of(
 				day(LocalDate.of(2026, 2, 14), 1, 20, 1, 0),
 				day(TODAY, 1, 20, 1, 0));
 
 		// When:
-		AdminSavings savings = calculator().calculate(days, TODAY);
+		AdminSavings savings = calculator().calculate(days);
 
-		// Then: the all-time figure covers both, the monthly figure only March's.
+		// Then: both days count.
 		assertThat(savings.savedHours()).isEqualTo(10d);
-		assertThat(savings.savedHoursThisMonth()).isEqualTo(5d);
+		assertThat(savings.reportsCounted()).isEqualTo(2);
 	}
 
 	@Test
-	void shouldReportTheBaselineAppliedToTheTwoReferenceDeckSizesTest() {
-		// When: nothing has been generated at all.
-		AdminSavings savings = calculator().calculate(List.of(), TODAY);
+	void shouldReportTheBaselineBackWithAnEmptyWindowTest() {
+		// When: the window contains nothing at all.
+		AdminSavings savings = calculator().calculate(List.of());
 
-		// Then: the reference figures still answer "what would a deck of this size have cost" —
-		// 25 slides is 6h15m and 16 slides is 4h at 15 minutes a slide.
-		assertThat(savings.manualHoursFor25Slides()).isEqualTo(6.25d);
-		assertThat(savings.manualHoursFor16Slides()).isEqualTo(4d);
+		// Then: the figures are zero, but the assumptions still come back — the panel prints them, and
+		// a reader must be able to see the basis even when there is nothing to apply it to.
 		assertThat(savings.reportsCounted()).isZero();
 		assertThat(savings.savedUsd()).isZero();
+		assertThat(savings.minutesPerSlide()).isEqualTo(15);
+		assertThat(savings.hourlyRateUsd()).isEqualTo(14d);
 	}
 
 	@Test
@@ -130,7 +131,7 @@ class AdminSavingsCalculatorTest {
 						1L, 1L, 0L, 1L, 0L, 0L, 0L, 0L, 0L, 0L, 600L));
 
 		// When:
-		AdminSavings savings = calculator().calculate(days, TODAY);
+		AdminSavings savings = calculator().calculate(days);
 
 		// Then: it contributes nothing — its slides are counted once, on the deck it feeds, and
 		// modelling it at the per-type default would invent a second deck that never existed.

@@ -21,6 +21,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -42,8 +43,8 @@ public class AdminController implements AdminApi {
 	private final AppUserFactory appUserFactory;
 
 	@Override
-	public ResponseEntity<AdminStatsV1> getAdminStats() {
-		return ResponseEntity.ok(statsMapper.toStats(adminStats.statsFor(caller().email())));
+	public ResponseEntity<AdminStatsV1> getAdminStats(LocalDate from, LocalDate to) {
+		return ResponseEntity.ok(statsMapper.toStats(adminStats.statsFor(caller().email(), from, to)));
 	}
 
 	@Override

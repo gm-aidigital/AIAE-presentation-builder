@@ -1,12 +1,11 @@
 package com.aidigital.reportconstructor.admin.mappers;
 
 import com.aidigital.reportconstructor.api.v1.model.AdminActiveUsersPeriodV1;
-import com.aidigital.reportconstructor.api.v1.model.AdminDayVolumeV1;
 import com.aidigital.reportconstructor.api.v1.model.AdminFailedJobV1;
 import com.aidigital.reportconstructor.api.v1.model.AdminSavingsV1;
+import com.aidigital.reportconstructor.api.v1.model.AdminRangeV1;
 import com.aidigital.reportconstructor.api.v1.model.AdminStatsV1;
 import com.aidigital.reportconstructor.api.v1.model.AdminTokenPeriodV1;
-import com.aidigital.reportconstructor.api.v1.model.AdminTokenDayV1;
 import com.aidigital.reportconstructor.api.v1.model.AdminTokenLabelV1;
 import com.aidigital.reportconstructor.api.v1.model.AdminTokenTotalsV1;
 import com.aidigital.reportconstructor.api.v1.model.AdminTotalsV1;
@@ -14,12 +13,11 @@ import com.aidigital.reportconstructor.api.v1.model.AdminTypeStatV1;
 import com.aidigital.reportconstructor.api.v1.model.AdminUserStatV1;
 import com.aidigital.reportconstructor.config.ApplicationMapperConfig;
 import com.aidigital.reportconstructor.service.admin.dto.AdminActiveUsersPeriod;
-import com.aidigital.reportconstructor.service.admin.dto.AdminDayVolume;
 import com.aidigital.reportconstructor.service.admin.dto.AdminFailedJob;
 import com.aidigital.reportconstructor.service.admin.dto.AdminSavings;
+import com.aidigital.reportconstructor.service.admin.dto.AdminRangeView;
 import com.aidigital.reportconstructor.service.admin.dto.AdminStats;
 import com.aidigital.reportconstructor.service.admin.dto.AdminTokenPeriod;
-import com.aidigital.reportconstructor.service.admin.dto.AdminTokenDay;
 import com.aidigital.reportconstructor.service.admin.dto.AdminTokenLabel;
 import com.aidigital.reportconstructor.service.admin.dto.AdminTokenTotals;
 import com.aidigital.reportconstructor.service.admin.dto.AdminTotals;
@@ -66,14 +64,6 @@ public interface AdminStatsApiMapper {
 	AdminTypeStatV1 toTypeStat(AdminTypeStat typeStat);
 
 	/**
-	 * Converts a daily volume point into its V1 DTO.
-	 *
-	 * @param dayVolume the service daily volume point
-	 * @return the V1 daily volume DTO
-	 */
-	AdminDayVolumeV1 toDayVolume(AdminDayVolume dayVolume);
-
-	/**
 	 * Converts the team-wide token consumption into its V1 DTO.
 	 *
 	 * @param tokenTotals the service token aggregation
@@ -82,20 +72,20 @@ public interface AdminStatsApiMapper {
 	AdminTokenTotalsV1 toTokenTotals(AdminTokenTotals tokenTotals);
 
 	/**
-	 * Converts a daily token-spend point into its V1 DTO.
-	 *
-	 * @param tokenDay the service daily token point
-	 * @return the V1 daily token DTO
-	 */
-	AdminTokenDayV1 toTokenDay(AdminTokenDay tokenDay);
-
-	/**
 	 * Converts a per-stage spend row into its V1 DTO.
 	 *
 	 * @param tokenLabel the service per-stage spend row
 	 * @return the V1 per-stage DTO
 	 */
 	AdminTokenLabelV1 toTokenLabel(AdminTokenLabel tokenLabel);
+
+	/**
+	 * Converts the reported window into its V1 DTO.
+	 *
+	 * @param range the window the figures cover
+	 * @return the V1 range DTO
+	 */
+	AdminRangeV1 toRange(AdminRangeView range);
 
 	/**
 	 * Converts the modelled savings block into its V1 DTO.
