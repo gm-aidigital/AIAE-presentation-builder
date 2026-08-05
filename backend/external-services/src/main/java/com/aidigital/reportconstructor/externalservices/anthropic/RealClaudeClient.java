@@ -189,12 +189,16 @@ public class RealClaudeClient implements ClaudeClient {
 
 	/**
 	 * Output budget for the Step-2 conclusions call. The reply is one ~190-character overview per tactic — the
-	 * breakdown sections are written by their own per-tactic calls — so the allowance is sized for that and
-	 * nothing more: a model that wanders into an essay is billed for every token of it. These figures are the
-	 * same two-characters-per-token sizing the other budgets use, with head-room for an overrun.
+	 * breakdown sections are written by their own per-tactic calls — so ~60 tokens per tactic is all the JSON
+	 * itself needs. The budget is several times that on purpose: sized to the JSON alone it left no room at
+	 * all, and a reply that opened with a sentence of working-out ran out before it reached the first
+	 * {@code overview}, losing the whole chunk to a truncated, unparseable reply. The prompt now forbids that
+	 * preamble ({@code conclusionsOutputRules}), and this head-room is the second line of defence for when the
+	 * model writes one anyway. Output tokens are billed as generated, so the higher ceiling costs nothing on a
+	 * reply that behaves.
 	 */
-	private static final int CONCLUSIONS_BASE_TOKENS = 200;
-	private static final int CONCLUSIONS_TOKENS_PER_TACTIC = 120;
+	private static final int CONCLUSIONS_BASE_TOKENS = 400;
+	private static final int CONCLUSIONS_TOKENS_PER_TACTIC = 300;
 	private static final int CONCLUSIONS_MAX_TOKENS_CAP = 8000;
 
 	/** The per-tactic "thoughts on tactic performance" slide holds exactly four thought strings. */

@@ -255,4 +255,27 @@ class ClaudeBatchPromptBuilderTest {
 				.doesNotContain("[GEO ANALYSIS]");
 	}
 
+	@Test
+	void conclusionsPrompt_forbidsThePreambleThatAteTheOutputBudget() {
+		// Given: one tactic whose plan figures look like placeholders — the shape that used to make the model
+		// open its reply with a paragraph weighing whether to flag them, so the JSON never got written
+		Tactic display = new Tactic(
+				"Display", "Display", null,
+				1.0, 250.0, 0.08, 1_106_774.0, 4366.0, null, null, null,
+				null, null, null, null, null, null, null, null);
+		CampaignData data = new CampaignData(
+				"Acme", "Spring Launch", "US", "Awareness", "Jan 1 - Mar 31",
+				null, "$36,000", "Reach", "Display", "25-44", "Auto intenders",
+				new Totals(0, 0, 0, 0, null, null), Map.of(1, display), null);
+
+		// When: the Step-2 conclusions prompt is built
+		String prompt = builder.buildTacticConclusionsPrompt(data, List.of(1), "Drive awareness.").orElseThrow();
+
+		// Then: the reply is the JSON and nothing else, and odd-looking data is written up, not complained about
+		assertThat(prompt).contains(
+				"reply with ONLY the JSON object",
+				"write NO preamble, analysis, working-out, reasoning or commentary",
+				"do NOT refuse and do NOT flag data problems");
+	}
+
 }

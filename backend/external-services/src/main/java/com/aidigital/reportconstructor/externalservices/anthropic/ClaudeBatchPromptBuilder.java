@@ -949,11 +949,23 @@ public class ClaudeBatchPromptBuilder {
 	/**
 	 * The closing output rules shared by both conclusions instructions.
 	 *
-	 * @return the rules line, ending in a blank line
+	 * <p>The first two rules are the ones the per-section calls have always carried (see {@link
+	 * #sectionObjectRules}) and this call did not. Without them the conclusions reply routinely opened with the
+	 * model's working-out — "I need to analyze each tactic before writing…", the deviation arithmetic spelled
+	 * out, a paragraph weighing whether a $1 plan figure was a placeholder worth flagging — which ran the small
+	 * per-chunk output budget out before the JSON started, so the whole chunk came back truncated and
+	 * unparseable and its tactics kept their previous overviews. The JSON is the entire reply, and unusual data
+	 * is written up rather than complained about.
+	 *
+	 * @return the rules block, ending in a blank line
 	 */
 	String conclusionsOutputRules() {
-		return "Rules: return ONLY the JSON (no markdown/backticks); analyst tone, no bullet characters; "
-				+ "do NOT invent metrics; every string ends on a complete sentence within its limit; English.\n\n";
+		return "Rules: reply with ONLY the JSON object — write NO preamble, analysis, working-out, reasoning or "
+				+ "commentary before or after it (no markdown/backticks); do NOT refuse and do NOT flag data "
+				+ "problems — if the data looks unusual, mislabelled, incomplete or inconsistent, still write the "
+				+ "best analyst copy you can from whatever is given, and never replace a string with a complaint "
+				+ "about the data; analyst tone, no bullet characters; do NOT invent metrics; every string ends "
+				+ "on a complete sentence within its limit; English.\n\n";
 	}
 
 	/**

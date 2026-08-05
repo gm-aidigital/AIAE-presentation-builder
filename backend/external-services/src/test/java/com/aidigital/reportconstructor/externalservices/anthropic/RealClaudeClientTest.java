@@ -86,11 +86,11 @@ class RealClaudeClientTest {
 				  }
 				}
 				""");
-		// One tactic → budget is base 200 + 120 = 320, 90s timeout, allowPartial; only the overview is compressed.
+		// One tactic → budget is base 400 + 300 = 700, 90s timeout, allowPartial; only the overview is compressed.
 		List<ClaudeCompressionField> expectedFields = List.of(
 				new ClaudeCompressionField(
 						"1_overview", "CTV delivered 1M impressions at 98% VCR, driven by premium inventory.", 210));
-		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(320), eq(90), eq("BatchConclusions"), eq(true)))
+		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(700), eq(90), eq("BatchConclusions"), eq(true)))
 				.thenReturn(response);
 		when(compressionService.compress(eq(expectedFields), eq("BatchD-Conclusions")))
 				.thenAnswer(invocation -> {
@@ -148,7 +148,7 @@ class RealClaudeClientTest {
 		List<ClaudeCompressionField> expectedFields = List.of(
 				new ClaudeCompressionField(
 						"1_overview", "CTV delivered 1M impressions at 98% VCR, driven by premium inventory.", 210));
-		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(320), eq(90), eq("BatchConclusions"), eq(true)))
+		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(700), eq(90), eq("BatchConclusions"), eq(true)))
 				.thenReturn(bareResponse);
 		when(compressionService.compress(eq(expectedFields), eq("BatchD-Conclusions")))
 				.thenAnswer(invocation -> {
@@ -1233,8 +1233,8 @@ class RealClaudeClientTest {
 		List<ClaudeCompressionField> expectedFields = List.of(
 				new ClaudeCompressionField("1_overview", "Display beat its CTR benchmark twelvefold.", 210),
 				new ClaudeCompressionField("2_overview", "Video held a 93.66% VCR against a 60% plan.", 210));
-		// Two tactics → budget is base 200 + 2 × 120 = 440, sized for two overviews and nothing else.
-		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(440), eq(90), eq("BatchConclusions"), eq(true)))
+		// Two tactics → budget is base 400 + 2 × 300 = 1000, sized for two overviews and nothing else.
+		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(1000), eq(90), eq("BatchConclusions"), eq(true)))
 				.thenReturn(response);
 		when(compressionService.compress(eq(expectedFields), eq("BatchD-Conclusions")))
 				.thenAnswer(invocation -> {
@@ -1262,7 +1262,7 @@ class RealClaudeClientTest {
 		assertThat(expectedPrompt).doesNotContain("=== audience");
 		assertThat(expectedPrompt).doesNotContain("=== device");
 		verify(messagesClient, times(1))
-				.callJsonObject(eq(expectedPrompt), eq(440), eq(90), eq("BatchConclusions"), eq(true));
+				.callJsonObject(eq(expectedPrompt), eq(1000), eq(90), eq("BatchConclusions"), eq(true));
 	}
 
 	@Test
@@ -1296,7 +1296,7 @@ class RealClaudeClientTest {
 		JsonNode response = json.readTree("""
 				{"tactic_1": {"overview": "Display paced steadily to 101% of the month's impression target."}}
 				""");
-		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(320), eq(90), eq("BatchConclusions"), eq(true)))
+		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(700), eq(90), eq("BatchConclusions"), eq(true)))
 				.thenReturn(response);
 		when(compressionService.compress(
 				eq(List.of(new ClaudeCompressionField(
@@ -1313,7 +1313,7 @@ class RealClaudeClientTest {
 				"DAILY PACING (impressions per day, oldest first): Jun 1 8,100 | Jun 2 9,400");
 		assertThat(conclusions).hasSize(1);
 		verify(messagesClient, times(1))
-				.callJsonObject(eq(expectedPrompt), eq(320), eq(90), eq("BatchConclusions"), eq(true));
+				.callJsonObject(eq(expectedPrompt), eq(700), eq(90), eq("BatchConclusions"), eq(true));
 	}
 
 	@Test
@@ -1343,7 +1343,7 @@ class RealClaudeClientTest {
 		JsonNode blank = json.readTree("{\"tactic_1\": {\"overview\": \"\"}}");
 		JsonNode filled = json.readTree(
 				"{\"tactic_1\": {\"overview\": \"Display beat its CTR benchmark twelvefold.\"}}");
-		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(320), eq(90), eq("BatchConclusions"), eq(true)))
+		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(700), eq(90), eq("BatchConclusions"), eq(true)))
 				.thenReturn(blank, filled);
 		when(compressionService.compress(
 				eq(List.of(new ClaudeCompressionField("1_overview", "", 210))), eq("BatchD-Conclusions")))
@@ -1361,7 +1361,7 @@ class RealClaudeClientTest {
 		assertThat(conclusions).hasSize(1);
 		assertThat(conclusions.getFirst().overview()).isEqualTo("Display beat its CTR benchmark twelvefold.");
 		verify(messagesClient, times(2))
-				.callJsonObject(eq(expectedPrompt), eq(320), eq(90), eq("BatchConclusions"), eq(true));
+				.callJsonObject(eq(expectedPrompt), eq(700), eq(90), eq("BatchConclusions"), eq(true));
 	}
 
 	@Test
@@ -1395,7 +1395,7 @@ class RealClaudeClientTest {
 		String secondPrompt = promptBuilder.buildTacticConclusionsPrompt(
 				data, tacticNums.subList(2, 4), brief).orElseThrow();
 		CountDownLatch bothInFlight = new CountDownLatch(2);
-		when(messagesClient.callJsonObject(eq(firstPrompt), eq(440), eq(90), eq("BatchConclusions"), eq(true)))
+		when(messagesClient.callJsonObject(eq(firstPrompt), eq(1000), eq(90), eq("BatchConclusions"), eq(true)))
 				.thenAnswer(invocation -> {
 					bothInFlight.countDown();
 					assertThat(bothInFlight.await(5, TimeUnit.SECONDS)).isTrue();
@@ -1404,7 +1404,7 @@ class RealClaudeClientTest {
 							 "tactic_2": {"overview": "Tactic 2 overview."}}
 							""");
 				});
-		when(messagesClient.callJsonObject(eq(secondPrompt), eq(440), eq(90), eq("BatchConclusions"), eq(true)))
+		when(messagesClient.callJsonObject(eq(secondPrompt), eq(1000), eq(90), eq("BatchConclusions"), eq(true)))
 				.thenAnswer(invocation -> {
 					bothInFlight.countDown();
 					assertThat(bothInFlight.await(5, TimeUnit.SECONDS)).isTrue();
