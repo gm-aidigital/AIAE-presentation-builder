@@ -71,7 +71,7 @@ expertMode = true
 
 [userenv.shared]
 AUTH_ALLOWED_EMAIL_DOMAIN = "aidigital.com"
-AUTH_AUTHORIZED_PARTIES = "https://de1ddd8c-7885-4345-bdff-dbff942be7e0-00-3bdhs3ngq2l9d.spock.replit.dev,http://localhost:5173,http://localhost:5000,https://presentation-builder-poc.replit.app, https://8d9e6b9d-0617-4312-8425-b6ab0ae8a4a3-00-35be4q03aylh0.worf.replit.dev"
+AUTH_AUTHORIZED_PARTIES = "https://de1ddd8c-7885-4345-bdff-dbff942be7e0-00-3bdhs3ngq2l9d.spock.replit.dev,http://localhost:5173,http://localhost:5000,https://presentation-builder-poc.replit.app, https://8d9e6b9d-0617-4312-8425-b6ab0ae8a4a3-00-35be4q03aylh0.worf.replit.dev,https://aiae-presentation-builder.aidigital.tech"
 AUTH_ISSUER_URI = "https://living-insect-60.clerk.accounts.dev"
 AUTH_JWKS_URI = "https://living-insect-60.clerk.accounts.dev/.well-known/jwks.json"
 AUTH_MODE = "sso"
