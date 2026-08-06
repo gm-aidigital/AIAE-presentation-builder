@@ -29,14 +29,10 @@ export function SavingsPanel({ savings }: { savings: AdminSavings }) {
                 <div className="ad-savings__figure ad-savings__figure--hero">
                     <div className="ad-savings__num">{formatHours(savings.savedHours)}</div>
                     <div className="ad-savings__label">Hours saved</div>
-                    <div className="ad-savings__sub">
-                        vs {formatHours(savings.manualHours)} by hand
-                    </div>
                 </div>
                 <div className="ad-savings__figure">
                     <div className="ad-savings__num">{formatUsd(savings.savedUsd)}</div>
                     <div className="ad-savings__label">Value of that time</div>
-                    <div className="ad-savings__sub">at {formatUsd(savings.hourlyRateUsd)}/hour</div>
                 </div>
                 <div className="ad-savings__figure">
                     <div className="ad-savings__num">{savings.slidesTotal.toLocaleString("en-US")}</div>

@@ -1260,15 +1260,30 @@
     color: var(--rc-mute);
 }
 
+/*
+ * Three rows shared by every figure — number, label, sub — so the labels line up across the row
+ * even though the hero number is taller and only the last figure carries a sub line.
+ */
 .ad-savings__figures {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: 18px;
+    grid-template-rows: auto auto auto;
+    gap: 18px 24px;
     margin-bottom: 18px;
 }
 
+.ad-savings__figure {
+    display: grid;
+    grid-row: span 3;
+    grid-template-rows: subgrid;
+    align-content: start;
+    row-gap: 2px;
+}
+
 .ad-savings__num {
+    align-self: end;
     font-size: 26px;
+    line-height: 1.1;
     font-weight: 700;
     letter-spacing: -0.03em;
     color: var(--rc-ink);
@@ -1280,20 +1295,15 @@
 }
 
 .ad-savings__label {
-    margin-top: 2px;
     font-size: 13px;
     font-weight: 600;
     color: var(--rc-ink);
 }
 
 .ad-savings__sub {
-    margin-top: 2px;
     font-size: 12px;
     color: var(--rc-mute);
 }
-
-
-
 
 
 .ad-savings__note {
