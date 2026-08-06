@@ -377,7 +377,7 @@
 .rc-banner__ack input { width: 16px; height: 16px; flex: none; cursor: pointer; accent-color: var(--rc-blue); }
 
 .rc-sheet { border: 1px solid var(--rc-input-border); border-radius: 12px; overflow: hidden; }
-.rc-sheet__grid { display: grid; grid-template-columns: 1.6fr 0.9fr 1fr 1fr 1.1fr 1.1fr; }
+.rc-sheet__grid { display: grid; grid-template-columns: 1.6fr 1fr 1fr 1.1fr 1.1fr; }
 .rc-sheet__head {
   padding: 12px 16px; font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
   color: var(--rc-mute); background: var(--rc-sheet-head);
@@ -704,5 +704,5 @@
   .pacing-row__tactic { grid-column: 1 / -1; padding-top: 0; }
   .rc-stepper { overflow-x: auto; }
   .rc-sheet { overflow-x: auto; }
-  .rc-sheet__grid { min-width: 720px; }
+  .rc-sheet__grid { min-width: 620px; }
 }

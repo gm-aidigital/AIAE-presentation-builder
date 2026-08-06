@@ -12,8 +12,6 @@ import {
 
 export interface ReviewRow {
     tactic: string;
-    /** null → render a "needs input" pill. */
-    lineId: string | null;
     spendPlan: string | null;
     spendFact: string | null;
     /** Main planned unit — impressions for CPM, clicks for CPC, completions for CPV. */
@@ -124,7 +122,6 @@ export function StepReviewSheet({
             <div className="rc-sheet">
                 <div className="rc-sheet__grid">
                     <div className="rc-sheet__head">Tactic</div>
-                    <div className="rc-sheet__head">Line ID</div>
                     <div className="rc-sheet__head">Spend (Plan)</div>
                     <div className="rc-sheet__head">Spend (Fact)</div>
                     <div className="rc-sheet__head" title="Impressions for CPM, Clicks for CPC, Views for CPV">
@@ -139,7 +136,6 @@ export function StepReviewSheet({
                         // across rows, so the index is the stable key.
                         <Fragment key={i}>
                             <div className="rc-sheet__cell rc-sheet__cell--name">{r.tactic}</div>
-                            <Cell value={r.lineId} addLabel="add ID" />
                             <Cell value={r.spendPlan} addLabel="add" />
                             <Cell value={r.spendFact} addLabel="add" />
                             <Cell value={r.unitPlan} addLabel="add" />

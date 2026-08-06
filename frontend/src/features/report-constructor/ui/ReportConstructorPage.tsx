@@ -488,7 +488,6 @@ function PageInner() {
             const s = summaryRows?.[i] ?? null;
             return {
                 tactic: s?.tactic || names[i] || `Tactic ${i + 1}`,
-                lineId: null,
                 spendPlan: s?.spendPlan ?? null,
                 spendFact: s?.spendFact ?? null,
                 unitPlan: s?.unitPlan ?? null,
@@ -503,7 +502,6 @@ function PageInner() {
                 const s = summaryRows?.[i] ?? null;
                 return {
                     tactic: m.tacticName,
-                    lineId: m.lineItemId ?? null,
                     // The full-flight plan (spend and its matching unit) only exists once the backend
                     // has resolved it from the budget/rate the user entered while matching — the media
                     // plan's own Units/Unit Price columns are pre-fill defaults, not that entry, and lack
