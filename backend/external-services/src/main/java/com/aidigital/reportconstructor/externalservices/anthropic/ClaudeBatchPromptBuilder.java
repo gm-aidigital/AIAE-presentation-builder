@@ -1459,12 +1459,32 @@ public class ClaudeBatchPromptBuilder {
 				+ "Write EXACTLY 4 short analytical thoughts about THIS tactic's performance, each 1-2 sentences, "
 				+ "past tense, client-friendly, at most " + promptLimit + " characters.\n"
 				+ tacticThoughtsAngles()
-				+ "Ground every thought in the conclusions given; never invent a metric. Analyst tone, no bullet "
-				+ "characters, no markdown.\n\n"
-				+ "Return ONLY a JSON object: {\"thoughts\": [\"...\", \"...\", \"...\", \"...\"]}\n\n"
+				+ tacticThoughtsOutputRules()
 				+ "=== CAMPAIGN BRIEF ===\n" + (brief == null ? "" : brief) + "\n\n"
 				+ AnthropicMessagesClient.CACHE_BREAKPOINT + "=== TACTIC CONCLUSIONS ===\n" + dataBlock;
 		return Optional.of(prompt);
+	}
+
+	/**
+	 * The closing output rules for the Step-3 per-tactic thoughts call.
+	 *
+	 * <p>Carries the same two demands the conclusions call gained in {@link #conclusionsOutputRules}, for the
+	 * same reason: a bare "return ONLY a JSON object" did not stop the reply opening with the model's
+	 * working-out, and four ~220-char thoughts leave most of the output budget to be spent on that preamble
+	 * before the array starts — so the reply ran out mid-way and the tactic shipped with three of its four
+	 * thoughts. The JSON is the entire reply, and conclusions that look odd are still written up rather than
+	 * complained about.
+	 *
+	 * @return the rules block, ending in a blank line
+	 */
+	String tacticThoughtsOutputRules() {
+		return "Ground every thought in the conclusions given; never invent a metric. Analyst tone, no bullet "
+				+ "characters, no markdown.\n\n"
+				+ "Return ONLY a JSON object: {\"thoughts\": [\"...\", \"...\", \"...\", \"...\"]} — write NO "
+				+ "preamble, analysis, working-out, reasoning or commentary before or after it; do NOT refuse and "
+				+ "do NOT flag data problems — if the conclusions look unusual, mislabelled, incomplete or "
+				+ "inconsistent, still write the best analyst copy you can from whatever is given, and never "
+				+ "replace a thought with a complaint about the data.\n\n";
 	}
 
 	/**

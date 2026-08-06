@@ -12,6 +12,7 @@ import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationI
 import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
 import com.aidigital.reportconstructor.service.reports.dto.Tactic;
 import com.aidigital.reportconstructor.service.reports.dto.TacticNarrativeDigest;
+import com.aidigital.reportconstructor.service.reports.dto.TacticThoughtsInput;
 import com.aidigital.reportconstructor.service.reports.dto.Totals;
 import com.aidigital.reportconstructor.service.reports.engine.Fmt;
 import org.junit.jupiter.api.Test;
@@ -276,6 +277,24 @@ class ClaudeBatchPromptBuilderTest {
 				"reply with ONLY the JSON object",
 				"write NO preamble, analysis, working-out, reasoning or commentary",
 				"do NOT refuse and do NOT flag data problems");
+	}
+
+	@Test
+	void tacticThoughtsPrompt_forbidsThePreambleThatAteTheOutputBudget() {
+		// Given: one tactic's Step-2 conclusions, the only input the Step-3 thoughts call reasons over
+		TacticThoughtsInput input = new TacticThoughtsInput(
+				1, "CTV", "CTV delivered 101% of its impression plan.",
+				List.of("Hulu carried the largest share."), List.of(), List.of(), List.of(), List.of());
+
+		// When: the Step-3 per-tactic thoughts prompt is built
+		String prompt = builder.buildTacticThoughtsPrompt(input, "Drive awareness.", 220).orElseThrow();
+
+		// Then: it carries the same two demands the conclusions call gained — the reply is the JSON and
+		// nothing else, and odd-looking conclusions are written up rather than complained about
+		assertThat(prompt).contains(
+				"write NO preamble, analysis, working-out, reasoning or commentary",
+				"do NOT refuse and do NOT flag data problems",
+				"{\"thoughts\": [\"...\", \"...\", \"...\", \"...\"]}");
 	}
 
 }

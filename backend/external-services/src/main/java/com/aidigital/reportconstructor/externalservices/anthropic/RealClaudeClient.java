@@ -205,8 +205,14 @@ public class RealClaudeClient implements ClaudeClient {
 	private static final int TACTIC_THOUGHTS_COUNT = 4;
 	/** Short tag identifying the Step-3 per-tactic thoughts call in logs and on the report's failure card. */
 	private static final String THOUGHTS_LABEL = "BatchTacticThoughts";
-	/** Output budget for one tactic's thoughts call: four ~220-char thoughts plus JSON overhead. */
-	private static final int TACTIC_THOUGHTS_MAX_TOKENS = 900;
+	/**
+	 * Output budget for one tactic's thoughts call: four ~220-char thoughts plus JSON overhead need roughly a
+	 * quarter of this, and the headroom is deliberate. A reply that opens with a sentence of working-out anyway
+	 * — which {@link ClaudeBatchPromptBuilder#tacticThoughtsOutputRules} forbids but cannot guarantee — still
+	 * reaches its fourth thought instead of running out at the third. Output tokens are billed as generated, so
+	 * the higher ceiling costs nothing on a reply that behaves.
+	 */
+	private static final int TACTIC_THOUGHTS_MAX_TOKENS = 1400;
 
 	/**
 	 * Output budget for the Step-4 campaign-results call. Its output is largely fixed (grouped overviews, four
