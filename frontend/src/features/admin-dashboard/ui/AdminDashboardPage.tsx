@@ -243,7 +243,7 @@ function OverviewTab({
                 <div className="ad-users">
                     <div className="ad-users__head">
                         <span className="ad-users__title">By user</span>
-                        <span className="ad-users__count">{byUser.length} active</span>
+                        <span className="ad-users__count">{sortedUsers.length} active</span>
                     </div>
                     <div className="ad-users__grid">
                         <SortHeader label="User" columnKey="user" activeKey={sort.key} dir={sort.dir} onSort={toggle} />

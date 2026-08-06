@@ -35,7 +35,7 @@ function compactUnits(n: number): string {
  * The media plan's own budget/volume for a tactic, e.g. "plan: $1,500 · 250K units".
  * The plan's rate and buy type are omitted here — they have their own cells in the row.
  */
-function planLine(b: TacticBudget | undefined): string {
+function planLine(b: TacticBudget | null | undefined): string {
     if (!b) return "";
     const seg: string[] = [];
     if (b.amount > 0) seg.push(usd.format(Math.round(b.amount)));
