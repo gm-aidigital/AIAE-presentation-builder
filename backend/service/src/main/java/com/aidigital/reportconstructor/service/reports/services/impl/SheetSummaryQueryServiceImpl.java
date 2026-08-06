@@ -1,5 +1,6 @@
 package com.aidigital.reportconstructor.service.reports.services.impl;
 
+import com.aidigital.reportconstructor.service.reports.dto.SheetSummary;
 import com.aidigital.reportconstructor.service.reports.dto.SheetSummaryRow;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportSheetHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.SheetPlaceholderReader;
@@ -42,6 +43,12 @@ public class SheetSummaryQueryServiceImpl implements SheetSummaryQueryService {
 	/** The summary table's "Rate type" cell token, {@code {{rate type N}}} — not a per-tactic suffix. */
 	private static final String RATE_TYPE_TOKEN_PREFIX = "{{rate type ";
 
+	/** Sheet field carrying the campaign context the deck's narrative is written from. */
+	private static final String RFP_INFO_TOKEN = "{{RFP info}}";
+
+	/** Sheet field carrying the mid-flight change log. */
+	private static final String CHANGE_LOG_TOKEN = "{{change log}}";
+
 	/** The em-dash a resolver writes for an unresolved figure (see {@code Resolved}); not a real value. */
 	private static final String UNRESOLVED_DASH = "—";
 
@@ -50,7 +57,7 @@ public class SheetSummaryQueryServiceImpl implements SheetSummaryQueryService {
 	private final ObjectProvider<UserGoogleTokenProvider> userGoogleTokens;
 
 	@Override
-	public List<SheetSummaryRow> readSummary(String sheetUrl, String callerUserId) {
+	public SheetSummary readSummary(String sheetUrl, String callerUserId) {
 		UserGoogleTokenProvider tokens = userGoogleTokens.getIfAvailable();
 		String userGoogleToken = tokens == null ? null : tokens.googleAccessToken(callerUserId);
 
@@ -67,7 +74,9 @@ public class SheetSummaryQueryServiceImpl implements SheetSummaryQueryService {
 					values.get(token(n, SUFFIX_SPEND_PLAN)),
 					values.get(token(n, SUFFIX_SPEND_FACT))));
 		}
-		return rows;
+		// Read live, not from the job's stored draft: the campaign brief is a cell the user is expected
+		// to fill in the sheet between the two steps, and the review step gates generation on it.
+		return new SheetSummary(rows, values.get(RFP_INFO_TOKEN), values.get(CHANGE_LOG_TOKEN));
 	}
 
 	/**

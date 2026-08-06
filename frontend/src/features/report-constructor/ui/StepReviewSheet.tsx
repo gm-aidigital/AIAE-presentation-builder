@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import type { ReportType } from "@/shared/api/types";
 import {
     IconArrowLeft,
@@ -26,6 +26,12 @@ interface Props {
     rows: ReviewRow[];
     /** True while the summary figures are being re-read from the sheet. */
     refreshing: boolean;
+    /**
+     * True once the sheet has been read back at least once. Before that, `brief` is only what the
+     * saved draft remembered, which says nothing about what the workbook's {{RFP info}} cell holds
+     * today — so the "no brief" prompt must wait for the read rather than flash on arrival.
+     */
+    sheetRead?: boolean;
     /** True when at least one tactic has a breakdown section enabled, so its slides need manual data. */
     breakdownsEnabled: boolean;
     /**
@@ -60,6 +66,7 @@ export function StepReviewSheet({
     sheetUrl,
     rows,
     refreshing,
+    sheetRead = false,
     breakdownsEnabled,
     resumed = false,
     brief = "",
@@ -71,9 +78,16 @@ export function StepReviewSheet({
     // When breakdown slides are enabled, their data can only come from the sheet's "Breakdowns" tab,
     // which the backend does not fill — the user must enter it by hand. Gate Confirm on an explicit ack.
     const [breakdownsAck, setBreakdownsAck] = useState(false);
-    // Decided once, on mount: whether the workbook carried a campaign context of its own. Re-deriving
-    // it from the current value would make the field vanish under the user as soon as they typed.
-    const [askBrief] = useState(() => resumed && !!onBriefChange && brief.trim().length === 0);
+    // Whether the workbook carries a campaign context of its own is only known once the sheet has
+    // actually been read — the resumed draft's copy is a snapshot from whenever the sheet was built,
+    // and the user may have filled the {{RFP info}} cell since. Latched the first time a completed
+    // read shows nothing: re-deriving it every render would make the field vanish under the user as
+    // soon as they typed, and it stays put across a later refresh for the same reason.
+    const [askBrief, setAskBrief] = useState(false);
+    useEffect(() => {
+        if (askBrief || !sheetRead || !resumed || !onBriefChange) return;
+        if (brief.trim().length === 0) setAskBrief(true);
+    }, [askBrief, sheetRead, resumed, onBriefChange, brief]);
     const briefMissing = askBrief && brief.trim().length === 0;
     const confirmDisabled = (breakdownsEnabled && !breakdownsAck) || briefMissing;
 
@@ -146,16 +160,28 @@ export function StepReviewSheet({
             </div>
 
             {askBrief && (
-                <div className="rc-banner rc-banner--warn">
+                <div className={`rc-banner${briefMissing ? " rc-banner--warn" : ""}`}>
                     <span className="rc-banner__icon">
-                        <IconInfo size={18} />
+                        {briefMissing ? <IconInfo size={18} /> : <IconCheck size={18} />}
                     </span>
                     <div className="rc-banner__text">
-                        <div className="rc-banner__title">This sheet has no campaign brief</div>
+                        <div className="rc-banner__title">
+                            {briefMissing ? "This sheet has no campaign brief" : "Campaign brief"}
+                        </div>
                         <div className="rc-banner__sub">
-                            Its <b>RFP info</b> cell is empty, and the deck's narrative is written from that
-                            text. Add it here — client, goals, audience, budget, KPIs, channels — or fill the
-                            cell in the sheet and refresh.
+                            {briefMissing ? (
+                                <>
+                                    Its <b>RFP info</b> cell is empty, and the deck's narrative is written from
+                                    that text. Add it here — client, goals, audience, budget, KPIs, channels —
+                                    or fill the cell in the sheet and refresh.
+                                </>
+                            ) : (
+                                <>
+                                    Read from the sheet's <b>RFP info</b> cell — the deck's narrative is written
+                                    from this text. That cell always wins at generation, so edit it in the sheet
+                                    and refresh to change it.
+                                </>
+                            )}
                         </div>
                         <textarea
                             className="rc-textarea rc-banner__field"

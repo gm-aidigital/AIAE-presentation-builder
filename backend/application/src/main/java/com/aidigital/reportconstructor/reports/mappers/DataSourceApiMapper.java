@@ -7,6 +7,7 @@ import com.aidigital.reportconstructor.api.v1.model.SheetSummaryRowV1;
 import com.aidigital.reportconstructor.config.ApplicationMapperConfig;
 import com.aidigital.reportconstructor.service.reports.dto.GoogleConnectionStatus;
 import com.aidigital.reportconstructor.service.reports.dto.SheetData;
+import com.aidigital.reportconstructor.service.reports.dto.SheetSummary;
 import com.aidigital.reportconstructor.service.reports.dto.SheetSummaryRow;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
@@ -61,12 +62,16 @@ public interface DataSourceApiMapper {
 	SheetSummaryRowV1 toSummaryRow(SheetSummaryRow row);
 
 	/**
-	 * Wraps the per-tactic summary service rows into the V1 result DTO.
+	 * Wraps the workbook read-back — per-tactic rows plus the campaign-context cells — into the V1
+	 * result DTO.
 	 *
-	 * @param rows the service summary rows, in summary-table order
-	 * @return the V1 summary result carrying the mapped rows
+	 * @param summary the service summary read back from the workbook
+	 * @return the V1 summary result carrying the mapped rows and context cells
 	 */
-	default SheetSummaryResultV1 toSummary(List<SheetSummaryRow> rows) {
-		return new SheetSummaryResultV1(rows.stream().map(this::toSummaryRow).toList());
+	default SheetSummaryResultV1 toSummary(SheetSummary summary) {
+		List<SheetSummaryRow> rows = summary.rows() == null ? List.of() : summary.rows();
+		return new SheetSummaryResultV1(rows.stream().map(this::toSummaryRow).toList())
+				.rfpInfo(summary.rfpInfo())
+				.changeLog(summary.changeLog());
 	}
 }

@@ -998,13 +998,26 @@ components:
 
     SheetSummaryResultV1:
       type: object
-      description: Per-tactic summary rows read back from the generated report workbook.
+      description: |
+        Per-tactic summary rows read back from the generated report workbook, plus the
+        campaign-context cells the review step needs to tell a workbook that carries its
+        own brief from one whose `RFP info` cell is still empty.
       required: [ rows ]
       properties:
         rows:
           type: array
           description: One entry per tactic, in the workbook's summary-table order.
           items: { $ref: "#/components/schemas/SheetSummaryRowV1" }
+        rfpInfo:
+          type: string
+          nullable: true
+          description: |
+            The workbook's `RFP info` cell — the campaign brief the deck's narrative is
+            actually written from. Null or blank when the cell was never filled.
+        changeLog:
+          type: string
+          nullable: true
+          description: "The workbook's change-log cell, or null when it carries none."
 
     # ── LineItemMatching ─────────────────────────────────────────────────────────
     LineItemMatchRequestV1:

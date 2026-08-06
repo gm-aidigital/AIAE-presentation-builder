@@ -1,8 +1,6 @@
 package com.aidigital.reportconstructor.service.reports.services;
 
-import com.aidigital.reportconstructor.service.reports.dto.SheetSummaryRow;
-
-import java.util.List;
+import com.aidigital.reportconstructor.service.reports.dto.SheetSummary;
 
 /**
  * Read-back access to the per-tactic summary table of a generated report workbook. Lets the
@@ -13,17 +11,18 @@ import java.util.List;
 public interface SheetSummaryQueryService {
 
 	/**
-	 * Reads the per-tactic summary table off the generated workbook's first tab and returns each
-	 * tactic's plan/fact figures in summary-table order.
+	 * Reads the per-tactic summary table off the generated workbook's first tab, together with the
+	 * campaign-context cells ({@code {{RFP info}}} and {@code {{change log}}}) the deck's narrative
+	 * is written from.
 	 *
 	 * <p>The read is attempted as the signed-in user (using their Clerk-brokered Google OAuth
 	 * token) and falls back to the service account when no user token is available. Returns an
-	 * empty list when the workbook carries no summary table.
+	 * empty row list when the workbook carries no summary table.
 	 *
 	 * @param sheetUrl     the generated workbook's Google Sheets URL
 	 * @param callerUserId the caller's Clerk user id, used to look up their Google OAuth token;
 	 *                     {@code null} forces the service-account fallback
-	 * @return one {@link SheetSummaryRow} per tactic, in the workbook's summary-table order
+	 * @return the workbook's summary rows and campaign-context cells
 	 */
-	List<SheetSummaryRow> readSummary(String sheetUrl, String callerUserId);
+	SheetSummary readSummary(String sheetUrl, String callerUserId);
 }

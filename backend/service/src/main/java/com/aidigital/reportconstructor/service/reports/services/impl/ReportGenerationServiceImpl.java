@@ -173,7 +173,13 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	public ReportJobEntity start(
 			String userId, String clerkUserId, String userEmail, GeneratePayload payload, GenerationTarget target,
 			String mediaPlanUrl, String elevateUrl) {
-		if (payload.brief() == null || payload.brief().isBlank()) {
+		// Only the sheet-building flow has nowhere else to get the campaign context from. A
+		// slides-from-sheet run reads {{RFP info}} straight off the reviewed workbook and lets it win over
+		// this payload (see runSlidesFromSheet), so requiring a brief here would reject a workbook that
+		// carries a perfectly good one in its own cell — which is exactly what a resumed draft looks like
+		// once the user fills that cell after the sheet was built.
+		if (target != GenerationTarget.SLIDES_FROM_SHEET
+				&& (payload.brief() == null || payload.brief().isBlank())) {
 			throw new AppException(ErrorReason.C002, "Brief is required");
 		}
 		if (target == GenerationTarget.SLIDES_FROM_SHEET

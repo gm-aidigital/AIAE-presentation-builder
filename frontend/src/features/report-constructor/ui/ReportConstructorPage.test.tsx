@@ -106,7 +106,7 @@ describe("ReportConstructorPage — resuming a draft", () => {
         // Given: a draft whose sheet summary has not been read back yet
         search = "resume=42";
         resumeQuery.mockReturnValue({ data: draft(), isLoading: false, isError: false });
-        readSheetSummary.mockResolvedValue([]);
+        readSheetSummary.mockResolvedValue({ rows: [], rfpInfo: null, changeLog: null });
 
         // When
         renderPage();
@@ -124,9 +124,11 @@ describe("ReportConstructorPage — resuming a draft", () => {
         // Given: the workbook was edited since the draft was saved and renamed a tactic
         search = "resume=42";
         resumeQuery.mockReturnValue({ data: draft(), isLoading: false, isError: false });
-        readSheetSummary.mockResolvedValue([
-            { tactic: "Display — renamed in the sheet", spendPlan: "$10,000", spendFact: "$9,800" },
-        ]);
+        readSheetSummary.mockResolvedValue({
+            rows: [{ tactic: "Display — renamed in the sheet", spendPlan: "$10,000", spendFact: "$9,800" }],
+            rfpInfo: null,
+            changeLog: null,
+        });
 
         // When
         renderPage();
@@ -140,7 +142,7 @@ describe("ReportConstructorPage — resuming a draft", () => {
         // Given: a resumed draft — no media plan or Elevate data was loaded in this session
         search = "resume=42";
         resumeQuery.mockReturnValue({ data: draft(), isLoading: false, isError: false });
-        readSheetSummary.mockResolvedValue([]);
+        readSheetSummary.mockResolvedValue({ rows: [], rfpInfo: null, changeLog: null });
         renderPage();
         await screen.findByText(/review the generated sheet/i);
 
@@ -158,7 +160,7 @@ describe("ReportConstructorPage — resuming a draft", () => {
             isLoading: false,
             isError: false,
         });
-        readSheetSummary.mockResolvedValue([]);
+        readSheetSummary.mockResolvedValue({ rows: [], rfpInfo: null, changeLog: null });
 
         // When
         renderPage();
@@ -171,14 +173,15 @@ describe("ReportConstructorPage — resuming a draft", () => {
         // Given: a workbook whose {{RFP info}} cell was empty
         search = "resume=42";
         resumeQuery.mockReturnValue({ data: draft({ brief: "" }), isLoading: false, isError: false });
-        readSheetSummary.mockResolvedValue([]);
+        readSheetSummary.mockResolvedValue({ rows: [], rfpInfo: null, changeLog: null });
 
         // When
         renderPage();
         await screen.findByText(/review the generated sheet/i);
 
-        // Then: the deck cannot be generated without it, so it is asked for here
-        expect(screen.getByText(/this sheet has no campaign brief/i)).toBeTruthy();
+        // Then: the deck cannot be generated without it, so it is asked for here — once the sheet
+        // read has landed and confirmed the workbook really carries no brief
+        expect(await screen.findByText(/this sheet has no campaign brief/i)).toBeTruthy();
         const confirm = screen.getByRole("button", { name: /confirm/i }) as HTMLButtonElement;
         expect(confirm.disabled).toBe(true);
 
@@ -196,15 +199,40 @@ describe("ReportConstructorPage — resuming a draft", () => {
         // Given: a workbook carrying its own campaign context
         search = "resume=42";
         resumeQuery.mockReturnValue({ data: draft(), isLoading: false, isError: false });
-        readSheetSummary.mockResolvedValue([]);
+        readSheetSummary.mockResolvedValue({ rows: [], rfpInfo: null, changeLog: null });
 
         // When
         renderPage();
         await screen.findByText(/review the generated sheet/i);
+        await waitFor(() => expect(readSheetSummary).toHaveBeenCalled());
 
         // Then
         expect(screen.queryByText(/this sheet has no campaign brief/i)).toBeNull();
         expect((screen.getByRole("button", { name: /confirm/i }) as HTMLButtonElement).disabled).toBe(false);
+    });
+
+    it("should take the brief from the sheet when the draft was saved before it was filled test", async () => {
+        // Given: a draft saved with no brief, whose {{RFP info}} cell the user has filled in Sheets since
+        search = "resume=42";
+        resumeQuery.mockReturnValue({ data: draft({ brief: "" }), isLoading: false, isError: false });
+        readSheetSummary.mockResolvedValue({
+            rows: [],
+            rfpInfo: "Client is Lennox, a residential HVAC brand.",
+            changeLog: null,
+        });
+
+        // When
+        renderPage();
+        await screen.findByText(/review the generated sheet/i);
+        await waitFor(() => expect(readSheetSummary).toHaveBeenCalled());
+
+        // Then: the live cell — not the stale draft — decides, so nothing is asked for and Confirm opens
+        expect(screen.queryByText(/this sheet has no campaign brief/i)).toBeNull();
+        await waitFor(() =>
+            expect((screen.getByRole("button", { name: /confirm/i }) as HTMLButtonElement).disabled).toBe(
+                false
+            )
+        );
     });
 
     it("should fall back to a fresh report when the draft is gone test", async () => {

@@ -151,6 +151,17 @@ function PageInner() {
     // Per-tactic plan/fact figures read back from the assembled sheet's summary table.
     const [summaryRows, setSummaryRows] = useState<SheetSummaryRow[] | null>(null);
     const [summaryLoading, setSummaryLoading] = useState(false);
+    // True once a sheet read has landed (or failed). Until then nothing is known about what the
+    // workbook carries, so the review step must not yet conclude that it has no campaign brief.
+    const [summaryLoaded, setSummaryLoaded] = useState(false);
+    // The campaign context as it stands right now, readable from inside an in-flight sheet read
+    // whose closure captured it as it stood when the read began.
+    const briefRef = useRef(w.brief);
+    const changeLogRef = useRef(w.changeLog);
+    useEffect(() => {
+        briefRef.current = w.brief;
+        changeLogRef.current = w.changeLog;
+    }, [w.brief, w.changeLog]);
 
     // Final report (target=SLIDES_FROM_SHEET) job → produces the deck from the sheet.
     const [genStatus, setGenStatus] = useState<GenStatus>("idle");
@@ -592,13 +603,24 @@ function PageInner() {
     async function loadSummary(url: string, announce = false) {
         setSummaryLoading(true);
         try {
-            setSummaryRows(await readSheetSummary(url));
+            const summary = await readSheetSummary(url);
+            setSummaryRows(summary.rows);
+            // The campaign context lives in the workbook, and the user is expected to fill it there
+            // between the two steps — a resumed draft only remembers the text as it stood when the
+            // sheet was built. Adopt whatever the sheet now carries, but never overwrite something
+            // typed into the wizard: that text is the one thing the sheet cannot know about. Read
+            // through the refs, not the closure: the seeding effect sets both a tick before this call.
+            if (!briefRef.current.trim() && summary.rfpInfo?.trim()) w.setBrief(summary.rfpInfo);
+            if (!changeLogRef.current.trim() && summary.changeLog?.trim()) {
+                w.setChangeLog(summary.changeLog);
+            }
             if (announce) showToast("Values refreshed from the sheet");
         } catch (e) {
             console.warn("sheet summary:", e);
             if (announce) showToast(e instanceof Error ? e.message : "Refresh failed", true);
         } finally {
             setSummaryLoading(false);
+            setSummaryLoaded(true);
         }
     }
 
@@ -782,6 +804,7 @@ function PageInner() {
                     sheetUrl={sheetUrl}
                     rows={reviewRows}
                     refreshing={summaryLoading}
+                    sheetRead={summaryLoaded}
                     breakdownsEnabled={breakdownsEnabled}
                     resumed={resumed}
                     brief={w.brief}

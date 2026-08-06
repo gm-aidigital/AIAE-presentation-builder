@@ -144,6 +144,27 @@ class ReportGenerationServiceImplTest {
 	}
 
 	@Test
+	void shouldAcceptABlankBriefWhenBuildingSlidesFromTheSheetTest() {
+		// Given: a deck run off a reviewed workbook, started without a brief in the payload — the sheet's
+		// own {{RFP info}} cell is the campaign context this flow reads, and it wins over the payload anyway
+		GeneratePayload payload = new GeneratePayload(
+				"  ", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), null, "", null, "http://sheet", null);
+		ReportJobEntity queued = new ReportJobEntity();
+		queued.setId(11L);
+		when(jobProgress.createQueuedJob("user-1", "standard")).thenReturn(queued);
+		ReportGenerationService selfBean = mock(ReportGenerationService.class);
+		when(self.getObject()).thenReturn(selfBean);
+
+		// When: the job is started
+		ReportJobEntity job = service.start(
+				"user-1", "clerk-1", "user@x.com", payload, GenerationTarget.SLIDES_FROM_SHEET, null, null);
+
+		// Then: it is enqueued and run rather than rejected for a missing brief
+		assertThat(job).isSameAs(queued);
+		verify(selfBean).run(11L, payload, "clerk-1", "user@x.com", GenerationTarget.SLIDES_FROM_SHEET);
+	}
+
+	@Test
 	void shouldDelegateEnqueueToJobProgressHelperTest() {
 		ReportJobEntity queued = new ReportJobEntity();
 		queued.setId(99L);
