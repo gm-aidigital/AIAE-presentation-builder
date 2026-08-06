@@ -40,6 +40,7 @@ public class BreakdownChartBuilder {
 	private final ChartErrorTranslator chartErrors;
 	private final BreakdownChartCatalog catalog;
 	private final BreakdownSlideNaming naming;
+	private final ChartFileSharer chartFileSharer;
 
 	public BreakdownChartBuilder(
 			DriveCopier driveCopier,
@@ -48,7 +49,8 @@ public class BreakdownChartBuilder {
 			SlideChartSwapper slideChartSwapper,
 			ChartErrorTranslator chartErrors,
 			BreakdownChartCatalog catalog,
-			BreakdownSlideNaming naming) {
+			BreakdownSlideNaming naming,
+			ChartFileSharer chartFileSharer) {
 		this.driveCopier = driveCopier;
 		this.chartSheetWriter = chartSheetWriter;
 		this.chartSpecBuilder = chartSpecBuilder;
@@ -56,6 +58,7 @@ public class BreakdownChartBuilder {
 		this.chartErrors = chartErrors;
 		this.catalog = catalog;
 		this.naming = naming;
+		this.chartFileSharer = chartFileSharer;
 	}
 
 	/**
@@ -79,6 +82,7 @@ public class BreakdownChartBuilder {
 		} catch (IOException ex) {
 			log.warn("[breakdown-charts] could not create folder, copies go to root: {}", ex.getMessage());
 		}
+		chartFileSharer.shareFolder(clients.drive(), folderId);
 
 		for (BreakdownChartJob job : req.jobs()) {
 			try {
@@ -134,6 +138,7 @@ public class BreakdownChartBuilder {
 
 		String copyId = driveCopier.copyFile(
 				clients.drive(), sourceSheetId, tag + " — " + req.campaignTitle(), folderId);
+		chartFileSharer.shareLooseCopy(clients.drive(), folderId, copyId);
 		String tab = chartSpecBuilder.findDataTab(clients.sheets(), copyId);
 		int written = chartSheetWriter.writeBreakdownImpressions(clients.sheets(), copyId, tab, impsByLabel);
 		if (written == 0) {

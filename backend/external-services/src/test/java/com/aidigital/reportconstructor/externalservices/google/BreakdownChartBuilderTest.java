@@ -15,7 +15,7 @@ class BreakdownChartBuilderTest {
 		// collaborators are not touched, so nulls are safe here.
 		return new BreakdownChartBuilder(
 				null, new ChartSheetWriter(), null, null, null, new BreakdownChartCatalog(),
-				new BreakdownSlideNaming());
+				new BreakdownSlideNaming(), null);
 	}
 
 	@Test

@@ -32,6 +32,7 @@ public class TacticChartBuilder {
 	private final ChartErrorTranslator chartErrors;
 	private final ChartTemplateCatalog templates;
 	private final TacticLineItemGrouper lineItemGrouper;
+	private final ChartFileSharer chartFileSharer;
 
 	public TacticChartBuilder(
 			ChartPivot chartPivot,
@@ -41,7 +42,8 @@ public class TacticChartBuilder {
 			DriveCopier driveCopier,
 			ChartErrorTranslator chartErrors,
 			ChartTemplateCatalog templates,
-			TacticLineItemGrouper lineItemGrouper) {
+			TacticLineItemGrouper lineItemGrouper,
+			ChartFileSharer chartFileSharer) {
 		this.chartPivot = chartPivot;
 		this.chartSheetWriter = chartSheetWriter;
 		this.chartSpecBuilder = chartSpecBuilder;
@@ -50,6 +52,7 @@ public class TacticChartBuilder {
 		this.chartErrors = chartErrors;
 		this.templates = templates;
 		this.lineItemGrouper = lineItemGrouper;
+		this.chartFileSharer = chartFileSharer;
 	}
 
 	/**
@@ -69,6 +72,7 @@ public class TacticChartBuilder {
 		} catch (IOException ex) {
 			log.warn("[charts] could not create chart folder, copies go to root: {}", ex.getMessage());
 		}
+		chartFileSharer.shareFolder(clients.drive(), folderId);
 
 		Headers headers = chartPivot.parseBqHeaders(req.bqRows());
 
@@ -244,6 +248,7 @@ public class TacticChartBuilder {
 			return;
 		}
 		String copiedId = driveCopier.copyFile(clients.drive(), job.templateId(), job.copyName(), folderId);
+		chartFileSharer.shareLooseCopy(clients.drive(), folderId, copiedId);
 		ChartSpec spec = chartSpecBuilder.readChartSpec(clients.sheets(), job.templateId());
 		String tab = chartSpecBuilder.findDataTab(clients.sheets(), copiedId);
 		chartSheetWriter.writePivot(clients.sheets(), copiedId, tab, job.pivot(), job.kpiType());
@@ -280,6 +285,7 @@ public class TacticChartBuilder {
 			Map<String, ElementTransform> transforms,
 			DistributionChartJob job) throws IOException {
 		String copiedId = driveCopier.copyFile(clients.drive(), job.templateId(), job.copyName(), folderId);
+		chartFileSharer.shareLooseCopy(clients.drive(), folderId, copiedId);
 		String tab = chartSpecBuilder.findDataTab(clients.sheets(), copiedId);
 		chartSheetWriter.writeDistribution(
 				clients.sheets(), copiedId, tab, job.tacticName(), job.tacticImp(), job.otherImps());
