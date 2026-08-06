@@ -118,4 +118,29 @@ public interface AdminStatsApiMapper {
 	 * @return the V1 failed-job DTO
 	 */
 	AdminFailedJobV1 toFailedJob(AdminFailedJob failedJob);
+
+	/**
+	 * Reads a bucket-granularity code into the series enum.
+	 *
+	 * <p>MapStruct's default String-to-enum conversion is {@code Enum.valueOf}, which matches the
+	 * constant name and so rejects the lowercase wire codes the service carries — the whole dashboard
+	 * came back as a 500 rather than as a series. The generated {@code fromValue} matches on the wire
+	 * value, which is what the code is.
+	 *
+	 * @param code the wire code, or {@code null}
+	 * @return the matching enum constant, or {@code null}
+	 */
+	default AdminStatsV1.SeriesUnitEnum toSeriesUnit(String code) {
+		return code == null ? null : AdminStatsV1.SeriesUnitEnum.fromValue(code);
+	}
+
+	/**
+	 * Reads a bucket-granularity code into the range's suggested-unit enum.
+	 *
+	 * @param code the wire code, or {@code null}
+	 * @return the matching enum constant, or {@code null}
+	 */
+	default AdminRangeV1.SuggestedUnitEnum toSuggestedUnit(String code) {
+		return code == null ? null : AdminRangeV1.SuggestedUnitEnum.fromValue(code);
+	}
 }
