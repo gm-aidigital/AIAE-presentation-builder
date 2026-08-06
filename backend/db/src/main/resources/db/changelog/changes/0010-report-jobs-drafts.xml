@@ -12,6 +12,11 @@
 		the job row (or the Google Sheet itself), so the history and the admin figures stay intact.
 	-->
 	<changeSet id="report-jobs-dismissed-at" author="harvest">
+		<preConditions onFail="MARK_RAN">
+			<not>
+				<columnExists tableName="report_jobs" columnName="dismissed_at"/>
+			</not>
+		</preConditions>
 		<addColumn tableName="report_jobs">
 			<column name="dismissed_at" type="TIMESTAMP WITH TIME ZONE"/>
 		</addColumn>
