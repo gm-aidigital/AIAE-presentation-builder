@@ -382,6 +382,121 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerErrorV1"
 
+  /api/v1/reports/{jobId}/resume:
+    get:
+      tags: [ Reports ]
+      operationId: getReportResume
+      summary: Load a resumable draft so the wizard can re-enter at the review step
+      description: |
+        A finished sheet build whose workbook has not been turned into a deck yet is a resumable
+        draft: the user takes the generated workbook away, fills it by hand, and comes back — often
+        days later, always in a new browser tab. This returns the workbook URL plus the wizard state
+        that run was carrying, which is everything the slides-from-sheet step still needs (every
+        number, name and date is read back out of the workbook itself).
+
+        Authorized to the owner only. A job owned by another user, an unfinished one, a dismissed
+        one, or one whose sheet already produced a deck all return 404 — there is nothing to resume.
+      security:
+        - bearerAuth: [ ]
+      parameters:
+        - in: path
+          name: jobId
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Id of the sheet-build job to resume.
+      responses:
+        "200":
+          description: The draft's workbook and stored wizard state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportResumeV1"
+        "401":
+          $ref: "#/components/responses/UnauthorizedV1"
+        "403":
+          $ref: "#/components/responses/ForbiddenV1"
+        "404":
+          $ref: "#/components/responses/NotFoundV1"
+        "500":
+          $ref: "#/components/responses/InternalServerErrorV1"
+
+  /api/v1/reports/adopt-sheet:
+    post:
+      tags: [ Reports ]
+      operationId: adoptSheet
+      summary: Register a workbook the user filled themselves as a resumable draft
+      description: |
+        For the user who already has a filled report workbook and does not need the constructor to
+        build one. None of the media-plan / Elevate / matching / pacing input survives into the
+        slides-from-sheet step — it reads every number, name and date back out of the workbook — so
+        the link plus the report type is enough to reach the deck.
+
+        The workbook is read and validated (it must name at least one tactic on its first tab), the
+        campaign brief is taken from its `{{RFP info}}` cell, and the per-tactic breakdown selections
+        are inferred from which sections of its "Breakdowns" tab actually carry data. The result is
+        recorded as a finished sheet build owned by the caller, so it appears in "My reports" as a
+        draft and the ordinary resume flow takes over. No Claude call is made and nothing is charged.
+
+        Returns 400 when the link cannot be read or the sheet is not a report workbook.
+      security:
+        - bearerAuth: [ ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdoptSheetRequestV1"
+      responses:
+        "200":
+          description: The workbook was adopted; the response is the new draft.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportResumeV1"
+        "400":
+          $ref: "#/components/responses/BadRequestV1"
+        "401":
+          $ref: "#/components/responses/UnauthorizedV1"
+        "403":
+          $ref: "#/components/responses/ForbiddenV1"
+        "500":
+          $ref: "#/components/responses/InternalServerErrorV1"
+
+  /api/v1/reports/{jobId}/dismiss:
+    post:
+      tags: [ Reports ]
+      operationId: dismissReport
+      summary: Stop offering a draft in the caller's report history
+      description: |
+        Hides a resumable draft from "My reports". Neither the job nor the generated Google Sheet is
+        deleted — the run keeps counting towards the admin figures and the workbook stays in Drive.
+        Idempotent: dismissing an already-dismissed draft succeeds and keeps the original timestamp.
+
+        Authorized to the owner only; a job owned by another user returns 404.
+      security:
+        - bearerAuth: [ ]
+      parameters:
+        - in: path
+          name: jobId
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Id of the draft to dismiss.
+      responses:
+        "204":
+          description: The draft is no longer offered.
+        "401":
+          $ref: "#/components/responses/UnauthorizedV1"
+        "403":
+          $ref: "#/components/responses/ForbiddenV1"
+        "404":
+          $ref: "#/components/responses/NotFoundV1"
+        "500":
+          $ref: "#/components/responses/InternalServerErrorV1"
+
   /api/v1/admin/stats:
     get:
       tags: [ Admin ]
@@ -1190,6 +1305,53 @@ components:
         outputTokens: { type: integer, format: int64, description: "Claude output tokens this report billed; 0 when unrecorded." }
         totalTokens: { type: integer, format: int64, description: "Every Claude token this report billed; 0 when unrecorded." }
         costUsd: { type: number, format: double, description: "Estimated cost of this report's tokens in USD at configured list prices." }
+        draft:
+          type: boolean
+          description: |
+            True when the row is a finished sheet build the caller can still resume into a deck,
+            rather than a finished report. Such a row has a sheetUrl and no slideUrl: offer
+            "continue" (getReportResume) and "dismiss" (dismissReport) instead of "open report".
+            Always false in the admin all-reports view.
+
+    AdoptSheetRequestV1:
+      type: object
+      description: A workbook the user filled themselves, to be registered as a resumable draft.
+      required: [ sheetUrl, reportType ]
+      properties:
+        sheetUrl:
+          type: string
+          description: "URL of the user's filled Google Sheet. The caller must have access to it."
+        reportType: { $ref: "#/components/schemas/ReportTypeV1" }
+
+    ReportResumeV1:
+      type: object
+      description: |
+        A resumable draft: the generated workbook to review, plus the wizard state the interrupted
+        session was carrying. Everything else the deck needs is read back out of the workbook, so
+        the fields here are exactly what the sheet cannot supply.
+      required: [ jobId, sheetUrl ]
+      properties:
+        jobId: { type: integer, format: int64, description: "Id of the sheet-build job being resumed." }
+        sheetUrl: { type: string, description: "The generated Google Sheet the deck will be built from." }
+        reportType:
+          allOf:
+            - $ref: "#/components/schemas/ReportTypeV1"
+          description: "Report type the run was started with; null for a draft stored before this was recorded."
+        brief: { type: string, description: "Campaign brief, as the fallback for a workbook whose {{RFP info}} cell was emptied." }
+        changeLog: { type: string, description: "Change log, fallback for {{change log}} the same way." }
+        marketVolume: { type: string, description: "Maximum addressable audience volume entered in the UI." }
+        dateFilter: { $ref: "#/components/schemas/DateFilterV1" }
+        estimateDaypartGender: { type: boolean, description: "Whether Claude may estimate the dayparting/gender tokens." }
+        breakdownSelections:
+          type: array
+          description: "The Step-3 per-tactic breakdown toggles the workbook was prepared with."
+          items: { $ref: "#/components/schemas/BreakdownSelectionV1" }
+        tacticNames:
+          type: array
+          description: "Reported tactics in order, so the review table has labels before the sheet summary read lands."
+          items: { type: string }
+        mediaPlanUrl: { type: string, description: "Media Plan source sheet the original session connected." }
+        elevateUrl: { type: string, description: "Elevate source sheet the original session connected." }
 
     # ── Admin management (admins by email) ──────────────────────────────────────
     AdminReportPageV1:

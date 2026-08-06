@@ -120,6 +120,11 @@
     background: var(--rc-type-agenda);
 }
 
+/* A finished sheet build the user can still turn into a deck — not a report yet. */
+.mr-badge--draft {
+    background: var(--rc-amber);
+}
+
 .mr__meta {
     min-width: 0;
 }
@@ -189,4 +194,21 @@
 
 .mr__sheet:hover {
     border-color: var(--rc-mute);
+}
+
+/* Shares the outline shape of the sheet link, but is a real button (and destructive-ish). */
+.mr__discard {
+    font-family: var(--rc-font);
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.mr__discard:hover:not(:disabled) {
+    border-color: var(--rc-orange);
+    color: var(--rc-orange);
+}
+
+.mr__discard:disabled {
+    color: var(--rc-mute);
+    cursor: default;
 }

@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { MEDIA_PLAN_FALLBACK_TAB, MEDIA_PLAN_PRIMARY_TAB, readSheetSummary, readSheetTab } from "@/shared/api/sheets";
-import type { GenerateRequest, LineItemMatchResult, Rows2D, SheetReadResult, SheetSummaryRow } from "@/shared/api/types";
+import type {
+    BreakdownSelection,
+    GenerateRequest,
+    LineItemMatchResult,
+    ReportResume,
+    Rows2D,
+    SheetReadResult,
+    SheetSummaryRow,
+} from "@/shared/api/types";
 import { WizardProvider, useWizard } from "@/shared/wizard/WizardContext";
 import { extractTacticBudgets, looksLikeMediaPlan, type TacticBudget } from "../lib/mediaPlanBudget";
 import { keepActive, toPayloadMapping } from "../lib/tacticSelection";
@@ -8,6 +17,8 @@ import { eomWindow } from "../lib/reportingMonth";
 import { useDetectDateRange } from "../api/useDetectDateRange";
 import { useMatchLineItems } from "../api/useMatchLineItems";
 import { fetchReportJob, startReportJob } from "../api/useReportJob";
+import { useAdoptSheet } from "../api/useAdoptSheet";
+import { useReportResume } from "../api/useReportResume";
 import { MatchModal } from "./MatchModal";
 import { PacingModal } from "./PacingModal";
 import { Stepper } from "./Stepper";
@@ -98,10 +109,25 @@ function PageInner() {
     const matchMutation = useMatchLineItems();
     const detectDateRangeMutation = useDetectDateRange();
 
+    // "Continue" on a draft in My reports lands here as /reports/new?resume=<jobId>. The workbook
+    // was built in an earlier session — possibly days ago, certainly in another tab — so the wizard
+    // is seeded from the job instead of from source sheets that are no longer loaded.
+    const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const resumeParam = Number(searchParams.get("resume"));
+    const resumeJobId = Number.isInteger(resumeParam) && resumeParam > 0 ? resumeParam : null;
+    const resumeQuery = useReportResume(resumeJobId);
+    const [resumedDraft, setResumedDraft] = useState<ReportResume | null>(null);
+    const resumed = resumedDraft !== null;
+    const adoptMutation = useAdoptSheet();
+
     const [step, setStep] = useState(0);
     // Highest step reached — the stepper lets the user jump back to any visited step.
     const [maxStep, setMaxStep] = useState(0);
     useEffect(() => setMaxStep((m) => Math.max(m, step)), [step]);
+    // Lowest step still reachable. A resumed draft cannot go back past the review step: steps 1-3
+    // rebuild the sheet from source grids this session never loaded.
+    const minStep = resumed ? 3 : 0;
     const [errors, setErrors] = useState<InputErrors>(NO_ERRORS);
     const [mediaPulling, setMediaPulling] = useState(false);
     const [elevatePulling, setElevatePulling] = useState(false);
@@ -140,6 +166,55 @@ function PageInner() {
         }
     }
     useEffect(() => () => stopPolling(), []);
+
+    // Seeds the wizard from a resumed draft, exactly once. Guarded by a ref rather than by the
+    // effect's dependencies because seeding writes wizard state, which would otherwise re-trigger it.
+    const seededRef = useRef(false);
+    useEffect(() => {
+        const draft = resumeQuery.data;
+        if (!draft || seededRef.current) return;
+        seededRef.current = true;
+        if (draft.reportType) w.setReportType(draft.reportType);
+        w.setBrief(draft.brief ?? "");
+        w.setChangeLog(draft.changeLog ?? "");
+        w.setMarketVolume(draft.marketVolume ?? "");
+        w.setEstimateDaypartGender(draft.estimateDaypartGender ?? true);
+        if (draft.dateFilter?.start && draft.dateFilter.end) {
+            w.setDateWindow(draft.dateFilter.start, draft.dateFilter.end);
+        }
+        setResumedDraft(draft);
+        setSheetUrl(draft.sheetUrl);
+        setStep(3);
+        void loadSummary(draft.sheetUrl);
+    }, [resumeQuery.data, w]);
+
+    // The draft is gone (dismissed elsewhere, already generated, or never the caller's). Say so and
+    // let the user start a fresh report rather than leaving them on a blank review step.
+    const resumeFailedRef = useRef(false);
+    useEffect(() => {
+        if (!resumeQuery.isError || resumeFailedRef.current) return;
+        resumeFailedRef.current = true;
+        showToast(
+            resumeQuery.error instanceof Error ? resumeQuery.error.message : "This draft is no longer available.",
+            true
+        );
+    }, [resumeQuery.isError, resumeQuery.error, showToast]);
+
+    // "I already have a filled sheet" on step 2. The workbook is registered as a draft and then
+    // entered through the same ?resume= door as any other, so it survives a reload from the moment
+    // it is adopted — seeding straight from the response would lose it on the first refresh.
+    function adoptSheet(url: string) {
+        adoptMutation.mutate(
+            { sheetUrl: url, reportType: w.reportType },
+            {
+                onSuccess: (draft) => {
+                    showToast("Sheet adopted — review it before generating");
+                    navigate(`/reports/new?resume=${draft.jobId}`);
+                },
+                onError: (e) => showToast(e instanceof Error ? e.message : "Could not use that sheet", true),
+            }
+        );
+    }
 
     const clearError = (key: keyof InputErrors) => setErrors((e) => ({ ...e, [key]: false }));
 
@@ -402,7 +477,27 @@ function PageInner() {
         [w.activeMapping, activeBudgets, breakdowns]
     );
 
-    const reviewRows: ReviewRow[] = useMemo(
+    // A resumed session has no line-item mapping — it was never re-run — so the table is built from
+    // what the sheet itself reports: the summary table's own tactic names, or the names the draft
+    // recorded while the summary read is still in flight.
+    const resumedReviewRows: ReviewRow[] = useMemo(() => {
+        if (!resumedDraft) return [];
+        const names = resumedDraft.tacticNames ?? [];
+        const count = Math.max(summaryRows?.length ?? 0, names.length);
+        return Array.from({ length: count }, (_, i) => {
+            const s = summaryRows?.[i] ?? null;
+            return {
+                tactic: s?.tactic || names[i] || `Tactic ${i + 1}`,
+                lineId: null,
+                spendPlan: s?.spendPlan ?? null,
+                spendFact: s?.spendFact ?? null,
+                unitPlan: s?.unitPlan ?? null,
+                unitFact: s?.unitFact ?? null,
+            };
+        });
+    }, [resumedDraft, summaryRows]);
+
+    const mappedReviewRows: ReviewRow[] = useMemo(
         () =>
             w.activeMapping.map((m, i) => {
                 const s = summaryRows?.[i] ?? null;
@@ -422,6 +517,8 @@ function PageInner() {
         [w.activeMapping, summaryRows]
     );
 
+    const reviewRows = resumed ? resumedReviewRows : mappedReviewRows;
+
     // Enabled sections per tactic, dropped to the ones the tactic's channel actually supports (Meta,
     // TikTok, Google Search and Performance Max have no publisher or device split).
     // Numbered like the payload mapping (1..N over the reported tactics), while the toggle state
@@ -439,11 +536,17 @@ function PageInner() {
         [w.activeMapping, breakdowns]
     );
 
+    // A resumed draft carries the toggles the workbook was actually prepared with — the Breakdowns
+    // tab was already cleared to match them, so re-deriving them from an empty mapping would insert
+    // the wrong slides (or none).
+    const effectiveBreakdownSelections: BreakdownSelection[] =
+        resumedDraft?.breakdownSelections ?? breakdownSelections;
+
     // True when any tactic has at least one breakdown section enabled — those slides need the user to
     // fill the sheet's "Breakdowns" tab by hand, so Review Sheet warns and gates Confirm on it.
     const breakdownsEnabled = useMemo(
-        () => breakdownSelections.some((s) => s.breakdowns.length > 0),
-        [breakdownSelections]
+        () => effectiveBreakdownSelections.some((s) => (s.breakdowns?.length ?? 0) > 0),
+        [effectiveBreakdownSelections]
     );
 
     function toggleBreakdown(tacticNum: number, id: BreakdownId) {
@@ -468,13 +571,15 @@ function PageInner() {
             lineItemMapping: w.mapping ? toPayloadMapping(w.activeMapping) : undefined,
             // Step-3 breakdown toggles → the backend clears the sections a tactic didn't enable on the
             // generated sheet's "Breakdowns" tab. One entry per mapped tactic (empty list = none enabled).
-            breakdownSelections,
+            breakdownSelections: effectiveBreakdownSelections,
             // When off, the per-tactic dayparting/gender tokens are dashed instead of AI-estimated.
             estimateDaypartGender: w.estimateDaypartGender,
             bqSheetId: w.elevate?.sheetId,
-            // Persisted for the admin history so reviewers can open the user's source sheets.
-            mediaPlanUrl: sheetUrlFromId(w.mediaPlan?.sheetId),
-            elevateUrl: sheetUrlFromId(w.elevate?.sheetId),
+            // Persisted for the admin history so reviewers can open the user's source sheets. A resumed
+            // session has no sheets connected, so the URLs the original session recorded are carried
+            // forward — otherwise finishing a report a day later would erase its provenance.
+            mediaPlanUrl: sheetUrlFromId(w.mediaPlan?.sheetId) ?? resumedDraft?.mediaPlanUrl,
+            elevateUrl: sheetUrlFromId(w.elevate?.sheetId) ?? resumedDraft?.elevateUrl,
             dateFilter:
                 w.dateStart && w.dateEnd
                     ? { mode: "RANGE", start: w.dateStart, end: w.dateEnd }
@@ -602,11 +707,28 @@ function PageInner() {
             ? GEN_STEP_CHECKPOINTS.length
             : GEN_STEP_CHECKPOINTS.filter((s) => s < genStep).length;
 
+    // A draft is being loaded: hold the whole wizard rather than flashing step 1, which the user
+    // would read as "it lost my report" in the moment before the review step appears.
+    if (resumeJobId !== null && resumeQuery.isLoading) {
+        return (
+            <div className="rc-app">
+                <div className="rc-overlay">
+                    <div className="rc-overlay__card">
+                        <div className="rc-overlay__spinner" />
+                        <div className="rc-overlay__title">Opening your draft…</div>
+                        <div className="rc-overlay__sub">Loading the sheet you left to fill in.</div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="rc-app">
             <Stepper
                 active={step}
                 maxReached={maxStep}
+                minReached={minStep}
                 locked={building || genStatus === "running"}
                 onNavigate={setStep}
             />
@@ -639,6 +761,8 @@ function PageInner() {
                     onConfirm={confirmInputs}
                     onBack={() => setStep(0)}
                     clearError={clearError}
+                    adopting={adoptMutation.isPending}
+                    onAdoptSheet={adoptSheet}
                 />
             )}
 
@@ -661,6 +785,9 @@ function PageInner() {
                     rows={reviewRows}
                     refreshing={summaryLoading}
                     breakdownsEnabled={breakdownsEnabled}
+                    resumed={resumed}
+                    brief={w.brief}
+                    onBriefChange={w.setBrief}
                     onRefresh={refreshSummary}
                     onConfirm={() => setStep(4)}
                     onBack={() => setStep(2)}

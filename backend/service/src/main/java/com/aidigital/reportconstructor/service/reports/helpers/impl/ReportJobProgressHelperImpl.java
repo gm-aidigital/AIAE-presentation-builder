@@ -80,6 +80,32 @@ public class ReportJobProgressHelperImpl implements ReportJobProgressHelper {
 
 	@Transactional
 	@Override
+	public void recordResumeState(Long jobId, String payloadJson) {
+		if (payloadJson == null || payloadJson.isBlank()) {
+			return;
+		}
+		jobs.findById(jobId).ifPresent(job -> {
+			job.setPayloadJson(payloadJson);
+			job.setUpdatedAt(OffsetDateTime.now());
+			jobs.save(job);
+		});
+	}
+
+	@Transactional
+	@Override
+	public void dismissJob(Long jobId) {
+		jobs.findById(jobId).ifPresent(job -> {
+			if (job.getDismissedAt() != null) {
+				return;
+			}
+			job.setDismissedAt(OffsetDateTime.now());
+			job.setUpdatedAt(OffsetDateTime.now());
+			jobs.save(job);
+		});
+	}
+
+	@Transactional
+	@Override
 	public void recordSlideCount(Long jobId, int slideCount) {
 		if (slideCount <= 0) {
 			return;

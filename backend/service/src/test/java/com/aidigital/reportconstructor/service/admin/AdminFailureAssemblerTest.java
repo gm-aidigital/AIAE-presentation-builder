@@ -50,7 +50,7 @@ class AdminFailureAssemblerTest {
 		when(summaryAssembler.toSummary(org.mockito.ArgumentMatchers.any(ReportJobEntity.class)))
 				.thenReturn(new ReportSummary(1L, "EOC", "error", title,
 						null, "https://docs.google.com/presentation/d/deck", null, null, null, null,
-						null, null, 0, 0, 0, 0d));
+						null, null, 0, 0, 0, 0d, false));
 	}
 
 	@Test

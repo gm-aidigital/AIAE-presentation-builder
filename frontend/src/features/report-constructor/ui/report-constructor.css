@@ -272,6 +272,25 @@
 }
 .rc-tabpick__dismiss:hover { color: var(--rc-slate); }
 
+/* "I already have a filled sheet" — the way past this whole step, so it reads as a card of its
+   own above the form rather than as one more field in it. */
+.rc-adopt {
+  margin-bottom: 22px; padding: 16px 18px; border-radius: 14px;
+  border: 1px dashed var(--rc-blue); background: var(--rc-white);
+  display: flex; flex-direction: column; gap: 12px;
+}
+.rc-adopt--collapsed { flex-direction: row; align-items: center; justify-content: space-between; gap: 18px; }
+.rc-adopt__title { font-weight: 700; font-size: 15px; color: var(--rc-ink); letter-spacing: -0.01em; }
+.rc-adopt__sub { margin-top: 3px; font-size: 13px; color: var(--rc-mute); line-height: 1.45; }
+.rc-adopt__cancel {
+  align-self: flex-start; background: none; border: 0; padding: 0; font-family: var(--rc-font);
+  font-size: 13px; font-weight: 600; color: var(--rc-mute); cursor: pointer;
+}
+.rc-adopt__cancel:hover { color: var(--rc-slate); }
+
+/* Brief asked for on the review step when an adopted workbook carried none. */
+.rc-banner__field { margin-top: 10px; width: 100%; }
+
 /* Input-status card */
 .rc-status { border: 1px solid var(--rc-card-border); border-radius: 14px; overflow: hidden; }
 .rc-status__head {

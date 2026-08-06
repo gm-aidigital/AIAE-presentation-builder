@@ -32,6 +32,9 @@ interface Props {
     onConfirm(): void;
     onBack(): void;
     clearError(key: keyof InputErrors): void;
+    /** True while a user-supplied workbook is being read and registered. */
+    adopting: boolean;
+    onAdoptSheet(url: string): void;
 }
 
 interface ConnectRowProps {
@@ -134,6 +137,72 @@ function MediaTabPicker({ picker, pulling, onPick, onDismiss }: MediaTabPickerPr
     );
 }
 
+interface AdoptSheetCardProps {
+    adopting: boolean;
+    onAdopt(url: string): void;
+}
+
+/**
+ * The way out of this whole screen for a user who already has a filled report workbook. Deliberately
+ * sits above the normal inputs and looks like a different kind of thing: none of what this step
+ * collects survives into the deck — every number, name and date is read back out of the workbook —
+ * so for them the link is the only input that matters.
+ */
+function AdoptSheetCard({ adopting, onAdopt }: AdoptSheetCardProps) {
+    const [url, setUrl] = useState("");
+    const [open, setOpen] = useState(false);
+    const canAdopt = isGoogleSheetUrl(url) && !adopting;
+
+    if (!open) {
+        return (
+            <div className="rc-adopt rc-adopt--collapsed">
+                <div className="rc-adopt__text">
+                    <div className="rc-adopt__title">Already have a filled report sheet?</div>
+                    <div className="rc-adopt__sub">
+                        Skip straight to generating the deck from it — no media plan or matching needed.
+                    </div>
+                </div>
+                <button type="button" className="rc-btn rc-btn--ghost rc-btn--sm" onClick={() => setOpen(true)}>
+                    Use my sheet
+                </button>
+            </div>
+        );
+    }
+
+    return (
+        <div className="rc-adopt">
+            <div className="rc-adopt__text">
+                <div className="rc-adopt__title">Use a sheet you filled in yourself</div>
+                <div className="rc-adopt__sub">
+                    Paste the link and we'll read the campaign, the tactics and the breakdowns straight off it.
+                    Make sure it's shared with you and follows the report template.
+                </div>
+            </div>
+            <div className="rc-connect">
+                <input
+                    type="text"
+                    className="rc-input"
+                    placeholder="https://docs.google.com/spreadsheets/…"
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                />
+                <button
+                    type="button"
+                    className="rc-btn rc-btn--primary"
+                    disabled={!canAdopt}
+                    onClick={() => onAdopt(url)}
+                >
+                    {adopting ? <IconSpinner size={14} /> : null}
+                    {adopting ? "Reading…" : "Use this sheet"}
+                </button>
+            </div>
+            <button type="button" className="rc-adopt__cancel" onClick={() => setOpen(false)}>
+                Cancel — I'll fill in the form
+            </button>
+        </div>
+    );
+}
+
 interface StatusRowProps {
     label: string;
     done: boolean;
@@ -173,6 +242,8 @@ export function StepDataInputs({
     onConfirm,
     onBack,
     clearError,
+    adopting,
+    onAdoptSheet,
 }: Props) {
     const w = useWizard();
 
@@ -204,6 +275,8 @@ export function StepDataInputs({
                     </p>
                 </div>
             </div>
+
+            <AdoptSheetCard adopting={adopting} onAdopt={onAdoptSheet} />
 
             <div className="rc-inputs-grid">
                 <div className="rc-inputs-col">

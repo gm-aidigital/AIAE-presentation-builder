@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+		xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+		xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+		xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+	<!--
+		A finished SHEET job whose sheet has not been turned into a deck yet is a resumable draft:
+		the user takes the generated workbook away, fills it by hand over a day or more, and comes
+		back to "My reports" to continue. Dismissing one hides it from that list without deleting
+		the job row (or the Google Sheet itself), so the history and the admin figures stay intact.
+	-->
+	<changeSet id="report-jobs-dismissed-at" author="harvest">
+		<addColumn tableName="report_jobs">
+			<column name="dismissed_at" type="TIMESTAMP WITH TIME ZONE"/>
+		</addColumn>
+	</changeSet>
+
+</databaseChangeLog>

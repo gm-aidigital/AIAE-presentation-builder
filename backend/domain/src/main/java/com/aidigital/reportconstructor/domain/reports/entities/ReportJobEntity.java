@@ -71,6 +71,14 @@ public class ReportJobEntity extends IdAwareEntity {
 	@Column(name = "error_message")
 	private String errorMessage;
 
+	/**
+	 * When the owner dismissed this job's resumable draft, or null while it is still offered.
+	 * Only ever set on a finished SHEET job: it hides the draft row from "My reports" without
+	 * deleting the job, the generated workbook, or this run's contribution to the admin figures.
+	 */
+	@Column(name = "dismissed_at")
+	private OffsetDateTime dismissedAt;
+
 	/** Plain (uncached) input tokens Claude billed across the whole run; null for pre-accounting jobs. */
 	@Column(name = "input_tokens")
 	private Long inputTokens;

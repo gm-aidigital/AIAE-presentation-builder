@@ -22,6 +22,8 @@ import java.time.LocalDateTime;
  * @param outputTokens Claude output tokens the run billed, 0 when unrecorded
  * @param totalTokens  every token the run billed, 0 when unrecorded
  * @param costUsd      estimated cost of those tokens at configured list prices
+ * @param draft        true when this row is a finished sheet build the owner can still resume into a
+ *                     deck, rather than a finished report; always false in the admin view
  */
 public record ReportSummary(
 		Long jobId,
@@ -39,5 +41,6 @@ public record ReportSummary(
 		long inputTokens,
 		long outputTokens,
 		long totalTokens,
-		double costUsd) {
+		double costUsd,
+		boolean draft) {
 }

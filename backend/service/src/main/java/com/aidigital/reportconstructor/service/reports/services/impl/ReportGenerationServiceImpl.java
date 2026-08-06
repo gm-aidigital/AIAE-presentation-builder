@@ -35,6 +35,8 @@ import com.aidigital.reportconstructor.service.reports.helpers.ReportNumberParse
 import com.aidigital.reportconstructor.service.reports.helpers.ReportGenerationChartHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportGenerationWarningsHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportJobProgressHelper;
+import com.aidigital.reportconstructor.service.reports.helpers.ReportResumeStateHelper;
+import com.aidigital.reportconstructor.service.reports.helpers.SheetTacticCountHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.AudienceBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.CreativeBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.DeviceBreakdownHelper;
@@ -158,6 +160,10 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	private final SheetChartDataReader sheetChartData;
 	/** Derives each tactic's KPI series (clicks vs completions) from its name, as the chart step does. */
 	private final TacticExtractionHelper tacticExtraction;
+	/** Distils a finished sheet build into the state the report is resumed from in a later session. */
+	private final ReportResumeStateHelper resumeState;
+	/** Counts the tactics a reviewed workbook reports, shared with the adopt-a-sheet flow. */
+	private final SheetTacticCountHelper tacticCounter;
 
 	/**
 	 * Validates the brief, then enqueues the job and launches the build through the
@@ -305,6 +311,10 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 						sheetUrl, payload, data, flatReplacements, userGoogleToken);
 
 				jobProgress.recordArtifact(jobId, fileName, sheetUrl);
+				// The workbook now goes to the user, who fills it by hand — often over days, and rarely in
+				// the browser tab that is still open. Everything the slides step will need is stored on the
+				// job here so that tab is expendable: the report resumes from "My reports" at the review step.
+				jobProgress.recordResumeState(jobId, resumeState.serialize(resumeState.toState(payload, data)));
 				jobProgress.markJobDone(jobId, sheetUrl, warnings.serializeWarnings(pacingWarnings));
 				return;
 			}
@@ -901,15 +911,9 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	 * @return the active tactic count (1..28)
 	 */
 	int deriveTacticCount(Map<String, String> flatReplacements) {
-		int count = 0;
-		for (int n = 1; n <= MAX_TACTICS; n++) {
-			String name = flatReplacements.get("{{tactic " + n + "}}");
-			if (name == null || name.isBlank()) {
-				break;
-			}
-			count = n;
-		}
-		return Math.clamp(count, 1, MAX_TACTICS);
+		// A deck is always built for at least one tactic: this flow only runs on a workbook that
+		// already passed review, so an unnamed first tactic means a bad read, not an empty report.
+		return Math.clamp(tacticCounter.countFromPlaceholders(flatReplacements), 1, MAX_TACTICS);
 	}
 
 	/**

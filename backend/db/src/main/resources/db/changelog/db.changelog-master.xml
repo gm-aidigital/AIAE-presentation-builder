@@ -14,6 +14,7 @@
 	<include file="db/changelog/changes/0007-claude-usage-events.xml"/>
 	<include file="db/changelog/changes/0008-report-jobs-slide-count.xml"/>
 	<include file="db/changelog/changes/0009-usage-daily-rollup.xml"/>
+	<include file="db/changelog/changes/0010-report-jobs-drafts.xml"/>
 	<!-- Add new changelogs above this line in numerically increasing order. -->
 
 </databaseChangeLog>

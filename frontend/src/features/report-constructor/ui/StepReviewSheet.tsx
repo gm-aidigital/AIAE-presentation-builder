@@ -30,6 +30,18 @@ interface Props {
     refreshing: boolean;
     /** True when at least one tactic has a breakdown section enabled, so its slides need manual data. */
     breakdownsEnabled: boolean;
+    /**
+     * True when this step was entered by resuming a saved draft. The earlier steps cannot be
+     * re-run — their source grids never existed in this session — so Back is not offered.
+     */
+    resumed?: boolean;
+    /**
+     * The campaign brief, shown here only when the workbook did not supply one. A sheet the user
+     * brought themselves may have an empty {{RFP info}} cell, and the deck's whole narrative is
+     * written from that text — so it is asked for here rather than left to fail at generation.
+     */
+    brief?: string;
+    onBriefChange?(value: string): void;
     onRefresh(): void;
     onConfirm(): void;
     onBack(): void;
@@ -51,6 +63,9 @@ export function StepReviewSheet({
     rows,
     refreshing,
     breakdownsEnabled,
+    resumed = false,
+    brief = "",
+    onBriefChange,
     onRefresh,
     onConfirm,
     onBack,
@@ -58,7 +73,11 @@ export function StepReviewSheet({
     // When breakdown slides are enabled, their data can only come from the sheet's "Breakdowns" tab,
     // which the backend does not fill — the user must enter it by hand. Gate Confirm on an explicit ack.
     const [breakdownsAck, setBreakdownsAck] = useState(false);
-    const confirmDisabled = breakdownsEnabled && !breakdownsAck;
+    // Decided once, on mount: whether the workbook carried a campaign context of its own. Re-deriving
+    // it from the current value would make the field vanish under the user as soon as they typed.
+    const [askBrief] = useState(() => resumed && !!onBriefChange && brief.trim().length === 0);
+    const briefMissing = askBrief && brief.trim().length === 0;
+    const confirmDisabled = (breakdownsEnabled && !breakdownsAck) || briefMissing;
 
     return (
         <div className="rc-content">
@@ -130,6 +149,28 @@ export function StepReviewSheet({
                 </div>
             </div>
 
+            {askBrief && (
+                <div className="rc-banner rc-banner--warn">
+                    <span className="rc-banner__icon">
+                        <IconInfo size={18} />
+                    </span>
+                    <div className="rc-banner__text">
+                        <div className="rc-banner__title">This sheet has no campaign brief</div>
+                        <div className="rc-banner__sub">
+                            Its <b>RFP info</b> cell is empty, and the deck's narrative is written from that
+                            text. Add it here — client, goals, audience, budget, KPIs, channels — or fill the
+                            cell in the sheet and refresh.
+                        </div>
+                        <textarea
+                            className="rc-textarea rc-banner__field"
+                            placeholder="Describe the campaign — client, goals, target audience, budget, flight dates, KPIs, channels used."
+                            value={brief}
+                            onChange={(e) => onBriefChange?.(e.target.value)}
+                        />
+                    </div>
+                </div>
+            )}
+
             {breakdownsEnabled && (
                 <div className="rc-banner rc-banner--warn">
                     <span className="rc-banner__icon">
@@ -177,10 +218,12 @@ export function StepReviewSheet({
                     </div>
                 </div>
                 <div className="rc-confirm-bar__actions">
-                    <button type="button" className="rc-btn rc-btn--outline" onClick={onBack}>
-                        <IconArrowLeft size={16} />
-                        Back
-                    </button>
+                    {!resumed && (
+                        <button type="button" className="rc-btn rc-btn--outline" onClick={onBack}>
+                            <IconArrowLeft size={16} />
+                            Back
+                        </button>
+                    )}
                     <button
                         type="button"
                         className="rc-btn rc-btn--primary"

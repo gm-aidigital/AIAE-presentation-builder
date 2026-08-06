@@ -18,6 +18,8 @@ import com.aidigital.reportconstructor.service.reports.helpers.DeviceBreakdownHe
 import com.aidigital.reportconstructor.service.reports.helpers.GeoBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.PublisherBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportFileNamer;
+import com.aidigital.reportconstructor.service.reports.helpers.ReportResumeStateHelper;
+import com.aidigital.reportconstructor.service.reports.helpers.impl.SheetTacticCountHelperImpl;
 import com.aidigital.reportconstructor.service.reports.helpers.impl.BreakdownSelectionResolverImpl;
 import com.aidigital.reportconstructor.service.reports.helpers.impl.BreakdownThoughtsGateImpl;
 import com.aidigital.reportconstructor.service.reports.helpers.impl.ReportNumberParserImpl;
@@ -110,6 +112,8 @@ class ReportGenerationServiceImplTest {
 	AudienceBreakdownHelper audienceBreakdown;
 	@Mock
 	DeviceBreakdownHelper deviceBreakdown;
+	@Mock
+	ReportResumeStateHelper resumeState;
 
 	ReportGenerationServiceImpl service;
 
@@ -122,7 +126,8 @@ class ReportGenerationServiceImplTest {
 				new ReportNumberParserImpl(), new Fmt(), new SimpleAsyncTaskExecutor(),
 				new ClaudeUsageTrackerImpl(new NoOpClaudeUsageEventService()), new ClaudeFailureLogImpl(),
 				new BreakdownSelectionResolverImpl(), new BreakdownThoughtsGateImpl(),
-				new TacticConclusionAssemblerImpl(), sheetChartData, tacticExtraction);
+				new TacticConclusionAssemblerImpl(), sheetChartData, tacticExtraction, resumeState,
+				new SheetTacticCountHelperImpl());
 	}
 
 	@Test

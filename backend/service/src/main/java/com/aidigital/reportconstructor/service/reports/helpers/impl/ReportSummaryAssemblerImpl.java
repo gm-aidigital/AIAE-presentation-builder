@@ -22,6 +22,11 @@ public class ReportSummaryAssemblerImpl implements ReportSummaryAssembler {
 
 	@Override
 	public ReportSummary toSummary(ReportJobEntity job) {
+		return toSummary(job, false);
+	}
+
+	@Override
+	public ReportSummary toSummary(ReportJobEntity job, boolean draft) {
 		String ownerEmail = job.getOwnerEmail();
 		return new ReportSummary(
 				job.getId(),
@@ -39,7 +44,8 @@ public class ReportSummaryAssemblerImpl implements ReportSummaryAssembler {
 				tokenUsage.allInputTokens(job),
 				tokenUsage.outputTokens(job),
 				tokenUsage.totalTokens(job),
-				tokenUsage.costUsd(job));
+				tokenUsage.costUsd(job),
+				draft);
 	}
 
 	/**

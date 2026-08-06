@@ -49,6 +49,25 @@ public interface ReportJobProgressHelper {
 	void recordArtifact(Long jobId, String artifactName, String sheetUrl);
 
 	/**
+	 * Stamps the serialised resume state onto a job as its sheet build completes, so the report can
+	 * be finished from a later browser session. A no-op when the job no longer exists or there is
+	 * nothing to store.
+	 *
+	 * @param jobId       id of the job to stamp
+	 * @param payloadJson serialised {@code ReportResumeState}, or {@code null}
+	 */
+	void recordResumeState(Long jobId, String payloadJson);
+
+	/**
+	 * Marks a job's resumable draft as dismissed by its owner, hiding it from the history without
+	 * deleting the job or the workbook it produced. Idempotent: dismissing an already-dismissed
+	 * draft keeps the original timestamp. A no-op when the job no longer exists.
+	 *
+	 * @param jobId id of the job to dismiss
+	 */
+	void dismissJob(Long jobId);
+
+	/**
 	 * Stamps the run's Claude token consumption onto a job, for the admin token-spend dashboard.
 	 * Called once the run finishes, whether it succeeded or failed — tokens spent before a failure
 	 * were still billed. A no-op when the job no longer exists or when the run made no Claude calls.
