@@ -15,6 +15,14 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."   # works from root/scripts and scaffold/scripts
 
+# Swap in the published-app values before Maven runs: the SPA bakes
+# CLERK_PUBLISHABLE_KEY into the bundle at build time (vite.config.ts
+# `define`), so a runtime-only override would be too late.
+if [ -f scripts/lib/deploy-env.sh ]; then
+  # shellcheck source=lib/deploy-env.sh
+  . scripts/lib/deploy-env.sh
+fi
+
 if [ -f scripts/structure-lint.sh ]; then
   bash scripts/structure-lint.sh
 fi
