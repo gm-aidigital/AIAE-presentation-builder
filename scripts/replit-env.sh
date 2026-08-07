@@ -17,11 +17,3 @@ export AUTH_AUTHORIZED_PARTIES="${AUTH_AUTHORIZED_PARTIES:-}"
 export AUTH_ISSUER_URI="${AUTH_ISSUER_URI:-}"
 export AUTH_JWKS_URI="${AUTH_JWKS_URI:-}"
 export AUTH_AUDIENCE="${AUTH_AUDIENCE:-}"
-
-# Swap in the published-app values before Maven runs: the SPA bakes
-# CLERK_PUBLISHABLE_KEY into the bundle at build time (vite.config.ts
-# `define`), so a runtime-only override would be too late.
-if [ -f scripts/lib/deploy-env.sh ]; then
-  # shellcheck source=lib/deploy-env.sh
-  . scripts/lib/deploy-env.sh
-fi

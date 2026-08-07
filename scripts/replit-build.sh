@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-source scripts/replit-env.sh
 
 # Swap in the published-app values before Maven runs: the SPA bakes
 # CLERK_PUBLISHABLE_KEY into the bundle at build time (vite.config.ts
@@ -10,6 +9,8 @@ if [ -f scripts/lib/deploy-env.sh ]; then
   # shellcheck source=lib/deploy-env.sh
   . scripts/lib/deploy-env.sh
 fi
+
+source scripts/replit-env.sh
 
 cd frontend
 if [ -f package-lock.json ]; then
