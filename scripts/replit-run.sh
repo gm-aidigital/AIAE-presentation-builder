@@ -10,13 +10,14 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-# Swap in the published-app values before the JVM starts: the backend reads
-# CLERK_PUBLISHABLE_KEY (issuer/JWKS derivation) and CLERK_SECRET_KEY (Clerk
-# Backend API) from the environment at runtime.
+# Swap in the published-app values before Maven runs: the SPA bakes
+# CLERK_PUBLISHABLE_KEY into the bundle at build time (vite.config.ts
+# `define`), so a runtime-only override would be too late.
 if [ -f scripts/lib/deploy-env.sh ]; then
   # shellcheck source=lib/deploy-env.sh
   . scripts/lib/deploy-env.sh
 fi
+
 
 # Prefer the extracted (exploded) layout produced by replit-build.sh for a
 # faster cold start; fall back to the fat jar if extraction is absent.
