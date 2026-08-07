@@ -31,4 +31,7 @@ fi
 
 # Fast-start JVM flags: TieredStopAtLevel=1 (C1-only) slashes JIT overhead
 # during Spring init on the throttled Reserved VM; JMX adds nothing here.
-exec java -XX:TieredStopAtLevel=1 -Dspring.jmx.enabled=false -jar "${JAR}"
+# MaxRAMPercentage=75 gives the JVM an explicit container-aware heap ceiling
+# instead of the ergonomic ~25%-of-RAM default, which is too small to survive
+# a large in-memory report/export operation on this VM's limited RAM.
+exec java -XX:TieredStopAtLevel=1 -XX:MaxRAMPercentage=75 -Dspring.jmx.enabled=false -jar "${JAR}"

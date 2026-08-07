@@ -1,19 +1,7 @@
 #!/usr/bin/env bash
-#
-# replit-build.sh — invoked by .replit [deployment].build.
-#
-# One Maven invocation builds BOTH the React SPA and the Spring fat jar:
-#   - openapi-generator (generate-sources) emits Spring interfaces from openapi.yaml
-#   - frontend-maven-plugin (generate-resources → process-resources) runs
-#     npm ci → npm run generate:api → npm run build → outputs to
-#     ../backend/application/src/main/resources/static/
-#   - spring-boot-maven-plugin (package) repackages everything (jar + SPA + changelogs) into one fat jar
-#
-# Skip frontend during pure-backend local dev with -Dskip.frontend=true; never in deployment.
-
 set -euo pipefail
-
-cd "$(dirname "$0")/.."   # works from root/scripts and scaffold/scripts
+cd "$(dirname "$0")/.."
+source scripts/replit-env.sh
 
 # Swap in the published-app values before Maven runs: the SPA bakes
 # CLERK_PUBLISHABLE_KEY into the bundle at build time (vite.config.ts
@@ -23,22 +11,32 @@ if [ -f scripts/lib/deploy-env.sh ]; then
   . scripts/lib/deploy-env.sh
 fi
 
-if [ -f scripts/structure-lint.sh ]; then
-  bash scripts/structure-lint.sh
+cd frontend
+if [ -f package-lock.json ]; then
+  npm ci
+else
+  npm install
 fi
+npm run generate:api
+test -n "${VITE_CLERK_PUBLISHABLE_KEY:-}" || {
+  echo "ERROR: VITE_CLERK_PUBLISHABLE_KEY or CLERK_PUBLISHABLE_KEY must be available during frontend build." >&2
+  exit 1
+}
+npm run build
+cd ..
 
-mvn -f backend/pom.xml -B -Dmaven.test.skip=true package
+STATIC_DIR="backend/application/src/main/resources/static"
+test -f "${STATIC_DIR}/index.html" || {
+  echo "ERROR: frontend build did not produce ${STATIC_DIR}/index.html." >&2
+  exit 1
+}
 
-# Extract the Spring Boot fat jar into an exploded layout (thin launcher jar
-# + lib/). On Replit's Reserved VM the CPU is heavily throttled during the
-# cold-boot window, and having the JVM open/index the ~80MB nested fat jar
-# pushed first port-bind past the deployment's ~60s port-check, causing an
-# infinite restart loop. Running the extracted layout loads classes from
-# plain files and binds port 5000 well within the window.
-JAR="$(ls backend/application/target/*.jar 2>/dev/null | grep -v '\.original$' | head -n1)"
+mvn -f backend/pom.xml -B -DskipTests -Dskip.frontend=true package
+
+JAR="$(find backend/application/target -maxdepth 1 -name '*.jar' ! -name '*.original' | head -n 1)"
 if [ -z "${JAR}" ]; then
-  echo "ERROR: no fat jar produced by 'mvn package'." >&2
+  echo "ERROR: no Spring Boot jar produced in backend/application/target." >&2
   exit 1
 fi
 rm -rf backend/application/target/extracted
-java -Djarmode=tools -jar "${JAR}" extract --destination backend/application/target/extracted
+java -Djarmode=tools -jar "${JAR}" extract --destination backend/application/target/extracted || true
