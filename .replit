@@ -1,4 +1,4 @@
-modules = ["java-21", "nodejs-22", "postgresql-16"]
+modules = ["java-21", "nodejs-22", "postgresql-16", "python-base-3.13"]
 hidden  = [".idea", ".vscode", "target", "node_modules", "generated-sources", ".cache"]
 
 [nix]
@@ -14,6 +14,10 @@ run   = ["bash", "scripts/replit-run.sh"]
 localPort = 5000
 externalPort = 80
 
+[[ports]]
+localPort = 5173
+externalPort = 5173
+
 # === Workspace env ===
 [env]
 PORT = "5000"
@@ -21,25 +25,19 @@ SPRING_PROFILES_ACTIVE = "replit"
 VITE_CLERK_JWT_TEMPLATE = "aidigital-api"
 
 [workflows]
-runButton = "Project"
+runButton = "Run"
 
 [[workflows.workflow]]
 name = "Run"
 mode = "parallel"
-author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "mvn -f backend/pom.xml -B -Dmaven.test.skip=true -Dcheckstyle.skip=true -Djacoco.skip=true -Dskip.frontend=true install && mvn -f backend/application/pom.xml -B -Dmaven.test.skip=true -Dcheckstyle.skip=true -Djacoco.skip=true -Dskip.frontend=true spring-boot:run"
-
-[[workflows.workflow]]
-name = "Project"
-mode = "parallel"
-author = "agent"
+args = "bash scripts/replit-dev-backend.sh"
 
 [[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Run"
+task = "shell.exec"
+args = "bash scripts/replit-dev-frontend.sh"
 
 [agent]
 expertMode = true

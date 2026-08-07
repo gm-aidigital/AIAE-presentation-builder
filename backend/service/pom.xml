@@ -4,25 +4,18 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
                              https://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
+
 	<parent>
 		<groupId>com.aidigital.reportconstructor</groupId>
 		<artifactId>app-parent</artifactId>
 		<version>0.0.1-SNAPSHOT</version>
 		<relativePath>../pom.xml</relativePath>
 	</parent>
-	<artifactId>service</artifactId>
-	<name>Replit MVP — service</name>
 
-	<!-- Business orchestration. Depends on domain; add external-services only
-		 when real external integrations exist. NEVER depend on application.
-		 Hosts AppException family under service/common/error/. @LogUsage
-		 lives in the `event-logging-to-db-feature` module — declared here
-		 so *ServiceImpl classes can annotate methods; application/ picks
-		 the module up transitively through this edge. To fully remove
-		 usage logging: drop this dep, drop
-		 `<module>event-logging-to-db-feature</module>` from the parent,
-		 and delete the `<include file="db/changelog/changes/0001-usage-events.xml"/>`
-		 line from db.changelog-master.xml. -->
+	<artifactId>service</artifactId>
+	<name>AIAE Presentation Builder - service</name>
+	<packaging>jar</packaging>
+
 	<dependencies>
 		<dependency>
 			<groupId>${project.groupId}</groupId>

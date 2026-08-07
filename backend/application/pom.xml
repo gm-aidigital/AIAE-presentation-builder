@@ -18,15 +18,12 @@
 		<relativePath>../pom.xml</relativePath>
 	</parent>
 	<artifactId>application</artifactId>
-	<name>Replit MVP — application</name>
+	<name>AIAE Presentation Builder - application</name>
 
 	<properties>
 		<!-- Must match FQN of @SpringBootApplication class. Consumed by
 			 parent pluginManagement's <mainClass>${start-class}. -->
 		<start-class>${project.groupId}.Application</start-class>
-		<!-- Skip the frontend-maven-plugin chain locally with -Dskip.frontend=true.
-			 Replit Deployment build must NOT skip it. -->
-		<skip.frontend>false</skip.frontend>
 	</properties>
 
 	<dependencies>
@@ -168,67 +165,12 @@
 				<artifactId>openapi-generator-maven-plugin</artifactId>
 			</plugin>
 
-			<!-- Frontend build during `mvn package`.
-				 Order: openapi-generator (generate-sources) → install-node-and-npm
-				 (generate-resources) → npm ci → generate:api (writes
-				 schema.d.ts from openapi.yaml) → npm run build (tsc + vite)
-				 → vite outputs to ../backend/application/src/main/resources/static/
-				 → repackage bundles static/ into the fat jar.
-
-				 Without this binding the Replit Deployment build (`mvn -DskipTests
-				 package`) produces a jar with no SPA, and the Reserved-VM
-				 instance serves API only — root returns 404. Skip locally
-				 during pure-Java dev with -Dskip.frontend=true. -->
-			<plugin>
-				<groupId>com.github.eirslett</groupId>
-				<artifactId>frontend-maven-plugin</artifactId>
-				<configuration>
-					<workingDirectory>${project.basedir}/../../frontend</workingDirectory>
-					<installDirectory>${project.build.directory}/frontend-toolchain</installDirectory>
-					<nodeVersion>${node.version}</nodeVersion>
-					<npmVersion>${npm.version}</npmVersion>
-					<skip>${skip.frontend}</skip>
-				</configuration>
-				<executions>
-					<execution>
-						<id>install-node-and-npm</id>
-						<goals>
-							<goal>install-node-and-npm</goal>
-						</goals>
-						<phase>generate-resources</phase>
-					</execution>
-					<execution>
-						<id>npm-ci</id>
-						<goals>
-							<goal>npm</goal>
-						</goals>
-						<phase>generate-resources</phase>
-						<configuration>
-							<arguments>ci --no-audit --no-fund</arguments>
-						</configuration>
-					</execution>
-					<execution>
-						<id>npm-generate-api</id>
-						<goals>
-							<goal>npm</goal>
-						</goals>
-						<phase>generate-resources</phase>
-						<configuration>
-							<arguments>run generate:api</arguments>
-						</configuration>
-					</execution>
-					<execution>
-						<id>npm-build</id>
-						<goals>
-							<goal>npm</goal>
-						</goals>
-						<phase>process-resources</phase>
-						<configuration>
-							<arguments>run build</arguments>
-						</configuration>
-					</execution>
-				</executions>
-			</plugin>
+			<!-- No frontend plugin here on purpose. The SPA is built by an
+				 explicit npm step in scripts/replit-build.sh, which writes to
+				 src/main/resources/static/ before this module packages;
+				 spring-boot-maven-plugin then bundles static/ into the fat jar.
+				 Keeping npm out of the reactor means backend and frontend
+				 rebuild independently — see scripts/local-dev-*.sh. -->
 		</plugins>
 	</build>
 </project>

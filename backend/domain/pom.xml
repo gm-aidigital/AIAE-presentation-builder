@@ -4,14 +4,17 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
                              https://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
+
 	<parent>
 		<groupId>com.aidigital.reportconstructor</groupId>
 		<artifactId>app-parent</artifactId>
 		<version>0.0.1-SNAPSHOT</version>
 		<relativePath>../pom.xml</relativePath>
 	</parent>
+
 	<artifactId>domain</artifactId>
-	<name>Replit MVP — domain</name>
+	<name>AIAE Presentation Builder - domain</name>
+	<packaging>jar</packaging>
 
 	<!-- Leaf module. Depends on JPA + validation only. NO other internal modules. -->
 	<dependencies>
