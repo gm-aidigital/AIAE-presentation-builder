@@ -21,16 +21,18 @@ public class AnthropicProperties {
 	/**
 	 * Claude model id used for all batches.
 	 */
-	private String model = "claude-sonnet-4-6";
+	private String model = "claude-sonnet-5";
 
 	/**
-	 * Sampling temperature sent with every Claude call. Every prompt in this integration asks for a strict
-	 * JSON reply whose fields carry hard character budgets, so the API default of 1.0 buys variety we do not
-	 * want and costs format stability: a hotter sample is likelier to drift on the schema, overrun a limit
-	 * (forcing an extra compression call) or wrap the JSON in prose. 0.4 keeps the copy varied enough to read
-	 * as written prose while holding the contract. Clamped to 0.0..1.0 at use.
+	 * Multiplier applied to every caller's requested {@code max_tokens} before the request is sent. Claude
+	 * Sonnet 5 tokenizes the same text into roughly 30% more tokens than Sonnet 4.6 did, so every reply
+	 * budget in this integration — all of them calibrated against the older tokenizer, and one of which has
+	 * already shipped blank slide tokens by running out — buys about a quarter less written copy than it used
+	 * to. 1.35 restores the character budget those constants were tuned for. It costs nothing on its own:
+	 * Anthropic bills tokens actually generated, and {@code max_tokens} is only a ceiling. Set to 1.0 to send
+	 * the callers' figures unchanged. Clamped to at least 1.0 at use.
 	 */
-	private double temperature = 0.4;
+	private double outputTokenHeadroom = 1.35;
 
 	/**
 	 * Tactics per Step-2 per-tactic conclusions call in the slides-from-sheet flow. Default 7: that call
@@ -99,12 +101,12 @@ public class AnthropicProperties {
 		this.model = model;
 	}
 
-	public double getTemperature() {
-		return temperature;
+	public double getOutputTokenHeadroom() {
+		return outputTokenHeadroom;
 	}
 
-	public void setTemperature(double temperature) {
-		this.temperature = temperature;
+	public void setOutputTokenHeadroom(double outputTokenHeadroom) {
+		this.outputTokenHeadroom = outputTokenHeadroom;
 	}
 
 	public int getBreakdownChunkSize() {

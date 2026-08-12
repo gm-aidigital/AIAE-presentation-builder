@@ -38,8 +38,17 @@ public class AnthropicMessagesClient {
 	/** Floor on the configured reply snippet length, so a misconfigured value still logs something usable. */
 	private static final int MIN_REPLY_SNIPPET_LIMIT = 80;
 
-	/** Ceiling the configured temperature is clamped to: the Messages API rejects anything above 1.0. */
-	private static final double MAX_TEMPERATURE = 1.0;
+	/** Floor on the configured output-token headroom: a multiplier below 1.0 would shrink callers' budgets. */
+	private static final double MIN_OUTPUT_TOKEN_HEADROOM = 1.0;
+
+	/**
+	 * Thinking configuration sent with every request. Sonnet 5 runs adaptive thinking whenever the field is
+	 * omitted, and {@code max_tokens} caps thinking plus reply text together — so on the tight reply budgets
+	 * these prompts use, leaving it out would spend the budget on reasoning and truncate the JSON. Every
+	 * prompt here asks for one short schema-exact object, which is not work that benefits from thinking, so
+	 * it is turned off explicitly. Accepted only at effort {@code high} or below, which is the default.
+	 */
+	private static final Map<String, Object> THINKING_DISABLED = Map.of("type", "disabled");
 
 	/**
 	 * HTTP statuses treated as transient and retried: 408 request timeout, 429 rate limit, 500/502/503/504
@@ -78,10 +87,11 @@ public class AnthropicMessagesClient {
 	private final long retryBackoffMillis;
 
 	/**
-	 * Sampling temperature sent with every request; clamped to the API's 0.0..1.0 range. Held below the API
-	 * default because every prompt here demands schema-exact JSON inside hard character budgets.
+	 * Multiplier applied to every caller's {@code max_tokens} before the request is sent, compensating for
+	 * Sonnet 5 tokenizing the same reply into more tokens than the budgets in this integration were tuned
+	 * against; at least {@link #MIN_OUTPUT_TOKEN_HEADROOM}.
 	 */
-	private final double temperature;
+	private final double outputTokenHeadroom;
 
 	/**
 	 * Characters of an unparseable reply written to its WARN line; at least {@link #MIN_REPLY_SNIPPET_LIMIT}.
@@ -122,7 +132,8 @@ public class AnthropicMessagesClient {
 		this.callLimiter = new Semaphore(Math.max(1, props.getMaxConcurrentCalls()));
 		this.maxRetries = Math.max(0, props.getMaxRetries());
 		this.retryBackoffMillis = Math.max(0, props.getRetryBackoffMillis());
-		this.temperature = Math.min(MAX_TEMPERATURE, Math.max(0.0, props.getTemperature()));
+		this.outputTokenHeadroom =
+				Math.max(MIN_OUTPUT_TOKEN_HEADROOM, props.getOutputTokenHeadroom());
 		this.replySnippetLimit = Math.max(MIN_REPLY_SNIPPET_LIMIT, props.getReplySnippetLimit());
 	}
 
@@ -150,7 +161,7 @@ public class AnthropicMessagesClient {
 			return null;
 		}
 		if (truncated) {
-			noteSalvagedTruncation(label, maxTokens);
+			noteSalvagedTruncation(label, effectiveMaxTokens(maxTokens));
 		}
 		String text = normalizer.extractText(resp);
 		if (text == null || text.isBlank()) {
@@ -197,7 +208,7 @@ public class AnthropicMessagesClient {
 			return null;
 		}
 		if (truncated) {
-			noteSalvagedTruncation(label, maxTokens);
+			noteSalvagedTruncation(label, effectiveMaxTokens(maxTokens));
 		}
 		String text = normalizer.extractText(resp);
 		if (text == null || text.isBlank()) {
@@ -506,13 +517,28 @@ public class AnthropicMessagesClient {
 	 * @param label      short tag identifying this call in log messages
 	 * @return the full Messages API response as a JSON tree, or {@code null} on failure
 	 */
+	/**
+	 * Turns a caller's reply budget into the {@code max_tokens} actually sent, applying
+	 * {@link #outputTokenHeadroom}. Exposed so the truncation warnings report the budget the reply really
+	 * ran out of rather than the pre-headroom figure the caller asked for.
+	 *
+	 * @param maxTokens the caller's requested reply budget
+	 * @return the budget sent to the API, never below the caller's figure
+	 */
+	int effectiveMaxTokens(int maxTokens) {
+		return (int) Math.ceil(maxTokens * outputTokenHeadroom);
+	}
+
 	public JsonNode callRaw(String prompt, int maxTokens, int timeoutSec, String label) {
 		HttpRequest req;
 		try {
+			// No sampling parameters: Sonnet 5 rejects temperature, top_p and top_k outright, and the
+			// schema discipline they used to buy is carried by the prompts themselves, which state the
+			// exact object and the hard character budget of every field.
 			Map<String, Object> body = Map.of(
 					"model", model,
-					"max_tokens", maxTokens,
-					"temperature", temperature,
+					"max_tokens", effectiveMaxTokens(maxTokens),
+					"thinking", THINKING_DISABLED,
 					"messages", buildMessages(prompt)
 			);
 			req = HttpRequest.newBuilder()

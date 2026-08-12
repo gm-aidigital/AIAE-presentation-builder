@@ -92,12 +92,23 @@ app:
   # read time, so correcting a rate here re-prices the whole history. Add a `by-model`
   # entry when the deployment's model changes and older jobs must keep their old price.
   claude-pricing:
+    # Sonnet 5 introductory rates ($2/$10 per Mtok, cache write 1.25x input, cache read 0.1x input).
+    # THESE EXPIRE 2026-08-31 — after that Sonnet 5 lists at 3.00 / 15.00 / 3.75 / 0.30, which is what the
+    # CLAUDE_PRICE_* env vars are for: flip them on the deployment without a release. Jobs already recorded
+    # keep whatever rate is configured when the dashboard is read, since cost is computed at read time.
     default-price:
-      input-per-mtok: ${CLAUDE_PRICE_INPUT:3.00}
-      output-per-mtok: ${CLAUDE_PRICE_OUTPUT:15.00}
-      cache-write-per-mtok: ${CLAUDE_PRICE_CACHE_WRITE:3.75}
-      cache-read-per-mtok: ${CLAUDE_PRICE_CACHE_READ:0.30}
+      input-per-mtok: ${CLAUDE_PRICE_INPUT:2.00}
+      output-per-mtok: ${CLAUDE_PRICE_OUTPUT:10.00}
+      cache-write-per-mtok: ${CLAUDE_PRICE_CACHE_WRITE:2.50}
+      cache-read-per-mtok: ${CLAUDE_PRICE_CACHE_READ:0.20}
     by-model:
+      # Kept so jobs recorded before the Sonnet 5 switch keep the price they were actually billed at,
+      # instead of being retroactively re-priced at the cheaper Sonnet 5 rates.
+      claude-sonnet-4-6:
+        input-per-mtok: 3.00
+        output-per-mtok: 15.00
+        cache-write-per-mtok: 3.75
+        cache-read-per-mtok: 0.30
       claude-haiku-4-5:
         input-per-mtok: 1.00
         output-per-mtok: 5.00
@@ -489,11 +500,15 @@ external:
         28: "g3f4bc4638d4_0_21"
   anthropic:
     api-key: ${ANTHROPIC_API_KEY:}
-    model: ${ANTHROPIC_MODEL:claude-sonnet-4-6}
-    # Sampling temperature for every Claude call. Every prompt here demands strict JSON inside hard character
-    # budgets, so the API default of 1.0 buys variety at the cost of format stability; 0.4 keeps the copy
-    # varied while holding the schema and the limits. Clamped to 0.0..1.0.
-    temperature: ${CLAUDE_TEMPERATURE:0.4}
+    model: ${ANTHROPIC_MODEL:claude-sonnet-5}
+    # Multiplier on every caller's max_tokens. Sonnet 5 tokenizes the same text into roughly 30% more tokens
+    # than Sonnet 4.6, so the reply budgets in RealClaudeClient — all tuned against the old tokenizer, one of
+    # which has already truncated in production — buy about a quarter less written copy than they did. 1.35
+    # restores the character budget they were written for. Only a ceiling, so it costs nothing on its own:
+    # Anthropic bills tokens generated, not tokens allowed. Set to 1.0 to send callers' figures unchanged.
+    # NOTE: sampling parameters (temperature/top_p/top_k) are gone — Sonnet 5 rejects them with a 400. The
+    # prompts themselves carry the schema discipline temperature 0.4 used to buy.
+    output-token-headroom: ${CLAUDE_OUTPUT_TOKEN_HEADROOM:1.35}
     # Tactics per Step-2 conclusions call (slides-from-sheet flow). 7 because this call writes only each
     # tactic's ~190-char overview (every breakdown section has its own call): a chunk of 7 is a small reply,
     # cuts a 28-tactic deck from 28 calls to 4, and lets the model see neighbouring tactics instead of writing
