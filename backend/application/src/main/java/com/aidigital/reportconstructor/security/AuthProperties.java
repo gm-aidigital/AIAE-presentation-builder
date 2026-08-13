@@ -32,6 +32,15 @@ public class AuthProperties {
 	 */
 	private String authorizedParties = "";
 
+	/**
+	 * Optional comma-separated wildcard origin patterns for the {@code azp} claim,
+	 * e.g. {@code https://*.replit.dev:5173}. Blank by default — production matches
+	 * exact origins only. Intended for the Replit development workspace, whose
+	 * preview hostname carries a per-workspace UUID and cannot be pinned exactly.
+	 * See {@link AuthorizedPartyMatcher} for the wildcard semantics.
+	 */
+	private String authorizedPartyPatterns = "";
+
 	@NotNull
 	private Sso sso = new Sso();
 
@@ -57,6 +66,14 @@ public class AuthProperties {
 
 	public void setAuthorizedParties(String authorizedParties) {
 		this.authorizedParties = authorizedParties;
+	}
+
+	public String getAuthorizedPartyPatterns() {
+		return authorizedPartyPatterns;
+	}
+
+	public void setAuthorizedPartyPatterns(String authorizedPartyPatterns) {
+		this.authorizedPartyPatterns = authorizedPartyPatterns;
 	}
 
 	public Sso getSso() {

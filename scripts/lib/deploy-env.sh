@@ -34,3 +34,10 @@ for _deploy_var in "${DEPLOY_OVERRIDABLE_VARS[@]}"; do
 done
 
 unset _deploy_var _deploy_src
+
+# Wildcard azp patterns are a workspace-only convenience (ephemeral Replit preview
+# hostnames). The published app must never inherit them from the base environment, so
+# clear the variable unconditionally instead of listing it above as PRD_-overridable.
+# With it blank, ClerkJwtClaimsValidator matches AUTH_AUTHORIZED_PARTIES exactly.
+export AUTH_AUTHORIZED_PARTY_PATTERNS=""
+echo "[deploy-env] AUTH_AUTHORIZED_PARTY_PATTERNS cleared (exact azp match only)"

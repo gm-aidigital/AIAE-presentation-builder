@@ -73,6 +73,13 @@ app:
     # Comma-separated EXACT trusted browser origins for the JWT azp claim (required).
     # Never a publishable key. Blank values fail startup (AuthStartupValidator).
     authorized-parties: ${AUTH_AUTHORIZED_PARTIES:}
+    # DEV-ONLY escape hatch. Comma-separated wildcard origin patterns for the same azp
+    # claim, e.g. https://*.replit.dev:5173. A `*` stands for one or more hostname labels
+    # and cannot cross the scheme, port or path, so the pattern's shape is fixed. Exists
+    # because the Replit workspace preview host carries a per-workspace UUID that changes
+    # on cluster moves. Blank here and cleared outright for the published app in
+    # scripts/lib/deploy-env.sh, so production keeps matching exact origins only.
+    authorized-party-patterns: ${AUTH_AUTHORIZED_PARTY_PATTERNS:}
     # Clerk SSO is the ONLY auth mode. Issuer/JWKS derive from publishable-key
     # when AUTH_ISSUER_URI / AUTH_JWKS_URI are blank.
     sso:

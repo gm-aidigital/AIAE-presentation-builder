@@ -14,7 +14,7 @@ class SecurityConfigTest {
 
 	private final SecurityProperties securityProperties = new SecurityProperties();
 	private final ClerkJwtClaimsValidator clerkJwtClaimsValidator =
-			new ClerkJwtClaimsValidator(new AuthProperties());
+			new ClerkJwtClaimsValidator(new AuthorizedPartyMatcher(new AuthProperties()));
 	private final ClerkPublishableKeyDecoder publishableKeyDecoder =
 			new ClerkPublishableKeyDecoder();
 	private final CompanyEmailDomainAuthorizationManager companyEmailDomainAuthorizationManager =

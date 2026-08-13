@@ -3,6 +3,7 @@ package com.aidigital.reportconstructor.auth.controllers;
 import com.aidigital.reportconstructor.auth.mappers.UserMapperImpl;
 import com.aidigital.reportconstructor.security.AppUserFactory;
 import com.aidigital.reportconstructor.security.AuthProperties;
+import com.aidigital.reportconstructor.security.AuthorizedPartyMatcher;
 import com.aidigital.reportconstructor.security.ClerkJwtClaimsValidator;
 import com.aidigital.reportconstructor.security.ClerkPublishableKeyDecoder;
 import com.aidigital.reportconstructor.security.CompanyEmailDomainAuthorizationManager;
@@ -32,6 +33,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 		SecurityConfig.class,
 		AppUserFactory.class,
 		UserMapperImpl.class,
+		AuthorizedPartyMatcher.class,
 		ClerkJwtClaimsValidator.class,
 		ClerkPublishableKeyDecoder.class,
 		CompanyEmailDomainAuthorizationManager.class

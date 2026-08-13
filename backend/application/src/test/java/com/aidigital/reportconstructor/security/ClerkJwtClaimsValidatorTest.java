@@ -19,7 +19,7 @@ class ClerkJwtClaimsValidatorTest {
 	private ClerkJwtClaimsValidator validatorWithParties(String authorizedParties) {
 		AuthProperties props = new AuthProperties();
 		props.setAuthorizedParties(authorizedParties);
-		return new ClerkJwtClaimsValidator(props);
+		return new ClerkJwtClaimsValidator(new AuthorizedPartyMatcher(props));
 	}
 
 	@Test
