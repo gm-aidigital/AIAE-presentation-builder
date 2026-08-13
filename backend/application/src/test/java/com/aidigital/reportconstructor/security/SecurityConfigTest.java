@@ -19,9 +19,11 @@ class SecurityConfigTest {
 			new ClerkPublishableKeyDecoder();
 	private final CompanyEmailDomainAuthorizationManager companyEmailDomainAuthorizationManager =
 			new CompanyEmailDomainAuthorizationManager(new AuthProperties());
+	private final CorsOriginPatternNormalizer corsOriginPatternNormalizer =
+			new CorsOriginPatternNormalizer();
 	private final SecurityConfig securityConfig = new SecurityConfig(
 			securityProperties, clerkJwtClaimsValidator, publishableKeyDecoder,
-			companyEmailDomainAuthorizationManager);
+			companyEmailDomainAuthorizationManager, corsOriginPatternNormalizer);
 
 	@Test
 	void shouldFailFastWhenSsoIsUnconfiguredTest() {

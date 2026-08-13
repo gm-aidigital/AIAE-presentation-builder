@@ -7,6 +7,7 @@ import com.aidigital.reportconstructor.security.AuthorizedPartyMatcher;
 import com.aidigital.reportconstructor.security.ClerkJwtClaimsValidator;
 import com.aidigital.reportconstructor.security.ClerkPublishableKeyDecoder;
 import com.aidigital.reportconstructor.security.CompanyEmailDomainAuthorizationManager;
+import com.aidigital.reportconstructor.security.CorsOriginPatternNormalizer;
 import com.aidigital.reportconstructor.security.SecurityConfig;
 import com.aidigital.reportconstructor.security.SecurityProperties;
 import org.junit.jupiter.api.Test;
@@ -36,7 +37,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 		AuthorizedPartyMatcher.class,
 		ClerkJwtClaimsValidator.class,
 		ClerkPublishableKeyDecoder.class,
-		CompanyEmailDomainAuthorizationManager.class
+		CompanyEmailDomainAuthorizationManager.class,
+		CorsOriginPatternNormalizer.class
 })
 class AuthControllerTest {
 

@@ -28,7 +28,6 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 
@@ -44,17 +43,20 @@ public class SecurityConfig {
 	private final ClerkJwtClaimsValidator clerkJwtClaimsValidator;
 	private final ClerkPublishableKeyDecoder publishableKeyDecoder;
 	private final CompanyEmailDomainAuthorizationManager companyEmailDomainAuthorizationManager;
+	private final CorsOriginPatternNormalizer corsOriginPatternNormalizer;
 
 	public SecurityConfig(
 			SecurityProperties securityProperties,
 			ClerkJwtClaimsValidator clerkJwtClaimsValidator,
 			ClerkPublishableKeyDecoder publishableKeyDecoder,
-			CompanyEmailDomainAuthorizationManager companyEmailDomainAuthorizationManager
+			CompanyEmailDomainAuthorizationManager companyEmailDomainAuthorizationManager,
+			CorsOriginPatternNormalizer corsOriginPatternNormalizer
 	) {
 		this.securityProperties = securityProperties;
 		this.clerkJwtClaimsValidator = clerkJwtClaimsValidator;
 		this.publishableKeyDecoder = publishableKeyDecoder;
 		this.companyEmailDomainAuthorizationManager = companyEmailDomainAuthorizationManager;
+		this.corsOriginPatternNormalizer = corsOriginPatternNormalizer;
 	}
 
 	/**
@@ -113,16 +115,17 @@ public class SecurityConfig {
 	}
 
 	/**
-	 * CORS source — reads the allow-list from {@code app.security.cors.allowed-origins}.
+	 * CORS source — reads the allow-list from {@code app.security.cors.allowed-origins},
+	 * expanded by {@link CorsOriginPatternNormalizer} so a wildcard host also covers
+	 * non-default ports (Spring's {@code *} stops at the port).
 	 *
 	 * @return URL-pattern CORS configuration applied to all paths
 	 */
 	@Bean
 	CorsConfigurationSource corsConfigurationSource() {
 		CorsConfiguration cfg = new CorsConfiguration();
-		cfg.setAllowedOriginPatterns(Arrays.stream(
-						securityProperties.getCors().getAllowedOrigins().split(","))
-				.map(String::trim).filter(s -> !s.isEmpty()).toList());
+		cfg.setAllowedOriginPatterns(corsOriginPatternNormalizer.normalize(
+				securityProperties.getCors().getAllowedOrigins()));
 		cfg.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
 		cfg.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Correlation-Id", "Accept"));
 		cfg.setExposedHeaders(List.of("X-Correlation-Id"));
