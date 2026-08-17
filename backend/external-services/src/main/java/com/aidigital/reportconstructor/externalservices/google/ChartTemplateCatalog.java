@@ -15,6 +15,12 @@ import java.util.Map;
 public class ChartTemplateCatalog {
 
 	private int chartIdInSheet;
+	private String dailyTemplateSheetId = "";
+	private String monthlyTemplateSheetId = "";
+	private String distTemplateSheetId = "";
+	private Integer dailyChartIdInSheet;
+	private Integer monthlyChartIdInSheet;
+	private Integer distChartIdInSheet;
 	private Map<Integer, String> dailyTemplateSheetIds = Map.of();
 	private Map<Integer, String> dailySlideObjectIds = Map.of();
 	private Map<Integer, String> monthlyTemplateSheetIds = Map.of();
@@ -41,6 +47,181 @@ public class ChartTemplateCatalog {
 	 */
 	public void setChartIdInSheet(int chartIdInSheet) {
 		this.chartIdInSheet = chartIdInSheet;
+	}
+
+	/**
+	 * Returns the single daily-chart template spreadsheet the master model uses for every tactic; blank when
+	 * unconfigured, which keeps the legacy per-slot map in charge.
+	 *
+	 * @return the daily-chart template spreadsheet id, or blank when unconfigured
+	 */
+	public String getDailyTemplateSheetId() {
+		return dailyTemplateSheetId;
+	}
+
+	/**
+	 * Sets the single daily-chart template spreadsheet id, normalizing null to blank ("unconfigured").
+	 *
+	 * @param dailyTemplateSheetId the daily-chart template spreadsheet id (may be null)
+	 */
+	public void setDailyTemplateSheetId(String dailyTemplateSheetId) {
+		this.dailyTemplateSheetId = dailyTemplateSheetId == null ? "" : dailyTemplateSheetId.trim();
+	}
+
+	/**
+	 * Returns the single monthly-chart template spreadsheet the master model uses for every tactic; blank
+	 * when unconfigured.
+	 *
+	 * @return the monthly-chart template spreadsheet id, or blank when unconfigured
+	 */
+	public String getMonthlyTemplateSheetId() {
+		return monthlyTemplateSheetId;
+	}
+
+	/**
+	 * Sets the single monthly-chart template spreadsheet id, normalizing null to blank ("unconfigured").
+	 *
+	 * @param monthlyTemplateSheetId the monthly-chart template spreadsheet id (may be null)
+	 */
+	public void setMonthlyTemplateSheetId(String monthlyTemplateSheetId) {
+		this.monthlyTemplateSheetId = monthlyTemplateSheetId == null ? "" : monthlyTemplateSheetId.trim();
+	}
+
+	/**
+	 * Returns the single distribution-chart template spreadsheet the master model uses for every tactic;
+	 * blank when unconfigured.
+	 *
+	 * @return the distribution-chart template spreadsheet id, or blank when unconfigured
+	 */
+	public String getDistTemplateSheetId() {
+		return distTemplateSheetId;
+	}
+
+	/**
+	 * Sets the single distribution-chart template spreadsheet id, normalizing null to blank ("unconfigured").
+	 *
+	 * @param distTemplateSheetId the distribution-chart template spreadsheet id (may be null)
+	 */
+	public void setDistTemplateSheetId(String distTemplateSheetId) {
+		this.distTemplateSheetId = distTemplateSheetId == null ? "" : distTemplateSheetId.trim();
+	}
+
+	/**
+	 * Returns the daily source workbook's own embedded chart id, or {@code null} to fall back to the shared
+	 * {@link #getChartIdInSheet()}.
+	 *
+	 * @return the daily in-sheet chart id override, or {@code null} when unset
+	 */
+	public Integer getDailyChartIdInSheet() {
+		return dailyChartIdInSheet;
+	}
+
+	/**
+	 * Sets the daily source workbook's embedded chart id.
+	 *
+	 * @param dailyChartIdInSheet the in-sheet chart id, or null to use the shared default
+	 */
+	public void setDailyChartIdInSheet(Integer dailyChartIdInSheet) {
+		this.dailyChartIdInSheet = dailyChartIdInSheet;
+	}
+
+	/**
+	 * Returns the monthly source workbook's own embedded chart id, or {@code null} for the shared default.
+	 *
+	 * @return the monthly in-sheet chart id override, or {@code null} when unset
+	 */
+	public Integer getMonthlyChartIdInSheet() {
+		return monthlyChartIdInSheet;
+	}
+
+	/**
+	 * Sets the monthly source workbook's embedded chart id.
+	 *
+	 * @param monthlyChartIdInSheet the in-sheet chart id, or null to use the shared default
+	 */
+	public void setMonthlyChartIdInSheet(Integer monthlyChartIdInSheet) {
+		this.monthlyChartIdInSheet = monthlyChartIdInSheet;
+	}
+
+	/**
+	 * Returns the distribution source workbook's own embedded chart id, or {@code null} for the shared default.
+	 *
+	 * @return the distribution in-sheet chart id override, or {@code null} when unset
+	 */
+	public Integer getDistChartIdInSheet() {
+		return distChartIdInSheet;
+	}
+
+	/**
+	 * Sets the distribution source workbook's embedded chart id.
+	 *
+	 * @param distChartIdInSheet the in-sheet chart id, or null to use the shared default
+	 */
+	public void setDistChartIdInSheet(Integer distChartIdInSheet) {
+		this.distChartIdInSheet = distChartIdInSheet;
+	}
+
+	/**
+	 * Resolves which embedded chart to pull out of a copied daily source workbook: the per-type id when
+	 * configured, otherwise the shared {@link #getChartIdInSheet()}.
+	 *
+	 * <p>Per-type ids exist because a workbook's chart id is assigned by Sheets when the chart is created —
+	 * three separately built workbooks have no reason to agree on it, and the legacy 84 workbooks only did
+	 * because they were copies of one another.
+	 *
+	 * @return the daily in-sheet chart id
+	 */
+	public int dailyChartId() {
+		return dailyChartIdInSheet == null ? chartIdInSheet : dailyChartIdInSheet;
+	}
+
+	/**
+	 * Resolves which embedded chart to pull out of a copied monthly source workbook.
+	 *
+	 * @return the monthly in-sheet chart id
+	 */
+	public int monthlyChartId() {
+		return monthlyChartIdInSheet == null ? chartIdInSheet : monthlyChartIdInSheet;
+	}
+
+	/**
+	 * Resolves which embedded chart to pull out of a copied distribution source workbook.
+	 *
+	 * @return the distribution in-sheet chart id
+	 */
+	public int distChartId() {
+		return distChartIdInSheet == null ? chartIdInSheet : distChartIdInSheet;
+	}
+
+	/**
+	 * Resolves the daily-chart template spreadsheet for one tactic: the single master-model workbook when
+	 * configured, otherwise that tactic's entry in the legacy per-slot map.
+	 *
+	 * @param tacticNum the 1-based tactic number
+	 * @return the template spreadsheet id, or {@code null} when neither is configured
+	 */
+	public String dailyTemplateFor(int tacticNum) {
+		return dailyTemplateSheetId.isBlank() ? dailyTemplateSheetIds.get(tacticNum) : dailyTemplateSheetId;
+	}
+
+	/**
+	 * Resolves the monthly-chart template spreadsheet for one tactic, single workbook first.
+	 *
+	 * @param tacticNum the 1-based tactic number
+	 * @return the template spreadsheet id, or {@code null} when neither is configured
+	 */
+	public String monthlyTemplateFor(int tacticNum) {
+		return monthlyTemplateSheetId.isBlank() ? monthlyTemplateSheetIds.get(tacticNum) : monthlyTemplateSheetId;
+	}
+
+	/**
+	 * Resolves the distribution-chart template spreadsheet for one tactic, single workbook first.
+	 *
+	 * @param tacticNum the 1-based tactic number
+	 * @return the template spreadsheet id, or {@code null} when neither is configured
+	 */
+	public String distTemplateFor(int tacticNum) {
+		return distTemplateSheetId.isBlank() ? distTemplateSheetIds.get(tacticNum) : distTemplateSheetId;
 	}
 
 	/**

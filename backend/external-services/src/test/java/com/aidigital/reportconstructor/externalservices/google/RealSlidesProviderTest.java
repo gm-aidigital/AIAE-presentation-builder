@@ -65,6 +65,28 @@ class RealSlidesProviderTest {
 				new BreakdownSlideNaming(), new BreakdownThoughtsGateImpl());
 	}
 
+	private RealSlidesProvider newMasterTacticProvider(String tacticMasterId, String thoughtsMasterId) {
+		GoogleCredentialsFactory creds = Mockito.mock(GoogleCredentialsFactory.class);
+		when(creds.transport()).thenReturn(new NetHttpTransport());
+		when(creds.jsonFactory()).thenReturn(GsonFactory.getDefaultInstance());
+		when(creds.initializer()).thenReturn(request -> {
+		});
+		GoogleProperties props = Mockito.mock(GoogleProperties.class);
+		when(props.getSlidesTemplateId()).thenReturn("template");
+		when(props.getEomSlidesTemplateId()).thenReturn("eom-template");
+		when(props.getSlidesTargetFolderId()).thenReturn("");
+		when(props.getTacticSlideObjectIds()).thenReturn(Map.of(1, "legacy1", 2, "legacy2"));
+		when(props.getTacticMasterSlideObjectId()).thenReturn(tacticMasterId);
+		when(props.getThoughtsMasterSlideObjectId()).thenReturn(thoughtsMasterId);
+		when(props.getBreakdownMasterSlideObjectIds()).thenReturn(Map.of());
+		when(props.getSummaryTableObjectIds()).thenReturn(Map.of());
+		when(props.getSummarySlideObjectIds()).thenReturn(Map.of());
+		when(props.getResultsSlideObjectIds()).thenReturn(Map.of());
+		return new RealSlidesProvider(
+				creds, props, Mockito.mock(DriveSharer.class), Mockito.mock(DriveShareRecipients.class),
+				Mockito.mock(GoogleRequestRetrier.class), new BreakdownSlideNaming(), new BreakdownThoughtsGateImpl());
+	}
+
 	private RealSlidesProvider newTitleProvider(List<String> eomDropSlideTitles) {
 		return newDropProvider(List.of(), eomDropSlideTitles);
 	}
@@ -288,6 +310,126 @@ class RealSlidesProviderTest {
 
 		// And: no master deletes are emitted here — master cleanup is a separate, unconditional pass
 		assertThat(requests).noneMatch(r -> r.getDeleteObject() != null);
+	}
+
+	@Test
+	void buildTacticRequests_shouldDuplicateTheMasterPerTacticFillItsValuesAndTakeItsPositionTest() {
+		// Given: a deck whose tactic block is one generic master slide at index 2, and two active tactics
+		RealSlidesProvider provider = newMasterTacticProvider("m_tactic", "");
+		List<Page> deck = List.of(
+				slide("title"), slide("divider"),
+				shapeSlide("m_tactic", List.of(List.of("{{tactic n}}"), List.of("{{tactic ", "n", " imps}}"))),
+				slide("m_tp"));
+		Map<String, String> values = Map.of(
+				"{{tactic 1}}", "Display",
+				"{{tactic 1 imps}}", "1,200,000",
+				"{{tactic 2}}", "Video");
+
+		// When:
+		List<Request> requests = provider.buildTacticRequests(deck, 2, values);
+
+		// Then: one duplicate per tactic, under the deterministic tct_n ids
+		List<Request> dups = requests.stream().filter(r -> r.getDuplicateObject() != null).toList();
+		assertThat(dups).hasSize(2);
+		assertThat(dups.get(0).getDuplicateObject().getObjectIds()).containsExactly(Map.entry("m_tactic", "tct_1"));
+		assertThat(dups.get(1).getDuplicateObject().getObjectIds()).containsExactly(Map.entry("m_tactic", "tct_2"));
+
+		// And: a known token is written straight to its value, scoped to that tactic's copy only
+		assertThat(requests).anyMatch(r -> r.getReplaceAllText() != null
+				&& r.getReplaceAllText().getContainsText().getText().equals("{{tactic n imps}}")
+				&& r.getReplaceAllText().getReplaceText().equals("1,200,000")
+				&& r.getReplaceAllText().getPageObjectIds().equals(List.of("tct_1")));
+		assertThat(requests).anyMatch(r -> r.getReplaceAllText() != null
+				&& r.getReplaceAllText().getContainsText().getText().equals("{{tactic n}}")
+				&& r.getReplaceAllText().getReplaceText().equals("Video")
+				&& r.getReplaceAllText().getPageObjectIds().equals(List.of("tct_2")));
+
+		// And: a token with no known value is only renumbered — it would ship raw, which is what makes an
+		// unfilled token visible rather than silently blank
+		assertThat(requests).anyMatch(r -> r.getReplaceAllText() != null
+				&& r.getReplaceAllText().getContainsText().getText().equals("{{tactic n imps}}")
+				&& r.getReplaceAllText().getReplaceText().equals("{{tactic 2 imps}}")
+				&& r.getReplaceAllText().getPageObjectIds().equals(List.of("tct_2")));
+
+		// And: the copies move, in tactic order, into the master's own slot
+		List<Request> positions = requests.stream().filter(r -> r.getUpdateSlidesPosition() != null).toList();
+		assertThat(positions).hasSize(1);
+		assertThat(positions.get(0).getUpdateSlidesPosition().getSlideObjectIds()).containsExactly("tct_1", "tct_2");
+		assertThat(positions.get(0).getUpdateSlidesPosition().getInsertionIndex()).isEqualTo(2);
+
+		// And: the master itself is not deleted here — that is deleteMasterSlides' unconditional pass
+		assertThat(requests).noneMatch(r -> r.getDeleteObject() != null);
+
+		// And: phase order holds — every duplicate precedes the position move
+		int lastDup = lastIndexOf(requests, r -> r.getDuplicateObject() != null);
+		int firstPos = firstIndexOf(requests, r -> r.getUpdateSlidesPosition() != null);
+		assertThat(lastDup).isLessThan(firstPos);
+	}
+
+	@Test
+	void buildTacticRequests_shouldBeNoopWhenTheConfiguredMasterIsAbsentFromTheDeckTest() {
+		// Given: a configured master that this deck does not carry (e.g. the legacy template)
+		RealSlidesProvider provider = newMasterTacticProvider("m_tactic", "");
+		List<Page> deck = List.of(slide("title"), slide("legacy1"), slide("legacy2"));
+
+		// When-Then: nothing is emitted, so the deck is delivered untouched rather than half-built
+		assertThat(provider.buildTacticRequests(deck, 2, Map.of())).isEmpty();
+	}
+
+	@Test
+	void trimRequests_shouldNotDeleteTacticSlidesUnderTheMasterModelTest() {
+		// Given: the master model, where the deck is built with exactly as many tactic slides as tactics
+		RealSlidesProvider masterProvider = newMasterTacticProvider("m_tactic", "");
+
+		// When: trimming a 1-tactic deck
+		List<Request> requests = masterProvider.trimRequests(1);
+
+		// Then: no per-slot tactic slide is deleted — the legacy ids do not exist in such a deck, and
+		// deleting an absent object would fail the whole batch
+		assertThat(requests).noneMatch(r -> r.getDeleteObject() != null
+				&& List.of("legacy1", "legacy2").contains(r.getDeleteObject().getObjectId()));
+
+		// And: the legacy model still trims its surplus slots
+		RealSlidesProvider legacyProvider = newMasterTacticProvider("", "");
+		assertThat(legacyProvider.trimRequests(1))
+				.anyMatch(r -> r.getDeleteObject() != null && "legacy2".equals(r.getDeleteObject().getObjectId()));
+	}
+
+	@Test
+	void buildBreakdownRequests_shouldAnchorOnTheDuplicatedTacticSlidesUnderTheMasterModelTest() {
+		// Given: a master-model deck whose tactic slides are the runtime copies tct_1 / tct_2, and tactic 2
+		// enables the device breakdown
+		RealSlidesProvider provider = newMasterTacticProvider("m_tactic", "");
+		List<Page> deck = List.of(
+				slide("tct_1"), slide("tct_2"),
+				shapeSlide("m_dev", List.of(List.of("{{top_dev_n}}"))));
+
+		// When:
+		List<Request> requests = provider.buildBreakdownRequests(
+				deck, Map.of(BreakdownType.DEVICE, "m_dev"),
+				Map.of(2, EnumSet.of(BreakdownType.DEVICE)), Map.of());
+
+		// Then: the copy is placed after tct_2 — the tactic's main slide is found by its minted id, not by
+		// the legacy per-slot configuration (which still points at "legacy2")
+		List<Request> positions = requests.stream().filter(r -> r.getUpdateSlidesPosition() != null).toList();
+		assertThat(positions).hasSize(1);
+		assertThat(positions.get(0).getUpdateSlidesPosition().getSlideObjectIds()).containsExactly("bd_dev_2");
+		assertThat(positions.get(0).getUpdateSlidesPosition().getInsertionIndex()).isEqualTo(2);
+	}
+
+	@Test
+	void buildMasterDeleteRequests_shouldDeleteTheTacticMasterTest() {
+		// Given: a master-model deck that still carries the tactic master and its copies
+		RealSlidesProvider provider = newMasterTacticProvider("m_tactic", "m_thoughts");
+		List<Page> deck = List.of(slide("tct_1"), slide("m_tactic"), slide("m_thoughts"));
+
+		// When:
+		List<Request> requests = provider.buildMasterDeleteRequests(deck);
+
+		// Then: both masters go — a surviving tactic master would ship as a slide of raw {{tactic n …}}
+		// tokens — and the copies are left alone
+		assertThat(requests.stream().map(r -> r.getDeleteObject().getObjectId()))
+				.containsExactly("m_thoughts", "m_tactic");
 	}
 
 	@Test

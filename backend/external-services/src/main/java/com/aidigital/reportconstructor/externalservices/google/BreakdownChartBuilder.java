@@ -1,5 +1,6 @@
 package com.aidigital.reportconstructor.externalservices.google;
 
+import com.aidigital.reportconstructor.service.reports.dto.BreakdownChartSeries;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
 import com.aidigital.reportconstructor.service.reports.ports.BreakdownChartJob;
 import com.aidigital.reportconstructor.service.reports.ports.BreakdownChartRequest;
@@ -8,6 +9,7 @@ import com.google.api.services.slides.v1.Slides;
 import com.google.api.services.slides.v1.model.Page;
 import com.google.api.services.slides.v1.model.PageElement;
 import com.google.api.services.slides.v1.model.Presentation;
+import com.google.api.services.slides.v1.model.SheetsChart;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -73,7 +75,7 @@ public class BreakdownChartBuilder {
 		if (req.jobs() == null || req.jobs().isEmpty()) {
 			return errors;
 		}
-		Map<String, ChartElementRef> chartsBySlide =
+		Map<String, Map<String, ChartElementRef>> chartsBySlide =
 				loadBreakdownChartElements(clients.slides(), req.presentationId(), errors);
 
 		String folderId = null;
@@ -89,7 +91,7 @@ public class BreakdownChartBuilder {
 				renderBreakdownChart(clients, req, job, chartsBySlide, folderId, errors);
 			} catch (IOException | RuntimeException ex) {
 				errors.add(chartErrors.describeChartError(
-						"Breakdown " + job.breakdownCode() + " tactic " + job.tacticNum(), ex));
+						"Breakdown " + job.seriesCode() + " tactic " + job.tacticNum(), ex));
 			}
 		}
 		return errors;
@@ -110,29 +112,34 @@ public class BreakdownChartBuilder {
 	 */
 	void renderBreakdownChart(
 			ChartClients clients, BreakdownChartRequest req, BreakdownChartJob job,
-			Map<String, ChartElementRef> chartsBySlide, String folderId, List<String> errors) throws IOException {
-		String breakdownCode = job.breakdownCode();
-		BreakdownType type = breakdownCode == null || breakdownCode.isBlank()
-				? null : BreakdownType.BY_CODE.get(breakdownCode.trim().toLowerCase());
-		if (type == null) {
+			Map<String, Map<String, ChartElementRef>> chartsBySlide, String folderId, List<String> errors)
+			throws IOException {
+		String seriesCode = job.seriesCode();
+		BreakdownChartSeries series = seriesCode == null || seriesCode.isBlank()
+				? null : BreakdownChartSeries.BY_CODE.get(seriesCode.trim().toLowerCase());
+		if (series == null) {
 			return;
 		}
-		String tag = "Breakdown " + type.code() + " tactic " + job.tacticNum();
-		String sourceSheetId = catalog.getSourceSheetIds().get(type.code());
-		Integer chartIdInSheet = parseChartId(catalog.getChartIdInSheet().get(type.code()));
+		BreakdownType type = series.section();
+		String tag = "Breakdown " + series.code() + " tactic " + job.tacticNum();
+		String sourceSheetId = catalog.getSourceSheetIds().get(series.code());
+		Integer chartIdInSheet = parseChartId(catalog.getChartIdInSheet().get(series.code()));
 		if (sourceSheetId == null || sourceSheetId.isBlank() || chartIdInSheet == null) {
 			errors.add(tag + ": no chart-source spreadsheet id / chart id configured");
 			return;
 		}
 		String slideId = naming.slideId(type, job.tacticNum());
-		ChartElementRef chartRef = chartsBySlide.get(slideId);
+		// The chart is picked by the workbook it links to, not by its position among the slide's elements: a
+		// slide can carry several charts (the audience slide has two), and only the one linked to this series'
+		// workbook may be replaced — otherwise a section's two charts would fight over the same element.
+		ChartElementRef chartRef = chartsBySlide.getOrDefault(slideId, Map.of()).get(sourceSheetId);
 		if (chartRef == null) {
-			errors.add(tag + ": no linked chart found on breakdown slide " + slideId);
+			errors.add(tag + ": no chart linked to " + sourceSheetId + " found on breakdown slide " + slideId);
 			return;
 		}
-		Map<String, Long> impsByLabel = impressionsByLabel(job.slices());
-		if (impsByLabel.isEmpty()) {
-			errors.add(tag + ": no positive impressions to chart");
+		Map<String, Double> valuesByLabel = valuesByLabel(job.slices(), series.labelsFromData());
+		if (valuesByLabel.isEmpty()) {
+			errors.add(tag + ": no positive values to chart");
 			return;
 		}
 
@@ -140,7 +147,10 @@ public class BreakdownChartBuilder {
 				clients.drive(), sourceSheetId, tag + " — " + req.campaignTitle(), folderId);
 		chartFileSharer.shareLooseCopy(clients.drive(), folderId, copyId);
 		String tab = chartSpecBuilder.findDataTab(clients.sheets(), copyId);
-		int written = chartSheetWriter.writeBreakdownImpressions(clients.sheets(), copyId, tab, impsByLabel);
+		int written = series.labelsFromData()
+				? chartSheetWriter.writeBreakdownSeries(
+						clients.sheets(), copyId, tab, valuesByLabel, catalog.dataStartRowFor(series.code()))
+				: chartSheetWriter.writeBreakdownImpressions(clients.sheets(), copyId, tab, rounded(valuesByLabel));
 		if (written == 0) {
 			errors.add(tag + ": no category labels matched the chart source — chart left empty");
 			return;
@@ -148,6 +158,18 @@ public class BreakdownChartBuilder {
 		slideChartSwapper.replaceChartOnSlide(
 				clients.slides(), req.presentationId(), chartRef.objectId(), copyId, chartRef.transform(),
 				chartIdInSheet);
+	}
+
+	/**
+	 * Rounds a series' values to whole numbers for the label-matching writer, which pushes impressions.
+	 *
+	 * @param valuesByLabel normalised label &rarr; value
+	 * @return the same map with each value rounded
+	 */
+	Map<String, Long> rounded(Map<String, Double> valuesByLabel) {
+		Map<String, Long> out = new LinkedHashMap<>();
+		valuesByLabel.forEach((label, value) -> out.put(label, Math.round(value)));
+		return out;
 	}
 
 	/**
@@ -169,39 +191,52 @@ public class BreakdownChartBuilder {
 	}
 
 	/**
-	 * Rounds and indexes a job's slices by normalised category label, dropping non-positive impressions so
-	 * a blank or unparseable cell never zeroes the chart. A duplicate label keeps the last slice.
+	 * Indexes a job's slices by category label in sheet order, dropping non-positive values so a blank or
+	 * unparseable cell never zeroes the chart. A duplicate label keeps the last slice.
 	 *
-	 * @param slices the job's chart slices
-	 * @return normalised label &rarr; rounded impressions (positive only)
+	 * <p>The label is normalised only for a series that matches the workbook's own category column; a series
+	 * whose labels are written into the workbook keeps them verbatim, because they land on the chart as the
+	 * reader sees them.
+	 *
+	 * @param slices         the job's chart slices
+	 * @param labelsFromData whether the labels are written into the workbook rather than matched against it
+	 * @return label &rarr; value (positive only), in slice order
 	 */
-	Map<String, Long> impressionsByLabel(List<BreakdownChartSlice> slices) {
-		Map<String, Long> byLabel = new LinkedHashMap<>();
+	Map<String, Double> valuesByLabel(List<BreakdownChartSlice> slices, boolean labelsFromData) {
+		Map<String, Double> byLabel = new LinkedHashMap<>();
 		if (slices == null) {
 			return byLabel;
 		}
 		for (BreakdownChartSlice slice : slices) {
-			if (slice == null || slice.impressions() <= 0) {
+			if (slice == null || slice.value() <= 0 || slice.label() == null || slice.label().isBlank()) {
 				continue;
 			}
-			byLabel.put(chartSheetWriter.normalizeBreakdownLabel(slice.label()), Math.round(slice.impressions()));
+			String label = labelsFromData
+					? slice.label().trim() : chartSheetWriter.normalizeBreakdownLabel(slice.label());
+			byLabel.put(label, slice.value());
 		}
 		return byLabel;
 	}
 
 	/**
-	 * Fetches the deck and maps every breakdown slide (object id prefixed {@code bd_}) to its embedded
-	 * chart element — object id plus captured size/transform — so each chart can be replaced in place. A
-	 * breakdown slide with no chart element is simply absent from the map.
+	 * Fetches the deck and maps every breakdown slide (object id prefixed {@code bd_}) to the chart elements
+	 * on it — object id plus captured size/transform — keyed by the source workbook each one links to, so a
+	 * caller can replace a specific chart in place.
+	 *
+	 * <p>Keying by workbook is what lets a slide carry more than one chart: the audience slide has an age
+	 * chart and a segment chart, and each series may only touch the one linked to its own workbook. A copy
+	 * inherits the master's link, which is why the link identifies the chart even though the copy's element
+	 * ids are minted at duplication time. A breakdown slide with no chart element is simply absent.
 	 *
 	 * @param slides         the authenticated Slides client
 	 * @param presentationId the deck to scan
 	 * @param errors         accumulator for a read failure message
-	 * @return breakdown slide object id &rarr; its chart element reference; empty when the read failed
+	 * @return breakdown slide object id &rarr; (source spreadsheet id &rarr; chart element); empty when the
+	 *         read failed
 	 */
-	Map<String, ChartElementRef> loadBreakdownChartElements(
+	Map<String, Map<String, ChartElementRef>> loadBreakdownChartElements(
 			Slides slides, String presentationId, List<String> errors) {
-		Map<String, ChartElementRef> out = new LinkedHashMap<>();
+		Map<String, Map<String, ChartElementRef>> out = new LinkedHashMap<>();
 		try {
 			Presentation pres = slides.presentations().get(presentationId)
 					.setFields("slides.objectId,"
@@ -210,21 +245,41 @@ public class BreakdownChartBuilder {
 			if (pres.getSlides() == null) {
 				return out;
 			}
-			for (Page slide : pres.getSlides()) {
-				String slideId = slide.getObjectId();
-				if (slideId == null || !slideId.startsWith("bd_") || slide.getPageElements() == null) {
-					continue;
-				}
-				for (PageElement el : slide.getPageElements()) {
-					if (el.getSheetsChart() != null && el.getObjectId() != null) {
-						out.put(slideId, new ChartElementRef(
-								el.getObjectId(), new ElementTransform(el.getSize(), el.getTransform(), slideId)));
-						break;
-					}
-				}
-			}
+			return chartsBySlideOf(pres.getSlides());
 		} catch (IOException ex) {
 			errors.add("Breakdown charts: could not read presentation layout — " + ex.getMessage());
+		}
+		return out;
+	}
+
+	/**
+	 * Indexes the linked charts on a deck's breakdown slides, keyed by slide and then by the source workbook
+	 * each chart points at. Slides that are not breakdown copies (no {@code bd_} prefix) and breakdown slides
+	 * with no chart are left out. Two charts on one slide linked to the same workbook are ambiguous rather
+	 * than fatal — the first wins.
+	 *
+	 * @param slides the deck's slides in order, carrying their chart elements' ids, geometry and links
+	 * @return breakdown slide object id &rarr; (source spreadsheet id &rarr; chart element)
+	 */
+	Map<String, Map<String, ChartElementRef>> chartsBySlideOf(List<Page> slides) {
+		Map<String, Map<String, ChartElementRef>> out = new LinkedHashMap<>();
+		for (Page slide : slides) {
+			String slideId = slide.getObjectId();
+			if (slideId == null || !slideId.startsWith("bd_") || slide.getPageElements() == null) {
+				continue;
+			}
+			Map<String, ChartElementRef> bySource = new LinkedHashMap<>();
+			for (PageElement el : slide.getPageElements()) {
+				SheetsChart chart = el.getSheetsChart();
+				if (chart == null || chart.getSpreadsheetId() == null || el.getObjectId() == null) {
+					continue;
+				}
+				bySource.putIfAbsent(chart.getSpreadsheetId(), new ChartElementRef(
+						el.getObjectId(), new ElementTransform(el.getSize(), el.getTransform(), slideId)));
+			}
+			if (!bySource.isEmpty()) {
+				out.put(slideId, bySource);
+			}
 		}
 		return out;
 	}

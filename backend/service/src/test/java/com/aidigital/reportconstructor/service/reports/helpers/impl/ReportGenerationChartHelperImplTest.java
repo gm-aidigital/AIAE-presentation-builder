@@ -1,6 +1,7 @@
 package com.aidigital.reportconstructor.service.reports.helpers.impl;
 
 import com.aidigital.reportconstructor.service.reports.dto.AudienceAgeRow;
+import com.aidigital.reportconstructor.service.reports.dto.AudienceSegmentRow;
 import com.aidigital.reportconstructor.service.reports.dto.AudienceTable;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownSelection;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
@@ -39,7 +40,9 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -73,6 +76,30 @@ class ReportGenerationChartHelperImplTest {
 		assertThat(helper.extractPresentationId("https://docs.google.com/presentation/d/abc-123_9/edit"))
 				.isEqualTo("abc-123_9");
 		assertThat(helper.extractPresentationId(null)).isNull();
+	}
+
+	@Test
+	void shouldClampTheTacticCountAndSwallowFailuresWhenAddingTacticSlidesTest() {
+		// Given: a provider that fails, and a tactic count above the template ceiling
+		Map<String, String> values = Map.of("{{tactic 1}}", "Display");
+		doThrow(new IllegalStateException("slides down"))
+				.when(slides).addTacticSlides("pres-1", 28, values, "token");
+
+		// When: the deck's tactic slides are built
+		helper.addTacticSlides("https://docs.google.com/presentation/d/pres-1/edit", 99, values, "token");
+
+		// Then: the count reached the provider clamped to 28, and the failure did not propagate — the deck
+		// still ships, missing tactic slides rather than nothing at all
+		verify(slides).addTacticSlides("pres-1", 28, values, "token");
+	}
+
+	@Test
+	void shouldSkipAddingTacticSlidesWhenTheSlideUrlCarriesNoPresentationIdTest() {
+		// Given-When: a slide url the presentation id cannot be parsed out of
+		helper.addTacticSlides("not-a-slides-url", 3, Map.of(), "token");
+
+		// Then: the provider is never called with a bogus deck id
+		verify(slides, never()).addTacticSlides(any(), anyInt(), any(), any());
 	}
 
 	@Test
@@ -150,34 +177,45 @@ class ReportGenerationChartHelperImplTest {
 				List.of(new DeviceRow("Mobile", "1,000", "", "", "")))));
 		when(sheetHelper.readAudienceTables(eq("https://docs.google.com/spreadsheets/d/sheet-1/edit"), eq(Set.of(2)),
 				eq("token"))).thenReturn(Map.of(2, new AudienceTable("", "",
-				List.of(new AudienceAgeRow("25-34", "2,000")), List.of())));
+				List.of(new AudienceAgeRow("25-34", "2,000")),
+				List.of(new AudienceSegmentRow("In-Market: Luxury Travel", "142")))));
 		when(reportNumbers.parseReportNumber("1,000")).thenReturn(1000.0);
 		when(reportNumbers.parseReportNumber("2,000")).thenReturn(2000.0);
+		when(reportNumbers.parseReportNumber("142")).thenReturn(142.0);
 
 		// When:
 		helper.buildBreakdownCharts(
 				"https://docs.google.com/presentation/d/pres-1/edit", payload, 2, Map.of(), "token");
 
-		// Then: one audience job and one device job are sent, each carrying its tactic's slice
+		// Then: three jobs — the audience slide carries two charts (age + segments), the device slide one
 		ArgumentCaptor<BreakdownChartRequest> captor = ArgumentCaptor.forClass(BreakdownChartRequest.class);
 		verify(charts).buildBreakdownCharts(captor.capture());
 		List<BreakdownChartJob> jobs = captor.getValue().jobs();
 		assertThat(captor.getValue().presentationId()).isEqualTo("pres-1");
-		assertThat(jobs).hasSize(2);
+		assertThat(jobs).hasSize(3);
 		assertThat(jobs).anySatisfy(job -> {
-			assertThat(job.breakdownCode()).isEqualTo("aud");
+			assertThat(job.seriesCode()).isEqualTo("aud");
 			assertThat(job.tacticNum()).isEqualTo(2);
 			assertThat(job.slices()).singleElement().satisfies(slice -> {
 				assertThat(slice.label()).isEqualTo("25-34");
-				assertThat(slice.impressions()).isEqualTo(2000.0);
+				assertThat(slice.value()).isEqualTo(2000.0);
+			});
+		});
+		// And: the segment chart plots the affinity index, the only number the sheet's segment table carries
+		assertThat(jobs).anySatisfy(job -> {
+			assertThat(job.seriesCode()).isEqualTo("aud-seg");
+			assertThat(job.tacticNum()).isEqualTo(2);
+			assertThat(job.slices()).singleElement().satisfies(slice -> {
+				assertThat(slice.label()).isEqualTo("In-Market: Luxury Travel");
+				assertThat(slice.value()).isEqualTo(142.0);
 			});
 		});
 		assertThat(jobs).anySatisfy(job -> {
-			assertThat(job.breakdownCode()).isEqualTo("dev");
+			assertThat(job.seriesCode()).isEqualTo("dev");
 			assertThat(job.tacticNum()).isEqualTo(1);
 			assertThat(job.slices()).singleElement().satisfies(slice -> {
 				assertThat(slice.label()).isEqualTo("Mobile");
-				assertThat(slice.impressions()).isEqualTo(1000.0);
+				assertThat(slice.value()).isEqualTo(1000.0);
 			});
 		});
 	}

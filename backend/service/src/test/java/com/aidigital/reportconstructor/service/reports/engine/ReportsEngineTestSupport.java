@@ -68,9 +68,13 @@ public final class ReportsEngineTestSupport {
 				ratePlanCalculator());
 	}
 
+	static SoWhatResolver soWhatResolver() {
+		return new SoWhatResolver(campaignResolvers(), tacticExtractionHelper());
+	}
+
 	public static PlaceholderSectionBuilderImpl placeholderSectionBuilder() {
-		return new PlaceholderSectionBuilderImpl(campaignResolvers(), tacticResolvers(), tacticExtractionHelper(),
-				effectiveTacticsHelper());
+		return new PlaceholderSectionBuilderImpl(campaignResolvers(), tacticResolvers(), soWhatResolver(),
+				tacticExtractionHelper(), effectiveTacticsHelper());
 	}
 
 	public static PlaceholderClaudeGateImpl placeholderClaudeGate() {

@@ -12,6 +12,7 @@ import com.aidigital.reportconstructor.service.reports.dto.PlanTactic;
 import com.aidigital.reportconstructor.service.reports.dto.PreviewSection;
 import com.aidigital.reportconstructor.service.reports.engine.CampaignResolvers;
 import com.aidigital.reportconstructor.service.reports.engine.Resolved;
+import com.aidigital.reportconstructor.service.reports.engine.SoWhatResolver;
 import com.aidigital.reportconstructor.service.reports.engine.TacticResolvers;
 import com.aidigital.reportconstructor.service.reports.helpers.EffectiveTacticsHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.PlaceholderSectionBuilder;
@@ -39,6 +40,7 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 
 	private final CampaignResolvers campaignResolvers;
 	private final TacticResolvers tacticResolvers;
+	private final SoWhatResolver soWhatResolver;
 	private final TacticExtractionHelper tacticExtraction;
 	private final EffectiveTacticsHelper effectiveTactics;
 
@@ -200,6 +202,10 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		// token already reads — same data, same per-tactic row alignment, just a second slide slot.
 		m.put("{{tactic " + n + " funnel stage}}", goal);
 		m.put("{{tactic " + n + " overview}}", tacticResolvers.resolveTacticOverview(n, sheet, adj, ccC));
+		// The Platforms table's "SO WHAT?" cell: what this tactic achieved, in funnel terms, in one line.
+		// Written into the sheet at generation time, so the user can sharpen the wording before the deck is
+		// built and the deck then reads the edited cell back like every other value.
+		m.put("{{so what " + n + "}}", soWhatResolver.resolveSoWhat(n, tacticName, sheet, adj, goal));
 		m.put("{{tactic " + n + " spend}}", tacticResolvers.resolveTacticSpend(n, tacticName, sheet, adj, data));
 		m.put("{{tactic " + n + " spend plan}}",
 				tacticResolvers.resolveTacticSpendPlan(n, tacticName, sheet, adj, data));

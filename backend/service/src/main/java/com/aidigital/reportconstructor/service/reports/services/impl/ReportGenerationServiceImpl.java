@@ -41,6 +41,7 @@ import com.aidigital.reportconstructor.service.reports.helpers.AudienceBreakdown
 import com.aidigital.reportconstructor.service.reports.helpers.CreativeBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.DeviceBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.GeoBreakdownHelper;
+import com.aidigital.reportconstructor.service.reports.helpers.ImpressionContributionHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.PublisherBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportSheetHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.BreakdownSelectionResolver;
@@ -160,6 +161,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	private final SheetChartDataReader sheetChartData;
 	/** Derives each tactic's KPI series (clicks vs completions) from its name, as the chart step does. */
 	private final TacticExtractionHelper tacticExtraction;
+	private final ImpressionContributionHelper contributions;
 	/** Distils a finished sheet build into the state the report is resumed from in a later session. */
 	private final ReportResumeStateHelper resumeState;
 	/** Counts the tactics a reviewed workbook reports, shared with the adopt-a-sheet flow. */
@@ -325,11 +327,22 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 				return;
 			}
 
+			// The tactic slide's contribution legend. Deck-only, so it is derived here rather than before the
+			// SHEET branch above — the workbook has no such column, and every token added to the sheet's
+			// find-replace map costs a request on a write that already timed out once when it grew too large.
+			contributions.fillContributions(flatReplacements, flatTacticCount);
+
 			jobProgress.markJobRunningAtStep(jobId, 6, "Building slide deck");
 			String slideUrl = slides.createDeck(
 					String.valueOf(jobId), fileName, flatReplacements, payload.reportType(), userGoogleToken);
 
+			// Main tactic slides from the single master, same as the sheet flow above; a no-op on the legacy
+			// 28-slot template, where the trim below removes the surplus slots instead.
+			chartHelper.addTacticSlides(slideUrl, flatTacticCount, flatReplacements, userGoogleToken);
 			chartHelper.trimUnusedTactics(slideUrl, payload, userGoogleToken);
+			// Template master slides must never ship. This flow inserts no breakdowns, but it does duplicate the
+			// tactic master above, and the master itself would otherwise arrive full of raw {{tactic n …}} tokens.
+			chartHelper.deleteMasterSlides(slideUrl, userGoogleToken);
 			// EOC-only story slides the EOM deck inherited from the template it was copied from.
 			chartHelper.deleteReportTypeSlides(slideUrl, payload.reportType(), userGoogleToken);
 
@@ -588,12 +601,20 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		// Funnel stages are inferred here, from the reviewed per-tactic goals, rather than from a scan of the
 		// source workbook. A value the user already put on the sheet wins and costs no call at all.
 		fillFunnelStages(claude, flatReplacements, tacticCount, live);
+		// The tactic slide's contribution legend, derived last so it reads the same impressions the deck
+		// prints — which on this flow are the ones the user reviewed on the sheet, not the parsed originals.
+		contributions.fillContributions(flatReplacements, tacticCount);
 
 		jobProgress.markJobRunningAtStep(jobId, 6, "Building slide deck");
 		String fileName = fileNamer.buildFileName(
 				payload.reportType(), flatReplacements.get(CLIENT_NAME_TOKEN), userEmail);
 		String slideUrl = slides.createDeck(
 				String.valueOf(jobId), fileName, flatReplacements, payload.reportType(), userGoogleToken);
+		// Main tactic slides: on a master-model template the deck arrives with one generic tactic slide, which
+		// is duplicated into exactly `tacticCount` filled slides here. Runs before the breakdowns, which anchor
+		// their copies after each tactic's main slide, and before the trim, which then has no tactic slides
+		// left to delete. A no-op on the legacy 28-slot template.
+		chartHelper.addTacticSlides(slideUrl, tacticCount, flatReplacements, userGoogleToken);
 		chartHelper.trimUnusedTactics(slideUrl, tacticCount, userGoogleToken);
 		// Per-tactic breakdown + thoughts slides: duplicate the selected masters, fill their tokens (already in
 		// breakdownValues, including the {{thoughts on tactic n performance}} tokens for the > 2-breakdown

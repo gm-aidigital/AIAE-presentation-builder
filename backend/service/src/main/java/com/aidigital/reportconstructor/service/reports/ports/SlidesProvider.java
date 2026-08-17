@@ -46,12 +46,47 @@ public interface SlidesProvider {
 	 * surplus slides survive showing raw {@code {{tactic N …}}} tokens and empty
 	 * chart frames. A no-op when {@code tacticCount >= 28}.
 	 *
+	 * <p>The per-tactic detail slides are skipped on a template built around a master tactic slide (see
+	 * {@link #addTacticSlides}): such a deck is built with exactly as many tactic slides as there are
+	 * tactics, so there is nothing surplus to delete. The group slides and summary rows are trimmed either
+	 * way.
+	 *
 	 * @param presentationId        the deck to trim
 	 * @param tacticCount           number of real tactics (clamped 1..28)
 	 * @param userGoogleAccessToken optional signed-in user's Google OAuth token;
 	 *                              falls back to the service account when blank
 	 */
 	void trimTactics(String presentationId, int tacticCount, String userGoogleAccessToken);
+
+	/**
+	 * Builds the deck's main tactic slides from a single master slide: the master is duplicated once per
+	 * active tactic, each copy's generic {@code n} tokens are written with that tactic's values, and the
+	 * copies take the master's own position in the deck (in ascending tactic order). The master is left in
+	 * place for {@link #deleteMasterSlides} to remove.
+	 *
+	 * <p>Replaces the pre-master model, in which the template carried 28 drawn tactic slides and
+	 * {@link #trimTactics} deleted the surplus. A no-op when no master is configured or the master is absent
+	 * from the deck, so a legacy template degrades safely and keeps being trimmed instead.
+	 *
+	 * <p>Values are written here rather than by the deck's normal placeholder pass for the same reason as
+	 * {@link #addBreakdownSlides}: the copies do not exist yet when that pass runs, so a token first spelled
+	 * {@code {{tactic 3 imps}}} on a copy would never be seen by it and would ship raw. Every replacement is
+	 * scoped to its copy, which is what stops the master's identical tokens on sibling copies from
+	 * overwriting each other.
+	 *
+	 * <p>Must run before {@link #addBreakdownSlides}, which anchors each tactic's breakdown copies after
+	 * that tactic's main slide.
+	 *
+	 * @param presentationId        the already-built deck to insert into
+	 * @param tacticCount           number of real tactics (clamped 1..28 by the caller)
+	 * @param placeholderMap        resolved {@code {{token}}} → value pairs; a master token whose renumbered
+	 *                              form is absent from the map is only renumbered
+	 * @param userGoogleAccessToken optional signed-in user's Google OAuth token; falls back to the
+	 *                              service account when blank
+	 */
+	void addTacticSlides(
+			String presentationId, int tacticCount, Map<String, String> placeholderMap,
+			String userGoogleAccessToken);
 
 	/**
 	 * Inserts the per-tactic breakdown slides selected on Step 3 into an already-built deck. For each
@@ -84,8 +119,9 @@ public interface SlidesProvider {
 			Map<String, String> breakdownValues, String userGoogleAccessToken);
 
 	/**
-	 * Removes the breakdown master slides (Top Publishers, Creative, Geo, Audience, Device) and the
-	 * "Thoughts on tactic performance" master from an already-built deck. These are template slides that
+	 * Removes the breakdown master slides (Top Publishers, Creative, Geo, Audience, Device), the
+	 * "Thoughts on tactic performance" master and the main tactic master from an already-built deck. These
+	 * are template slides that
 	 * must never ship, regardless of whether any breakdown slides were inserted — so unlike
 	 * {@link #addBreakdownSlides} this runs unconditionally, after breakdown insertion has duplicated
 	 * whatever it needed from the masters. Only masters that are both configured and present in the deck

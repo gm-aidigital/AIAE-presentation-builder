@@ -115,11 +115,16 @@ public class SheetPlaceholderReaderImpl implements SheetPlaceholderReader {
 	 * Summary-table column headers whose per-tactic token is not a {@code {{tactic n …}}} token, mapped
 	 * to the token format their value is emitted under ({@code %d} is the 1-based tactic number). The
 	 * EOM "Unit rate" / "Rate type" columns are filled from the {@code {{unit N rate}}} and
-	 * {@code {{rate type N}}} template tokens, so they are read back under the same names.
+	 * {@code {{rate type N}}} template tokens, so they are read back under the same names. The "SO WHAT?"
+	 * column is registered under both spellings of its header, so dropping the question mark in the template
+	 * does not silently stop the read-back — which is what lets the user rewrite the generated phrase in the
+	 * sheet and have the deck print the edit.
 	 */
 	private static final Map<String, String> SUMMARY_TACTIC_TOKEN_FORMATS = Map.of(
 			"Unit rate", "{{unit %d rate}}",
-			"Rate type", "{{rate type %d}}");
+			"Rate type", "{{rate type %d}}",
+			"So what?", "{{so what %d}}",
+			"So what", "{{so what %d}}");
 
 	/**
 	 * Summary-table column headers mapped to the campaign-level total token read from the

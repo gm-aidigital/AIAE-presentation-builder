@@ -5,7 +5,7 @@ package com.aidigital.reportconstructor.externalservices.google;
  *
  * @param tacticNum   one-based tactic number (used in log messages)
  * @param templateId  source chart-template spreadsheet id
- * @param oldObjectId slide object id of the placeholder chart to replace
+ * @param target      the placeholder chart this one replaces
  * @param copyName    name for the copied spreadsheet
  * @param tacticName  display name of the tactic
  * @param tacticImp   this tactic's impressions
@@ -14,7 +14,7 @@ package com.aidigital.reportconstructor.externalservices.google;
 record DistributionChartJob(
 		int tacticNum,
 		String templateId,
-		String oldObjectId,
+		ChartTarget target,
 		String copyName,
 		String tacticName,
 		double tacticImp,

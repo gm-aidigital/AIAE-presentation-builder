@@ -70,6 +70,23 @@ public interface ReportGenerationChartHelper {
 	void trimUnusedTactics(String slideUrl, int tacticCount, String userGoogleToken);
 
 	/**
+	 * Builds the deck's main tactic slides from the template's single master tactic slide — one copy per
+	 * active tactic, filled with that tactic's values. A no-op on a template with no configured master (the
+	 * legacy 28-slot decks, which {@link #trimUnusedTactics} trims instead). Non-fatal: a failure is logged
+	 * and the deck is delivered with whatever the master model managed to insert.
+	 *
+	 * <p>Must run before {@link #addBreakdownSlides}, which places each tactic's breakdown copies after that
+	 * tactic's main slide.
+	 *
+	 * @param slideUrl         URL of the generated Google Slides deck
+	 * @param tacticCount      number of active tactics (clamped 1..28)
+	 * @param flatReplacements resolved placeholder values keyed by token, used to fill each copy
+	 * @param userGoogleToken  OAuth token for Google Slides API, or null when unavailable
+	 */
+	void addTacticSlides(
+			String slideUrl, int tacticCount, Map<String, String> flatReplacements, String userGoogleToken);
+
+	/**
 	 * Inserts the Step-3 per-tactic breakdown slides into the built deck for the "Slides from Sheet"
 	 * flow. Resolves the request's breakdown selections to enabled sections, drops tactics beyond the
 	 * active count, and delegates to the slides provider. Non-fatal: a failure is logged and the deck

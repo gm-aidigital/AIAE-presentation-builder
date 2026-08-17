@@ -210,9 +210,9 @@ external:
     # Ids read from a presentations.get dump of the EOC template (11qzOC7…). If EOM is ever pointed at its
     # own template again, a Drive copy keeps every object id — the same assumption tactic-slide-object-ids
     # above already relies on.
-    eom-drop-slide-object-ids:
-      - "g3ef28aa56c3_0_2486"   # THE FREQUENCY & VELOCITY PLAY
-      - "g3ef28aa56c3_0_3106"   # AWARENESS & MARKET SHARE DOMINANCE
+    # Comma-separated so the whole list can be swapped for another template's ids with one env var.
+    # New template (15ryPctw…): p17 (frequency) and p6 (awareness / market share).
+    eom-drop-slide-object-ids: ${EOM_DROP_SLIDE_OBJECT_IDS:g3ef28aa56c3_0_2486,g3ef28aa56c3_0_3106}
     # Fallback for slides not matched by id: matched on the slide's text, reduced to letters + digits, so
     # casing/spacing/punctuation don't matter — but "&" must stay "&" (an "and" spelling would not match).
     # Less robust than the ids: re-wording the slide in the template silently stops the match. Phrases must
@@ -237,19 +237,31 @@ external:
     # empty groups are deleted via results-slide-object-ids and summary-slide-
     # object-ids stays empty. Object ids collected from the 28-tactic template
     # (presentations.get on 11qzOC7…). Missing ids are skipped at trim time.
+    # New template (15ryPctw…): p7_i467, g3f6fd96d9b2_1_143, _157, _171.
     summary-table-object-ids:
-      1: "p6_i4579"
-      2: "g3f4b9ea3eb6_0_1"
-      3: "g3f4b9ea3eb6_0_8"
-      4: "g3f4b9ea3eb6_0_15"
+      1: ${SUMMARY_TABLE_OBJECT_ID_1:p6_i4579}
+      2: ${SUMMARY_TABLE_OBJECT_ID_2:g3f4b9ea3eb6_0_1}
+      3: ${SUMMARY_TABLE_OBJECT_ID_3:g3f4b9ea3eb6_0_8}
+      4: ${SUMMARY_TABLE_OBJECT_ID_4:g3f4b9ea3eb6_0_15}
     # Group slide carries both the summary table and the overview → the whole slide
     # is removed via results-slide-object-ids, so this stays empty.
     summary-slide-object-ids: {}
+    # New template (15ryPctw…): p7, g3f6fd96d9b2_1_139, _153, _167.
     results-slide-object-ids:
-      1: "p6"
-      2: "g3f4b9ea3eb6_0_0"
-      3: "g3f4b9ea3eb6_0_7"
-      4: "g3f4b9ea3eb6_0_14"
+      1: ${RESULTS_SLIDE_OBJECT_ID_1:p6}
+      2: ${RESULTS_SLIDE_OBJECT_ID_2:g3f4b9ea3eb6_0_0}
+      3: ${RESULTS_SLIDE_OBJECT_ID_3:g3f4b9ea3eb6_0_7}
+      4: ${RESULTS_SLIDE_OBJECT_ID_4:g3f4b9ea3eb6_0_14}
+    # MASTER MODEL for the main tactic slide. Set this to the object id of the ONE generic tactic slide in
+    # the template (tokens carry the literal "n": {{tactic n}}, {{tactic n imps}}, …). It is duplicated once
+    # per active tactic under the deterministic ids tct_1..tct_N, each copy's tokens written with that
+    # tactic's values, and the copies take the master's own slide position; the master is deleted at the end.
+    # When set, tactic-slide-object-ids below is ignored and the tactic-slide trim is skipped — the deck is
+    # built with exactly as many tactic slides as there are tactics, so the 28-slot ceiling goes away.
+    # Blank = the legacy 28-drawn-slides model (safe no-op), which is what the current template still uses.
+    # The charts on the copies are found by the source workbook they link to, so the singular
+    # charts.{daily,monthly,dist}-template-sheet-id below must be set together with this.
+    tactic-master-slide-object-id: ${TACTIC_MASTER_SLIDE_OBJECT_ID:}
     tactic-slide-object-ids:
       1: "p7"
       2: "g3da93d3d6ab_1_23"
@@ -286,12 +298,13 @@ external:
     # that tactic's main slide. Masters are deleted at the end. Empty = feature disabled
     # (safe no-op). Ids collected via presentations.get on 11qzOC7… (slides 45-49, the
     # trailing master block) — same method used for tactic-slide-object-ids above.
+    # New template (15ryPctw…): tp=p9, ca=p10, geo=p13, aud=p11, dev=p14.
     breakdown-master-slide-object-ids:
-      tp: "g3f0a39e9ae9_0_2233"    # Top Publishers
-      ca: "g3f0a39e9ae9_0_2371"    # Creative analysis
-      geo: "g3f0a39e9ae9_0_2436"   # Geo performance
-      aud: "g3f0a39e9ae9_0_2534"   # Audience analysis
-      dev: "g3f0a39e9ae9_0_2623"   # Device breakdown
+      tp: ${BREAKDOWN_MASTER_SLIDE_TP:g3f0a39e9ae9_0_2233}     # Top Publishers
+      ca: ${BREAKDOWN_MASTER_SLIDE_CA:g3f0a39e9ae9_0_2371}     # Creative analysis
+      geo: ${BREAKDOWN_MASTER_SLIDE_GEO:g3f0a39e9ae9_0_2436}   # Geo performance
+      aud: ${BREAKDOWN_MASTER_SLIDE_AUD:g3f0a39e9ae9_0_2534}   # Audience analysis
+      dev: ${BREAKDOWN_MASTER_SLIDE_DEV:g3f0a39e9ae9_0_2623}   # Device breakdown
     # Master object id of the single generic "Thoughts on tactic performance" slide, whose tokens carry
     # the literal "n" tactic variable ({{thoughts on tactic n performance 1..4}}). Duplicated once per
     # tactic that enables MORE THAN TWO breakdown sections, placed right after that tactic's last breakdown
@@ -300,7 +313,8 @@ external:
     # qualifying tactic (blank on failure, never a raw token) and the slide is duplicated under the same
     # gate, so no raw {{…}} can survive. Id read via presentations.get on 11qzOC7… (slide holding the
     # four {{thoughts on tactic n performance 1..4}} tokens). Blank = feature disabled (safe no-op).
-    thoughts-master-slide-object-id: "g3f56c270c23_0_0"
+    # New template (15ryPctw…): g3f6fd96d9b2_1_0.
+    thoughts-master-slide-object-id: ${THOUGHTS_MASTER_SLIDE_OBJECT_ID:g3f56c270c23_0_0}
     # Per-tactic breakdown charts (SLIDES_FROM_SHEET flow). The audience and device master slides
     # each embed a chart linked to a shared source workbook; after a master is duplicated per tactic
     # its chart still points at that shared (empty) workbook, so we copy the workbook per tactic, write
@@ -312,13 +326,30 @@ external:
     # (g3f0a39e9ae9_0_2534 / _2623) each embed a LINKED sheetsChart whose spreadsheetId + chartId are
     # below. source-sheet-ids are copied per tactic (the originals stay as templates); chart-id-in-sheet
     # is the chart inside each source workbook (both happen to share 1497669750).
+    # Keyed by CHART SERIES, not by breakdown section: a section's slide may carry more than one chart, and
+    # each chart needs its own source workbook. The audience slide has two — age distribution ("aud", the
+    # code it kept from when it was the section's only chart) and top audience segments ("aud-seg"). On the
+    # slide, a chart is located by the workbook it links to, so two series on one slide MUST point at two
+    # different workbooks.
+    #
+    # New template (15ryPctw…), read off its breakdown masters:
+    #   aud     1K4XeQcIngAoYckwim7DWpA14pWC4ssuSypuUccA8kQc  chart 522266257  (p11, upper)
+    #   aud-seg 1PAurz6x7NC_35A1HKllbhSgfk5wvncN_oRnFraGy2r8  chart 522266257  (p11, lower)
+    #   dev     1kDdh68zWxrujlW0dbhsNmLS5xu9jT3KbfjtbvbRBVvc  chart 522266257  (p14)
     breakdown-charts:
       source-sheet-ids:
         aud: ${BREAKDOWN_AUD_SOURCE_SHEET_ID:1543w_xteLATFepVy3ynnaBn5gdGZp_8IolA0tRBqvkM}   # "EOC - age distribution"
+        aud-seg: ${BREAKDOWN_AUD_SEG_SOURCE_SHEET_ID:}   # top audience segments; blank = no such chart
         dev: ${BREAKDOWN_DEV_SOURCE_SHEET_ID:1X5QhoIHIyTH7vhhFSHZmkzzxjDjB0Y4c6xw_ENVB1cs}   # "EOC - device distribution"
       chart-id-in-sheet:
         aud: ${BREAKDOWN_AUD_CHART_ID:1497669750}
+        aud-seg: ${BREAKDOWN_AUD_SEG_CHART_ID:}
         dev: ${BREAKDOWN_DEV_CHART_ID:1497669750}
+      # Only used by a series whose category labels are written into the workbook (aud-seg): the first data
+      # row, i.e. the row after the header. Age and device charts match the labels the workbook already
+      # prints, so they need no start row. Default is 2.
+      data-start-row:
+        aud-seg: ${BREAKDOWN_AUD_SEG_DATA_START_ROW:2}
     # "Generate Sheet" flow: template workbook cloned + filled per placeholder.
     # Unused tactic slots (summary-table rows + "Main slide N" detail blocks) are
     # located by content (header labels / anchor cells) at trim time — see
@@ -331,6 +362,27 @@ external:
     sheets-target-folder-id: ${SHEETS_TARGET_FOLDER_ID:}
     charts:
       chart-id-in-sheet: ${GOOGLE_CHART_ID_IN_SHEET:1087145314}
+      # MASTER MODEL companions to tactic-master-slide-object-id: ONE source workbook per chart type, used
+      # for every tactic (a fresh copy per tactic is made at render time either way, so the 28 per-slot
+      # workbooks below were only ever needed to tell the placeholders apart). Each id doubles as the key
+      # that identifies the chart on a duplicated tactic slide: the copy's chart still links to the workbook
+      # the master linked to, which is how the runtime finds a chart element whose object id is unknowable
+      # from config. The three MUST therefore be three DISTINCT workbooks. When set, the per-slot
+      # *-template-sheet-ids and *-slide-object-ids maps below are ignored.
+      # Values for the new template (15ryPctw…), read off its master tactic slide p8:
+      #   daily   1LjtiI83T_0-v64CsoANTIjDzinipBk5ELe7NVzO5r2A  chart 510717191
+      #   monthly 1r4aI3ToKfZ7W_TfVNokdShp91mXFIiA2eLy8PmTx4oI  chart 510717191
+      #   dist    1fzG6Uuu2U1E3w0lnXGKO0TERYb59LkmSNSBgVR9DPtw  chart 1431807138
+      daily-template-sheet-id: ${DAILY_CHART_TEMPLATE_SHEET_ID:}
+      monthly-template-sheet-id: ${MONTHLY_CHART_TEMPLATE_SHEET_ID:}
+      dist-template-sheet-id: ${DIST_CHART_TEMPLATE_SHEET_ID:}
+      # Which embedded chart to pull out of each source workbook. A chart id is assigned by Sheets when the
+      # chart is created, so three separately built workbooks have no reason to share one — the legacy 84
+      # workbooks only did because they were copies of each other, which is why chart-id-in-sheet above was
+      # a single value. Defaulted to that same shared value, so the legacy template is unaffected.
+      daily-chart-id-in-sheet: ${DAILY_CHART_ID_IN_SHEET:1087145314}
+      monthly-chart-id-in-sheet: ${MONTHLY_CHART_ID_IN_SHEET:1087145314}
+      dist-chart-id-in-sheet: ${DIST_CHART_ID_IN_SHEET:1087145314}
       daily-template-sheet-ids:
         1: "17da8GFAFRYt5JT6MvPV-qSi6KEd2tmI8xZMGFU-pkK4"
         2: "1bWjf8IlKzZk9TTyHinQ2LWvpUuV9OnT58MXmi8LF5bk"

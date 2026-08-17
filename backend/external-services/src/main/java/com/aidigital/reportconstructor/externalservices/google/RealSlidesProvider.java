@@ -87,9 +87,10 @@ public class RealSlidesProvider implements SlidesProvider {
 	private static final int GROUP_COUNT = 4;
 
 	/**
-	 * Field mask for the {@code presentations.get} used by {@link #addBreakdownSlides}: only the slide
-	 * order ({@code objectId}) and the text needed to discover {@code {{…}}} tokens on the master slides
-	 * (shape text and table-cell text). Keeping the mask tight avoids pulling the whole deck back.
+	 * Field mask for the {@code presentations.get} used by {@link #addBreakdownSlides} and
+	 * {@link #addTacticSlides}: only the slide order ({@code objectId}) and the text needed to discover
+	 * {@code {{…}}} tokens on the master slides (shape text and table-cell text). Keeping the mask tight
+	 * avoids pulling the whole deck back.
 	 */
 	private static final String BREAKDOWN_FIELDS =
 			"slides.objectId,"
@@ -146,6 +147,7 @@ public class RealSlidesProvider implements SlidesProvider {
 	private final Set<String> eomDropSlideObjectIds;
 	private final List<String> eomDropSlideTitles;
 	private final String thoughtsMasterId;
+	private final String tacticMasterId;
 	private final BreakdownSlideNaming breakdownSlideNaming;
 	private final BreakdownThoughtsGate thoughtsGate;
 
@@ -165,6 +167,7 @@ public class RealSlidesProvider implements SlidesProvider {
 		this.eomDropSlideTitles = normalizeTitles(props.getEomDropSlideTitles());
 		String thoughtsMaster = props.getThoughtsMasterSlideObjectId();
 		this.thoughtsMasterId = thoughtsMaster == null ? "" : thoughtsMaster.trim();
+		this.tacticMasterId = normalizeSlideId(props.getTacticMasterSlideObjectId());
 		this.breakdownSlideNaming = breakdownSlideNaming;
 		this.thoughtsGate = thoughtsGate;
 		this.driveSharer = driveSharer;
@@ -322,9 +325,12 @@ public class RealSlidesProvider implements SlidesProvider {
 		int usedInLastGroup = tacticCount - (groups - 1) * TACTICS_PER_GROUP;
 
 		List<Request> requests = new ArrayList<>();
-		// Surplus per-tactic detail slides.
-		for (int t = tacticCount + 1; t <= MAX_TACTICS; t++) {
-			addDeleteObject(requests, tacticSlideObjectIds.get(t));
+		// Surplus per-tactic detail slides — legacy model only: under the master model the deck is built with
+		// exactly as many tactic slides as there are tactics, so there is nothing to delete.
+		if (!masterTacticModel()) {
+			for (int t = tacticCount + 1; t <= MAX_TACTICS; t++) {
+				addDeleteObject(requests, tacticSlideObjectIds.get(t));
+			}
 		}
 		// Surplus "Our results" and summary slides for empty groups.
 		for (int g = groups + 1; g <= GROUP_COUNT; g++) {
@@ -355,6 +361,118 @@ public class RealSlidesProvider implements SlidesProvider {
 		if (objectId != null && !objectId.isBlank()) {
 			requests.add(new Request().setDeleteObject(new DeleteObjectRequest().setObjectId(objectId)));
 		}
+	}
+
+	@Override
+	public void addTacticSlides(
+			String presentationId, int tacticCount, Map<String, String> placeholderMap,
+			String userGoogleAccessToken) {
+		if (!masterTacticModel()) {
+			return;
+		}
+		Map<String, String> values = placeholderMap == null ? Map.of() : placeholderMap;
+		int count = Math.clamp(tacticCount, 1, MAX_TACTICS);
+		boolean asUser = userGoogleAccessToken != null && !userGoogleAccessToken.isBlank();
+		Slides slidesClient = asUser ? buildSlides(userGoogleAccessToken) : slides;
+		try {
+			Presentation deck = retrier.execute(
+					slidesClient.presentations().get(presentationId).setFields(BREAKDOWN_FIELDS),
+					"addTacticSlides get " + presentationId);
+			List<Request> requests = buildTacticRequests(deck.getSlides(), count, values);
+			if (requests.isEmpty()) {
+				return;
+			}
+			executeInChunks(slidesClient, presentationId, requests,
+					"addTacticSlides batchUpdate for " + presentationId);
+		} catch (IOException ex) {
+			log.error("[slides] addTacticSlides failed for {}", presentationId, ex);
+			throw new AppException(ErrorReason.C000,
+					"Google Slides addTacticSlides failed: " + ex.getMessage());
+		}
+	}
+
+	/**
+	 * Builds the ordered batchUpdate requests that turn the single master tactic slide into one slide per
+	 * active tactic: duplicate the master {@code tacticCount} times under the deterministic copy ids
+	 * {@link BreakdownSlideNaming#tacticSlideId(int)}, write each copy's {@code n} tokens with that tactic's
+	 * value (scoped to the copy), then move the whole run of copies into the master's own position so the
+	 * tactic block lands exactly where the template drew it.
+	 *
+	 * <p>Requests are emitted in two ordered phases — all duplicates + token writes, then the single position
+	 * move — so no request references a slide an earlier one has not created yet. The master itself is left in
+	 * place for {@link #deleteMasterSlides}; the copies sit before it, so deleting it afterwards leaves the
+	 * block where the move put it.
+	 *
+	 * @param slides         the deck's slides in order (from {@code presentations.get}), carrying the master's
+	 *                       text for token discovery
+	 * @param tacticCount    number of real tactics (already clamped to {@code [1, 28]} by the caller)
+	 * @param placeholderMap resolved token → value pairs; a renumbered token absent from the map is only
+	 *                       renumbered
+	 * @return the ordered batchUpdate requests, or an empty list when the master is absent from the deck
+	 */
+	List<Request> buildTacticRequests(List<Page> slides, int tacticCount, Map<String, String> placeholderMap) {
+		List<Request> requests = new ArrayList<>();
+		if (slides == null || slides.isEmpty()) {
+			return requests;
+		}
+		int masterIndex = -1;
+		Page master = null;
+		for (int i = 0; i < slides.size(); i++) {
+			if (tacticMasterId.equals(slides.get(i).getObjectId())) {
+				masterIndex = i;
+				master = slides.get(i);
+				break;
+			}
+		}
+		if (master == null) {
+			log.warn("[slides] addTacticSlides: master tactic slide {} not in deck — skipping", tacticMasterId);
+			return requests;
+		}
+
+		// Phase 1: one copy per tactic, each with its own values written into the copy's tokens. The deck's
+		// global placeholder pass has already run and will not run again, so a token left merely renumbered
+		// here would stay raw in the delivered deck — hence the values map, not a plain renumber.
+		Set<String> tokens = extractRenumberableTokens(master);
+		List<String> copyIds = new ArrayList<>(tacticCount);
+		for (int n = 1; n <= tacticCount; n++) {
+			String copyId = breakdownSlideNaming.tacticSlideId(n);
+			requests.add(new Request().setDuplicateObject(new DuplicateObjectRequest()
+					.setObjectId(tacticMasterId)
+					.setObjectIds(Map.of(tacticMasterId, copyId))));
+			emitRenumberedTokens(requests, copyId, n, tokens, placeholderMap);
+			copyIds.add(copyId);
+		}
+
+		// Phase 2: the copies are created directly after the master, in ascending tactic order; moving them
+		// to the master's index puts the block exactly where the template had it, master last.
+		requests.add(new Request().setUpdateSlidesPosition(new UpdateSlidesPositionRequest()
+				.setSlideObjectIds(copyIds)
+				.setInsertionIndex(masterIndex)));
+		return requests;
+	}
+
+	/**
+	 * Whether the deck is built on the master tactic-slide model (one generic slide duplicated per tactic)
+	 * rather than the legacy model of 28 drawn tactic slots that are trimmed down.
+	 *
+	 * @return {@code true} when a master tactic slide is configured
+	 */
+	boolean masterTacticModel() {
+		return !tacticMasterId.isBlank();
+	}
+
+	/**
+	 * Resolves the object id of a tactic's main slide in the deck: the deterministic id of the master's copy
+	 * under the master model, or the configured per-slot template id under the legacy model. The breakdown
+	 * step anchors each tactic's copies after this slide.
+	 *
+	 * @param tacticNum the 1-based tactic number
+	 * @return the main slide object id, or {@code null} when the legacy model has no slot configured
+	 */
+	String mainTacticSlideId(int tacticNum) {
+		return masterTacticModel()
+				? breakdownSlideNaming.tacticSlideId(tacticNum)
+				: tacticSlideObjectIds.get(tacticNum);
 	}
 
 	@Override
@@ -436,7 +554,7 @@ public class RealSlidesProvider implements SlidesProvider {
 			if (tacticNum == null || entry.getValue() == null || entry.getValue().isEmpty()) {
 				continue;
 			}
-			String mainSlideId = tacticSlideObjectIds.get(tacticNum);
+			String mainSlideId = mainTacticSlideId(tacticNum);
 			if (mainSlideId == null || !indexById.containsKey(mainSlideId)) {
 				log.warn("[slides] addBreakdownSlides: no main slide for tactic {} in deck — skipping", tacticNum);
 				continue;
@@ -538,7 +656,7 @@ public class RealSlidesProvider implements SlidesProvider {
 
 	@Override
 	public void deleteMasterSlides(String presentationId, String userGoogleAccessToken) {
-		if (breakdownMasterIds.isEmpty() && thoughtsMasterId.isBlank()) {
+		if (breakdownMasterIds.isEmpty() && thoughtsMasterId.isBlank() && tacticMasterId.isBlank()) {
 			return;
 		}
 		boolean asUser = userGoogleAccessToken != null && !userGoogleAccessToken.isBlank();
@@ -688,18 +806,31 @@ public class RealSlidesProvider implements SlidesProvider {
 			return normalized;
 		}
 		for (String id : configured) {
-			if (id == null) {
-				continue;
-			}
-			String candidate = id.trim();
-			if (candidate.startsWith(SLIDE_URL_ID_PREFIX)) {
-				candidate = candidate.substring(SLIDE_URL_ID_PREFIX.length());
-			}
+			String candidate = normalizeSlideId(id);
 			if (!candidate.isEmpty()) {
 				normalized.add(candidate);
 			}
 		}
 		return normalized;
+	}
+
+	/**
+	 * Normalizes one configured slide object id: trims it, treats null as blank, and strips the {@code id.}
+	 * prefix the Slides editor puts in its {@code #slide=id.…} URL fragment — so an id pasted straight from
+	 * the address bar matches the object id the API reports.
+	 *
+	 * @param raw the configured slide object id (may be {@code null})
+	 * @return the normalized object id, or an empty string when unconfigured
+	 */
+	String normalizeSlideId(String raw) {
+		if (raw == null) {
+			return "";
+		}
+		String candidate = raw.trim();
+		if (candidate.startsWith(SLIDE_URL_ID_PREFIX)) {
+			candidate = candidate.substring(SLIDE_URL_ID_PREFIX.length());
+		}
+		return candidate;
 	}
 
 	/**
@@ -737,11 +868,11 @@ public class RealSlidesProvider implements SlidesProvider {
 	}
 
 	/**
-	 * Builds the {@code DeleteObject} requests that remove every configured breakdown master and the
-	 * thoughts master that is actually present in the deck. Presence is checked against the deck's slide
-	 * object ids so a master configured but absent from this template variant (or already deleted) is
-	 * skipped rather than failing the batch. Breakdown masters are de-duplicated and emitted before the
-	 * thoughts master.
+	 * Builds the {@code DeleteObject} requests that remove every configured master slide actually present in
+	 * the deck: the breakdown masters, the thoughts master and the main tactic master. Presence is checked
+	 * against the deck's slide object ids so a master configured but absent from this template variant (or
+	 * already deleted) is skipped rather than failing the batch. Breakdown masters are de-duplicated and
+	 * emitted first, then the thoughts master, then the tactic master.
 	 *
 	 * @param slides the deck's slides in order (from {@code presentations.get} with {@link #MASTER_FIELDS})
 	 * @return the ordered delete requests, or an empty list when no configured master is present
@@ -764,6 +895,12 @@ public class RealSlidesProvider implements SlidesProvider {
 		}
 		if (!thoughtsMasterId.isBlank() && presentIds.contains(thoughtsMasterId)) {
 			requests.add(new Request().setDeleteObject(new DeleteObjectRequest().setObjectId(thoughtsMasterId)));
+		}
+		// The master tactic slide goes the same way: its copies carry the real tactics, so the master itself
+		// would ship as a slide full of raw {{tactic n …}} tokens. Deleted here rather than in
+		// addTacticSlides so it is cleaned even when that step was skipped or failed.
+		if (!tacticMasterId.isBlank() && presentIds.contains(tacticMasterId)) {
+			requests.add(new Request().setDeleteObject(new DeleteObjectRequest().setObjectId(tacticMasterId)));
 		}
 		return requests;
 	}

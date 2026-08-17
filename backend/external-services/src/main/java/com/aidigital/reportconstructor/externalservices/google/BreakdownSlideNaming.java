@@ -36,4 +36,20 @@ public class BreakdownSlideNaming {
 	public String thoughtsSlideId(int tacticNum) {
 		return "thoughts_" + tacticNum;
 	}
+
+	/**
+	 * Builds the deterministic object id for a duplicated main tactic slide, unique per tactic, e.g.
+	 * {@code tct_3}. Minted here alongside the breakdown ids because three later steps have to find a slide
+	 * they did not create: breakdown insertion anchors its copies after it, the chart step scans it for the
+	 * tactic's linked charts, and the trim leaves it alone.
+	 *
+	 * <p>The prefix is deliberately distinct from the {@code bd_} breakdown prefix, which the breakdown
+	 * chart scan filters on.
+	 *
+	 * @param tacticNum the 1-based tactic number
+	 * @return the copy's slide object id
+	 */
+	public String tacticSlideId(int tacticNum) {
+		return "tct_" + tacticNum;
+	}
 }

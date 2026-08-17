@@ -69,10 +69,10 @@ class PlaceholderSectionBuilderImplTest {
 				new CampaignFrequencies(null, null, null, null), 28
 		);
 
-		assertThat(sections.get(4).placeholders()).hasSize(31);
+		assertThat(sections.get(4).placeholders()).hasSize(32);
 		assertThat(sections.get(4).placeholders())
 				.extracting(Placeholder::key)
-				.contains("{{tactic 1 volume}}", "{{tactic 1 top creative name}}");
+				.contains("{{tactic 1 volume}}", "{{tactic 1 top creative name}}", "{{so what 1}}");
 	}
 
 	@Test
@@ -87,11 +87,11 @@ class PlaceholderSectionBuilderImplTest {
 				new CampaignFrequencies(null, null, null, null), 28
 		);
 
-		assertThat(sections.get(10).placeholders()).hasSize(31);
+		assertThat(sections.get(10).placeholders()).hasSize(32);
 		assertThat(sections.get(10).placeholders())
 				.extracting(Placeholder::key)
 				.contains("{{tactic 7 volume}}", "{{tactic 7 top creative name}}",
-						"{{tactic 7 top creative imps}}", "{{tactic 7 top creative clicks}}");
+						"{{tactic 7 top creative imps}}", "{{tactic 7 top creative clicks}}", "{{so what 7}}");
 	}
 
 	@Test

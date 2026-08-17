@@ -1,7 +1,9 @@
 package com.aidigital.reportconstructor.service.reports.helpers.impl;
 
 import com.aidigital.reportconstructor.service.reports.dto.AudienceAgeRow;
+import com.aidigital.reportconstructor.service.reports.dto.AudienceSegmentRow;
 import com.aidigital.reportconstructor.service.reports.dto.AudienceTable;
+import com.aidigital.reportconstructor.service.reports.dto.BreakdownChartSeries;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.DeviceRow;
@@ -227,6 +229,21 @@ public class ReportGenerationChartHelperImpl implements ReportGenerationChartHel
 	}
 
 	@Override
+	public void addTacticSlides(
+			String slideUrl, int tacticCount, Map<String, String> flatReplacements, String userGoogleToken) {
+		String presentationId = extractPresentationId(slideUrl);
+		if (presentationId == null) {
+			return;
+		}
+		int clamped = Math.clamp(tacticCount, 1, MAX_TACTICS);
+		try {
+			slides.addTacticSlides(presentationId, clamped, flatReplacements, userGoogleToken);
+		} catch (RuntimeException ex) {
+			log.warn("[slides] addTacticSlides failed for {} (non-fatal): {}", presentationId, ex.getMessage());
+		}
+	}
+
+	@Override
 	public void addBreakdownSlides(
 			String slideUrl, GeneratePayload payload, int tacticCount, Map<String, String> breakdownValues,
 			String userGoogleToken) {
@@ -338,13 +355,14 @@ public class ReportGenerationChartHelperImpl implements ReportGenerationChartHel
 	}
 
 	/**
-	 * Builds the audience (age-distribution) chart jobs by reading each tactic's age rows back from the
-	 * sheet, one slice per age bucket keyed by impressions.
+	 * Builds the audience chart jobs by reading each tactic's audience block back from the sheet. The slide
+	 * carries two charts, so a tactic contributes up to two jobs: the age distribution (one slice per age
+	 * bucket, by impressions) and the top audience segments (one slice per segment, by affinity index).
 	 *
 	 * @param sheetUrl        URL of the reviewed workbook
 	 * @param tacticNums      tactics that enabled the Audience breakdown
 	 * @param userGoogleToken OAuth token for Google Sheets, or null
-	 * @return one job per tactic whose age table carried a positive impressions slice
+	 * @return the age and segment jobs for every tactic whose corresponding sub-table carried a row
 	 */
 	List<BreakdownChartJob> audienceJobs(String sheetUrl, Set<Integer> tacticNums, String userGoogleToken) {
 		if (tacticNums.isEmpty()) {
@@ -354,12 +372,26 @@ public class ReportGenerationChartHelperImpl implements ReportGenerationChartHel
 		List<BreakdownChartJob> jobs = new ArrayList<>();
 		for (Integer tacticNum : tacticNums) {
 			AudienceTable table = tables.getOrDefault(tacticNum, AudienceTable.EMPTY);
-			List<BreakdownChartSlice> slices = new ArrayList<>();
+			List<BreakdownChartSlice> ageSlices = new ArrayList<>();
 			for (AudienceAgeRow row : table.ageRows()) {
-				slices.add(new BreakdownChartSlice(row.ageGroup(), reportNumbers.parseReportNumber(row.impressions())));
+				ageSlices.add(new BreakdownChartSlice(
+						row.ageGroup(), reportNumbers.parseReportNumber(row.impressions())));
 			}
-			if (!slices.isEmpty()) {
-				jobs.add(new BreakdownChartJob(BreakdownType.AUDIENCE.code(), tacticNum, slices));
+			if (!ageSlices.isEmpty()) {
+				jobs.add(new BreakdownChartJob(
+						BreakdownChartSeries.AUDIENCE_AGE.code(), tacticNum, ageSlices));
+			}
+			// The slide's second chart. Segments are plotted by affinity index because that is the only number
+			// the sheet's segment sub-table carries — it has no impressions column — and it is the same number
+			// the {{aud_in_N_x}} tokens print in the table beside the chart.
+			List<BreakdownChartSlice> segmentSlices = new ArrayList<>();
+			for (AudienceSegmentRow row : table.segmentRows()) {
+				segmentSlices.add(new BreakdownChartSlice(
+						row.segment(), reportNumbers.parseReportNumber(row.affinityIndex())));
+			}
+			if (!segmentSlices.isEmpty()) {
+				jobs.add(new BreakdownChartJob(
+						BreakdownChartSeries.AUDIENCE_SEGMENT.code(), tacticNum, segmentSlices));
 			}
 		}
 		return jobs;
@@ -387,7 +419,7 @@ public class ReportGenerationChartHelperImpl implements ReportGenerationChartHel
 				slices.add(new BreakdownChartSlice(row.device(), reportNumbers.parseReportNumber(row.impressions())));
 			}
 			if (!slices.isEmpty()) {
-				jobs.add(new BreakdownChartJob(BreakdownType.DEVICE.code(), tacticNum, slices));
+				jobs.add(new BreakdownChartJob(BreakdownChartSeries.DEVICE.code(), tacticNum, slices));
 			}
 		}
 		return jobs;

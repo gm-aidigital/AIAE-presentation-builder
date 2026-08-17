@@ -43,6 +43,13 @@ public class StubSlidesProvider implements SlidesProvider {
 	}
 
 	@Override
+	public void addTacticSlides(
+			String presentationId, int tacticCount, Map<String, String> placeholderMap,
+			String userGoogleAccessToken) {
+		// No-op: the stub never clones a real deck, so there is no master tactic slide to duplicate.
+	}
+
+	@Override
 	public void addBreakdownSlides(
 			String presentationId, Map<Integer, Set<BreakdownType>> enabledByTactic,
 			Map<String, String> breakdownValues, String userGoogleAccessToken) {

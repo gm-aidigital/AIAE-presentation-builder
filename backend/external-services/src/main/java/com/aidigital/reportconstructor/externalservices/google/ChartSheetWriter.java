@@ -15,6 +15,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -300,7 +301,7 @@ public class ChartSheetWriter {
 	 * @throws IOException when a Sheets API call fails
 	 */
 	public int writeBreakdownImpressions(
-			Sheets sheets, String spreadsheetId, String tabName, java.util.Map<String, Long> impsByLabel)
+			Sheets sheets, String spreadsheetId, String tabName, Map<String, Long> impsByLabel)
 			throws IOException {
 		if (impsByLabel.isEmpty()) {
 			return 0;
@@ -326,6 +327,60 @@ public class ChartSheetWriter {
 		sheets.spreadsheets().values().batchUpdate(spreadsheetId,
 				new BatchUpdateValuesRequest().setValueInputOption("RAW").setData(data)).execute();
 		return data.size();
+	}
+
+	/**
+	 * Writes a per-tactic breakdown chart whose category labels come from the report rather than from the
+	 * workbook — currently the audience-segment chart, whose segment names differ per campaign and therefore
+	 * cannot be pre-printed and matched the way {@link #writeBreakdownImpressions} matches age buckets and
+	 * device names. Both columns are written: the label into column A and its value into column B, in the
+	 * order given, starting at {@code dataStartRow}.
+	 *
+	 * <p>The workbook's own block length decides how many rows are touched: rows beyond the supplied slices
+	 * but inside the block are blanked, so a campaign with three segments does not leave the template's
+	 * remaining sample rows in the chart. The block is the run of consecutive non-blank column-A rows from
+	 * {@code dataStartRow}; writing never extends past it, because the workbook's chart range is fixed and a
+	 * row outside it would simply not be plotted.
+	 *
+	 * @param sheets        authenticated Sheets client
+	 * @param spreadsheetId id of the copied source workbook
+	 * @param tabName       data tab holding the category / value columns
+	 * @param valuesByLabel category label &rarr; value to plot, in the order they should appear
+	 * @param dataStartRow  1-based row the workbook's data block starts on (i.e. the row after its header)
+	 * @return the number of rows written (labels + values), excluding blanked leftovers
+	 * @throws IOException when a Sheets API call fails
+	 */
+	public int writeBreakdownSeries(
+			Sheets sheets, String spreadsheetId, String tabName,
+			Map<String, Double> valuesByLabel, int dataStartRow) throws IOException {
+		if (valuesByLabel.isEmpty()) {
+			return 0;
+		}
+		List<List<Object>> existing = readValues(sheets, spreadsheetId, tabName + "!A" + dataStartRow + ":A50");
+		int blockRows = 0;
+		while (blockRows < existing.size()) {
+			List<Object> row = existing.get(blockRows);
+			if (row.isEmpty() || str(row.get(0)).isBlank()) {
+				break;
+			}
+			blockRows++;
+		}
+		// A workbook whose block could not be read (or is empty) still gets the slices written: the chart
+		// range is what matters, and an unexpectedly short block is better filled than left on sample data.
+		int capacity = Math.max(blockRows, valuesByLabel.size());
+		List<List<Object>> rows = new ArrayList<>();
+		for (Map.Entry<String, Double> entry : valuesByLabel.entrySet()) {
+			rows.add(List.of(entry.getKey(), entry.getValue()));
+		}
+		for (int extra = rows.size(); extra < capacity; extra++) {
+			rows.add(List.of("", ""));
+		}
+		List<ValueRange> data = List.of(new ValueRange()
+				.setRange(tabName + "!A" + dataStartRow + ":B" + (dataStartRow + rows.size() - 1))
+				.setValues(rows));
+		sheets.spreadsheets().values().batchUpdate(spreadsheetId,
+				new BatchUpdateValuesRequest().setValueInputOption("RAW").setData(data)).execute();
+		return valuesByLabel.size();
 	}
 
 	/**

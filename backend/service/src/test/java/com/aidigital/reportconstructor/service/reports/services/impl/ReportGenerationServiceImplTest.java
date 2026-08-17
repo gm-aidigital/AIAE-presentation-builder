@@ -22,6 +22,7 @@ import com.aidigital.reportconstructor.service.reports.helpers.ReportResumeState
 import com.aidigital.reportconstructor.service.reports.helpers.impl.SheetTacticCountHelperImpl;
 import com.aidigital.reportconstructor.service.reports.helpers.impl.BreakdownSelectionResolverImpl;
 import com.aidigital.reportconstructor.service.reports.helpers.impl.BreakdownThoughtsGateImpl;
+import com.aidigital.reportconstructor.service.reports.helpers.impl.ImpressionContributionHelperImpl;
 import com.aidigital.reportconstructor.service.reports.helpers.impl.ReportNumberParserImpl;
 import com.aidigital.reportconstructor.service.reports.helpers.impl.TacticConclusionAssemblerImpl;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportGenerationChartHelper;
@@ -49,6 +50,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.core.task.SimpleAsyncTaskExecutor;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.HashMap;
 import java.util.Map;
@@ -126,7 +128,8 @@ class ReportGenerationServiceImplTest {
 				new ReportNumberParserImpl(), new Fmt(), new SimpleAsyncTaskExecutor(),
 				new ClaudeUsageTrackerImpl(new NoOpClaudeUsageEventService()), new ClaudeFailureLogImpl(),
 				new BreakdownSelectionResolverImpl(), new BreakdownThoughtsGateImpl(),
-				new TacticConclusionAssemblerImpl(), sheetChartData, tacticExtraction, resumeState,
+				new TacticConclusionAssemblerImpl(), sheetChartData, tacticExtraction,
+				new ImpressionContributionHelperImpl(new ReportNumberParserImpl(), new Fmt()), resumeState,
 				new SheetTacticCountHelperImpl());
 	}
 
@@ -206,8 +209,9 @@ class ReportGenerationServiceImplTest {
 		GeneratePayload payload = new GeneratePayload(
 				"Campaign brief.", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), null, "", null, null, null);
 		when(claude.isLive()).thenReturn(false);
+		// Mutable: the pipeline writes the inferred funnel stages and the contribution legend into this map.
 		when(placeholders.buildFlatReplacements(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt()))
-				.thenReturn(Map.of());
+				.thenReturn(new LinkedHashMap<>());
 		when(fileNamer.buildFileName(any(), any(), any())).thenReturn("deck-file");
 		when(slides.createDeck(eq("7"), eq("deck-file"), any(), any(), isNull())).thenReturn("http://deck");
 		when(chartHelper.buildCharts(eq("http://deck"), any(), any(), any(), isNull())).thenReturn(List.of());
@@ -230,8 +234,9 @@ class ReportGenerationServiceImplTest {
 				"Campaign brief.", "standard", "1000000", List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), null, "", null, null, null);
 		when(claude.isLive()).thenReturn(false);
 		when(claudeDefaults.emptySheetBatch()).thenReturn(new ClaudeSheetBatch(null, null, Map.of()));
+		// Mutable: the pipeline writes the inferred funnel stages and the contribution legend into this map.
 		when(placeholders.buildFlatReplacements(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt()))
-				.thenReturn(Map.of());
+				.thenReturn(new LinkedHashMap<>());
 		when(fileNamer.buildFileName(any(), any(), any())).thenReturn("sheet-file");
 		when(sheetHelper.buildSheet("9", "sheet-file", Map.of(), "standard", null)).thenReturn("http://sheet");
 		when(sheetHelper.writePacingTables(eq("http://sheet"), eq(payload), any(), eq(Map.of()), isNull()))
@@ -268,8 +273,9 @@ class ReportGenerationServiceImplTest {
 		when(claudeDefaults.emptySheetBatch()).thenReturn(new ClaudeSheetBatch(null, null, Map.of()));
 		when(claudeDefaults.emptyResults())
 				.thenReturn(new ClaudeResults(Map.of(), List.of(), Map.of(), List.of(), null, null, null));
+		// Mutable: the pipeline writes the inferred funnel stages and the contribution legend into this map.
 		when(placeholders.buildFlatReplacements(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt()))
-				.thenReturn(Map.of());
+				.thenReturn(new LinkedHashMap<>());
 		when(fileNamer.buildFileName(any(), any(), any())).thenReturn("sheet-file");
 		when(sheetHelper.buildSheet("21", "sheet-file", Map.of(), "standard", null)).thenReturn("http://sheet");
 		when(sheetHelper.writePacingTables(eq("http://sheet"), eq(payload), any(), eq(Map.of()), isNull()))

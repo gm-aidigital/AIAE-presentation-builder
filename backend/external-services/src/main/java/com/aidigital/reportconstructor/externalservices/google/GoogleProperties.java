@@ -78,9 +78,24 @@ public class GoogleProperties {
 	private Map<Integer, String> resultsSlideObjectIds = Map.of();
 
 	/**
-	 * Template slide object ids per tactic slot (1-based keys, 1..28).
+	 * Template slide object ids per tactic slot (1-based keys, 1..28). The pre-master model: the template
+	 * carries 28 drawn tactic slides and the surplus ones are trimmed. Ignored once
+	 * {@link #tacticMasterSlideObjectId} is set.
 	 */
 	private Map<Integer, String> tacticSlideObjectIds = Map.of();
+
+	/**
+	 * Master object id of the single generic main tactic slide in the template — the master model that
+	 * replaces the 28 drawn slots in {@link #tacticSlideObjectIds}. The slide carries the literal {@code n}
+	 * tactic variable in its tokens ({@code {{tactic n}}}, {@code {{tactic n imps}}}, …); it is duplicated
+	 * once per active tactic, each copy's tokens are written with that tactic's values, the copies take the
+	 * master's position in the deck, and the master itself is deleted at the end.
+	 *
+	 * <p>Blank keeps the old per-slot model (safe no-op), so the legacy template keeps working unchanged.
+	 * Set it — together with the singular chart template ids under {@code external.google.charts} — for a
+	 * template built around one master tactic slide.
+	 */
+	private String tacticMasterSlideObjectId = "";
 
 	/**
 	 * Master breakdown-slide object ids, keyed by the {@code BreakdownType} wire code
@@ -272,6 +287,24 @@ public class GoogleProperties {
 
 	public void setTacticSlideObjectIds(Map<Integer, String> tacticSlideObjectIds) {
 		this.tacticSlideObjectIds = tacticSlideObjectIds == null ? Map.of() : tacticSlideObjectIds;
+	}
+
+	/**
+	 * Returns the master object id of the generic main tactic slide; blank keeps the legacy 28-slot model.
+	 *
+	 * @return the master tactic slide object id, or blank when unconfigured
+	 */
+	public String getTacticMasterSlideObjectId() {
+		return tacticMasterSlideObjectId;
+	}
+
+	/**
+	 * Sets the master tactic slide object id, normalizing null to blank so callers can treat blank as "off".
+	 *
+	 * @param tacticMasterSlideObjectId the master tactic slide object id (may be null)
+	 */
+	public void setTacticMasterSlideObjectId(String tacticMasterSlideObjectId) {
+		this.tacticMasterSlideObjectId = tacticMasterSlideObjectId == null ? "" : tacticMasterSlideObjectId;
 	}
 
 	/**
