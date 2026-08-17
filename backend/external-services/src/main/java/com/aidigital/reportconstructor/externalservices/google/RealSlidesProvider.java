@@ -183,6 +183,17 @@ public class RealSlidesProvider implements SlidesProvider {
 		this.slidesTemplateId = slidesTemplateId;
 		this.eomSlidesTemplateId = eomSlidesTemplateId;
 		this.targetFolderId = targetFolderId == null ? "" : targetFolderId.trim();
+		// Which template this instance will actually clone, and under which slide model. Logged at startup
+		// because the answer is otherwise invisible: a deck built from the wrong template looks like a code
+		// problem, while it is nearly always an environment variable that never reached the process (set but
+		// not restarted, or set on the other environment). One line here settles that in a glance.
+		log.info("[slides] template={} eomTemplate={} tacticModel={} tacticMaster={} breakdownMasters={}",
+				this.slidesTemplateId,
+				this.eomSlidesTemplateId == null || this.eomSlidesTemplateId.isBlank()
+						? "(same as EOC)" : this.eomSlidesTemplateId,
+				masterTacticModel() ? "master" : "legacy-28-slots",
+				masterTacticModel() ? tacticMasterId : "(unset)",
+				breakdownMasterIds.size());
 	}
 
 	/**
