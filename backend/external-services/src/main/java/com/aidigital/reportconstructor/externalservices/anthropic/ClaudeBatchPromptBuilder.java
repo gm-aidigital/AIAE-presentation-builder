@@ -59,6 +59,7 @@ public class ClaudeBatchPromptBuilder {
 	// lands slightly over the number it was given still fits the real budget and skips the compression call.
 	private static final int RESULTS_OVERVIEW_LIMIT = 380;
 	private static final int THOUGHTS_TOTAL_LIMIT = 700;
+	private static final int PERFORMANCE_STORY_LIMIT = 470;
 	private static final int RECOMMENDATION_TITLE_LIMIT = 28;
 	private static final int RECOMMENDATION_TEXT_LIMIT = 125;
 	private static final int F_OPPORTUNITY_LIMIT = 180;
@@ -1092,13 +1093,13 @@ public class ClaudeBatchPromptBuilder {
 	}
 
 	/**
-	 * Builds the per-tactic geo-section prompt: a JSON object of exactly five keyed "Geo analysis" strings — four
+	 * Builds the per-tactic geo-section prompt: a JSON object of exactly four keyed "Geo analysis" strings — three
 	 * insights plus one forward-looking recommendation. Keyless and single-tactic.
 	 *
 	 * @param input the tactic's geo input (name + KPI type + table); empty output when the table is blank
 	 * @param data  parsed campaign data supplying the shared campaign context block
 	 * @param brief free-text campaign brief the copy must stay faithful to
-	 * @param limit character budget of each of the five strings
+	 * @param limit character budget of each of the four strings
 	 * @return the geo-section prompt, or empty when the tactic carries no geo table
 	 */
 	public Optional<String> buildGeoSectionPrompt(
@@ -1111,14 +1112,14 @@ public class ClaudeBatchPromptBuilder {
 				"You are a senior digital media analyst writing 'WHAT THE MAP TELLS US' for the 'Geo analysis' "
 						+ "slide of ONE tactic in " + sectionReportKind() + ".\n\n"
 						+ sectionPrinciples()
-						+ "Return the five strings in THIS order. Strings 1-4 are insights: ONE sentence each, at most "
+						+ "Return the four strings in THIS order. Strings 1-3 are insights: ONE sentence each, at most "
 						+ prompt + " characters, grounded in real markets/geos and the lead KPI; vary angles: "
-						+ "concentration across top geos, efficient (over-indexing) markets, reach with softer "
-						+ "engagement, and audience/market fit. Treat high-KPI low-volume markets as noise. String 5 is "
+						+ "concentration across top geos, efficient (over-indexing) markets, and reach with softer "
+						+ "engagement. Treat high-KPI low-volume markets as noise. String 4 is "
 						+ "DIFFERENT — a FORWARD-LOOKING recommendation (where to open budget, which markets to scale), "
 						+ "at most " + prompt + " characters, still grounded in the table. "
 						+ GEO_TOP_MARKETS_RULE + "\n\n"
-						+ sectionObjectRules(5)
+						+ sectionObjectRules(4)
 						+ campaignContextForConclusions(data, brief) + "\n\n"
 						+ AnthropicMessagesClient.CACHE_BREAKPOINT + "=== TACTIC: " + input.tacticName()
 						+ kpiSuffix(input.kpiType()) + " ===\n"
@@ -1444,9 +1445,12 @@ public class ClaudeBatchPromptBuilder {
 	 * @param input the tactic's assembled conclusions (overview + enabled-section bullets)
 	 * @param brief free-text campaign brief the thoughts must stay faithful to
 	 * @param limit the per-thought character budget
-	 * @return the prompt requesting {@code {"thoughts": [4 strings]}}, or empty when there is nothing to reason over
+	 * @param storyLimit the character budget of the closing story paragraph
+	 * @return the prompt requesting {@code {"thoughts": [4 strings], "story": string}}, or empty when there is
+	 * nothing to reason over
 	 */
-	public Optional<String> buildTacticThoughtsPrompt(TacticThoughtsInput input, String brief, int limit) {
+	public Optional<String> buildTacticThoughtsPrompt(
+			TacticThoughtsInput input, String brief, int limit, int storyLimit) {
 		if (input == null) {
 			return Optional.empty();
 		}
@@ -1459,6 +1463,7 @@ public class ClaudeBatchPromptBuilder {
 				+ "Write EXACTLY 4 short analytical thoughts about THIS tactic's performance, each 1-2 sentences, "
 				+ "past tense, client-friendly, at most " + promptLimit + " characters.\n"
 				+ tacticThoughtsAngles()
+				+ tacticThoughtsStorySpec(storyLimit)
 				+ tacticThoughtsOutputRules()
 				+ "=== CAMPAIGN BRIEF ===\n" + (brief == null ? "" : brief) + "\n\n"
 				+ AnthropicMessagesClient.CACHE_BREAKPOINT + "=== TACTIC CONCLUSIONS ===\n" + dataBlock;
@@ -1478,13 +1483,37 @@ public class ClaudeBatchPromptBuilder {
 	 * @return the rules block, ending in a blank line
 	 */
 	String tacticThoughtsOutputRules() {
-		return "Ground every thought in the conclusions given; never invent a metric. Analyst tone, no bullet "
-				+ "characters, no markdown.\n\n"
-				+ "Return ONLY a JSON object: {\"thoughts\": [\"...\", \"...\", \"...\", \"...\"]} — write NO "
+		return "Ground every thought and the story in the conclusions given; never invent a metric. Analyst tone, "
+				+ "no bullet characters, no markdown.\n\n"
+				+ "Return ONLY a JSON object: {\"thoughts\": [\"...\", \"...\", \"...\", \"...\"], "
+				+ "\"story\": \"...\"} — write NO "
 				+ "preamble, analysis, working-out, reasoning or commentary before or after it; do NOT refuse and "
 				+ "do NOT flag data problems — if the conclusions look unusual, mislabelled, incomplete or "
 				+ "inconsistent, still write the best analyst copy you can from whatever is given, and never "
 				+ "replace a thought with a complaint about the data.\n\n";
+	}
+
+	/**
+	 * The spec for the closing {@code story} field — the tactic's fifth slot, which is a short narrative
+	 * rather than a fifth analytical bullet.
+	 *
+	 * <p>It is asked for in the same call as the four thoughts, and deliberately after them in the
+	 * schema, because it is a synthesis OF them: the model has already committed to a headline result, a
+	 * what-worked, a watch-out and an opportunity by the time it writes the story, so the story can tie
+	 * those four to the brief's original intent instead of re-deriving its own reading of the tactic and
+	 * contradicting the bullets sitting directly above it on the slide.
+	 *
+	 * @param storyLimit the story's character budget
+	 * @return the story spec, ending in a blank line
+	 */
+	String tacticThoughtsStorySpec(int storyLimit) {
+		int promptLimit = Math.max(1, (int) (storyLimit * COMPRESSION_PROMPT_BUFFER_RATIO));
+		return "\nThen write ONE closing narrative — \"story\" — of at most " + promptLimit + " characters: how "
+				+ "WE see this tactic, start to finish. Open from what the brief asked this tactic to do, carry it "
+				+ "through what the overview and the four thoughts above establish actually happened, and close on "
+				+ "where that leaves the tactic. It is prose that a client reads aloud, not a summary or a "
+				+ "restatement of the four thoughts: it must add the through-line the bullets leave implicit, and "
+				+ "it must not contradict any of them.\n\n";
 	}
 
 	/**
@@ -1495,8 +1524,9 @@ public class ClaudeBatchPromptBuilder {
 	 * @return the role paragraph, ending in a blank line
 	 */
 	String tacticThoughtsRole() {
-		return "You are a senior digital media analyst writing the four 'Thoughts on tactic performance' "
-				+ "bullets for ONE tactic's slide in an end-of-campaign report. You are writing on behalf of the team "
+		return "You are a senior digital media analyst writing the 'Thoughts on tactic performance' slide for ONE "
+				+ "tactic in an end-of-campaign report — four analytical bullets plus the closing narrative that "
+				+ "ties them together. You are writing on behalf of the team "
 				+ "that ran this campaign, so the tone is confident and complimentary of our own delivery.\n\n";
 	}
 
@@ -1630,6 +1660,7 @@ public class ClaudeBatchPromptBuilder {
 						+ "{\n"
 						+ resultsOverviewsSpec(groupNums, groupRanges, overviewPrompt)
 						+ thoughtsOnPerformanceSpec(thoughtsPrompt)
+						+ performanceStorySpec(bufferedLimit(PERFORMANCE_STORY_LIMIT))
 						+ "  \"optimization_recommendations\": array, // EXACTLY 4 objects {\"title\": ≤"
 						+ recTitlePrompt
 						+ " chars Title Case imperative, \"text\": ≤" + recTextPrompt
@@ -1740,6 +1771,26 @@ public class ClaudeBatchPromptBuilder {
 				+ " chars total. (1) best tactic/channel + WHY; (2) why the "
 				+ "campaign succeeded — name the mechanism; (3) one creative/format insight; (4) an efficiency "
 				+ "or reach insight.\n";
+	}
+
+	/**
+	 * The {@code performance_story} field spec: the campaign's closing narrative, which fills the fifth
+	 * slot of the "Thoughts on the performance" slide.
+	 *
+	 * <p>It is a separate JSON key rather than a fifth pipe-joined paragraph inside
+	 * {@code thoughts_on_performance} because it is a different kind of copy under a different budget —
+	 * folding it into that string would put it under the four paragraphs' shared total and let the model
+	 * spend the story's budget on the analytical paragraphs (or the reverse), and the parser splits that
+	 * string on a fixed separator count.
+	 *
+	 * @param storyLimit the buffered character budget of the story
+	 * @return the field spec line, newline-terminated
+	 */
+	String performanceStorySpec(int storyLimit) {
+		return "  \"performance_story\": string, // ≤" + storyLimit + " chars, ONE narrative: how WE see this "
+				+ "campaign start to finish. Open from what the brief set out to achieve, carry it through what "
+				+ "the results above show actually happened, close on where that leaves the client. Prose a "
+				+ "client reads aloud — not a summary of the four thoughts, and never contradicting them.\n";
 	}
 
 	/**
@@ -2109,12 +2160,19 @@ public class ClaudeBatchPromptBuilder {
 	/**
 	 * The aligned {@code thoughts_on_performance} schema line.
 	 *
+	 * <p>The draft's last thought is the campaign story, which is longer than the analytical paragraphs
+	 * before it and is called out as such: told only "≤220 chars each", the alignment pass rewrites the
+	 * story down to a fifth analytical bullet and the slide loses the narrative the previous batch wrote.
+	 *
 	 * @param thoughtCount how many thought strings the draft carried, which the reply must match exactly
+	 * @param storyLimit   the character budget of the closing story, the last of those strings
 	 * @return the schema line, newline-terminated
 	 */
-	String alignThoughtsSchema(int thoughtCount) {
+	String alignThoughtsSchema(int thoughtCount, int storyLimit) {
 		return "  \"thoughts_on_performance\": array, // EXACTLY " + thoughtCount
-				+ " strings (≤220 chars each), same order as the draft. Together they must read as the campaign "
+				+ " strings, same order as the draft: the analytical paragraphs at ≤220 chars each, then the "
+				+ "LAST one is the campaign story — keep it a narrative of ≤" + storyLimit + " chars, do not "
+				+ "shorten it into another bullet. Together they must read as the campaign "
 				+ "headline expanded — no contradictions with the overviews above.\n";
 	}
 
@@ -2222,7 +2280,7 @@ public class ClaudeBatchPromptBuilder {
 			}
 		}
 		if (thoughtCount > 0) {
-			schema.add(alignThoughtsSchema(thoughtCount));
+			schema.add(alignThoughtsSchema(thoughtCount, bufferedLimit(PERFORMANCE_STORY_LIMIT)));
 		}
 
 		String fOpportunity = results == null ? null : results.fOpportunity();

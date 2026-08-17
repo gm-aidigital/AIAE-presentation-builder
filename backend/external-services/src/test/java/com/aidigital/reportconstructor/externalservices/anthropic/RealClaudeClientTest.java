@@ -384,7 +384,7 @@ class RealClaudeClientTest {
 	}
 
 	@Test
-	void shouldParseFourThoughtsForOneTacticTest() throws Exception {
+	void shouldParseFourThoughtsAndTheClosingStoryForOneTacticTest() throws Exception {
 		// Given: a real prompt builder/normalizer, identity compression, and one tactic's assembled conclusions
 		ClaudeResponseNormalizer normalizer = new ClaudeResponseNormalizer();
 		ClaudeBatchPromptBuilder promptBuilder = new ClaudeBatchPromptBuilder(normalizer, new Fmt());
@@ -399,16 +399,19 @@ class RealClaudeClientTest {
 				2, "CTV", "CTV delivered 1M impressions at 98% VCR.",
 				null, null, List.of("West coast concentrated delivery."), null, null);
 
-		String expectedPrompt = promptBuilder.buildTacticThoughtsPrompt(input, brief, 220).orElseThrow();
+		String expectedPrompt = promptBuilder.buildTacticThoughtsPrompt(input, brief, 220, 470).orElseThrow();
 		JsonNode response = json.readTree("""
-				{"thoughts": ["Headline result.", "What worked best.", "A watch-out.", "The opportunity."]}
+				{"thoughts": ["Headline result.", "What worked best.", "A watch-out.", "The opportunity."],
+				 "story": "CTV was asked to build reach and it did, start to finish."}
 				""");
 		List<ClaudeCompressionField> expectedFields = List.of(
 				new ClaudeCompressionField("2_thought_0", "Headline result.", 220),
 				new ClaudeCompressionField("2_thought_1", "What worked best.", 220),
 				new ClaudeCompressionField("2_thought_2", "A watch-out.", 220),
-				new ClaudeCompressionField("2_thought_3", "The opportunity.", 220));
-		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(1400), eq(90), eq("BatchTacticThoughts"), eq(true)))
+				new ClaudeCompressionField("2_thought_3", "The opportunity.", 220),
+				new ClaudeCompressionField(
+						"2_story", "CTV was asked to build reach and it did, start to finish.", 470));
+		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(1800), eq(90), eq("BatchTacticThoughts"), eq(true)))
 				.thenReturn(response);
 		when(compressionService.compress(eq(expectedFields), eq("BatchD-TacticThoughts")))
 				.thenAnswer(invocation -> {
@@ -423,11 +426,12 @@ class RealClaudeClientTest {
 		// When:
 		TacticThoughts thoughts = client.tacticThoughts(input, brief);
 
-		// Then: the tactic's four thoughts, in order
+		// Then: the tactic's four thoughts in order, with the story last as slot 5
 		assertThat(thoughts).isNotNull();
 		assertThat(thoughts.tacticNum()).isEqualTo(2);
 		assertThat(thoughts.thoughts()).containsExactly(
-				"Headline result.", "What worked best.", "A watch-out.", "The opportunity.");
+				"Headline result.", "What worked best.", "A watch-out.", "The opportunity.",
+				"CTV was asked to build reach and it did, start to finish.");
 	}
 
 	@Test
@@ -446,17 +450,20 @@ class RealClaudeClientTest {
 		TacticThoughtsInput input = new TacticThoughtsInput(
 				4, "Display", "Display delivered 2M impressions at a 0.12% CTR.",
 				List.of("Hulu led delivery."), null, null, null, null);
-		String expectedPrompt = promptBuilder.buildTacticThoughtsPrompt(input, brief, 220).orElseThrow();
-		JsonNode blank = json.readTree("{\"thoughts\": [\"\", \"\", \"\", \"\"]}");
+		String expectedPrompt = promptBuilder.buildTacticThoughtsPrompt(input, brief, 220, 470).orElseThrow();
+		JsonNode blank = json.readTree("{\"thoughts\": [\"\", \"\", \"\", \"\"], \"story\": \"\"}");
 		JsonNode complete = json.readTree("""
-				{"thoughts": ["Headline result.", "What worked best.", "A watch-out.", "The opportunity."]}
+				{"thoughts": ["Headline result.", "What worked best.", "A watch-out.", "The opportunity."],
+				 "story": "Display was asked to hold frequency and it held it."}
 				""");
 		List<ClaudeCompressionField> retryFields = List.of(
 				new ClaudeCompressionField("4_thought_0", "Headline result.", 220),
 				new ClaudeCompressionField("4_thought_1", "What worked best.", 220),
 				new ClaudeCompressionField("4_thought_2", "A watch-out.", 220),
-				new ClaudeCompressionField("4_thought_3", "The opportunity.", 220));
-		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(1400), eq(90), eq("BatchTacticThoughts"), eq(true)))
+				new ClaudeCompressionField("4_thought_3", "The opportunity.", 220),
+				new ClaudeCompressionField(
+						"4_story", "Display was asked to hold frequency and it held it.", 470));
+		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(1800), eq(90), eq("BatchTacticThoughts"), eq(true)))
 				.thenReturn(blank, complete);
 		when(compressionService.compress(eq(retryFields), eq("BatchD-TacticThoughts")))
 				.thenAnswer(invocation -> {
@@ -471,12 +478,14 @@ class RealClaudeClientTest {
 		// When:
 		TacticThoughts thoughts = client.tacticThoughts(input, brief);
 
-		// Then: the blank reply was rejected, the retry's four thoughts were kept, and the reason was recorded
+		// Then: the blank reply was rejected, the retry's four thoughts and story were kept, and the reason
+		// was recorded
 		assertThat(thoughts).isNotNull();
 		assertThat(thoughts.thoughts()).containsExactly(
-				"Headline result.", "What worked best.", "A watch-out.", "The opportunity.");
+				"Headline result.", "What worked best.", "A watch-out.", "The opportunity.",
+				"Display was asked to hold frequency and it held it.");
 		verify(messagesClient, times(2))
-				.callJsonObject(eq(expectedPrompt), eq(1400), eq(90), eq("BatchTacticThoughts"), eq(true));
+				.callJsonObject(eq(expectedPrompt), eq(1800), eq(90), eq("BatchTacticThoughts"), eq(true));
 		assertThat(failures.snapshot()).isNotEmpty();
 		assertThat(failures.snapshot().getFirst()).contains("tactic 4", "no non-blank thought");
 		failureLog.clear();
@@ -497,14 +506,15 @@ class RealClaudeClientTest {
 		TacticThoughtsInput input = new TacticThoughtsInput(
 				7, "Audio", "Audio delivered 500k impressions at 95% ACR.",
 				null, null, null, null, List.of("Mobile carried delivery."));
-		String expectedPrompt = promptBuilder.buildTacticThoughtsPrompt(input, brief, 220).orElseThrow();
+		String expectedPrompt = promptBuilder.buildTacticThoughtsPrompt(input, brief, 220, 470).orElseThrow();
 		JsonNode partial = json.readTree("{\"thoughts\": [\"Headline result.\", \"A watch-out.\"]}");
 		List<ClaudeCompressionField> expectedFields = List.of(
 				new ClaudeCompressionField("7_thought_0", "Headline result.", 220),
 				new ClaudeCompressionField("7_thought_1", "A watch-out.", 220),
 				new ClaudeCompressionField("7_thought_2", "", 220),
-				new ClaudeCompressionField("7_thought_3", "", 220));
-		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(1400), eq(90), eq("BatchTacticThoughts"), eq(true)))
+				new ClaudeCompressionField("7_thought_3", "", 220),
+				new ClaudeCompressionField("7_story", "", 470));
+		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(1800), eq(90), eq("BatchTacticThoughts"), eq(true)))
 				.thenReturn(partial);
 		when(compressionService.compress(eq(expectedFields), eq("BatchD-TacticThoughts")))
 				.thenAnswer(invocation -> {
@@ -519,11 +529,12 @@ class RealClaudeClientTest {
 		// When:
 		TacticThoughts thoughts = client.tacticThoughts(input, brief);
 
-		// Then: the two filled thoughts survive, the missing two stay null, and the call was retried once
+		// Then: the two filled thoughts survive, the missing two and the absent story stay null, and the call
+		// was retried once
 		assertThat(thoughts).isNotNull();
-		assertThat(thoughts.thoughts()).containsExactly("Headline result.", "A watch-out.", null, null);
+		assertThat(thoughts.thoughts()).containsExactly("Headline result.", "A watch-out.", null, null, null);
 		verify(messagesClient, times(2))
-				.callJsonObject(eq(expectedPrompt), eq(1400), eq(90), eq("BatchTacticThoughts"), eq(true));
+				.callJsonObject(eq(expectedPrompt), eq(1800), eq(90), eq("BatchTacticThoughts"), eq(true));
 	}
 
 	@Test
@@ -557,6 +568,7 @@ class RealClaudeClientTest {
 				{
 				  "results_overviews": {"1": "Overall the campaign delivered strong results."},
 				  "thoughts_on_performance": "T1. | T2. | T3. | T4.",
+				  "performance_story": "The brief asked for reach and the campaign delivered it.",
 				  "optimization_recommendations": [
 				    {"title": "Scale CTV", "text": "Shift budget to CTV evenings to extend reach."},
 				    {"title": "Refresh Creative", "text": "Rotate display creative monthly to fight fatigue."},
@@ -571,6 +583,8 @@ class RealClaudeClientTest {
 				new ClaudeCompressionField("thought_1", "T2.", 220),
 				new ClaudeCompressionField("thought_2", "T3.", 220),
 				new ClaudeCompressionField("thought_3", "T4.", 220),
+				new ClaudeCompressionField(
+						"performance_story", "The brief asked for reach and the campaign delivered it.", 470),
 				new ClaudeCompressionField("rec_title_0", "Scale CTV", 30),
 				new ClaudeCompressionField("rec_text_0", "Shift budget to CTV evenings to extend reach.", 130),
 				new ClaudeCompressionField("rec_title_1", "Refresh Creative", 30),
@@ -598,7 +612,8 @@ class RealClaudeClientTest {
 		// Then: campaign copy is filled and tacticOverviews stays empty (those come from Step 2)
 		assertThat(results.resultsOverviews())
 				.containsEntry(1, "Overall the campaign delivered strong results.");
-		assertThat(results.thoughtsOnPerformance()).containsExactly("T1.", "T2.", "T3.", "T4.");
+		assertThat(results.thoughtsOnPerformance()).containsExactly(
+				"T1.", "T2.", "T3.", "T4.", "The brief asked for reach and the campaign delivered it.");
 		assertThat(results.recommendations())
 				.extracting(Recommendation::title)
 				.containsExactly("Scale CTV", "Refresh Creative", "Expand Audience", "Add Measurement");
@@ -670,7 +685,8 @@ class RealClaudeClientTest {
 		// Then: the second send's copy ships, and the unusable first reply never reached the compression call
 		assertThat(results.resultsOverviews())
 				.containsEntry(1, "Overall the campaign delivered strong results.");
-		assertThat(results.thoughtsOnPerformance()).containsExactly("T1.", "T2.", "T3.", "T4.");
+		// The reply carried no performance_story, so slot 5 stays null rather than borrowing a thought
+		assertThat(results.thoughtsOnPerformance()).containsExactly("T1.", "T2.", "T3.", "T4.", null);
 		verify(messagesClient, times(2))
 				.callJsonObject(eq(expectedPrompt), eq(2580), eq(60), eq("BatchCampaign"), eq(true));
 		verify(compressionService, times(1)).compress(eq(expectedFields), eq("BatchD-Campaign"));

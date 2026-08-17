@@ -133,69 +133,85 @@ public class AudienceBreakdownHelperImpl implements AudienceBreakdownHelper {
 		values.put("{{age_" + tacticNum + "_gr}}", orDash(table.ageDistribution()));
 		values.put("{{gender_" + tacticNum + "}}", orDash(table.genderDemographics()));
 
-		AudienceSegmentRow topSegment = table.segmentRows().isEmpty() ? null : table.segmentRows().get(0);
-		values.put("{{aud_" + tacticNum + "_top_segment}}", topSegment == null ? DASH : orDash(topSegment.segment()));
-		values.put("{{aud_" + tacticNum + "_top_segment_index}}",
-				topSegment == null ? DASH : orDash(topSegment.affinityIndex()));
-
+		// The top segment is not emitted on its own: the slide has no {{aud_N_top_segment}} tile, and the
+		// same row is already written below as segment row 1.
 		for (int i = 1; i <= SEGMENT_ROWS; i++) {
 			AudienceSegmentRow row = i <= table.segmentRows().size() ? table.segmentRows().get(i - 1) : null;
 			values.put("{{aud_" + tacticNum + "_" + i + "}}", row == null ? DASH : orDash(row.segment()));
 			values.put("{{aud_in_" + tacticNum + "_" + i + "}}", row == null ? DASH : orDash(row.affinityIndex()));
 		}
 
-		// Reach, frequency and the primary engagement rate already resolved for the tactic's main slide
-		// (as {{tactic N reach}}/{{tactic N f}}/{{tactic N KPI}}); the Audience Analysis slide's stat
-		// tiles show the exact same figures under different names rather than a second, independently
-		// sourced number.
-		values.put("{{aud_" + tacticNum + "_reach}}", fromDeck(flatReplacements, "{{tactic " + tacticNum + " reach}}"));
-		values.put("{{aud_" + tacticNum + "_freq}}", fromDeck(flatReplacements, "{{tactic " + tacticNum + " f}}"));
-		values.put("{{aud_" + tacticNum + "_engaged}}", fromDeck(flatReplacements, "{{tactic " + tacticNum + " KPI}}"));
-
-		putAgeBucketShares(values, tacticNum, table.ageRows());
+		// Reach, frequency and the primary engagement rate are deliberately not re-issued under
+		// {{aud_N_reach}}/{{aud_N_freq}}/{{aud_N_engaged}}: the Audience Analysis slide carries no such
+		// tiles, and the figures already ship on the tactic's own slide as
+		// {{tactic N reach}}/{{tactic N f}}/{{tactic N KPI}}.
+		putAgeBucketShares(values, tacticNum, table.ageRows(),
+				tacticImpressions(flatReplacements, tacticNum));
 	}
 
 	/**
-	 * Reads an already-resolved deck token's value for reuse under a different Audience Analysis
-	 * token name.
+	 * Reads the tactic's already-resolved total impressions out of the deck's placeholder map, the
+	 * denominator every {@code {{age_N_<bucket>}}} share is computed against. The value arrives
+	 * group-formatted ({@code "1,234,567"}), so it is parsed the same way a sheet cell is.
 	 *
 	 * @param flatReplacements the deck's resolved placeholder map
-	 * @param sourceToken       the already-resolved token to read (e.g. {@code "{{tactic 1 reach}}"})
-	 * @return the source token's value, or {@link #DASH} when it never resolved or is blank
+	 * @param tacticNum        the tactic whose total is wanted
+	 * @return the tactic's total impressions, or {@code 0} when the token never resolved to a number
 	 */
-	String fromDeck(Map<String, String> flatReplacements, String sourceToken) {
-		String value = flatReplacements.get(sourceToken);
-		return value == null || value.isBlank() ? DASH : value;
+	double tacticImpressions(Map<String, String> flatReplacements, int tacticNum) {
+		if (flatReplacements == null) {
+			return 0;
+		}
+		return parseImpressions(flatReplacements.get("{{tactic " + tacticNum + " imps}}"));
 	}
 
 	/** Canonical age-bucket labels, in slide order, matched against the sheet's pre-filled age column. */
 	private static final List<String> AGE_BUCKETS = List.of("18-24", "25-34", "35-44", "45-54", "55-64", "65+");
 
-	/** Slide token suffix for each entry in {@link #AGE_BUCKETS}, in the same order. */
+	/**
+	 * Slide token suffix for each entry in {@link #AGE_BUCKETS}, in the same order. Each suffix is the
+	 * bucket's opening age alone ({@code 18}, {@code 25}, …), which is what the deck template's
+	 * {@code {{age_N_18}}} … {@code {{age_N_65}}} slots are named — the full range never appears in a
+	 * token name because the slide already prints the range as its own row label.
+	 */
 	private static final List<String> AGE_BUCKET_TOKEN_SUFFIXES =
-			List.of("18_24", "25_34", "35_44", "45_54", "55_64", "65plus");
+			List.of("18", "25", "35", "45", "55", "65");
 
 	/**
-	 * Computes each canonical age bucket's share of the tactic's total tracked impressions from the
-	 * sheet's hand-entered age-distribution rows, and writes the six {@code {{age_N_<bucket>}}} tokens.
-	 * The age rows never appear on the slide as their own table (the master renders them as an
-	 * embedded chart instead), but the same impressions numbers are the only source for these new
-	 * per-bucket percentages.
+	 * Computes each canonical age bucket's share of the tactic's impressions from the sheet's
+	 * hand-entered age-distribution rows, and writes the six {@code {{age_N_<bucket>}}} tokens. The age
+	 * rows never appear on the slide as their own table (the master renders them as an embedded chart
+	 * instead), but the same impressions numbers are the only source for these per-bucket percentages.
+	 *
+	 * <p>The denominator is the tactic's own total impressions ({@code {{tactic N imps}}}), not the sum
+	 * of the age rows: the buckets are what the platform could resolve an age for, so summing them makes
+	 * every bucket a share of tracked-only traffic and the six percentages always add to 100%, which
+	 * overstates each bucket by however much of the tactic went unattributed. Against the tactic total
+	 * the six shares add to the tactic's age-coverage instead, which is the honest figure. When the
+	 * tactic total is missing or unparseable the row sum is used as a fallback — a slightly overstated
+	 * percentage still beats dashing the whole distribution.
 	 *
 	 * @param values    the accumulating token → value map
 	 * @param tacticNum the tactic whose tokens are being written
 	 * @param ageRows   the tactic's filled age-distribution rows
+	 * @param tacticImps the tactic's total impressions, or {@code 0} when it did not resolve
 	 */
-	void putAgeBucketShares(Map<String, String> values, int tacticNum, List<AudienceAgeRow> ageRows) {
+	void putAgeBucketShares(
+			Map<String, String> values, int tacticNum, List<AudienceAgeRow> ageRows, double tacticImps) {
 		Map<String, Double> impsByBucket = new LinkedHashMap<>();
-		double total = 0;
+		double rowSum = 0;
 		for (AudienceAgeRow row : ageRows) {
 			double imps = parseImpressions(row.impressions());
-			total += imps;
+			rowSum += imps;
 			String bucket = normalizeAgeBucket(row.ageGroup());
 			if (bucket != null) {
 				impsByBucket.merge(bucket, imps, Double::sum);
 			}
+		}
+		double total = tacticImps > 0 ? tacticImps : rowSum;
+		if (tacticImps <= 0 && rowSum > 0) {
+			log.info("[audience] tactic {} has no usable {{{{tactic {} imps}}}} — age shares fall back to the "
+					+ "age rows' own total", tacticNum, tacticNum);
 		}
 		for (int i = 0; i < AGE_BUCKETS.size(); i++) {
 			Double imps = impsByBucket.get(AGE_BUCKETS.get(i));

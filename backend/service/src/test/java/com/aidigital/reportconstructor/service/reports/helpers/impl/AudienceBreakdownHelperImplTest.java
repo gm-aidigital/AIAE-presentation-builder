@@ -227,8 +227,8 @@ class AudienceBreakdownHelperImplTest {
 	}
 
 	@Test
-	void shouldDeriveTopSegmentAndIndexFromTheFirstSegmentRowTest() {
-		// Given: two filled segment rows, in sheet order
+	void shouldNotEmitTheTilesTheAudienceSlideDoesNotCarryTest() {
+		// Given: a filled audience block and a deck that already resolved this tactic's reach/frequency/KPI
 		List<BreakdownSelection> selections = List.of(new BreakdownSelection(1, List.of("aud")));
 		when(breakdownResolver.resolve(selections)).thenReturn(Map.of(1, EnumSet.of(BreakdownType.AUDIENCE)));
 		AudienceTable table = new AudienceTable("25-34", "58% F / 42% M",
@@ -239,54 +239,49 @@ class AudienceBreakdownHelperImplTest {
 
 		// When:
 		Map<String, String> values = helper.readAudienceInputs(
-				"sheet-url", selections, Map.of("{{tactic 1}}", "CTV"), "token").dataValues();
-
-		// Then: the top segment tile mirrors the first segment row, the same row {{aud_1_1}} uses
-		assertThat(values.get("{{aud_1_top_segment}}")).isEqualTo("Auto Intenders");
-		assertThat(values.get("{{aud_1_top_segment_index}}")).isEqualTo("142");
-	}
-
-	@Test
-	void shouldDashTopSegmentWhenNoSegmentRowIsFilledTest() {
-		// Given: an audience block with no filled segment rows
-		List<BreakdownSelection> selections = List.of(new BreakdownSelection(1, List.of("aud")));
-		when(breakdownResolver.resolve(selections)).thenReturn(Map.of(1, EnumSet.of(BreakdownType.AUDIENCE)));
-		AudienceTable table = new AudienceTable("25-34", "", List.of(), List.of());
-		when(sheetHelper.readAudienceTables("sheet-url", Set.of(1), "token")).thenReturn(Map.of(1, table));
-
-		// When:
-		Map<String, String> values = helper.readAudienceInputs(
-				"sheet-url", selections, Map.of("{{tactic 1}}", "CTV"), "token").dataValues();
-
-		// Then:
-		assertThat(values.get("{{aud_1_top_segment}}")).isEqualTo("—");
-		assertThat(values.get("{{aud_1_top_segment_index}}")).isEqualTo("—");
-	}
-
-	@Test
-	void shouldReuseTheTacticsAlreadyResolvedReachFrequencyAndPrimaryKpiTest() {
-		// Given: the deck already resolved reach/frequency/KPI for this tactic's main slide
-		List<BreakdownSelection> selections = List.of(new BreakdownSelection(1, List.of("aud")));
-		when(breakdownResolver.resolve(selections)).thenReturn(Map.of(1, EnumSet.of(BreakdownType.AUDIENCE)));
-		when(sheetHelper.readAudienceTables("sheet-url", Set.of(1), "token"))
-				.thenReturn(Map.of(1, AudienceTable.EMPTY));
-
-		// When:
-		Map<String, String> values = helper.readAudienceInputs(
 				"sheet-url", selections,
 				Map.of("{{tactic 1}}", "CTV", "{{tactic 1 reach}}", "9,028", "{{tactic 1 f}}", "11",
 						"{{tactic 1 KPI}}", "0.29%"),
 				"token").dataValues();
 
-		// Then: the Audience Analysis stat tiles mirror the main slide's figures exactly
-		assertThat(values.get("{{aud_1_reach}}")).isEqualTo("9,028");
-		assertThat(values.get("{{aud_1_freq}}")).isEqualTo("11");
-		assertThat(values.get("{{aud_1_engaged}}")).isEqualTo("0.29%");
+		// Then: the slide has no top-segment tile and no reach/frequency/engagement tiles, so none is
+		// written — the first segment row still ships as {{aud_1_1}} and the figures stay on the tactic's
+		// own slide
+		assertThat(values).doesNotContainKeys(
+				"{{aud_1_top_segment}}", "{{aud_1_top_segment_index}}",
+				"{{aud_1_reach}}", "{{aud_1_freq}}", "{{aud_1_engaged}}");
+		assertThat(values.get("{{aud_1_1}}")).isEqualTo("Auto Intenders");
+		assertThat(values.get("{{aud_in_1_1}}")).isEqualTo("142");
 	}
 
 	@Test
-	void shouldComputeAgeBucketSharesFromTheFilledAgeRowsTest() {
-		// Given: three filled age rows, one bucket repeated across two rows
+	void shouldComputeAgeBucketSharesAgainstTheTacticImpressionsTotalTest() {
+		// Given: three filled age rows summing to 1,000 against a tactic that ran 2,000 impressions
+		List<BreakdownSelection> selections = List.of(new BreakdownSelection(1, List.of("aud")));
+		when(breakdownResolver.resolve(selections)).thenReturn(Map.of(1, EnumSet.of(BreakdownType.AUDIENCE)));
+		AudienceTable table = new AudienceTable("25-34", "",
+				List.of(new AudienceAgeRow("18-24", "200"),
+						new AudienceAgeRow("25–34", "500"),
+						new AudienceAgeRow("65+", "300")),
+				List.of());
+		when(sheetHelper.readAudienceTables("sheet-url", Set.of(1), "token")).thenReturn(Map.of(1, table));
+
+		// When:
+		Map<String, String> values = helper.readAudienceInputs(
+				"sheet-url", selections,
+				Map.of("{{tactic 1}}", "CTV", "{{tactic 1 imps}}", "2,000"), "token").dataValues();
+
+		// Then: each bucket is a share of the tactic's 2,000, so the three filled buckets add to 50%
+		// rather than to 100%, and the en-dash-typed "25–34" row still lands on its bucket
+		assertThat(values.get("{{age_1_18}}")).isEqualTo("10%");
+		assertThat(values.get("{{age_1_25}}")).isEqualTo("25%");
+		assertThat(values.get("{{age_1_35}}")).isEqualTo("—");
+		assertThat(values.get("{{age_1_65}}")).isEqualTo("15%");
+	}
+
+	@Test
+	void shouldFallBackToTheAgeRowsOwnTotalWhenTheTacticImpressionsAreMissingTest() {
+		// Given: the same age rows, but a placeholder map carrying no {{tactic 1 imps}}
 		List<BreakdownSelection> selections = List.of(new BreakdownSelection(1, List.of("aud")));
 		when(breakdownResolver.resolve(selections)).thenReturn(Map.of(1, EnumSet.of(BreakdownType.AUDIENCE)));
 		AudienceTable table = new AudienceTable("25-34", "",
@@ -300,10 +295,9 @@ class AudienceBreakdownHelperImplTest {
 		Map<String, String> values = helper.readAudienceInputs(
 				"sheet-url", selections, Map.of("{{tactic 1}}", "CTV"), "token").dataValues();
 
-		// Then: each bucket's share is over the 1,000 total, including the en-dash-typed "25–34" row
-		assertThat(values.get("{{age_1_18_24}}")).isEqualTo("20%");
-		assertThat(values.get("{{age_1_25_34}}")).isEqualTo("50%");
-		assertThat(values.get("{{age_1_35_44}}")).isEqualTo("—");
-		assertThat(values.get("{{age_1_65plus}}")).isEqualTo("30%");
+		// Then: the shares are computed over the rows' own 1,000 total instead of dashing
+		assertThat(values.get("{{age_1_18}}")).isEqualTo("20%");
+		assertThat(values.get("{{age_1_25}}")).isEqualTo("50%");
+		assertThat(values.get("{{age_1_65}}")).isEqualTo("30%");
 	}
 }

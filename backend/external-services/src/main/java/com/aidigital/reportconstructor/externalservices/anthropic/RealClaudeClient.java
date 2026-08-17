@@ -67,6 +67,19 @@ public class RealClaudeClient implements ClaudeClient {
 	private static final int STRATEGIC_OVERVIEW_LIMIT = 240;
 	private static final int RESULTS_OVERVIEW_LIMIT = 380;
 	private static final int THOUGHT_LIMIT = 220;
+	/**
+	 * Character budget of the closing story that fills the fifth thoughts slot, campaign-level
+	 * ({@code {{thoughts on the performance 5}}}) and per-tactic
+	 * ({@code {{thoughts on tactic n performance 5}}}) alike. Roughly twice a thought's budget because it is
+	 * a narrative paragraph rather than one analytical observation.
+	 */
+	private static final int STORY_LIMIT = 470;
+
+	/**
+	 * Position of the story within a thoughts list, campaign-level and per-tactic alike: after the four
+	 * analytical paragraphs, which makes it slide slot 5.
+	 */
+	private static final int STORY_SLOT_INDEX = 4;
 	private static final int TACTIC_OVERVIEW_LIMIT = 210;
 	private static final int RECOMMENDATION_TITLE_LIMIT = 30;
 	private static final int RECOMMENDATION_TEXT_LIMIT = 130;
@@ -127,10 +140,12 @@ public class RealClaudeClient implements ClaudeClient {
 	private static final int GEO_INSIGHT_LIMIT = 140;
 
 	/**
-	 * Strings per tactic on the "Geo analysis" slide: four "what the map tells us" insight bullets plus one
-	 * forward-looking recommendation, in that order.
+	 * Strings per tactic on the "Geo analysis" slide: three "what the map tells us" insight bullets plus one
+	 * forward-looking recommendation, in that order. Must match {@code GeoBreakdownHelperImpl}'s own bullet
+	 * count — the helper reads this reply positionally, so a fourth insight would be written, paid for, and
+	 * then dropped for want of a slide slot.
 	 */
-	private static final int GEO_BULLET_COUNT = 5;
+	private static final int GEO_BULLET_COUNT = 4;
 
 	/**
 	 * Character budget of the "Audience analysis" slide's key takeaway ({@code {{aud_N_takeaway}}}), the
@@ -201,18 +216,28 @@ public class RealClaudeClient implements ClaudeClient {
 	private static final int CONCLUSIONS_TOKENS_PER_TACTIC = 300;
 	private static final int CONCLUSIONS_MAX_TOKENS_CAP = 8000;
 
-	/** The per-tactic "thoughts on tactic performance" slide holds exactly four thought strings. */
+	/** The per-tactic "thoughts on tactic performance" slide holds exactly four analytical thought strings. */
 	private static final int TACTIC_THOUGHTS_COUNT = 4;
+
+	/**
+	 * Slots the slide actually carries: the four analytical thoughts plus the closing story, which the same
+	 * call writes into its own {@code story} JSON key and which ships as the fifth entry of the returned
+	 * list ({@code {{thoughts on tactic n performance 5}}}).
+	 */
+	private static final int TACTIC_THOUGHTS_SLOTS = TACTIC_THOUGHTS_COUNT + 1;
+
+	/** Compression key of the per-tactic story, alongside the four {@code <n>_thought_<i>} keys. */
+	private static final String STORY_FIELD_KEY = "_story";
 	/** Short tag identifying the Step-3 per-tactic thoughts call in logs and on the report's failure card. */
 	private static final String THOUGHTS_LABEL = "BatchTacticThoughts";
 	/**
-	 * Output budget for one tactic's thoughts call: four ~220-char thoughts plus JSON overhead need roughly a
-	 * quarter of this, and the headroom is deliberate. A reply that opens with a sentence of working-out anyway
-	 * — which {@link ClaudeBatchPromptBuilder#tacticThoughtsOutputRules} forbids but cannot guarantee — still
-	 * reaches its fourth thought instead of running out at the third. Output tokens are billed as generated, so
-	 * the higher ceiling costs nothing on a reply that behaves.
+	 * Output budget for one tactic's thoughts call: four ~220-char thoughts, the ~470-char story and the JSON
+	 * overhead need roughly a quarter of this, and the headroom is deliberate. A reply that opens with a
+	 * sentence of working-out anyway — which {@link ClaudeBatchPromptBuilder#tacticThoughtsOutputRules} forbids
+	 * but cannot guarantee — still reaches the story instead of running out at the third thought. Output tokens
+	 * are billed as generated, so the higher ceiling costs nothing on a reply that behaves.
 	 */
-	private static final int TACTIC_THOUGHTS_MAX_TOKENS = 1400;
+	private static final int TACTIC_THOUGHTS_MAX_TOKENS = 1800;
 
 	/**
 	 * Output budget for the Step-4 campaign-results call. Its output is largely fixed (grouped overviews, four
@@ -236,6 +261,7 @@ public class RealClaudeClient implements ClaudeClient {
 	private static final int ALIGN_TOKENS_PER_INSIGHT = 160;
 	private static final int ALIGN_TOKENS_PER_OVERVIEW = 220;
 	private static final int ALIGN_TOKENS_PER_THOUGHT = 140;
+	private static final int ALIGN_TOKENS_PER_STORY = 300;
 	private static final int ALIGN_TOKENS_PER_FREQUENCY_FIELD = 200;
 	private static final int ALIGN_MAX_TOKENS_CAP = 8000;
 	private static final int ALIGN_TIMEOUT_SEC = 90;
@@ -841,7 +867,8 @@ public class RealClaudeClient implements ClaudeClient {
 			JsonNode item = (thoughtArr != null && thoughtArr.isArray() && i < thoughtArr.size())
 					? thoughtArr.get(i) : null;
 			String rawThought = item == null ? "" : item.asText("").trim();
-			compressionFields.add(new ClaudeCompressionField("thought_" + i, rawThought, THOUGHT_LIMIT));
+			compressionFields.add(
+					new ClaudeCompressionField("thought_" + i, rawThought, thoughtLimit(i)));
 		}
 
 		String rawFOpportunity = normalizer.textOrNull(parsed.get("f_opportunity"));
@@ -891,7 +918,8 @@ public class RealClaudeClient implements ClaudeClient {
 		List<String> alignedThoughts = new ArrayList<>();
 		for (int i = 0; i < origThoughts.size(); i++) {
 			String fallback = origThoughts.get(i);
-			String aligned = normalizer.normalizeC(compressed.get("thought_" + i), THOUGHT_LIMIT);
+			String aligned = normalizer.normalizeC(
+					compressed.get("thought_" + i), thoughtLimit(i));
 			alignedThoughts.add(firstNonBlank(aligned, fallback));
 		}
 
@@ -925,6 +953,23 @@ public class RealClaudeClient implements ClaudeClient {
 	 * @param results   the Batch C copy whose overviews, thoughts and frequency strings are being aligned; not null
 	 * @return tokens the alignment reply may use
 	 */
+	/**
+	 * The character budget of one thoughts-list slot during the alignment pass. Slots 0–3 are analytical
+	 * paragraphs; slot {@link #STORY_SLOT_INDEX} is the campaign story, which carries the larger
+	 * {@link #STORY_LIMIT}. Cutting the story to {@link #THOUGHT_LIMIT} here would let the alignment pass
+	 * silently truncate copy the campaign-results batch wrote in full.
+	 *
+	 * <p>The story is identified by its fixed position rather than as "the last entry", so a draft that
+	 * carries fewer slots than the slide — an older or degraded Batch C reply — has its paragraphs budgeted
+	 * as paragraphs instead of promoting whichever one happens to sit last into a story.
+	 *
+	 * @param index the slot's 0-based position in the thoughts list
+	 * @return the slot's character budget
+	 */
+	int thoughtLimit(int index) {
+		return index == STORY_SLOT_INDEX ? STORY_LIMIT : THOUGHT_LIMIT;
+	}
+
 	int alignMaxTokens(ClaudeStrategic strategic, ClaudeResults results) {
 		int budget = ALIGN_BASE_TOKENS;
 		if (strategic.proposalOverview() != null && !strategic.proposalOverview().isBlank()) {
@@ -937,7 +982,12 @@ public class RealClaudeClient implements ClaudeClient {
 			budget += results.resultsOverviews().size() * ALIGN_TOKENS_PER_OVERVIEW;
 		}
 		if (results.thoughtsOnPerformance() != null) {
-			budget += results.thoughtsOnPerformance().size() * ALIGN_TOKENS_PER_THOUGHT;
+			// The story slot is budgeted off its own (larger) character limit; sized as a thought it is the
+			// one field that reliably runs the reply out before it closes.
+			int thoughtCount = results.thoughtsOnPerformance().size();
+			boolean hasStory = thoughtCount > STORY_SLOT_INDEX;
+			budget += (hasStory ? thoughtCount - 1 : thoughtCount) * ALIGN_TOKENS_PER_THOUGHT
+					+ (hasStory ? ALIGN_TOKENS_PER_STORY : 0);
 		}
 		budget += ALIGN_TOKENS_PER_FREQUENCY_FIELD
 				* countNonBlank(results.fOpportunity(), results.fFact(), results.fStorytelling());
@@ -1267,8 +1317,8 @@ public class RealClaudeClient implements ClaudeClient {
 	}
 
 	/**
-	 * Runs one tactic's thoughts call and retries once when the reply is not the full set of four thoughts,
-	 * rather than shipping a half-filled thoughts slide. When neither attempt is complete the fuller of the
+	 * Runs one tactic's thoughts call and retries once when the reply is not the full set of four thoughts plus
+	 * the closing story, rather than shipping a half-filled thoughts slide. When neither attempt is complete the fuller of the
 	 * two is still returned — a reply carrying three real thoughts beats blanking all four — and only a tactic
 	 * whose both attempts produced nothing usable is dropped ({@code null}), so its tokens render blank rather
 	 * than invented.
@@ -1297,8 +1347,8 @@ public class RealClaudeClient implements ClaudeClient {
 	}
 
 	/**
-	 * Runs one tactic's thoughts call: build the prompt, parse the four thoughts, compress any over-budget
-	 * ones, and normalize. A reply whose {@code thoughts} array is missing, is not an array, or holds nothing
+	 * Runs one tactic's thoughts call: build the prompt, parse the four thoughts and the closing story, compress
+	 * any over-budget ones, and normalize. A reply whose {@code thoughts} array is missing, is not an array, or holds nothing
 	 * but blanks is rejected outright ({@code null}) — a well-formed but empty array is exactly the shape that
 	 * used to pass as a success and blank the slide silently. A reply that fills some but not all four slots is
 	 * returned as-is for {@link #tacticThoughtsResilient} to retry on.
@@ -1308,7 +1358,7 @@ public class RealClaudeClient implements ClaudeClient {
 	 * @return the tactic's thoughts, possibly with fewer than four filled, or {@code null} when unusable
 	 */
 	TacticThoughts tacticThoughtsOne(TacticThoughtsInput input, String brief) {
-		var prompt = promptBuilder.buildTacticThoughtsPrompt(input, brief, THOUGHT_LIMIT);
+		var prompt = promptBuilder.buildTacticThoughtsPrompt(input, brief, THOUGHT_LIMIT, STORY_LIMIT);
 		if (prompt.isEmpty()) {
 			return null;
 		}
@@ -1331,6 +1381,11 @@ public class RealClaudeClient implements ClaudeClient {
 			}
 			fields.add(new ClaudeCompressionField(input.tacticNum() + "_thought_" + i, raw, THOUGHT_LIMIT));
 		}
+		// The story rides in its own key, so a reply that wrote the four thoughts and dropped the story is
+		// incomplete rather than unusable: it still goes back through the caller's one retry, and if the second
+		// attempt drops it too the four thoughts ship and only the story's token renders blank.
+		String rawStory = parsed.path("story").asText("").trim();
+		fields.add(new ClaudeCompressionField(input.tacticNum() + STORY_FIELD_KEY, rawStory, STORY_LIMIT));
 		if (filled == 0) {
 			rejectSection(THOUGHTS_LABEL, input.tacticNum(),
 					"reply carried " + arr.size() + " item(s) but no non-blank thought");
@@ -1341,10 +1396,11 @@ public class RealClaudeClient implements ClaudeClient {
 					"reply filled only " + filled + " of " + TACTIC_THOUGHTS_COUNT + " thoughts");
 		}
 		Map<String, String> compressed = compressionService.compress(fields, "BatchD-TacticThoughts");
-		List<String> thoughts = new ArrayList<>(TACTIC_THOUGHTS_COUNT);
+		List<String> thoughts = new ArrayList<>(TACTIC_THOUGHTS_SLOTS);
 		for (int i = 0; i < TACTIC_THOUGHTS_COUNT; i++) {
 			thoughts.add(normalizer.normalizeC(compressed.get(input.tacticNum() + "_thought_" + i), THOUGHT_LIMIT));
 		}
+		thoughts.add(normalizer.normalizeC(compressed.get(input.tacticNum() + STORY_FIELD_KEY), STORY_LIMIT));
 		return new TacticThoughts(input.tacticNum(), thoughts);
 	}
 
@@ -1354,10 +1410,10 @@ public class RealClaudeClient implements ClaudeClient {
 	 * dropped as blank by the length pass counts as missing.
 	 *
 	 * @param thoughts the parsed thoughts, or {@code null} when the call produced nothing usable
-	 * @return {@code true} when all {@link #TACTIC_THOUGHTS_COUNT} thoughts are present and non-blank
+	 * @return {@code true} when all {@link #TACTIC_THOUGHTS_SLOTS} slots are present and non-blank
 	 */
 	boolean isCompleteThoughts(TacticThoughts thoughts) {
-		return countThoughts(thoughts) == TACTIC_THOUGHTS_COUNT;
+		return countThoughts(thoughts) == TACTIC_THOUGHTS_SLOTS;
 	}
 
 	/**
@@ -1447,6 +1503,7 @@ public class RealClaudeClient implements ClaudeClient {
 			rawRecTexts[i] = item == null ? "" : item.path("text").asText("").trim();
 		}
 
+		String rawStory = normalizer.textOrNull(parsed.get("performance_story"));
 		String rawFOpportunity = normalizer.textOrNull(parsed.get("f_opportunity"));
 		String rawFFact = normalizer.textOrNull(parsed.get("f_fact"));
 		String rawFStorytelling = normalizer.textOrNull(parsed.get("f_storytelling"));
@@ -1479,6 +1536,9 @@ public class RealClaudeClient implements ClaudeClient {
 				compressionFields.add(new ClaudeCompressionField("thought_" + i, thought, THOUGHT_LIMIT));
 			}
 		}
+		if (rawStory != null) {
+			compressionFields.add(new ClaudeCompressionField("performance_story", rawStory, STORY_LIMIT));
+		}
 		for (int i = 0; i < 4; i++) {
 			compressionFields.add(
 					new ClaudeCompressionField("rec_title_" + i, rawRecTitles[i], RECOMMENDATION_TITLE_LIMIT));
@@ -1493,11 +1553,15 @@ public class RealClaudeClient implements ClaudeClient {
 					normalizer.limitResultsOverview(compressed.get("results_overview_" + group)));
 		}
 
+		// The campaign story is the list's last entry, which is what makes it {{thoughts on the performance 5}}.
+		// It is appended rather than parsed into the thoughts array because the four analytical paragraphs arrive
+		// as one pipe-joined string under a shared budget, and the story is neither.
 		List<String> thoughts = new ArrayList<>();
 		for (int i = 0; i < rawThoughts.size(); i++) {
 			String thought = rawThoughts.get(i);
 			thoughts.add(thought == null ? null : normalizer.normalizeC(compressed.get("thought_" + i), THOUGHT_LIMIT));
 		}
+		thoughts.add(rawStory == null ? null : normalizer.normalizeC(compressed.get("performance_story"), STORY_LIMIT));
 
 		List<Recommendation> recommendations = new ArrayList<>();
 		for (int i = 0; i < 4; i++) {

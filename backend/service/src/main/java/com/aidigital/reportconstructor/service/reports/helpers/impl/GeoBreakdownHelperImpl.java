@@ -35,8 +35,12 @@ public class GeoBreakdownHelperImpl implements GeoBreakdownHelper {
 	 */
 	private static final int GEO_ROWS = 8;
 
-	/** "WHAT THE MAP TELLS US" insight bullets the master slide carries. */
-	private static final int INSIGHT_COUNT = 4;
+	/**
+	 * "WHAT THE MAP TELLS US" insight bullets the master slide carries. Three, not four: the slide has
+	 * {@code {{geo_N.1}}}–{@code {{geo_N.3}}} and no fourth slot, so a fourth insight was written and then
+	 * dropped on the floor.
+	 */
+	private static final int INSIGHT_COUNT = 3;
 
 	/**
 	 * Strings Claude returns per tactic: the {@link #INSIGHT_COUNT} insight bullets plus one recommendation.

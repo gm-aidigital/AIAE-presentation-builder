@@ -46,6 +46,22 @@ public class DeviceBreakdownHelperImpl implements DeviceBreakdownHelper {
 	private static final String TABLET_PREFIX = "tablet";
 
 	/**
+	 * Token suffix of the mobile impressions-share tile ({@code {{dev_N_mob}}}). The share tokens use the
+	 * deck template's own short device names, which are not the row-token prefixes above — the slide's
+	 * per-device metric rows and its share tiles were authored under different naming conventions.
+	 */
+	private static final String MOBILE_SHARE_SUFFIX = "mob";
+
+	/** Token suffix of the connected-TV impressions-share tile ({@code {{dev_N_tv}}}). */
+	private static final String CTV_SHARE_SUFFIX = "tv";
+
+	/** Token suffix of the desktop impressions-share tile ({@code {{dev_N_desk}}}). */
+	private static final String DESKTOP_SHARE_SUFFIX = "desk";
+
+	/** Token suffix of the tablet impressions-share tile ({@code {{dev_N_tab}}}). */
+	private static final String TABLET_SHARE_SUFFIX = "tab";
+
+	/**
 	 * Strings Claude returns per tactic, in slide order: the key takeaway, the "what worked" note, the
 	 * watch-out and the recommended action.
 	 */
@@ -146,16 +162,49 @@ public class DeviceBreakdownHelperImpl implements DeviceBreakdownHelper {
 		putDeviceRow(values, tacticNum, DESKTOP_PREFIX, rowsByDevice.get(DESKTOP_PREFIX), true);
 		putDeviceRow(values, tacticNum, TABLET_PREFIX, rowsByDevice.get(TABLET_PREFIX), true);
 
-		double totalImps = totalImpressions(table.rows());
-		values.put("{{dev_" + tacticNum + "_mobile_share}}", shareOf(rowsByDevice.get(MOBILE_PREFIX), totalImps));
-		values.put("{{dev_" + tacticNum + "_ctv_share}}", shareOf(rowsByDevice.get(CTV_PREFIX), totalImps));
-		values.put("{{dev_" + tacticNum + "_desktop_share}}", shareOf(rowsByDevice.get(DESKTOP_PREFIX), totalImps));
-		values.put("{{dev_" + tacticNum + "_tablet_share}}", shareOf(rowsByDevice.get(TABLET_PREFIX), totalImps));
+		double totalImps = shareDenominator(table.rows(), flatReplacements, tacticNum);
+		values.put("{{dev_" + tacticNum + "_" + MOBILE_SHARE_SUFFIX + "}}",
+				shareOf(rowsByDevice.get(MOBILE_PREFIX), totalImps));
+		values.put("{{dev_" + tacticNum + "_" + CTV_SHARE_SUFFIX + "}}",
+				shareOf(rowsByDevice.get(CTV_PREFIX), totalImps));
+		values.put("{{dev_" + tacticNum + "_" + DESKTOP_SHARE_SUFFIX + "}}",
+				shareOf(rowsByDevice.get(DESKTOP_PREFIX), totalImps));
+		values.put("{{dev_" + tacticNum + "_" + TABLET_SHARE_SUFFIX + "}}",
+				shareOf(rowsByDevice.get(TABLET_PREFIX), totalImps));
 	}
 
 	/**
-	 * Sums the impressions across every filled device row, the denominator each device's
-	 * {@code {{dev_N_<device>_share}}} percentage is computed against.
+	 * Picks the denominator each device's {@code {{dev_N_<device>}}} percentage is computed against: the
+	 * tactic's own total impressions ({@code {{tactic N imps}}}).
+	 *
+	 * <p>Summing the device rows instead would make every share a share of device-attributed traffic
+	 * only, so the four percentages always add to 100% and each device is overstated by however much of
+	 * the tactic carried no device signal. Against the tactic total they add to the tactic's device
+	 * coverage, which is what the slide claims to show. The row sum stays as the fallback for a tactic
+	 * whose total never resolved — an overstated percentage still beats dashing the whole split.
+	 *
+	 * @param rows             the block's filled device rows
+	 * @param flatReplacements the deck's resolved placeholder map
+	 * @param tacticNum        the tactic whose shares are being computed
+	 * @return the denominator to divide by, or {@code 0} when neither source yields a usable number
+	 */
+	double shareDenominator(List<DeviceRow> rows, Map<String, String> flatReplacements, int tacticNum) {
+		double tacticImps = flatReplacements == null
+				? 0 : parseImpressions(flatReplacements.get("{{tactic " + tacticNum + " imps}}"));
+		if (tacticImps > 0) {
+			return tacticImps;
+		}
+		double rowSum = totalImpressions(rows);
+		if (rowSum > 0) {
+			log.info("[device] tactic {} has no usable {{{{tactic {} imps}}}} — device shares fall back to the "
+					+ "device rows' own total", tacticNum, tacticNum);
+		}
+		return rowSum;
+	}
+
+	/**
+	 * Sums the impressions across every filled device row, the fallback denominator for a tactic whose
+	 * own impressions total never resolved.
 	 *
 	 * @param rows the block's filled device rows
 	 * @return the summed impressions, or {@code 0} when no row parses
@@ -169,11 +218,10 @@ public class DeviceBreakdownHelperImpl implements DeviceBreakdownHelper {
 	}
 
 	/**
-	 * Computes one device's share of the tactic's total tracked impressions, rounded to a whole
-	 * percent.
+	 * Computes one device's share of the tactic's impressions, rounded to a whole percent.
 	 *
 	 * @param row       the device's sheet row, or {@code null} when the user did not fill it in
-	 * @param totalImps the tactic's total impressions across every filled device row
+	 * @param totalImps the denominator from {@link #shareDenominator}
 	 * @return the rounded percentage share (e.g. {@code "42%"}), or {@link #DASH} when the device has
 	 * no row or the total is non-positive
 	 */

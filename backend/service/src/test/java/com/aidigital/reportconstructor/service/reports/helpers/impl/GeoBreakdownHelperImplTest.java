@@ -68,18 +68,20 @@ class GeoBreakdownHelperImplTest {
 	}
 
 	@Test
-	void shouldWriteFourInsightsAndTheRecommendationFromClaudesFiveStringsTest() {
-		// Given: a tactic Claude answered with four insights then a forward-looking recommendation
+	void shouldWriteThreeInsightsAndTheRecommendationFromClaudesFourStringsTest() {
+		// Given: a tactic Claude answered with three insights then a forward-looking recommendation
 		Map<String, String> values = new LinkedHashMap<>();
 		Map<Integer, List<String>> insights =
-				Map.of(1, List.of("insight one", "insight two", "insight three", "insight four", "do this"));
+				Map.of(1, List.of("insight one", "insight two", "insight three", "do this"));
 
 		// When:
 		helper.writeGeoInsights(values, Set.of(1), Set.of(1), insights, Map.of("{{tactic 1}}", "CTV"));
 
-		// Then: the four insights map to the "what the map tells us" tokens, the fifth to the recommendation
+		// Then: the three insights map to the "what the map tells us" tokens, the fourth to the
+		// recommendation, and no fourth insight is written — the slide carries no slot for one
 		assertThat(values.get("{{geo_insight_1.1}}")).isEqualTo("insight one");
-		assertThat(values.get("{{geo_insight_1.4}}")).isEqualTo("insight four");
+		assertThat(values.get("{{geo_insight_1.3}}")).isEqualTo("insight three");
+		assertThat(values).doesNotContainKey("{{geo_insight_1.4}}");
 		assertThat(values.get("{{geo_1_reco}}")).isEqualTo("do this");
 	}
 

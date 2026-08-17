@@ -287,14 +287,17 @@ class ClaudeBatchPromptBuilderTest {
 				List.of("Hulu carried the largest share."), List.of(), List.of(), List.of(), List.of());
 
 		// When: the Step-3 per-tactic thoughts prompt is built
-		String prompt = builder.buildTacticThoughtsPrompt(input, "Drive awareness.", 220).orElseThrow();
+		String prompt = builder.buildTacticThoughtsPrompt(input, "Drive awareness.", 220, 470).orElseThrow();
 
 		// Then: it carries the same two demands the conclusions call gained — the reply is the JSON and
 		// nothing else, and odd-looking conclusions are written up rather than complained about
 		assertThat(prompt).contains(
 				"write NO preamble, analysis, working-out, reasoning or commentary",
 				"do NOT refuse and do NOT flag data problems",
-				"{\"thoughts\": [\"...\", \"...\", \"...\", \"...\"]}");
+				"{\"thoughts\": [\"...\", \"...\", \"...\", \"...\"], \"story\": \"...\"}");
+		// And: the fifth slot is asked for as a narrative under its own budget, not as a fifth bullet
+		assertThat(prompt).contains(
+				"Then write ONE closing narrative — \"story\" — of at most 376 characters");
 	}
 
 }

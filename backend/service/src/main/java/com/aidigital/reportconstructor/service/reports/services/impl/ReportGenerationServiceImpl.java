@@ -108,8 +108,12 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	/** Max tactics the report template carries; the derived tactic count is clamped to this. */
 	private static final int MAX_TACTICS = 28;
 
-	/** The per-tactic "thoughts on tactic performance" slide holds exactly four thought tokens. */
-	private static final int THOUGHTS_ON_TACTIC_COUNT = 4;
+	/**
+	 * Tokens on the per-tactic "thoughts on tactic performance" slide: four analytical thoughts plus the
+	 * closing story in slot 5, which Claude writes in the same Step-3 call and the client returns as the
+	 * last entry of the tactic's thoughts list.
+	 */
+	private static final int THOUGHTS_ON_TACTIC_COUNT = 5;
 
 	/** Max breakdown-conclusion lines fed to Batch D as read-only alignment context, bounding its input size. */
 	private static final int BREAKDOWN_DIGEST_MAX_LINES = 80;
@@ -843,7 +847,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	}
 
 	/**
-	 * Writes the four {@code {{thoughts on tactic n performance 1..4}}} tokens for every qualifying tactic from
+	 * Writes the five {@code {{thoughts on tactic n performance 1..5}}} tokens for every qualifying tactic from
 	 * its Step-3 thoughts, blanking a qualifying tactic that produced none so its (inserted) slide never ships a
 	 * raw token. Also carries the tactic's {@code {{tactic n}}} display name into the map, so the thoughts slide
 	 * title renumbers to the name the same way the breakdown slides do (their helpers copy the name token in).

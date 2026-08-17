@@ -105,7 +105,7 @@ public class CreativeBreakdownHelperImpl implements CreativeBreakdownHelper {
 
 	/**
 	 * Writes one tactic's slide tokens: the heading and KPI type carried over from the deck's own
-	 * placeholder map (which the copies' fill pass can no longer reach), the four stat tiles, and all
+	 * placeholder map (which the copies' fill pass can no longer reach), the three stat tiles, and all
 	 * {@link #CREATIVE_ROWS} table rows, em-dashing the slots the user left blank.
 	 *
 	 * @param values           the accumulating token → value map
@@ -122,7 +122,9 @@ public class CreativeBreakdownHelperImpl implements CreativeBreakdownHelper {
 
 		values.put("{{cr_live_" + tacticNum + "}}", orDash(table.creativesLive()));
 		values.put("{{cr_bKPI_" + tacticNum + "}}", orDash(table.bestKpi()));
-		values.put("{{cr_aKPI_" + tacticNum + "}}", orDash(table.avgKpi()));
+		// The sheet's AVG CTR/VCR cell is deliberately not emitted: the Creative slide carries no
+		// {{cr_aKPI_N}} slot, so the value would land nowhere. It is still read from the block and still
+		// goes to Claude as context for the slide's bullets.
 		values.put("{{tactic " + tacticNum + " top creative name}}", orDash(table.topCreative()));
 
 		for (int i = 1; i <= CREATIVE_ROWS; i++) {

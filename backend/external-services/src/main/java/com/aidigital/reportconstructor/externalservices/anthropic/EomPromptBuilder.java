@@ -580,8 +580,9 @@ public class EomPromptBuilder extends ClaudeBatchPromptBuilder {
 	 */
 	@Override
 	String tacticThoughtsRole() {
-		return "You are a senior digital media analyst writing the four 'Thoughts on tactic performance' "
-				+ "bullets for ONE tactic's slide in an END-OF-MONTH report on a campaign that is STILL RUNNING. "
+		return "You are a senior digital media analyst writing the 'Thoughts on tactic performance' slide for "
+				+ "ONE tactic in an END-OF-MONTH report on a campaign that is STILL RUNNING — four analytical "
+				+ "bullets plus the closing narrative that ties them together. "
 				+ "You are writing on behalf of the team running this campaign, so the tone is confident and "
 				+ "complimentary of our own delivery so far.\n\n";
 	}

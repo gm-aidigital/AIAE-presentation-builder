@@ -53,8 +53,9 @@ class CreativeBreakdownHelperImplTest {
 		// Then: the stat tiles are carried across exactly as typed
 		assertThat(values.get("{{cr_live_1}}")).isEqualTo("12");
 		assertThat(values.get("{{cr_bKPI_1}}")).isEqualTo("0.58");
-		assertThat(values.get("{{cr_aKPI_1}}")).isEqualTo("0.42");
 		assertThat(values.get("{{tactic 1 top creative name}}")).isEqualTo("Hero 15s");
+		// And: the sheet's avg-KPI cell is read but never emitted — the slide has no {{cr_aKPI_N}} slot
+		assertThat(values).doesNotContainKey("{{cr_aKPI_1}}");
 
 		// Then: the filled rows land on the slide's renumbered row tokens
 		assertThat(values.get("{{tactic 1 top creative name 1.1}}")).isEqualTo("Hero 15s");
@@ -87,7 +88,6 @@ class CreativeBreakdownHelperImplTest {
 		// Then: the untouched hints are dashed rather than shipped as raw tokens
 		assertThat(values.get("{{cr_live_1}}")).isEqualTo("12");
 		assertThat(values.get("{{cr_bKPI_1}}")).isEqualTo("—");
-		assertThat(values.get("{{cr_aKPI_1}}")).isEqualTo("—");
 		assertThat(values.get("{{tactic 1 top creative name}}")).isEqualTo("—");
 	}
 

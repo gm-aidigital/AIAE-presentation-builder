@@ -753,7 +753,7 @@ class RealSlidesProviderTest {
 		// When: every master token is renumbered exactly as buildBreakdownRequests renumbers it
 		List<String> masterTokens = List.of(
 				"{{tactic n}}", "{{tactic n KPI type}}",
-				"{{cr_live_n}}", "{{cr_bKPI_n}}", "{{cr_aKPI_n}}",
+				"{{cr_live_n}}", "{{cr_bKPI_n}}",
 				"{{tactic n top creative name}}",
 				"{{tactic n top creative name n.1}}", "{{tactic n.1 top creative imps}}",
 				"{{tactic n.1 top creative ctr}}", "{{tactic n.1 top creative vcr}}",

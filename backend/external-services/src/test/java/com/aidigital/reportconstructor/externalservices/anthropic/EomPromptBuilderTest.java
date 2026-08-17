@@ -460,7 +460,7 @@ class EomPromptBuilderTest {
 			assertThat(prompt).contains(eoc.sectionPrinciples());
 		}
 		assertThat(audience).contains(eoc.sectionObjectRules(4));
-		assertThat(geo).contains(eoc.sectionObjectRules(5));
+		assertThat(geo).contains(eoc.sectionObjectRules(4));
 	}
 
 	@Test
@@ -490,7 +490,7 @@ class EomPromptBuilderTest {
 				List.of("Hulu carried the largest share."), List.of(), List.of(), List.of(), List.of());
 
 		// When:
-		String prompt = builder.buildTacticThoughtsPrompt(input, "Drive awareness.", 200).orElseThrow();
+		String prompt = builder.buildTacticThoughtsPrompt(input, "Drive awareness.", 200, 470).orElseThrow();
 
 		// Then: the role line frames a live campaign, and only the first angle changes to pacing
 		assertThat(prompt).contains("END-OF-MONTH report on a campaign that is STILL RUNNING");
@@ -501,7 +501,9 @@ class EomPromptBuilderTest {
 		assertThat(prompt).contains("what worked best across its breakdowns");
 		assertThat(prompt).contains("(3) a watch-out or nuance; (4) the forward-looking opportunity");
 		assertThat(prompt).contains("Write EXACTLY 4 short analytical thoughts");
-		assertThat(prompt).contains("{\"thoughts\": [\"...\", \"...\", \"...\", \"...\"]}");
+		assertThat(prompt).contains("{\"thoughts\": [\"...\", \"...\", \"...\", \"...\"], \"story\": \"...\"}");
+		// and the closing story spec is inherited from the parent, unchanged for a live campaign
+		assertThat(prompt).contains("Then write ONE closing narrative");
 	}
 
 	@Test
@@ -512,11 +514,11 @@ class EomPromptBuilderTest {
 				List.of("Hulu carried the largest share."), List.of(), List.of(), List.of(), List.of());
 
 		// When:
-		String prompt = eoc.buildTacticThoughtsPrompt(input, "Drive awareness.", 200).orElseThrow();
+		String prompt = eoc.buildTacticThoughtsPrompt(input, "Drive awareness.", 200, 470).orElseThrow();
 
 		// Then: the frozen wording still goes out unchanged
-		assertThat(prompt).startsWith("You are a senior digital media analyst writing the four 'Thoughts on "
-				+ "tactic performance' bullets for ONE tactic's slide in an end-of-campaign report.");
+		assertThat(prompt).startsWith("You are a senior digital media analyst writing the 'Thoughts on tactic "
+				+ "performance' slide for ONE tactic in an end-of-campaign report");
 		assertThat(prompt).contains("(1) the tactic's headline result and WHY");
 		assertThat(prompt).doesNotContain("STILL RUNNING");
 	}

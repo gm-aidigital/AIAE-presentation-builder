@@ -45,6 +45,12 @@ public class CampaignResolvers {
 	/** Number of {@code {{Our results overview N}}} slots — one per tactic group of up to 7 tactics. */
 	private static final int RESULTS_OVERVIEW_GROUPS = 4;
 
+	/**
+	 * Slots on the campaign-level "Thoughts on the performance" slide: four analytical paragraphs plus the
+	 * closing campaign story in slot 5.
+	 */
+	private static final int THOUGHT_SLOTS = 5;
+
 	private final SheetRowHelper sheetUtils;
 	private final Fmt fmt;
 	private final TacticExtractionHelper tacticExtraction;
@@ -692,15 +698,20 @@ public class CampaignResolvers {
 	}
 
 	/**
-	 * Resolves the four {@code {{thoughts on the performance N}}} placeholders by
-	 * splitting a single pipe-delimited manual value into four parts, or falling
+	 * Resolves the five {@code {{thoughts on the performance N}}} placeholders by
+	 * splitting a single pipe-delimited manual value into five parts, or falling
 	 * back to Claude's per-index performance commentary.
+	 *
+	 * <p>Slots 1–4 are the analytical paragraphs; slot 5 is the campaign story, which Claude writes as its
+	 * own field and the client appends as the last entry of {@code claudeThoughts}. A manual override still
+	 * carries all five in one pipe-joined cell, so an editor who supplies only four leaves the story slot
+	 * empty rather than shifting the paragraphs.
 	 *
 	 * @param sheetRows      Media Plan tab rows
 	 * @param adjRows        manual Adjustments tab rows (the pipe-joined value is checked first)
 	 * @param claudeThoughts Claude's performance thoughts, one entry per slot, used when no manual value exists (may
 	 *                       be null)
-	 * @return a map keyed by {@code {{thoughts on the performance N}}} (N = 1..4) to its {@link Resolved}; individual
+	 * @return a map keyed by {@code {{thoughts on the performance N}}} (N = 1..5) to its {@link Resolved}; individual
 	 * values may be null
 	 */
 	public Map<String, Resolved> resolveThoughtsOnPerformance(
@@ -711,30 +722,30 @@ public class CampaignResolvers {
 		String label;
 		String fromAdj = sheetUtils.findLabelValue(adjRows, "Thoughts on the performance:");
 		if (fromAdj != null) {
-			parts = split4(fromAdj);
+			parts = splitThoughts(fromAdj);
 			source = "adj";
 			label = "Thoughts on the performance:";
 		} else {
 			String fromSheet = sheetUtils.findLabelValue(sheetRows, "Thoughts on the performance:");
 			if (fromSheet != null) {
-				parts = split4(fromSheet);
+				parts = splitThoughts(fromSheet);
 				source = "sheet";
 				label = "Thoughts on the performance:";
 			} else if (claudeThoughts != null && !claudeThoughts.isEmpty()) {
-				parts = new String[4];
-				for (int i = 0; i < 4; i++) {
+				parts = new String[THOUGHT_SLOTS];
+				for (int i = 0; i < THOUGHT_SLOTS; i++) {
 					parts[i] = i < claudeThoughts.size() ? claudeThoughts.get(i) : null;
 				}
 				source = "claude";
 				label = "Thoughts on the performance (auto: Claude)";
 			} else {
-				parts = new String[4];
+				parts = new String[THOUGHT_SLOTS];
 				source = "not_found";
 				label = "Thoughts on the performance:";
 			}
 		}
 		Map<String, Resolved> result = new LinkedHashMap<>();
-		for (int i = 1; i <= 4; i++) {
+		for (int i = 1; i <= THOUGHT_SLOTS; i++) {
 			result.put("{{thoughts on the performance " + i + "}}",
 					new Resolved(label + " [" + i + "]", parts[i - 1], source));
 		}
@@ -1748,14 +1759,21 @@ public class CampaignResolvers {
 
 	// ── helpers ───────────────────────────────────────────────────────────────
 
-	String[] split4(String raw) {
+	/**
+	 * Splits a pipe-joined "Thoughts on the performance" cell into one entry per slide slot, padding with
+	 * {@code null} when the cell carries fewer parts and dropping the surplus when it carries more.
+	 *
+	 * @param raw the pipe-joined cell text, possibly {@code null} or blank
+	 * @return a {@link #THOUGHT_SLOTS}-long array, {@code null} in every slot the cell did not fill
+	 */
+	String[] splitThoughts(String raw) {
 
-		String[] out = new String[4];
+		String[] out = new String[THOUGHT_SLOTS];
 		if (raw == null || raw.trim().isEmpty()) {
 			return out;
 		}
 		String[] parts = raw.split(" \\| ");
-		for (int i = 0; i < 4; i++) {
+		for (int i = 0; i < THOUGHT_SLOTS; i++) {
 			String p = i < parts.length ? parts[i].trim() : null;
 			out[i] = (p == null || p.isEmpty()) ? null : p;
 		}

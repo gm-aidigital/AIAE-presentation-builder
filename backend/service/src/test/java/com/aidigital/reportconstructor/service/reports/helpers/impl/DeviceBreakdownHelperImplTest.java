@@ -70,11 +70,35 @@ class DeviceBreakdownHelperImplTest {
 		assertThat(values.get("{{tablet_imps_1}}")).isEqualTo("—");
 		assertThat(values.get("{{tablet_spend_1}}")).isEqualTo("—");
 
-		// Then: each filled device's share is its impressions over the 1,500,000 filled total
-		assertThat(values.get("{{dev_1_mobile_share}}")).isEqualTo("80%");
-		assertThat(values.get("{{dev_1_desktop_share}}")).isEqualTo("20%");
-		assertThat(values.get("{{dev_1_ctv_share}}")).isEqualTo("—");
-		assertThat(values.get("{{dev_1_tablet_share}}")).isEqualTo("—");
+		// Then: with no {{tactic 1 imps}} to divide by, each filled device's share falls back to its
+		// impressions over the 1,500,000 the rows themselves carry
+		assertThat(values.get("{{dev_1_mob}}")).isEqualTo("80%");
+		assertThat(values.get("{{dev_1_desk}}")).isEqualTo("20%");
+		assertThat(values.get("{{dev_1_tv}}")).isEqualTo("—");
+		assertThat(values.get("{{dev_1_tab}}")).isEqualTo("—");
+	}
+
+	@Test
+	void shouldComputeDeviceSharesAgainstTheTacticImpressionsTotalTest() {
+		// Given: two filled device rows summing to 1,500,000 against a tactic that ran 3,000,000
+		List<BreakdownSelection> selections = List.of(new BreakdownSelection(1, List.of("dev")));
+		when(breakdownResolver.resolve(selections)).thenReturn(Map.of(1, EnumSet.of(BreakdownType.DEVICE)));
+		DeviceTable table = new DeviceTable("1.20%", "82%", "4", "Mobile", "61%",
+				List.of(new DeviceRow("Mobile", "1,200,000", "1.20%", "78%", "$4,000"),
+						new DeviceRow("Desktop", "300,000", "0.90%", "85%", "$1,000")));
+		when(sheetHelper.readDeviceTables("sheet-url", Set.of(1), "token")).thenReturn(Map.of(1, table));
+
+		// When:
+		Map<String, String> values = helper.readDeviceInputs(
+				"sheet-url", selections,
+				Map.of("{{tactic 1}}", "CTV", "{{tactic 1 imps}}", "3,000,000"), "token").dataValues();
+
+		// Then: the shares are over the tactic's 3,000,000, so the two filled devices add to 50% rather
+		// than to 100%
+		assertThat(values.get("{{dev_1_mob}}")).isEqualTo("40%");
+		assertThat(values.get("{{dev_1_desk}}")).isEqualTo("10%");
+		assertThat(values.get("{{dev_1_tv}}")).isEqualTo("—");
+		assertThat(values.get("{{dev_1_tab}}")).isEqualTo("—");
 	}
 
 	@Test
@@ -91,8 +115,8 @@ class DeviceBreakdownHelperImplTest {
 				"sheet-url", selections, Map.of("{{tactic 1}}", "CTV"), "token").dataValues();
 
 		// Then: a zero total dashes every share rather than dividing by zero
-		assertThat(values.get("{{dev_1_mobile_share}}")).isEqualTo("—");
-		assertThat(values.get("{{dev_1_ctv_share}}")).isEqualTo("—");
+		assertThat(values.get("{{dev_1_mob}}")).isEqualTo("—");
+		assertThat(values.get("{{dev_1_tv}}")).isEqualTo("—");
 	}
 
 	@Test
