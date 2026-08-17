@@ -62,7 +62,7 @@ class RealSlidesProviderTest {
 		DriveShareRecipients shareRecipients = Mockito.mock(DriveShareRecipients.class);
 		return new RealSlidesProvider(
 				creds, props, driveSharer, shareRecipients, retrier,
-				new BreakdownSlideNaming(), new BreakdownThoughtsGateImpl());
+				new BreakdownSlideNaming(), new BreakdownThoughtsGateImpl(), new SummaryTableRowTrimmer());
 	}
 
 	private RealSlidesProvider newMasterTacticProvider(String tacticMasterId, String thoughtsMasterId) {
@@ -84,7 +84,7 @@ class RealSlidesProviderTest {
 		when(props.getResultsSlideObjectIds()).thenReturn(Map.of());
 		return new RealSlidesProvider(
 				creds, props, Mockito.mock(DriveSharer.class), Mockito.mock(DriveShareRecipients.class),
-				Mockito.mock(GoogleRequestRetrier.class), new BreakdownSlideNaming(), new BreakdownThoughtsGateImpl());
+				Mockito.mock(GoogleRequestRetrier.class), new BreakdownSlideNaming(), new BreakdownThoughtsGateImpl(), new SummaryTableRowTrimmer());
 	}
 
 	private RealSlidesProvider newTitleProvider(List<String> eomDropSlideTitles) {
@@ -108,7 +108,7 @@ class RealSlidesProviderTest {
 		when(props.getEomDropSlideTitles()).thenReturn(eomDropSlideTitles);
 		return new RealSlidesProvider(
 				creds, props, Mockito.mock(DriveSharer.class), Mockito.mock(DriveShareRecipients.class),
-				Mockito.mock(GoogleRequestRetrier.class), new BreakdownSlideNaming(), new BreakdownThoughtsGateImpl());
+				Mockito.mock(GoogleRequestRetrier.class), new BreakdownSlideNaming(), new BreakdownThoughtsGateImpl(), new SummaryTableRowTrimmer());
 	}
 
 	private Page slide(String objectId) {
@@ -259,6 +259,37 @@ class RealSlidesProviderTest {
 	}
 
 	@Test
+	void buildBreakdownRequests_ordersACopyRunByItsMastersPositionNotByTheEnumOrderTest() {
+		// Given: a template whose device master is drawn before its Top Publishers master — the reverse of the
+		// BreakdownType declaration order
+		Map<Integer, String> tacticSlideObjectIds = new LinkedHashMap<>();
+		tacticSlideObjectIds.put(1, "tactic1");
+		RealSlidesProvider provider = newProvider(tacticSlideObjectIds);
+
+		List<Page> deck = List.of(
+				slide("tactic1"),
+				shapeSlide("m_dev", List.of(List.of("{{top_dev_n}}"))),
+				shapeSlide("m_tp", List.of(List.of("{{publisher_", "n", ".1}}"))));
+
+		Map<BreakdownType, String> masterIds = new LinkedHashMap<>();
+		masterIds.put(BreakdownType.TOP_PUBLISHERS, "m_tp");
+		masterIds.put(BreakdownType.DEVICE, "m_dev");
+
+		// When: one tactic enables both
+		List<Request> requests = provider.buildBreakdownRequests(
+				deck, masterIds, Map.of(1, EnumSet.of(BreakdownType.TOP_PUBLISHERS, BreakdownType.DEVICE)),
+				Map.of());
+
+		// Then: the move lists the copies in their masters' order, because that is the order they occupy in the
+		// deck — a duplicate lands right after its own master. Listing them in enum order instead would fail
+		// the whole batch with "The slides should be in presentation order, with no duplicates"
+		List<Request> positions = requests.stream().filter(r -> r.getUpdateSlidesPosition() != null).toList();
+		assertThat(positions).hasSize(1);
+		assertThat(positions.getFirst().getUpdateSlidesPosition().getSlideObjectIds())
+				.containsExactly("bd_dev_1", "bd_tp_1");
+	}
+
+	@Test
 	void buildBreakdownRequests_appendsThoughtsSlideOnlyForTacticsWithMoreThanTwoBreakdownsTest() {
 		// Given: a deck with tactic slides 1..2, the breakdown masters and the thoughts master; tactic 1
 		// enables three breakdowns (qualifies for thoughts), tactic 2 enables two (does not)
@@ -328,11 +359,15 @@ class RealSlidesProviderTest {
 		// When:
 		List<Request> requests = provider.buildTacticRequests(deck, 2, values);
 
-		// Then: one duplicate per tactic, under the deterministic tct_n ids
+		// Then: one duplicate per tactic, under the deterministic tct_n ids, emitted last tactic first — each
+		// duplicate lands directly after the master and pushes the previous one down, so descending creation
+		// is what leaves the copies ascending in the deck. Creating them 1..N leaves the deck holding
+		// tct_2, tct_1 and makes the position move below fail the whole batch ("The slides should be in
+		// presentation order, with no duplicates"), which shipped decks with no tactic slides at all.
 		List<Request> dups = requests.stream().filter(r -> r.getDuplicateObject() != null).toList();
 		assertThat(dups).hasSize(2);
-		assertThat(dups.get(0).getDuplicateObject().getObjectIds()).containsExactly(Map.entry("m_tactic", "tct_1"));
-		assertThat(dups.get(1).getDuplicateObject().getObjectIds()).containsExactly(Map.entry("m_tactic", "tct_2"));
+		assertThat(dups.get(0).getDuplicateObject().getObjectIds()).containsExactly(Map.entry("m_tactic", "tct_2"));
+		assertThat(dups.get(1).getDuplicateObject().getObjectIds()).containsExactly(Map.entry("m_tactic", "tct_1"));
 
 		// And: a known token is written straight to its value, scoped to that tactic's copy only
 		assertThat(requests).anyMatch(r -> r.getReplaceAllText() != null

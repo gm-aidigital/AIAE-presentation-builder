@@ -86,20 +86,35 @@ class ReportGenerationChartHelperImplTest {
 				.when(slides).addTacticSlides("pres-1", 28, values, "token");
 
 		// When: the deck's tactic slides are built
-		helper.addTacticSlides("https://docs.google.com/presentation/d/pres-1/edit", 99, values, "token");
+		List<String> warnings =
+				helper.addTacticSlides("https://docs.google.com/presentation/d/pres-1/edit", 99, values, "token");
 
 		// Then: the count reached the provider clamped to 28, and the failure did not propagate — the deck
-		// still ships, missing tactic slides rather than nothing at all
+		// still ships, missing tactic slides rather than nothing at all — but it is reported as a job warning
+		// carrying the provider's reason, not swallowed into the server log
 		verify(slides).addTacticSlides("pres-1", 28, values, "token");
+		assertThat(warnings).hasSize(1);
+		assertThat(warnings.getFirst()).contains("28 tactic(s)").contains("slides down");
+	}
+
+	@Test
+	void shouldReportNoWarningWhenTacticSlidesAreBuiltTest() {
+		// Given-When: a provider that inserts the slides without failing
+		List<String> warnings = helper.addTacticSlides(
+				"https://docs.google.com/presentation/d/pres-1/edit", 2, Map.of(), "token");
+
+		// Then: nothing is reported on the job
+		assertThat(warnings).isEmpty();
 	}
 
 	@Test
 	void shouldSkipAddingTacticSlidesWhenTheSlideUrlCarriesNoPresentationIdTest() {
 		// Given-When: a slide url the presentation id cannot be parsed out of
-		helper.addTacticSlides("not-a-slides-url", 3, Map.of(), "token");
+		List<String> warnings = helper.addTacticSlides("not-a-slides-url", 3, Map.of(), "token");
 
 		// Then: the provider is never called with a bogus deck id
 		verify(slides, never()).addTacticSlides(any(), anyInt(), any(), any());
+		assertThat(warnings).isEmpty();
 	}
 
 	@Test

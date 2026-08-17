@@ -132,9 +132,18 @@ public class BreakdownChartBuilder {
 		// The chart is picked by the workbook it links to, not by its position among the slide's elements: a
 		// slide can carry several charts (the audience slide has two), and only the one linked to this series'
 		// workbook may be replaced — otherwise a section's two charts would fight over the same element.
-		ChartElementRef chartRef = chartsBySlide.getOrDefault(slideId, Map.of()).get(sourceSheetId);
+		// Absent slide and chartless slide are different failures: the first means the tactic's breakdown copy
+		// was never inserted (its main tactic slide is missing), the second means the master's chart does not
+		// link to the workbook this series is configured with. Reported apart so the fix is not guesswork.
+		if (!chartsBySlide.containsKey(slideId)) {
+			errors.add(tag + ": breakdown slide " + slideId + " is not in the deck, so its chart was not linked "
+					+ "(the tactic's main slide was most likely not built)");
+			return;
+		}
+		ChartElementRef chartRef = chartsBySlide.get(slideId).get(sourceSheetId);
 		if (chartRef == null) {
-			errors.add(tag + ": no chart linked to " + sourceSheetId + " found on breakdown slide " + slideId);
+			errors.add(tag + ": no chart linked to " + sourceSheetId + " found on breakdown slide " + slideId
+					+ " — check that the master breakdown slide's chart really points at that workbook");
 			return;
 		}
 		Map<String, Double> valuesByLabel = valuesByLabel(job.slices(), series.labelsFromData());
@@ -254,9 +263,11 @@ public class BreakdownChartBuilder {
 
 	/**
 	 * Indexes the linked charts on a deck's breakdown slides, keyed by slide and then by the source workbook
-	 * each chart points at. Slides that are not breakdown copies (no {@code bd_} prefix) and breakdown slides
-	 * with no chart are left out. Two charts on one slide linked to the same workbook are ambiguous rather
-	 * than fatal — the first wins.
+	 * each chart points at. Slides that are not breakdown copies (no {@code bd_} prefix) are left out. A
+	 * breakdown slide carrying no chart is kept, mapped to an empty index: the caller tells "this slide has no
+	 * such chart" from "this slide was never inserted" by whether the id is a key here, and reports the two
+	 * differently. Two charts on one slide linked to the same workbook are ambiguous rather than fatal — the
+	 * first wins.
 	 *
 	 * @param slides the deck's slides in order, carrying their chart elements' ids, geometry and links
 	 * @return breakdown slide object id &rarr; (source spreadsheet id &rarr; chart element)
@@ -265,11 +276,11 @@ public class BreakdownChartBuilder {
 		Map<String, Map<String, ChartElementRef>> out = new LinkedHashMap<>();
 		for (Page slide : slides) {
 			String slideId = slide.getObjectId();
-			if (slideId == null || !slideId.startsWith("bd_") || slide.getPageElements() == null) {
+			if (slideId == null || !slideId.startsWith("bd_")) {
 				continue;
 			}
 			Map<String, ChartElementRef> bySource = new LinkedHashMap<>();
-			for (PageElement el : slide.getPageElements()) {
+			for (PageElement el : slide.getPageElements() == null ? List.<PageElement>of() : slide.getPageElements()) {
 				SheetsChart chart = el.getSheetsChart();
 				if (chart == null || chart.getSpreadsheetId() == null || el.getObjectId() == null) {
 					continue;
@@ -277,9 +288,7 @@ public class BreakdownChartBuilder {
 				bySource.putIfAbsent(chart.getSpreadsheetId(), new ChartElementRef(
 						el.getObjectId(), new ElementTransform(el.getSize(), el.getTransform(), slideId)));
 			}
-			if (!bySource.isEmpty()) {
-				out.put(slideId, bySource);
-			}
+			out.put(slideId, bySource);
 		}
 		return out;
 	}

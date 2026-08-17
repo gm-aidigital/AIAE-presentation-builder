@@ -112,8 +112,10 @@ class BreakdownChartBuilderTest {
 		assertThat(bySlide.get("bd_aud_2").get("book_seg").objectId()).isEqualTo("el_seg");
 		assertThat(bySlide.get("bd_dev_2").get("book_dev").objectId()).isEqualTo("el_dev");
 
-		// And: non-breakdown slides and chartless breakdown slides are absent
-		assertThat(bySlide).doesNotContainKeys("tct_2", "bd_geo_2");
+		// And: non-breakdown slides are absent, while a chartless breakdown slide is kept with an empty index —
+		// that is what separates "this slide carries no such chart" from "this slide was never inserted"
+		assertThat(bySlide).doesNotContainKey("tct_2");
+		assertThat(bySlide.get("bd_geo_2")).isEmpty();
 	}
 
 	private Page chartSlide(String slideId, Map<String, String> elementIdBySourceBook) {

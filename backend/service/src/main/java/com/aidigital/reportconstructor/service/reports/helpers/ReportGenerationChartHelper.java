@@ -75,6 +75,11 @@ public interface ReportGenerationChartHelper {
 	 * legacy 28-slot decks, which {@link #trimUnusedTactics} trims instead). Non-fatal: a failure is logged
 	 * and the deck is delivered with whatever the master model managed to insert.
 	 *
+	 * <p>A failure is also returned as a job warning, not only logged. Every tactic on the sheet must get a
+	 * main slide, so "no tactic slides in the deck" is a reportable outcome rather than a silent one — and the
+	 * master template slide is deleted at the end of the run either way, which is what previously left a deck
+	 * with the whole per-tactic block missing and no trace of why.
+	 *
 	 * <p>Must run before {@link #addBreakdownSlides}, which places each tactic's breakdown copies after that
 	 * tactic's main slide.
 	 *
@@ -82,8 +87,10 @@ public interface ReportGenerationChartHelper {
 	 * @param tacticCount      number of active tactics (clamped 1..28)
 	 * @param flatReplacements resolved placeholder values keyed by token, used to fill each copy
 	 * @param userGoogleToken  OAuth token for Google Slides API, or null when unavailable
+	 * @return the warnings to attach to the job; empty when the slides were inserted (or the template has no
+	 *         master and the step does not apply)
 	 */
-	void addTacticSlides(
+	List<String> addTacticSlides(
 			String slideUrl, int tacticCount, Map<String, String> flatReplacements, String userGoogleToken);
 
 	/**

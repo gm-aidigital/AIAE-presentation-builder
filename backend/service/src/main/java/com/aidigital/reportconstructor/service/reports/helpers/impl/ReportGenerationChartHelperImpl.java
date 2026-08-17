@@ -229,17 +229,21 @@ public class ReportGenerationChartHelperImpl implements ReportGenerationChartHel
 	}
 
 	@Override
-	public void addTacticSlides(
+	public List<String> addTacticSlides(
 			String slideUrl, int tacticCount, Map<String, String> flatReplacements, String userGoogleToken) {
 		String presentationId = extractPresentationId(slideUrl);
 		if (presentationId == null) {
-			return;
+			return List.of();
 		}
 		int clamped = Math.clamp(tacticCount, 1, MAX_TACTICS);
 		try {
 			slides.addTacticSlides(presentationId, clamped, flatReplacements, userGoogleToken);
+			return List.of();
 		} catch (RuntimeException ex) {
 			log.warn("[slides] addTacticSlides failed for {} (non-fatal): {}", presentationId, ex.getMessage());
+			return List.of("The deck's per-tactic main slides could not be built, so the deck ships without a "
+					+ "slide for any of the " + clamped + " tactic(s) (and without their breakdown slides, which "
+					+ "are placed after them): " + ex.getMessage());
 		}
 	}
 

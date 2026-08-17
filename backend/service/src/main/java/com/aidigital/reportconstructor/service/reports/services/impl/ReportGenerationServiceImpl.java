@@ -338,7 +338,8 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 
 			// Main tactic slides from the single master, same as the sheet flow above; a no-op on the legacy
 			// 28-slot template, where the trim below removes the surplus slots instead.
-			chartHelper.addTacticSlides(slideUrl, flatTacticCount, flatReplacements, userGoogleToken);
+			List<String> tacticSlideWarnings =
+					chartHelper.addTacticSlides(slideUrl, flatTacticCount, flatReplacements, userGoogleToken);
 			chartHelper.trimUnusedTactics(slideUrl, payload, userGoogleToken);
 			// Template master slides must never ship. This flow inserts no breakdowns, but it does duplicate the
 			// tactic master above, and the master itself would otherwise arrive full of raw {{tactic n …}} tokens.
@@ -350,9 +351,12 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 			List<String> chartWarnings = chartHelper.buildCharts(
 					slideUrl, payload, data, flatReplacements, userGoogleToken);
 
+			List<String> deckWarnings = new ArrayList<>(tacticSlideWarnings);
+			deckWarnings.addAll(chartWarnings);
+
 			jobProgress.recordArtifact(jobId, fileName, payload.sheetUrl());
 			recordSlideCount(jobId, slideUrl, userGoogleToken);
-			jobProgress.markJobDone(jobId, slideUrl, warnings.serializeWarnings(chartWarnings));
+			jobProgress.markJobDone(jobId, slideUrl, warnings.serializeWarnings(deckWarnings));
 		} catch (Exception ex) {
 			log.error("[report] job {} failed", jobId, ex);
 			jobProgress.markJobFailed(jobId, ex.getMessage());
@@ -614,7 +618,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		// is duplicated into exactly `tacticCount` filled slides here. Runs before the breakdowns, which anchor
 		// their copies after each tactic's main slide, and before the trim, which then has no tactic slides
 		// left to delete. A no-op on the legacy 28-slot template.
-		chartHelper.addTacticSlides(slideUrl, tacticCount, flatReplacements, userGoogleToken);
+		jobWarnings.addAll(chartHelper.addTacticSlides(slideUrl, tacticCount, flatReplacements, userGoogleToken));
 		chartHelper.trimUnusedTactics(slideUrl, tacticCount, userGoogleToken);
 		// Per-tactic breakdown + thoughts slides: duplicate the selected masters, fill their tokens (already in
 		// breakdownValues, including the {{thoughts on tactic n performance}} tokens for the > 2-breakdown

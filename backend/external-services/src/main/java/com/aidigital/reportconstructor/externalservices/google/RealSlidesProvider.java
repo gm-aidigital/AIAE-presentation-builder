@@ -11,7 +11,6 @@ import com.google.api.services.drive.model.File;
 import com.google.api.services.slides.v1.Slides;
 import com.google.api.services.slides.v1.model.BatchUpdatePresentationRequest;
 import com.google.api.services.slides.v1.model.DeleteObjectRequest;
-import com.google.api.services.slides.v1.model.DeleteTableRowRequest;
 import com.google.api.services.slides.v1.model.DuplicateObjectRequest;
 import com.google.api.services.slides.v1.model.Page;
 import com.google.api.services.slides.v1.model.PageElement;
@@ -21,7 +20,6 @@ import com.google.api.services.slides.v1.model.Request;
 import com.google.api.services.slides.v1.model.SubstringMatchCriteria;
 import com.google.api.services.slides.v1.model.Table;
 import com.google.api.services.slides.v1.model.TableCell;
-import com.google.api.services.slides.v1.model.TableCellLocation;
 import com.google.api.services.slides.v1.model.TableRow;
 import com.google.api.services.slides.v1.model.TextContent;
 import com.google.api.services.slides.v1.model.TextElement;
@@ -150,11 +148,13 @@ public class RealSlidesProvider implements SlidesProvider {
 	private final String tacticMasterId;
 	private final BreakdownSlideNaming breakdownSlideNaming;
 	private final BreakdownThoughtsGate thoughtsGate;
+	private final SummaryTableRowTrimmer summaryTableRowTrimmer;
 
 	public RealSlidesProvider(
 			GoogleCredentialsFactory creds, GoogleProperties props, DriveSharer driveSharer,
 			DriveShareRecipients shareRecipients, GoogleRequestRetrier retrier,
-			BreakdownSlideNaming breakdownSlideNaming, BreakdownThoughtsGate thoughtsGate) {
+			BreakdownSlideNaming breakdownSlideNaming, BreakdownThoughtsGate thoughtsGate,
+			SummaryTableRowTrimmer summaryTableRowTrimmer) {
 		String slidesTemplateId = props.getSlidesTemplateId();
 		String eomSlidesTemplateId = props.getEomSlidesTemplateId();
 		String targetFolderId = props.getSlidesTargetFolderId();
@@ -170,6 +170,7 @@ public class RealSlidesProvider implements SlidesProvider {
 		this.tacticMasterId = normalizeSlideId(props.getTacticMasterSlideObjectId());
 		this.breakdownSlideNaming = breakdownSlideNaming;
 		this.thoughtsGate = thoughtsGate;
+		this.summaryTableRowTrimmer = summaryTableRowTrimmer;
 		this.driveSharer = driveSharer;
 		this.retrier = retrier;
 		this.shareRecipients = shareRecipients;
@@ -276,13 +277,17 @@ public class RealSlidesProvider implements SlidesProvider {
 		if (tacticCount >= MAX_TACTICS) {
 			return;
 		}
-		List<Request> requests = trimRequests(tacticCount);
-		if (requests.isEmpty()) {
-			return;
-		}
 		boolean asUser = userGoogleAccessToken != null && !userGoogleAccessToken.isBlank();
 		Slides slidesClient = asUser ? buildSlides(userGoogleAccessToken) : slides;
 		try {
+			List<Request> requests = trimRequests(tacticCount);
+			// The last partial group's surplus table rows are located by reading the deck rather than by
+			// assuming fixed row indices: how many header rows the template keeps inside the table differs
+			// per template, and guessing wrong deletes the Totals row instead of a tactic row.
+			requests.addAll(surplusRowRequests(slidesClient, presentationId, tacticCount));
+			if (requests.isEmpty()) {
+				return;
+			}
 			executeInChunks(slidesClient, presentationId, requests, "trimTactics batchUpdate for " + presentationId);
 		} catch (IOException ex) {
 			log.error("[slides] trimTactics failed for {}", presentationId, ex);
@@ -321,19 +326,18 @@ public class RealSlidesProvider implements SlidesProvider {
 	}
 
 	/**
-	 * Builds the delete requests for a deck trimmed to {@code tacticCount} tactics: the surplus
-	 * per-tactic detail slides, the surplus "Our results" and summary group slides, and the last
-	 * partial summary table's unused rows. Tactics are grouped 7‑per‑group (group 1 → tactics 1–7,
-	 * group 2 → 8–14, …); {@code groups = ceil(tacticCount / 7)} and {@code usedInLastGroup} is how
-	 * many of the last group's 7 rows are real. Requests are emitted only for configured (non-blank)
-	 * object ids, so an unconfigured deck degrades to a safe no-op.
+	 * Builds the whole-object delete requests for a deck trimmed to {@code tacticCount} tactics: the surplus
+	 * per-tactic detail slides and the surplus "Our results" and summary group slides. Tactics are grouped
+	 * 7‑per‑group (group 1 → tactics 1–7, group 2 → 8–14, …), so {@code groups = ceil(tacticCount / 7)} and
+	 * every group above that is empty and deleted whole. The last, partial group's unused table rows are not
+	 * handled here — they need the live table, see {@link #surplusRowRequests}. Requests are emitted only for
+	 * configured (non-blank) object ids, so an unconfigured deck degrades to a safe no-op.
 	 *
 	 * @param tacticCount number of real tactics (already clamped to {@code [1, 28]} by the caller)
 	 * @return the ordered list of delete requests (empty when nothing is configured to trim)
 	 */
 	List<Request> trimRequests(int tacticCount) {
 		int groups = (tacticCount + TACTICS_PER_GROUP - 1) / TACTICS_PER_GROUP;
-		int usedInLastGroup = tacticCount - (groups - 1) * TACTICS_PER_GROUP;
 
 		List<Request> requests = new ArrayList<>();
 		// Surplus per-tactic detail slides — legacy model only: under the master model the deck is built with
@@ -348,17 +352,42 @@ public class RealSlidesProvider implements SlidesProvider {
 			addDeleteObject(requests, resultsSlideObjectIds.get(g));
 			addDeleteObject(requests, summarySlideObjectIds.get(g));
 		}
-		// Unused rows of the last (partial) summary table, bottom-up so earlier indices don't shift.
-		// Row 0 is the header; tactic rows occupy indices 1..7.
-		String lastTableId = summaryTableObjectIds.get(groups);
-		if (lastTableId != null && !lastTableId.isBlank()) {
-			for (int row = TACTICS_PER_GROUP; row >= usedInLastGroup + 1; row--) {
-				requests.add(new Request().setDeleteTableRow(new DeleteTableRowRequest()
-						.setTableObjectId(lastTableId)
-						.setCellLocation(new TableCellLocation().setRowIndex(row).setColumnIndex(0))));
-			}
-		}
 		return requests;
+	}
+
+	/**
+	 * Builds the {@code deleteTableRow} requests for the unused tactic rows of the last, partial group's
+	 * summary table. Needs the live deck: the rows are located by reading the table (Totals row last, the
+	 * seven tactic rows directly above it) instead of by fixed indices, because a template may or may not
+	 * keep its header row inside the table — an assumption that, when wrong, deleted the Totals row and left
+	 * a raw {@code {{tactic N}}} row behind.
+	 *
+	 * <p>Non-fatal by design: a failed read yields no row requests, so the slide deletes still go through and
+	 * the deck ships with an untrimmed table rather than not at all.
+	 *
+	 * @param slidesClient   the authenticated Slides client
+	 * @param presentationId the deck being trimmed
+	 * @param tacticCount    number of real tactics (already clamped to {@code [1, 28]} by the caller)
+	 * @return the row delete requests, bottom-up; empty when there is nothing (or nothing safe) to delete
+	 */
+	List<Request> surplusRowRequests(Slides slidesClient, String presentationId, int tacticCount) {
+		int groups = (tacticCount + TACTICS_PER_GROUP - 1) / TACTICS_PER_GROUP;
+		int usedInLastGroup = tacticCount - (groups - 1) * TACTICS_PER_GROUP;
+		String lastTableId = summaryTableObjectIds.get(groups);
+		if (usedInLastGroup >= TACTICS_PER_GROUP || lastTableId == null || lastTableId.isBlank()) {
+			return new ArrayList<>();
+		}
+		try {
+			Presentation deck = retrier.execute(
+					slidesClient.presentations().get(presentationId).setFields(BREAKDOWN_FIELDS),
+					"trimTactics get " + presentationId);
+			return summaryTableRowTrimmer.deleteRowRequests(
+					deck.getSlides(), lastTableId, TACTICS_PER_GROUP, usedInLastGroup);
+		} catch (IOException ex) {
+			log.warn("[slides] trimTactics: reading {} for the summary-table trim failed ({}) - "
+					+ "leaving the table untrimmed", presentationId, ex.getMessage());
+			return new ArrayList<>();
+		}
 	}
 
 	/**
@@ -390,8 +419,14 @@ public class RealSlidesProvider implements SlidesProvider {
 					slidesClient.presentations().get(presentationId).setFields(BREAKDOWN_FIELDS),
 					"addTacticSlides get " + presentationId);
 			List<Request> requests = buildTacticRequests(deck.getSlides(), count, values);
+			// A configured master that is not in the deck means the deck will ship with no per-tactic slides at
+			// all — every tactic loses its main slide, and its breakdowns lose the anchor they are placed after.
+			// Raised rather than returned quietly so the caller can turn it into a job warning: silence here is
+			// what made a whole run come back without tactic slides and still look successful.
 			if (requests.isEmpty()) {
-				return;
+				throw new AppException(ErrorReason.C000,
+						"master tactic slide " + tacticMasterId + " was not found in deck " + presentationId
+								+ "; no per-tactic slides were built");
 			}
 			executeInChunks(slidesClient, presentationId, requests,
 					"addTacticSlides batchUpdate for " + presentationId);
@@ -407,7 +442,8 @@ public class RealSlidesProvider implements SlidesProvider {
 	 * active tactic: duplicate the master {@code tacticCount} times under the deterministic copy ids
 	 * {@link BreakdownSlideNaming#tacticSlideId(int)}, write each copy's {@code n} tokens with that tactic's
 	 * value (scoped to the copy), then move the whole run of copies into the master's own position so the
-	 * tactic block lands exactly where the template drew it.
+	 * tactic block lands exactly where the template drew it. The duplicates are emitted last tactic first,
+	 * which is what leaves them in ascending order in the deck — the order the move request requires.
 	 *
 	 * <p>Requests are emitted in two ordered phases — all duplicates + token writes, then the single position
 	 * move — so no request references a slide an earlier one has not created yet. The master itself is left in
@@ -443,19 +479,28 @@ public class RealSlidesProvider implements SlidesProvider {
 		// Phase 1: one copy per tactic, each with its own values written into the copy's tokens. The deck's
 		// global placeholder pass has already run and will not run again, so a token left merely renumbered
 		// here would stay raw in the delivered deck — hence the values map, not a plain renumber.
+		//
+		// Duplicated from the last tactic down to the first, which is what leaves the copies in ascending
+		// tactic order in the deck: every duplicate lands immediately after the master, pushing the previous
+		// one further down. Duplicating 1..N instead leaves them reversed (N first), and the position move
+		// below then fails the whole batch with "The slides should be in presentation order, with no
+		// duplicates" — a 400 that shipped decks with no tactic slides at all.
 		Set<String> tokens = extractRenumberableTokens(master);
-		List<String> copyIds = new ArrayList<>(tacticCount);
-		for (int n = 1; n <= tacticCount; n++) {
+		for (int n = tacticCount; n >= 1; n--) {
 			String copyId = breakdownSlideNaming.tacticSlideId(n);
 			requests.add(new Request().setDuplicateObject(new DuplicateObjectRequest()
 					.setObjectId(tacticMasterId)
 					.setObjectIds(Map.of(tacticMasterId, copyId))));
 			emitRenumberedTokens(requests, copyId, n, tokens, placeholderMap);
-			copyIds.add(copyId);
 		}
 
-		// Phase 2: the copies are created directly after the master, in ascending tactic order; moving them
-		// to the master's index puts the block exactly where the template had it, master last.
+		// Phase 2: the copies now sit directly after the master in ascending tactic order — the order this
+		// list must be in — so moving them to the master's index puts the block exactly where the template
+		// had it, master last.
+		List<String> copyIds = new ArrayList<>(tacticCount);
+		for (int n = 1; n <= tacticCount; n++) {
+			copyIds.add(breakdownSlideNaming.tacticSlideId(n));
+		}
 		requests.add(new Request().setUpdateSlidesPosition(new UpdateSlidesPositionRequest()
 				.setSlideObjectIds(copyIds)
 				.setInsertionIndex(masterIndex)));
@@ -602,7 +647,12 @@ public class RealSlidesProvider implements SlidesProvider {
 				? extractRenumberableTokens(pageById.get(thoughtsMasterId)) : Set.of();
 		for (Map.Entry<Integer, List<BreakdownType>> entry : orderedByTactic.entrySet()) {
 			int tacticNum = entry.getKey();
-			List<String> copyIds = new ArrayList<>();
+			// Keyed by the master's own index in the deck, because a duplicate lands immediately after its
+			// master: the copies' order in the deck is their masters' order, whatever order they were created
+			// in. The position move below rejects a list that is not in deck order (400 "The slides should be
+			// in presentation order"), so the list is derived from the masters' positions rather than from the
+			// BreakdownType declaration order — which only happens to match the template today.
+			TreeMap<Integer, String> copiesByMasterIndex = new TreeMap<>();
 			for (BreakdownType type : entry.getValue()) {
 				String masterId = masterIds.get(type);
 				String copyId = breakdownSlideId(type, tacticNum);
@@ -612,18 +662,19 @@ public class RealSlidesProvider implements SlidesProvider {
 				Set<String> tokens = tokensByType.computeIfAbsent(
 						type, t -> extractRenumberableTokens(pageById.get(masterId)));
 				emitRenumberedTokens(requests, copyId, tacticNum, tokens, breakdownValues);
-				copyIds.add(copyId);
+				copiesByMasterIndex.put(indexById.get(masterId), copyId);
 			}
-			// Append the tactic's thoughts copy last, so it lands right after its final breakdown slide.
+			// The tactic's thoughts copy: its master sits after every breakdown master in the template, so
+			// keying it the same way lands it right after the tactic's final breakdown slide.
 			if (thoughtsEnabled && thoughtsGate.qualifies(enabledByTactic.get(tacticNum))) {
 				String thoughtsCopyId = breakdownSlideNaming.thoughtsSlideId(tacticNum);
 				requests.add(new Request().setDuplicateObject(new DuplicateObjectRequest()
 						.setObjectId(thoughtsMasterId)
 						.setObjectIds(Map.of(thoughtsMasterId, thoughtsCopyId))));
 				emitRenumberedTokens(requests, thoughtsCopyId, tacticNum, thoughtsTokens, breakdownValues);
-				copyIds.add(thoughtsCopyId);
+				copiesByMasterIndex.put(indexById.get(thoughtsMasterId), thoughtsCopyId);
 			}
-			copyIdsByTactic.put(tacticNum, copyIds);
+			copyIdsByTactic.put(tacticNum, new ArrayList<>(copiesByMasterIndex.values()));
 		}
 
 		// Phase 2: place each tactic's copies right after its main slide. Processing in ascending

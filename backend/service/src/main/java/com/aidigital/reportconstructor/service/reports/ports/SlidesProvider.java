@@ -65,8 +65,10 @@ public interface SlidesProvider {
 	 * place for {@link #deleteMasterSlides} to remove.
 	 *
 	 * <p>Replaces the pre-master model, in which the template carried 28 drawn tactic slides and
-	 * {@link #trimTactics} deleted the surplus. A no-op when no master is configured or the master is absent
-	 * from the deck, so a legacy template degrades safely and keeps being trimmed instead.
+	 * {@link #trimTactics} deleted the surplus. A no-op when no master is configured, so a legacy template
+	 * degrades safely and keeps being trimmed instead. When a master <em>is</em> configured but is not in the
+	 * deck, this throws instead of returning quietly: the deck would otherwise ship without a single tactic
+	 * slide, which the caller must be able to report.
 	 *
 	 * <p>Values are written here rather than by the deck's normal placeholder pass for the same reason as
 	 * {@link #addBreakdownSlides}: the copies do not exist yet when that pass runs, so a token first spelled
