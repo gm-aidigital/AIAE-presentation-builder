@@ -96,6 +96,17 @@ public class RealSlidesProvider implements SlidesProvider {
 			+ "slides.pageElements.table.tableRows.tableCells.text.textElements.textRun.content";
 
 	/**
+	 * Field mask for the {@code presentations.get} used by {@link #surplusRowRequests}: the summary table's
+	 * cell text, plus — and this is the part that matters — each page element's own {@code objectId}. A field
+	 * mask returns nothing it does not name, so reading the table text without the element ids gives back
+	 * elements with a null id, the configured table is never recognized among them, and the row trim silently
+	 * skips every deck: that is exactly how a two-tactic deck shipped with five raw {@code {{tactic N}}} rows.
+	 */
+	private static final String TABLE_TRIM_FIELDS =
+			"slides.pageElements.objectId,"
+			+ "slides.pageElements.table.tableRows.tableCells.text.textElements.textRun.content";
+
+	/**
 	 * Field mask for the {@code presentations.get} used by {@link #deleteMasterSlides}: only the slide
 	 * order ({@code objectId}) is needed to check which configured masters are present in the deck.
 	 */
@@ -379,7 +390,7 @@ public class RealSlidesProvider implements SlidesProvider {
 		}
 		try {
 			Presentation deck = retrier.execute(
-					slidesClient.presentations().get(presentationId).setFields(BREAKDOWN_FIELDS),
+					slidesClient.presentations().get(presentationId).setFields(TABLE_TRIM_FIELDS),
 					"trimTactics get " + presentationId);
 			return summaryTableRowTrimmer.deleteRowRequests(
 					deck.getSlides(), lastTableId, TACTICS_PER_GROUP, usedInLastGroup);

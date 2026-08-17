@@ -10,8 +10,10 @@ import com.aidigital.reportconstructor.service.reports.helpers.impl.BreakdownTho
 import com.aidigital.reportconstructor.service.reports.helpers.impl.CreativeBreakdownHelperImpl;
 import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
+import com.google.api.services.slides.v1.Slides;
 import com.google.api.services.slides.v1.model.Page;
 import com.google.api.services.slides.v1.model.PageElement;
+import com.google.api.services.slides.v1.model.Presentation;
 import com.google.api.services.slides.v1.model.Request;
 import com.google.api.services.slides.v1.model.Shape;
 import com.google.api.services.slides.v1.model.Table;
@@ -21,6 +23,7 @@ import com.google.api.services.slides.v1.model.TextContent;
 import com.google.api.services.slides.v1.model.TextElement;
 import com.google.api.services.slides.v1.model.TextRun;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 
 import java.util.EnumSet;
@@ -30,6 +33,7 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class RealSlidesProviderTest {
@@ -127,6 +131,67 @@ class RealSlidesProviderTest {
 		}
 		page.setPageElements(elements);
 		return page;
+	}
+
+	@Test
+	void shouldAskForThePageElementIdsWhenComputingTheSummaryTablesSurplusRowsTest() throws Exception {
+		// Given: a deck whose group-1 summary table is "tbl1" — one header row, seven tactic rows, a Totals row
+		GoogleCredentialsFactory creds = Mockito.mock(GoogleCredentialsFactory.class);
+		when(creds.transport()).thenReturn(new NetHttpTransport());
+		when(creds.jsonFactory()).thenReturn(GsonFactory.getDefaultInstance());
+		when(creds.initializer()).thenReturn(request -> {
+		});
+		GoogleProperties props = Mockito.mock(GoogleProperties.class);
+		when(props.getSlidesTemplateId()).thenReturn("template");
+		when(props.getEomSlidesTemplateId()).thenReturn("eom-template");
+		when(props.getSlidesTargetFolderId()).thenReturn("");
+		when(props.getTacticSlideObjectIds()).thenReturn(Map.of());
+		when(props.getSummaryTableObjectIds()).thenReturn(Map.of(1, "tbl1"));
+		when(props.getSummarySlideObjectIds()).thenReturn(Map.of());
+		when(props.getResultsSlideObjectIds()).thenReturn(Map.of());
+		when(props.getBreakdownMasterSlideObjectIds()).thenReturn(Map.of());
+		GoogleRequestRetrier retrier = Mockito.mock(GoogleRequestRetrier.class);
+		RealSlidesProvider provider = new RealSlidesProvider(
+				creds, props, Mockito.mock(DriveSharer.class), Mockito.mock(DriveShareRecipients.class),
+				retrier, new BreakdownSlideNaming(), new BreakdownThoughtsGateImpl(),
+				new SummaryTableRowTrimmer());
+
+		List<TableRow> rows = new java.util.ArrayList<>();
+		rows.add(tableRow("Platforms"));
+		for (int n = 1; n <= 7; n++) {
+			rows.add(tableRow("{{tactic " + n + "}}"));
+		}
+		rows.add(tableRow("Total"));
+		Page tableSlide = new Page().setObjectId("p7").setPageElements(List.of(
+				new PageElement().setObjectId("tbl1").setTable(new Table().setTableRows(rows))));
+		Mockito.doReturn(new Presentation().setSlides(List.of(tableSlide)))
+				.when(retrier).execute(Mockito.any(), Mockito.eq("trimTactics get pres-1"));
+
+		Slides client = new Slides.Builder(
+				new NetHttpTransport(), GsonFactory.getDefaultInstance(), null).build();
+
+		// When: the two-tactic deck's surplus rows are computed
+		List<Request> requests = provider.surplusRowRequests(client, "pres-1", 2);
+
+		// Then: the read asks for each page element's own objectId. A field mask returns nothing it does not
+		// name, so without it every element comes back id-less, "tbl1" is never found, and the trim silently
+		// leaves five raw {{tactic N}} rows in the delivered deck
+		ArgumentCaptor<Slides.Presentations.Get> read = ArgumentCaptor.forClass(Slides.Presentations.Get.class);
+		verify(retrier).execute(read.capture(), Mockito.eq("trimTactics get pres-1"));
+		assertThat(read.getValue().getFields()).contains("slides.pageElements.objectId");
+
+		// And: rows 3..7 are deleted bottom-up, keeping the header, the two real tactics and the Totals row
+		assertThat(requests).hasSize(5);
+		assertThat(requests.stream()
+				.map(r -> r.getDeleteTableRow().getCellLocation().getRowIndex())
+				.toList())
+				.containsExactly(7, 6, 5, 4, 3);
+		assertThat(requests).allMatch(r -> "tbl1".equals(r.getDeleteTableRow().getTableObjectId()));
+	}
+
+	private TableRow tableRow(String text) {
+		return new TableRow().setTableCells(List.of(new TableCell().setText(new TextContent()
+				.setTextElements(List.of(new TextElement().setTextRun(new TextRun().setContent(text)))))));
 	}
 
 	@Test
