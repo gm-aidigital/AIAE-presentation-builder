@@ -23,7 +23,7 @@ import java.util.List;
 public enum SoWhatPhrase {
 
 	/** Upper funnel, non-video: the tactic bought presence in front of the target audience. */
-	AWARENESS_REACH("Built reach across our core audience",
+	AWARENESS_REACH("Built reach across the target audience",
 			List.of("awareness", "brand", "reach", "upper")),
 
 	/** Upper funnel, video/CTV/audio: the tactic bought completed, full-attention exposure. */
@@ -31,7 +31,7 @@ public enum SoWhatPhrase {
 			List.of("view", "video", "attention")),
 
 	/** Mid funnel: the tactic kept the brand present while the audience was choosing. */
-	CONSIDERATION("Kept us in the consideration set",
+	CONSIDERATION("Kept the brand top of mind while choosing",
 			List.of("consideration", "mid", "nurture", "research")),
 
 	/** Mid funnel, click-led: the tactic converted interest into a measurable action on site. */
@@ -39,11 +39,11 @@ public enum SoWhatPhrase {
 			List.of("engagement", "traffic", "click", "visit", "interest")),
 
 	/** Lower funnel: the tactic delivered the down-funnel outcome efficiently. */
-	CONVERSION("Drove efficient action down-funnel",
+	CONVERSION("Drove strong conversions for your business",
 			List.of("conversion", "convert", "action", "performance", "sales", "lead", "purchase", "book")),
 
 	/** Lower funnel, warm audiences: the tactic recovered audiences that had already engaged. */
-	RETENTION("Won back warm audiences at low cost",
+	RETENTION("Brought past visitors back to convert",
 			List.of("retarget", "retention", "remarket", "return", "loyal", "crm"));
 
 	/** Longest phrase the "SO WHAT?" column fits before it wraps out of its row. */
