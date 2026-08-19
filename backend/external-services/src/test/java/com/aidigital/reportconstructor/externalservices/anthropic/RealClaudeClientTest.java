@@ -810,7 +810,7 @@ class RealClaudeClientTest {
 				new ClaudeCompressionField("overview_2", "Evening dayparts.", 240),
 				new ClaudeCompressionField("point_3", "Efficiency", 22),
 				new ClaudeCompressionField("overview_3", "Strong CPM outcome.", 240));
-		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(2000), eq(60), eq("BatchAStrategic"), eq(false)))
+		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(2600), eq(60), eq("BatchAStrategic"), eq(false)))
 				.thenReturn(response);
 		when(compressionService.compress(eq(expectedFields), eq("BatchD-Strategic")))
 				.thenAnswer(invocation -> {
@@ -832,6 +832,70 @@ class RealClaudeClientTest {
 		assertThat(strategic.strategicInsights())
 				.extracting(StrategicInsight::point)
 				.containsExactly("Precision", "Reach", "Timing", "Efficiency");
+	}
+
+	@Test
+	void batchStrategicNarrativeParsesTheEndOfMonthNorthStarFieldsTest() throws Exception {
+		// Given: the end-of-month flavour of the strategic-narrative call, whose prompt asks for the three
+		// north-star slide fields on top of the proposal and insights
+		ClaudeResponseNormalizer normalizer = new ClaudeResponseNormalizer();
+		EomPromptBuilder promptBuilder = new EomPromptBuilder(normalizer, new Fmt());
+		ReportClaudeDefaults defaults = new ReportClaudeDefaults();
+		RealClaudeClient client = new RealClaudeClient(
+				messagesClient, promptBuilder, normalizer, compressionService, defaults,
+				new WorkbookGeoFilter(), new PromptTokenEstimator(), new ClaudeFailureLogImpl(),
+				new AnthropicProperties());
+
+		CampaignData data = new CampaignData(
+				"Acme", "Spring Launch", "Southern California", "Consideration", "Jun 1 - Jun 30, 2026",
+				null, "$500,000", "Reach", "Display, Video", "25+", "Eco-conscious parents",
+				new Totals(0, 0, 0, 0, null, null), Map.of(), null);
+		String brief = "Drive consideration for the Spring Launch.";
+		String expectedPrompt = promptBuilder.strategicNarrativePrompt(data, brief, Map.of()).orElseThrow();
+
+		JsonNode response = json.readTree("""
+				{
+				  "proposal_overview": "Throughout June we continued running Display and Video. The campaign builds consideration.",
+				  "north_star": "Deep penetration of the eco-conscious household decision-maker.",
+				  "extended_north_star": "Across Orange County and LA, against eco-conscious parents 25+, through Display and Video.",
+				  "horizon": "A continuous 30-day June flight held at even weight, which is why reach-building video and always-on display sit beneath it.",
+				  "strategic_insights": [
+				    {"point": "Precision", "overview": "Targeted eco parents."},
+				    {"point": "Reach", "overview": "Scaled via Video."},
+				    {"point": "Timing", "overview": "Evening dayparts."},
+				    {"point": "Efficiency", "overview": "Strong CPM outcome."}
+				  ]
+				}
+				""");
+		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(2600), eq(60), eq("BatchAStrategic"), eq(false)))
+				.thenReturn(response);
+		List<ClaudeCompressionField> expectedFields = List.of(
+				new ClaudeCompressionField("point_0", "Precision", 22),
+				new ClaudeCompressionField("overview_0", "Targeted eco parents.", 240),
+				new ClaudeCompressionField("point_1", "Reach", 22),
+				new ClaudeCompressionField("overview_1", "Scaled via Video.", 240),
+				new ClaudeCompressionField("point_2", "Timing", 22),
+				new ClaudeCompressionField("overview_2", "Evening dayparts.", 240),
+				new ClaudeCompressionField("point_3", "Efficiency", 22),
+				new ClaudeCompressionField("overview_3", "Strong CPM outcome.", 240));
+		when(compressionService.compress(eq(expectedFields), eq("BatchD-Strategic")))
+				.thenAnswer(invocation -> {
+					List<ClaudeCompressionField> fields = invocation.getArgument(0);
+					Map<String, String> out = new LinkedHashMap<>();
+					for (ClaudeCompressionField field : fields) {
+						out.put(field.key(), field.text());
+					}
+					return out;
+				});
+
+		// When:
+		ClaudeStrategic strategic = client.batchStrategicNarrative(data, brief, Map.of());
+
+		// Then: the headline comes back upper-cased and un-punctuated, and the two supporting fields survive
+		assertThat(strategic.northStar())
+				.isEqualTo("DEEP PENETRATION OF THE ECO-CONSCIOUS HOUSEHOLD DECISION-MAKER");
+		assertThat(strategic.extendedNorthStar()).startsWith("Across Orange County and LA");
+		assertThat(strategic.horizon()).startsWith("A continuous 30-day June flight");
 	}
 
 	@Test

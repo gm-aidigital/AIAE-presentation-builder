@@ -9,9 +9,11 @@ import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
 import com.aidigital.reportconstructor.service.reports.dto.LineItemMapping;
 import com.aidigital.reportconstructor.service.reports.dto.Placeholder;
 import com.aidigital.reportconstructor.service.reports.dto.PlanTactic;
+import com.aidigital.reportconstructor.service.reports.dto.TacticFunnelEntry;
 import com.aidigital.reportconstructor.service.reports.dto.PreviewSection;
 import com.aidigital.reportconstructor.service.reports.engine.CampaignResolvers;
 import com.aidigital.reportconstructor.service.reports.engine.Resolved;
+import com.aidigital.reportconstructor.service.reports.engine.FunnelChannelResolver;
 import com.aidigital.reportconstructor.service.reports.engine.SoWhatResolver;
 import com.aidigital.reportconstructor.service.reports.engine.TacticResolvers;
 import com.aidigital.reportconstructor.service.reports.helpers.EffectiveTacticsHelper;
@@ -41,6 +43,7 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 	private final CampaignResolvers campaignResolvers;
 	private final TacticResolvers tacticResolvers;
 	private final SoWhatResolver soWhatResolver;
+	private final FunnelChannelResolver funnelChannelResolver;
 	private final TacticExtractionHelper tacticExtraction;
 	private final EffectiveTacticsHelper effectiveTactics;
 
@@ -104,6 +107,13 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		Map<String, Resolved> overview = new LinkedHashMap<>();
 		overview.put("{{proposal overview}}", campaignResolvers.resolveProposalOverview(sheet, adj,
 				ccA.proposalOverview()));
+		// The EOM north-star slide. Written by the same strategic call as the proposal overview above, so it
+		// sits with it; on an EOC run Claude never wrote them and all three render as dashes — the EOC
+		// template has no such slots.
+		overview.put("{{our north star}}", campaignResolvers.resolveNorthStar(sheet, adj, ccA.northStar()));
+		overview.put("{{extended north star}}",
+				campaignResolvers.resolveExtendedNorthStar(sheet, adj, ccA.extendedNorthStar()));
+		overview.put("{{horizon}}", campaignResolvers.resolveHorizon(sheet, adj, ccA.horizon()));
 		overview.putAll(campaignResolvers.resolveResultsOverviews(sheet, adj, ccC.resultsOverviews()));
 		overview.putAll(campaignResolvers.resolveThoughtsOnPerformance(sheet, adj, ccC.thoughtsOnPerformance()));
 		sections.add(buildPreviewSection("Overview Slides", overview));
@@ -157,11 +167,24 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		// FALSE switches dayparting/gender off and forces those tokens to a dash.
 		boolean estimateDaypartGender = !Boolean.FALSE.equals(payload.estimateDaypartGender());
 		int tacticLimit = Math.clamp(tacticCount, 1, MAX_TACTICS);
+		List<TacticFunnelEntry> funnelEntries = new ArrayList<>();
 		for (int n = 1; n <= tacticLimit; n++) {
-			sections.add(buildPreviewSection("Tactic " + n,
+			Map<String, Resolved> tacticTokens =
 					buildFullTacticSection(n, sheet, adj, data, ccB, ccC, mediaTactics, payload.marketVolume(),
-							estimateDaypartGender, eomPeriod, payload.lineItemMapping())));
+							estimateDaypartGender, eomPeriod, payload.lineItemMapping());
+			sections.add(buildPreviewSection("Tactic " + n, tacticTokens));
+			// The north-star slide's channel lists are a regrouping of these two values, so they are taken
+			// from the tactic's own resolved tokens rather than re-parsed off the plan a second time.
+			funnelEntries.add(new TacticFunnelEntry(n,
+					resolvedValue(tacticTokens.get("{{tactic " + n + "}}")),
+					resolvedValue(tacticTokens.get("{{tactic " + n + " goal}}"))));
 		}
+
+		// The EOM north-star slide's awareness / consideration / conversions lists. Resolved here, with the
+		// campaign placeholders, so they are written into the generated workbook's Info block and the slides
+		// step reads them back from there — an edit in the sheet reaches the deck like any other Info value.
+		sections.add(buildPreviewSection("Funnel Channels",
+				funnelChannelResolver.resolveFunnelChannels(sheet, adj, funnelEntries)));
 
 		sections.add(buildPreviewSection("Optimization Recommendations",
 				campaignResolvers.resolveRecommendations(sheet, adj, ccC.recommendations())));
@@ -374,6 +397,16 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 			return new Resolved("Reporting date filter (confirmed)", null, "not_found");
 		}
 		return new Resolved("Reporting date filter (confirmed)", value, "adj");
+	}
+
+	/**
+	 * Unwraps a resolved placeholder's value, tolerating a token the map never carried.
+	 *
+	 * @param resolved the resolved entry (may be {@code null})
+	 * @return the resolved value, or {@code null} when there is none
+	 */
+	String resolvedValue(Resolved resolved) {
+		return resolved == null ? null : resolved.value();
 	}
 
 	PreviewSection buildPreviewSection(String title, Map<String, Resolved> entries) {

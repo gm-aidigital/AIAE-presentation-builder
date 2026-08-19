@@ -6,6 +6,7 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -20,6 +21,22 @@ public class ClaudeResponseNormalizer {
 	 * of the slot list {@code normalizeThoughts} returns regardless of how many paragraphs the reply carried.
 	 */
 	private static final int THOUGHT_SLOTS = 4;
+
+	/**
+	 * Characters the end-of-campaign template's audience-segments line fits. The end-of-month north-star
+	 * slide gives the same copy a wider box and passes its own budget to
+	 * {@link #limitAudienceSegments(String, int)}.
+	 */
+	public static final int AUDIENCE_SEGMENTS_LIMIT = 80;
+
+	/** Characters the EOM north-star headline fits, upper-cased, on one line. */
+	private static final int NORTH_STAR_LIMIT = 80;
+
+	/** Characters the EOM north-star supporting paragraph fits. */
+	private static final int EXTENDED_NORTH_STAR_LIMIT = 340;
+
+	/** Characters the EOM horizon block fits. */
+	private static final int HORIZON_LIMIT = 150;
 
 	/**
 	 * Function/connector words that read as unfinished when a sentence is cut right after them, so they are
@@ -259,13 +276,26 @@ public class ClaudeResponseNormalizer {
 	}
 
 	/**
-	 * Caps the Batch A {@code audience_segments} copy at 80 characters, trimming back to the last comma when
-	 * truncating.
+	 * Caps the Batch A {@code audience_segments} copy at the end-of-campaign budget of
+	 * {@link #AUDIENCE_SEGMENTS_LIMIT} characters.
 	 *
 	 * @param seg raw audience-segments text from the model ({@code "not specified"} is treated as empty)
 	 * @return the trimmed segment text, or {@code null} when blank or unspecified
 	 */
 	public String limitAudienceSegments(String seg) {
+		return limitAudienceSegments(seg, AUDIENCE_SEGMENTS_LIMIT);
+	}
+
+	/**
+	 * Caps the Batch A {@code audience_segments} copy at the given budget, trimming back to the last comma
+	 * when truncating. The budget is the flavour's, not a constant, because the EOM north-star slide gives
+	 * the segments line a wider box than the EOC template does.
+	 *
+	 * @param seg   raw audience-segments text from the model ({@code "not specified"} is treated as empty)
+	 * @param limit the maximum number of characters the flavour's slide fits
+	 * @return the trimmed segment text, or {@code null} when blank or unspecified
+	 */
+	public String limitAudienceSegments(String seg, int limit) {
 		if (seg == null) {
 			return null;
 		}
@@ -273,12 +303,68 @@ public class ClaudeResponseNormalizer {
 		if ("not specified".equalsIgnoreCase(seg)) {
 			return null;
 		}
-		if (seg.length() > 80) {
-			String cut = seg.substring(0, 80);
+		if (seg.length() > limit) {
+			String cut = seg.substring(0, limit);
 			int lc = cut.lastIndexOf(',');
 			seg = lc >= 0 ? cut.substring(0, lc).trim() : cut.trim();
 		}
 		return seg.isEmpty() ? null : seg;
+	}
+
+	/**
+	 * Caps the EOM {@code north_star} headline at {@link #NORTH_STAR_LIMIT} characters and upper-cases it.
+	 *
+	 * <p>It is a headline, not a sentence: it is never forced to end on a period, is cut back to the last
+	 * word boundary rather than mid-word, loses any dangling comma, and is upper-cased because the slide
+	 * prints it in caps.
+	 *
+	 * @param northStar raw north-star text from the model (may be null)
+	 * @return the trimmed, upper-cased headline, or {@code null} when blank
+	 */
+	public String limitNorthStar(String northStar) {
+		if (northStar == null) {
+			return null;
+		}
+		String text = northStar.trim().replaceAll("\\s+", " ");
+		if (text.length() > NORTH_STAR_LIMIT) {
+			String cut = text.substring(0, NORTH_STAR_LIMIT);
+			int ls = cut.lastIndexOf(' ');
+			text = stripTrailingComma(ls > 0 ? cut.substring(0, ls).trim() : cut.trim());
+		}
+		text = stripTrailingPeriod(text);
+		return text.isEmpty() ? null : text.toUpperCase(Locale.ROOT);
+	}
+
+	/**
+	 * Normalizes the EOM {@code extended_north_star} copy with a {@link #EXTENDED_NORTH_STAR_LIMIT}-character
+	 * budget via {@link #normalizeC}, so it reads as a finished thought.
+	 *
+	 * @param val raw extended-north-star text from the model
+	 * @return the normalized, length-capped text, or {@code null} when blank
+	 */
+	public String limitExtendedNorthStar(String val) {
+		return normalizeC(val, EXTENDED_NORTH_STAR_LIMIT);
+	}
+
+	/**
+	 * Normalizes the EOM {@code horizon} copy with a {@link #HORIZON_LIMIT}-character budget via
+	 * {@link #normalizeC}.
+	 *
+	 * @param val raw horizon text from the model
+	 * @return the normalized, length-capped text, or {@code null} when blank
+	 */
+	public String limitHorizon(String val) {
+		return normalizeC(val, HORIZON_LIMIT);
+	}
+
+	/**
+	 * Strips a single trailing period from a headline, leaving an ellipsis or any other punctuation alone.
+	 *
+	 * @param text the headline text
+	 * @return the text without its trailing period
+	 */
+	String stripTrailingPeriod(String text) {
+		return text.endsWith(".") && !text.endsWith("..") ? text.substring(0, text.length() - 1).trim() : text;
 	}
 
 	/**

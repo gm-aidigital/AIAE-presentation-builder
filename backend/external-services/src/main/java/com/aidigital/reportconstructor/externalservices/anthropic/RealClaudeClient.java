@@ -659,7 +659,8 @@ public class RealClaudeClient implements ClaudeClient {
 			}
 		}
 
-		String seg = normalizer.limitAudienceSegments(normalizer.textOrNull(parsed.get("audience_segments")));
+		String seg = normalizer.limitAudienceSegments(
+				normalizer.textOrNull(parsed.get("audience_segments")), promptBuilder.audienceSegmentsLimit());
 		String overview = normalizer.normalizeProposal(
 				normalizer.textOrNull(parsed.get("proposal_overview")), PROPOSAL_LIMIT);
 
@@ -691,7 +692,10 @@ public class RealClaudeClient implements ClaudeClient {
 		if (prompt.isEmpty()) {
 			return claudeDefaults.emptyStrategic();
 		}
-		JsonNode parsed = messagesClient.callJsonObject(prompt.get(), 2000, 60, "BatchAStrategic", false);
+		// The reply carries the proposal, four insights and — on an end-of-month run — the three
+		// north-star fields, so the budget is the EOC one plus room for those without truncating the last
+		// field the model writes.
+		JsonNode parsed = messagesClient.callJsonObject(prompt.get(), 2600, 60, "BatchAStrategic", false);
 		if (parsed == null) {
 			return claudeDefaults.emptyStrategic();
 		}
@@ -717,8 +721,16 @@ public class RealClaudeClient implements ClaudeClient {
 			insights.add(new StrategicInsight(point, ov));
 		}
 
+		// The EOM north-star slide's three fields. Only the end-of-month prompt asks for them, so on an
+		// end-of-campaign run they parse to null and their tokens render as dashes — which is what the EOC
+		// template, which carries no such slots, expects.
+		String northStar = normalizer.limitNorthStar(normalizer.textOrNull(parsed.get("north_star")));
+		String extendedNorthStar =
+				normalizer.limitExtendedNorthStar(normalizer.textOrNull(parsed.get("extended_north_star")));
+		String horizon = normalizer.limitHorizon(normalizer.textOrNull(parsed.get("horizon")));
+
 		// Audience fields are intentionally null: the sheet flow already carries them from step 1.
-		return new ClaudeStrategic(null, null, overview, insights);
+		return new ClaudeStrategic(null, null, overview, insights, northStar, extendedNorthStar, horizon);
 	}
 
 	@Override
@@ -784,7 +796,8 @@ public class RealClaudeClient implements ClaudeClient {
 			}
 		}
 
-		String seg = normalizer.limitAudienceSegments(normalizer.textOrNull(parsed.get("audience_segments")));
+		String seg = normalizer.limitAudienceSegments(
+				normalizer.textOrNull(parsed.get("audience_segments")), promptBuilder.audienceSegmentsLimit());
 
 		Map<Integer, TacticInsight> result = new LinkedHashMap<>();
 		JsonNode tactics = parsed.get("tactics");
@@ -933,8 +946,11 @@ public class RealClaudeClient implements ClaudeClient {
 				? results.fStorytelling()
 				: firstNonBlank(normalizer.limitFStorytelling(compressed.get("f_storytelling")), results.fStorytelling());
 
+		// The north-star fields are carried through untouched: the alignment schema never asks for them, so
+		// re-deriving them here would blank the EOM slide the pass is supposed to leave alone.
 		ClaudeStrategic alignedStrategic = new ClaudeStrategic(
-				strategic.audienceAge(), strategic.audienceSegments(), alignedProposal, alignedInsights);
+				strategic.audienceAge(), strategic.audienceSegments(), alignedProposal, alignedInsights,
+				strategic.northStar(), strategic.extendedNorthStar(), strategic.horizon());
 		ClaudeResults alignedResults = new ClaudeResults(
 				alignedOverviews, alignedThoughts, results.tacticOverviews(), results.recommendations(),
 				fOpportunity, fFact, fStorytelling);

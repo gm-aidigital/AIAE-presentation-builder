@@ -61,6 +61,18 @@ public class EomPromptBuilder extends ClaudeBatchPromptBuilder {
 					+ "principle 1 becomes reassurance: why the tactic is on track over the remaining flight — never "
 					+ "a fix for a failure, never a closing verdict.\n";
 
+	/** Characters the north-star headline fits on the slide, upper-cased. */
+	private static final int NORTH_STAR_LIMIT = 80;
+
+	/** Characters the north-star supporting paragraph fits. */
+	private static final int EXTENDED_NORTH_STAR_LIMIT = 340;
+
+	/** Characters the horizon block fits. */
+	private static final int HORIZON_LIMIT = 150;
+
+	/** Characters the EOM north-star slide's audience-segments line fits, wider than the EOC template's. */
+	private static final int AUDIENCE_SEGMENTS_LIMIT = 150;
+
 	/** Reply normaliser, kept alongside the parent's copy because the parent's field is private. */
 	private final ClaudeResponseNormalizer normalizer;
 
@@ -135,6 +147,7 @@ public class EomPromptBuilder extends ClaudeBatchPromptBuilder {
 						+ "Sentence 2: the standing strategic objectives of the CAMPAIGN AS A WHOLE that this "
 						+ "month's activity is driving toward. No character limit — write both sentences "
 						+ "completely.\n"
+						+ northStarSchema()
 						+ "  \"strategic_insights\": array    // Exactly 4 objects: {\"point\": string, "
 						+ "\"overview\": string}.\n"
 						+ "                                // CRITICAL for 'point': MAX 20 CHARACTERS ABSOLUTE HARD "
@@ -622,4 +635,49 @@ public class EomPromptBuilder extends ClaudeBatchPromptBuilder {
 		}
 		return "DAILY PACING (impressions per day, oldest first): " + String.join(" | ", days) + "\n";
 	}
+	/**
+	 * The three north-star fields of the EOM deck's second slide, appended to the strategic-narrative schema.
+	 *
+	 * <p>They answer three different questions and must not restate one another: {@code north_star} is the
+	 * campaign's objective as a headline, {@code extended_north_star} is that objective unpacked into the
+	 * geos, audiences and channels it is pursued with, and {@code horizon} is the timing — when the campaign
+	 * runs, for how long, and with what delivery shape — which is what explains the channel mix printed
+	 * underneath it on the slide.
+	 *
+	 * <p>They ride on this call rather than on one of their own because it already carries the campaign plan,
+	 * the audience and the geo the answers are drawn from; a separate call would pay for that context twice.
+	 * The end-of-campaign flavour never asks for them, so on an EOC run the three fields come back absent and
+	 * their tokens render as dashes.
+	 *
+	 * @return the three field specs, each newline-terminated
+	 */
+	String northStarSchema() {
+		return "  \"north_star\": string,          // MAX " + NORTH_STAR_LIMIT + " CHARACTERS, HARD LIMIT. The "
+				+ "campaign's single objective as one headline, WRITTEN ENTIRELY IN CAPITAL LETTERS, e.g. "
+				+ "\"DEEP PENETRATION OF THE HIGH-HHI LUXURY-TRAVEL AUDIENCE\". Name the actual audience or "
+				+ "outcome this campaign is bought for — not a channel, not a metric, not a slogan. No final "
+				+ "period.\n"
+				+ "  \"extended_north_star\": string, // MAX " + EXTENDED_NORTH_STAR_LIMIT + " chars. The same "
+				+ "objective unpacked: in WHICH geos, against WHICH audience segments, through WHICH channels. "
+				+ "Name the actual markets, the actual segments and the actual tactic mix from the data below — "
+				+ "never a generic restatement of the headline.\n"
+				+ "  \"horizon\": string,            // MAX " + HORIZON_LIMIT + " chars. WHEN the campaign runs, "
+				+ "for HOW LONG, and with what delivery shape (continuous presence, flighted bursts, a "
+				+ "front-loaded launch). Take the dates from the campaign plan. This is what explains the "
+				+ "channel mix on the slide, so make the link explicit: sustained presence is why reach-building "
+				+ "video and always-on display sit beneath it.\n";
+	}
+
+	/**
+	 * Widens the {@code audience_segments} budget to {@link #AUDIENCE_SEGMENTS_LIMIT} characters: the EOM
+	 * north-star slide prints the segments line in its own block rather than in the EOC template's narrow
+	 * strip, so it fits a fuller phrase than the parent asks for.
+	 *
+	 * @return the end-of-month audience-segments budget
+	 */
+	@Override
+	int audienceSegmentsLimit() {
+		return AUDIENCE_SEGMENTS_LIMIT;
+	}
+
 }

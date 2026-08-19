@@ -524,6 +524,48 @@ class EomPromptBuilderTest {
 	}
 
 	@Test
+	void shouldAskTheStrategicNarrativeCallForTheNorthStarSlideTest() {
+		// Given: an end-of-month run of the call that writes the deck's campaign-level copy
+		CampaignData data = campaign(2, 6);
+
+		// When:
+		String prompt = builder.strategicNarrativePrompt(data, "Drive awareness.", Map.of()).orElseThrow();
+
+		// Then: the three north-star slide fields ride on it, each with the budget its slot fits
+		assertThat(prompt).contains("\"north_star\": string,          // MAX 80 CHARACTERS, HARD LIMIT.");
+		assertThat(prompt).contains("WRITTEN ENTIRELY IN CAPITAL LETTERS");
+		assertThat(prompt).contains("\"extended_north_star\": string, // MAX 340 chars.");
+		assertThat(prompt).contains("\"horizon\": string,            // MAX 150 chars.");
+	}
+
+	@Test
+	void shouldLeaveTheEndOfCampaignStrategicNarrativeWithoutNorthStarFieldsTest() {
+		// Given: an end-of-campaign run of the same call, whose template carries no north-star slide
+		CampaignData data = campaign(null, null);
+
+		// When:
+		String prompt = eoc.strategicNarrativePrompt(data, "Drive awareness.", Map.of()).orElseThrow();
+
+		// Then: it neither asks nor pays for copy the deck has nowhere to put
+		assertThat(prompt).doesNotContain("north_star");
+		assertThat(prompt).doesNotContain("\"horizon\"");
+	}
+
+	@Test
+	void shouldGiveTheAudienceSegmentsLineTheWiderEndOfMonthBudgetTest() {
+		// Given: the two flavours of the sheet-build call, which is what writes the segments cell
+		CampaignData data = campaign(2, 6);
+
+		// When:
+		String eom = builder.buildBatchSheetPrompt(data, "Drive awareness.").orElseThrow();
+		String eocPrompt = eoc.buildBatchSheetPrompt(campaign(null, null), "Drive awareness.").orElseThrow();
+
+		// Then: the EOM north-star slide asks for a fuller phrase than the EOC template's narrow strip
+		assertThat(eom).contains("\"audience_segments\": string,   // ≤150 chars.");
+		assertThat(eocPrompt).contains("\"audience_segments\": string,   // ≤80 chars.");
+	}
+
+	@Test
 	void shouldFrameTheClassicBatchAPromptAsMidFlightTest() {
 		// Given: the classic direct-to-deck flow's full Batch A call (audience + narrative combined) — the
 		// only other place, besides the sheet-as-source flow, that ever asks for proposal/insights copy

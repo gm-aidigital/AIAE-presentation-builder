@@ -76,9 +76,13 @@ public final class ReportsEngineTestSupport {
 		return new SoWhatResolver(campaignResolvers(), tacticExtractionHelper());
 	}
 
+	static FunnelChannelResolver funnelChannelResolver() {
+		return new FunnelChannelResolver(campaignResolvers());
+	}
+
 	public static PlaceholderSectionBuilderImpl placeholderSectionBuilder() {
 		return new PlaceholderSectionBuilderImpl(campaignResolvers(), tacticResolvers(), soWhatResolver(),
-				tacticExtractionHelper(), effectiveTacticsHelper());
+				funnelChannelResolver(), tacticExtractionHelper(), effectiveTacticsHelper());
 	}
 
 	public static PlaceholderClaudeGateImpl placeholderClaudeGate() {

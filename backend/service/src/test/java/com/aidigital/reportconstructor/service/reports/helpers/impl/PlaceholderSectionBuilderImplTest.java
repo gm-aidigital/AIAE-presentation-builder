@@ -36,23 +36,24 @@ class PlaceholderSectionBuilderImplTest {
 		);
 
 		// 4 lead sections + 28 per-tactic sections + Optimization Recommendations + Frequency Story = 34
-		assertThat(sections).hasSize(34);
+		assertThat(sections).hasSize(35);
 		assertThat(sections.get(0).title()).isEqualTo("Start");
 		assertThat(sections.get(1).title()).isEqualTo("Overview Slides");
 		assertThat(sections.get(2).title()).isEqualTo("Strategic Insights");
 		assertThat(sections.get(3).title()).isEqualTo("Summary Metrics");
 		assertThat(sections.get(4).title()).isEqualTo("Tactic 1");
 		assertThat(sections.get(31).title()).isEqualTo("Tactic 28");
-		assertThat(sections.get(32).title()).isEqualTo("Optimization Recommendations");
-		assertThat(sections.get(32).placeholders())
+		assertThat(sections.get(32).title()).isEqualTo("Funnel Channels");
+		assertThat(sections.get(33).title()).isEqualTo("Optimization Recommendations");
+		assertThat(sections.get(33).placeholders())
 				.extracting(Placeholder::key)
 				.containsExactly(
 						"{{recommendation 1}}", "{{recommendation 1 text}}",
 						"{{recommendation 2}}", "{{recommendation 2 text}}",
 						"{{recommendation 3}}", "{{recommendation 3 text}}",
 						"{{recommendation 4}}", "{{recommendation 4 text}}");
-		assertThat(sections.get(33).title()).isEqualTo("Frequency Story");
-		assertThat(sections.get(33).placeholders())
+		assertThat(sections.get(34).title()).isEqualTo("Frequency Story");
+		assertThat(sections.get(34).placeholders())
 				.extracting(Placeholder::key)
 				.containsExactly("{{f_oppartunity}}", "{{f_fact}}", "{{f_storytelling}}");
 	}
@@ -107,10 +108,11 @@ class PlaceholderSectionBuilderImplTest {
 		);
 
 		// 4 lead sections + 2 per-tactic sections + Optimization Recommendations + Frequency Story = 8
-		assertThat(sections).hasSize(8);
+		assertThat(sections).hasSize(9);
 		assertThat(sections.get(4).title()).isEqualTo("Tactic 1");
 		assertThat(sections.get(5).title()).isEqualTo("Tactic 2");
-		assertThat(sections.get(6).title()).isEqualTo("Optimization Recommendations");
+		assertThat(sections.get(6).title()).isEqualTo("Funnel Channels");
+		assertThat(sections.get(7).title()).isEqualTo("Optimization Recommendations");
 		assertThat(sections).noneMatch(s -> s.title().equals("Tactic 3"));
 	}
 

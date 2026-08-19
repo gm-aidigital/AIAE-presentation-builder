@@ -82,7 +82,17 @@ public class SheetPlaceholderReaderImpl implements SheetPlaceholderReader {
 			Map.entry("Campaign duration (months):", "{{total mon no}}"),
 			Map.entry("Reporting month no.", "{{mon no}}"),
 			Map.entry("Reporting month no.:", "{{mon no}}"),
-			Map.entry("Reporting month no:", "{{mon no}}"));
+			Map.entry("Reporting month no:", "{{mon no}}"),
+			// EOM north-star slide: the channel lists grouped off the media plan's Goal column when the
+			// workbook was built. Reading them back here is what lets the user regroup a channel in the sheet
+			// and have the deck print the edit. Registered with and without the trailing colon, like the
+			// cadence labels above, because a miss is silent — the slide would simply print a dash.
+			Map.entry("Awareness channels", "{{awareness channels}}"),
+			Map.entry("Awareness channels:", "{{awareness channels}}"),
+			Map.entry("Consideration channels", "{{consideration channels}}"),
+			Map.entry("Consideration channels:", "{{consideration channels}}"),
+			Map.entry("Conversions channels", "{{conversions channels}}"),
+			Map.entry("Conversions channels:", "{{conversions channels}}"));
 
 	/** Info-block header whose value sits in the cell <em>below</em> it. */
 	private static final String RFP_HEADER = "RFP Input";

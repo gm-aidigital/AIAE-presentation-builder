@@ -261,8 +261,7 @@ public class ClaudeBatchPromptBuilder {
 						"\"35+\". "
 						+ "Exact range if stated; lower bound only if a floor; generation → range (Millennials=25-40, "
 						+ "GenZ=18-27, GenX=41-56, Boomers=57-75); null if not specified.\n"
-						+ "  \"audience_segments\": string,   // ≤80 chars. WHO is targeted — natural phrase like "
-						+ "\"Affluent auto-intenders, HHI $100K+\". No platforms/budgets/KPIs. null if no info.\n"
+						+ audienceSegmentsSpec()
 						+ batchAProposalOverviewSpec()
 						+ batchAStrategicInsightsSpec()
 						+ "}\n\n"
@@ -275,6 +274,30 @@ public class ClaudeBatchPromptBuilder {
 						+ "- Output in English regardless of input language.\n\n"
 						+ "Campaign data:\n" + context;
 		return Optional.of(prompt);
+	}
+
+	/**
+	 * The {@code audience_segments} field spec, shared by the full Batch A prompt and the sheet-build prompt
+	 * so both flavours ask for the line their own slide fits. Split out for the same reason
+	 * {@link #batchAProposalOverviewSpec()} is: an end-of-month override changes this one line without
+	 * restating the schema around it.
+	 *
+	 * @return the field spec line, newline-terminated
+	 */
+	String audienceSegmentsSpec() {
+		return "  \"audience_segments\": string,   // ≤" + audienceSegmentsLimit() + " chars. WHO is targeted — "
+				+ "natural phrase like \"Affluent auto-intenders, HHI $100K+\". No platforms/budgets/KPIs. "
+				+ "null if no info.\n";
+	}
+
+	/**
+	 * The character budget the flavour's audience-segments slot fits, asked for in the prompt and enforced on
+	 * the reply, so the two can never drift apart.
+	 *
+	 * @return the maximum number of characters {@code audience_segments} may carry
+	 */
+	int audienceSegmentsLimit() {
+		return ClaudeResponseNormalizer.AUDIENCE_SEGMENTS_LIMIT;
 	}
 
 	/**
@@ -628,8 +651,7 @@ public class ClaudeBatchPromptBuilder {
 						"\"35+\". "
 						+ "Exact range if stated; lower bound only if a floor; generation → range (Millennials=25-40, "
 						+ "GenZ=18-27, GenX=41-56, Boomers=57-75); null if not specified.\n"
-						+ "  \"audience_segments\": string,   // ≤80 chars. WHO is targeted — natural phrase like "
-						+ "\"Affluent auto-intenders, HHI $100K+\". No platforms/budgets/KPIs. null if no info.\n"
+						+ audienceSegmentsSpec()
 						+ "  \"tactics\": {                    // Per-tactic gender split + peak windows. Keys are tactic " +
 						"numbers as strings: " + tacticKeys + "\n"
 						+ "    \"N\": {\"male\": int, \"female\": int, \"weekdays_peak\": \"H AM/PM – H AM/PM\", " +

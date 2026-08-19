@@ -112,6 +112,46 @@ class ClaudeResponseNormalizerTest {
 	}
 
 	@Test
+	void limitAudienceSegments_honoursTheWiderEndOfMonthBudgetTest() {
+		// Given: a segments line longer than the EOC budget but inside the EOM one
+		String seg = "Eco-conscious household decision-makers, parents 25+, sustainability-minded shoppers";
+		assertThat(seg.length()).isGreaterThan(80);
+		assertThat(seg.length()).isLessThan(150);
+
+		// When-Then: the EOM budget keeps it whole, the EOC one trims it back to a comma
+		assertThat(normalizer.limitAudienceSegments(seg, 150)).isEqualTo(seg);
+		assertThat(normalizer.limitAudienceSegments(seg)).isEqualTo(
+				"Eco-conscious household decision-makers, parents 25+");
+	}
+
+	@Test
+	void limitNorthStar_capsAtEightyCharactersAndUpperCasesTest() {
+		// Given: a north star written past the slot's width, in sentence case, ending on a period
+		String northStar = "Deep penetration of the high-HHI luxury-travel audience across Southern California "
+				+ "and the wider West Coast.";
+		assertThat(northStar.length()).isGreaterThan(80);
+
+		// When:
+		String out = normalizer.limitNorthStar(northStar);
+
+		// Then: it is cut on a word boundary, upper-cased, and left without a trailing period
+		assertThat(out).isNotNull();
+		assertThat(out.length()).isLessThanOrEqualTo(80);
+		assertThat(out).isEqualTo("DEEP PENETRATION OF THE HIGH-HHI LUXURY-TRAVEL AUDIENCE ACROSS SOUTHERN");
+	}
+
+	@Test
+	void limitNorthStar_upperCasesAShortHeadlineWithoutCuttingItTest() {
+		// Given: a headline already inside the budget
+		String northStar = "Deep penetration of the high-HHI luxury-travel audience.";
+
+		// When-Then: only the case and the trailing period change
+		assertThat(normalizer.limitNorthStar(northStar))
+				.isEqualTo("DEEP PENETRATION OF THE HIGH-HHI LUXURY-TRAVEL AUDIENCE");
+		assertThat(normalizer.limitNorthStar(null)).isNull();
+	}
+
+	@Test
 	void normalizeThoughts_splitsIntoExactlyFour() {
 		List<String> slots = normalizer.normalizeThoughts("a | b | c | d | e");
 		assertThat(slots).hasSize(4);

@@ -45,6 +45,26 @@ class SheetPlaceholderReaderImplTest {
 	}
 
 	@Test
+	void shouldReadTheNorthStarChannelListsBackFromTheInfoBlockTest() {
+		// Given: the EOM Info block, where the three channel lists sit in the second label column and the
+		// template writes them without a trailing colon
+		List<List<String>> grid = List.of(
+				List.of("Client name:", "Acme", "Reporting dates", "Jun 1 – Jun 30, 2026"),
+				List.of("KPI:", "Reach & CTR", "Awareness channels", "CTV, Online Video"),
+				List.of("Geo:", "Texas", "Consideration channels", "Display"),
+				List.of("Funnel:", "Awareness", "Conversions channels", "—"));
+
+		// When:
+		Map<String, String> out = reader.readPlaceholders(grid);
+
+		// Then: each list comes back under its deck token, so an edit in the sheet reaches the slide
+		assertThat(out)
+				.containsEntry("{{awareness channels}}", "CTV, Online Video")
+				.containsEntry("{{consideration channels}}", "Display")
+				.containsEntry("{{conversions channels}}", "—");
+	}
+
+	@Test
 	void shouldReadChangeLogFromEitherLayoutTest() {
 		// Given: the real EOC/EOM info-block shape — "Change log" is a merged H1:J1 header with the text in the
 		// merged block beneath it, so the API returns the header only in H1 and the covered cells come back

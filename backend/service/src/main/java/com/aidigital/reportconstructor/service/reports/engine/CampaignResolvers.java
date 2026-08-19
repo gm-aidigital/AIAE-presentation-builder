@@ -522,6 +522,84 @@ public class CampaignResolvers {
 	}
 
 	/**
+	 * Resolves the EOM north-star headline ({@code {{our north star}}}), preferring a hand-entered value and
+	 * falling back to the Claude-authored one.
+	 *
+	 * @param sheetRows       Media Plan tab rows
+	 * @param adjRows         manual Adjustments tab rows (checked first)
+	 * @param claudeNorthStar Claude-authored north star from the brief and media plan (may be null)
+	 * @return a {@link Resolved} north-star string, or a null-valued {@code "not_found"}
+	 */
+	public Resolved resolveNorthStar(List<List<String>> sheetRows, List<List<String>> adjRows,
+	                                 String claudeNorthStar) {
+
+		String fromAdj = sheetUtils.findLabelValue(adjRows, "North star:");
+		if (fromAdj != null) {
+			return new Resolved("North star:", fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, "North star:");
+		if (fromSheet != null) {
+			return new Resolved("North star:", fromSheet, "sheet");
+		}
+		if (claudeNorthStar != null) {
+			return new Resolved("North star (auto: Claude from brief + media plan)", claudeNorthStar, "adj");
+		}
+		return new Resolved("North star:", null, "not_found");
+	}
+
+	/**
+	 * Resolves the EOM north-star supporting paragraph ({@code {{extended north star}}}) — the objective
+	 * unpacked into geos, audiences and channels — preferring a hand-entered value.
+	 *
+	 * @param sheetRows      Media Plan tab rows
+	 * @param adjRows        manual Adjustments tab rows (checked first)
+	 * @param claudeExtended Claude-authored extended north star (may be null)
+	 * @return a {@link Resolved} extended north-star string, or a null-valued {@code "not_found"}
+	 */
+	public Resolved resolveExtendedNorthStar(List<List<String>> sheetRows, List<List<String>> adjRows,
+	                                         String claudeExtended) {
+
+		String fromAdj = sheetUtils.findLabelValue(adjRows, "Extended north star:");
+		if (fromAdj != null) {
+			return new Resolved("Extended north star:", fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, "Extended north star:");
+		if (fromSheet != null) {
+			return new Resolved("Extended north star:", fromSheet, "sheet");
+		}
+		if (claudeExtended != null) {
+			return new Resolved("Extended north star (auto: Claude from brief + media plan)", claudeExtended, "adj");
+		}
+		return new Resolved("Extended north star:", null, "not_found");
+	}
+
+	/**
+	 * Resolves the EOM horizon block ({@code {{horizon}}}) — when the campaign runs, for how long and with
+	 * what delivery shape — preferring a hand-entered value.
+	 *
+	 * @param sheetRows     Media Plan tab rows
+	 * @param adjRows       manual Adjustments tab rows (checked first)
+	 * @param claudeHorizon Claude-authored horizon copy (may be null)
+	 * @return a {@link Resolved} horizon string, or a null-valued {@code "not_found"}
+	 */
+	public Resolved resolveHorizon(List<List<String>> sheetRows, List<List<String>> adjRows,
+	                               String claudeHorizon) {
+
+		String fromAdj = sheetUtils.findLabelValue(adjRows, "Horizon:");
+		if (fromAdj != null) {
+			return new Resolved("Horizon:", fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, "Horizon:");
+		if (fromSheet != null) {
+			return new Resolved("Horizon:", fromSheet, "sheet");
+		}
+		if (claudeHorizon != null) {
+			return new Resolved("Horizon (auto: Claude from brief + media plan)", claudeHorizon, "adj");
+		}
+		return new Resolved("Horizon:", null, "not_found");
+	}
+
+	/**
 	 * Resolves the eight strategic-insight placeholders ({@code {{Strategic point N}}}
 	 * and {@code {{Strategic overview N}}} for N = 1..4), preferring manual values and
 	 * falling back to Claude's strategic insights.
