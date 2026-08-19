@@ -723,4 +723,33 @@ class CampaignResolversTest {
 				null, null, null, null, null, new FlightDates(start, end), null, null, null, null, null,
 				new Totals(0, 0, 0, 0, null, null), Map.of(), null);
 	}
+
+	@Test
+	void resolvePacingTakeaways_fillsEverySlotAndPrefersTheSheetTest() {
+		// Given: Claude wrote two takeaways and the user rewrote the first one in the workbook
+		List<List<String>> sheet = labelRow("Pacing dash takeaway 1:", "Reviewed by hand");
+		List<String> claude = List.of("Everything on pace.", "Display is 12% behind, budget shifted.");
+
+		// When:
+		Map<String, Resolved> out = resolvers.resolvePacingTakeaways(sheet, List.of(), claude);
+
+		// Then: the sheet wins slot 1, Claude fills slot 2, and the unfilled slots stay dashes rather than
+		// raw tokens on a slide that survives the trim
+		assertThat(out.get("{{pacing dash takeaway 1}}").value()).isEqualTo("Reviewed by hand");
+		assertThat(out.get("{{pacing dash takeaway 2}}").value())
+				.isEqualTo("Display is 12% behind, budget shifted.");
+		assertThat(out.get("{{pacing dash takeaway 3}}").value()).isNull();
+		assertThat(out.get("{{pacing dash takeaway 4}}").source()).isEqualTo("not_found");
+	}
+
+	@Test
+	void resolvePacingTakeaways_emptyOnAnEndOfCampaignRunTest() {
+		// Given: the EOC flavour never asks for the field
+		// When:
+		Map<String, Resolved> out = resolvers.resolvePacingTakeaways(List.of(), List.of(), List.of());
+
+		// Then: four dashed slots, no exception
+		assertThat(out).hasSize(4);
+		assertThat(out.values()).allMatch(r -> r.value() == null);
+	}
 }

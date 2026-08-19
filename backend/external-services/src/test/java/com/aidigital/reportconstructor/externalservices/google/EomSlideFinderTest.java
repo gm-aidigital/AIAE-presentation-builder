@@ -34,6 +34,16 @@ class EomSlideFinderTest {
 		return new Page().setObjectId(objectId).setPageElements(elements);
 	}
 
+	private Page namedTableSlide(String objectId, String tableId, String... cellTexts) {
+		List<TableCell> cells = new java.util.ArrayList<>();
+		for (String content : cellTexts) {
+			cells.add(new TableCell().setText(text(content)));
+		}
+		return new Page().setObjectId(objectId).setPageElements(List.of(new PageElement()
+				.setObjectId(tableId)
+				.setTable(new Table().setTableRows(List.of(new TableRow().setTableCells(cells))))));
+	}
+
 	private Page tableSlide(String objectId, String... cellTexts) {
 		List<TableCell> cells = new java.util.ArrayList<>();
 		for (String content : cellTexts) {
@@ -109,5 +119,39 @@ class EomSlideFinderTest {
 		assertThat(finder.tacticMasterSlideIds(null)).isEmpty();
 		assertThat(finder.breakdownMasterSlideIds(List.of())).isEmpty();
 		assertThat(finder.surplusTacticSlideIds(null, 3)).isEmpty();
+	}
+
+	@Test
+	void trimsTheTablesOfTheBlockTheTacticCountLandsInside() {
+		List<Page> deck = List.of(
+				shapeSlide("divider", "{{tactic 1}}", "{{tactic 2}}"),
+				namedTableSlide("pacing-1-7", "pacing-table-1", "{{tactic 1 planned budget}}",
+						"{{tactic 7 fact imps}}", "{{total pacing}}"),
+				namedTableSlide("perf-1-7", "perf-table-1", "{{tactic 1 KPI goal}}", "{{tactic 7 vs goal}}"),
+				namedTableSlide("pacing-8-14", "pacing-table-2", "{{tactic 8 planned budget}}"));
+
+		// Both dashboards of the 1-7 block are trimmed; the 8-14 block's slide is deleted whole, not trimmed,
+		// and the divider carries no table at all.
+		assertThat(finder.partialBlockTableIds(deck, 3, 7))
+				.containsExactly("pacing-table-1", "perf-table-1");
+	}
+
+	@Test
+	void trimsNothingWhenTheLastBlockIsExactlyFull() {
+		List<Page> deck = List.of(
+				namedTableSlide("pacing-1-7", "pacing-table-1", "{{tactic 1 planned budget}}"),
+				namedTableSlide("pacing-8-14", "pacing-table-2", "{{tactic 8 planned budget}}"));
+
+		assertThat(finder.partialBlockTableIds(deck, 7, 7)).isEmpty();
+		assertThat(finder.partialBlockTableIds(deck, 14, 7)).isEmpty();
+	}
+
+	@Test
+	void masterTacticTablesAreNeverTrimmedByRow() {
+		List<Page> deck = List.of(
+				namedTableSlide("tactic-master", "master-table", "{{tactic n planned budget}}",
+						"{{tactic n pacing}}"));
+
+		assertThat(finder.partialBlockTableIds(deck, 3, 7)).isEmpty();
 	}
 }

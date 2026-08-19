@@ -73,6 +73,12 @@ public class EomPromptBuilder extends ClaudeBatchPromptBuilder {
 	/** Characters the EOM north-star slide's audience-segments line fits, wider than the EOC template's. */
 	private static final int AUDIENCE_SEGMENTS_LIMIT = 150;
 
+	/** Tactics one pacing-dashboard slide draws; the deck carries one such slide per block of them. */
+	static final int TACTICS_PER_DASHBOARD = 7;
+
+	/** Pacing-dashboard slides the EOM template carries, covering tactics 1-7, 8-14, 15-21 and 22-28. */
+	static final int MAX_DASHBOARDS = 4;
+
 	/** Reply normaliser, kept alongside the parent's copy because the parent's field is private. */
 	private final ClaudeResponseNormalizer normalizer;
 
@@ -113,6 +119,10 @@ public class EomPromptBuilder extends ClaudeBatchPromptBuilder {
 		}
 		String monthly = monthlyDeliveryBlock(data, monthlyPivots);
 		String context = monthly.isEmpty() ? shared.get() : shared.get() + "\n\n" + monthly;
+		String dashboard = pacingDashboardBlock(data);
+		if (!dashboard.isEmpty()) {
+			context = context + "\n\n" + dashboard;
+		}
 
 		String prompt =
 				"You are a senior digital media strategist at an advertising agency writing a client-facing "
@@ -148,6 +158,7 @@ public class EomPromptBuilder extends ClaudeBatchPromptBuilder {
 						+ "month's activity is driving toward. No character limit — write both sentences "
 						+ "completely.\n"
 						+ northStarSchema()
+						+ pacingTakeawaysSchema(dashboardCount(data))
 						+ "  \"strategic_insights\": array    // Exactly 4 objects: {\"point\": string, "
 						+ "\"overview\": string}.\n"
 						+ "                                // CRITICAL for 'point': MAX 20 CHARACTERS ABSOLUTE HARD "
@@ -680,4 +691,123 @@ public class EomPromptBuilder extends ClaudeBatchPromptBuilder {
 		return AUDIENCE_SEGMENTS_LIMIT;
 	}
 
+	/**
+	 * How many pacing-dashboard slides this campaign's deck keeps: one per block of
+	 * {@link #TACTICS_PER_DASHBOARD} tactics, capped at the {@link #MAX_DASHBOARDS} the template draws.
+	 * The blocks above the campaign's tactic count are deleted from the deck, so asking for their
+	 * takeaways would pay for copy no slide prints.
+	 *
+	 * @param data parsed campaign plan and per-tactic performance
+	 * @return the number of dashboard slides, at least one
+	 */
+	int dashboardCount(CampaignData data) {
+		int tactics = data == null || data.tactics() == null ? 0 : data.tactics().size();
+		int blocks = (tactics + TACTICS_PER_DASHBOARD - 1) / TACTICS_PER_DASHBOARD;
+		return Math.clamp(blocks, 1, MAX_DASHBOARDS);
+	}
+
+	/**
+	 * The {@code pacing_takeaways} field spec: one key takeaway per pacing-dashboard slide, in slide order.
+	 *
+	 * <p>The takeaway is asked for as a verdict on the block's pacing — everything on track, or the one or
+	 * two channels worth looking at and why — because that is the sentence the slide prints under its table,
+	 * next to the numbers it is about. It rides on the strategic call, which already carries the campaign
+	 * plan and the delivery history the verdict has to be consistent with.
+	 *
+	 * @param dashboards how many dashboard slides the deck keeps, one takeaway each
+	 * @return the field spec, newline-terminated
+	 */
+	String pacingTakeawaysSchema(int dashboards) {
+		return "  \"pacing_takeaways\": array,      // EXACTLY " + dashboards + " string(s), in order, one per "
+				+ "PACING DASHBOARD block below (block 1 = tactics 1-" + TACTICS_PER_DASHBOARD + ", block 2 = "
+				+ "the next " + TACTICS_PER_DASHBOARD + ", and so on). MAX "
+				+ ClaudeResponseNormalizer.PACING_TAKEAWAY_LIMIT + " CHARACTERS EACH, HARD LIMIT — the slot is "
+				+ "one line under the table.\n"
+				+ "                                // Each string is the pacing verdict for THAT block and "
+				+ "nothing else: if every channel in it is delivering against its budget and impression goal, "
+				+ "say so and say what is carrying it; if one or two are off, NAME them, give the pacing figure "
+				+ "and say in the same breath why it is a normal fluctuation of a live flight or what is being "
+				+ "done about it. Never a list of every channel, never a metric restated without a "
+				+ "consequence.\n";
+	}
+
+	/**
+	 * Renders the pacing dashboard exactly as the slides print it — planned and actual budget, the pacing
+	 * between them, and planned and actual impressions per tactic — grouped into the blocks the deck draws,
+	 * with the campaign totals last.
+	 *
+	 * <p>The takeaways are written against these numbers rather than against the tactic-performance lines in
+	 * the shared context, which carry no plan figures at all: without the plan there is no pacing to have a
+	 * verdict about. Blocking the table the same way the deck does is what lets the model be told "one
+	 * takeaway per block" and have that mean something.
+	 *
+	 * @param data parsed campaign plan and per-tactic performance
+	 * @return the dashboard context block, or an empty string when no tactic carries a planned figure
+	 */
+	String pacingDashboardBlock(CampaignData data) {
+		if (data == null || data.tactics() == null || data.tactics().isEmpty()) {
+			return "";
+		}
+		List<String> lines = new ArrayList<>();
+		double planSpend = 0;
+		double factSpend = 0;
+		double planImps = 0;
+		double factImps = 0;
+		boolean planned = false;
+		int block = 0;
+		for (Map.Entry<Integer, Tactic> entry : data.tactics().entrySet()) {
+			Tactic tactic = entry.getValue();
+			if (tactic == null) {
+				continue;
+			}
+			int tacticBlock = (entry.getKey() - 1) / TACTICS_PER_DASHBOARD + 1;
+			if (tacticBlock != block) {
+				block = tacticBlock;
+				lines.add("  -- BLOCK " + block + " --");
+			}
+			planned = planned || tactic.planSpend() != null || tactic.planImps() != null;
+			planSpend += nullSafe(tactic.planSpend());
+			factSpend += tactic.spend();
+			planImps += nullSafe(tactic.planImps());
+			factImps += tactic.imps();
+			lines.add("  Tactic " + entry.getKey() + " — " + tactic.name() + ": "
+					+ pacingLine(tactic.planSpend(), tactic.spend(), tactic.planImps(), tactic.imps()));
+		}
+		if (!planned) {
+			return "";
+		}
+		lines.add("  Campaign total: " + pacingLine(planSpend, factSpend, planImps, factImps));
+		return "=== PACING DASHBOARD ===\n"
+				+ "The reporting month's budget and impression pacing per tactic, blocked exactly as the "
+				+ "report's dashboard slides print it. Pacing is actual spend over planned spend.\n"
+				+ String.join("\n", lines);
+	}
+
+	/**
+	 * Renders one dashboard row: the planned and actual budget with the pacing between them, then the
+	 * planned and actual impressions.
+	 *
+	 * @param planSpend planned spend for the row ({@code null} when the plan carries none)
+	 * @param factSpend delivered spend for the row
+	 * @param planImps  planned impressions for the row ({@code null} when the plan carries none)
+	 * @param factImps  delivered impressions for the row
+	 * @return the formatted row
+	 */
+	String pacingLine(Double planSpend, double factSpend, Double planImps, double factImps) {
+		double plan = nullSafe(planSpend);
+		String pacing = plan > 0 ? Math.round(factSpend / plan * 100) + "%" : "n/a";
+		return "budget plan " + fmt.money(plan) + " / actual " + fmt.money(factSpend) + " = " + pacing
+				+ " | imps plan " + fmt.intGroup(nullSafe(planImps)) + " / actual " + fmt.intGroup(factImps);
+	}
+
+	/**
+	 * Reads an optional planned figure as a number, treating "not planned" as zero so a row with no plan
+	 * simply carries no pacing rather than breaking the whole block.
+	 *
+	 * @param value the planned figure (may be {@code null})
+	 * @return the value, or {@code 0} when absent
+	 */
+	double nullSafe(Double value) {
+		return value == null ? 0 : value;
+	}
 }

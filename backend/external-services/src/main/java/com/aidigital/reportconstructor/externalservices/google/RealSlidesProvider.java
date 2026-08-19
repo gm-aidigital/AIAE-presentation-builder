@@ -107,6 +107,18 @@ public class RealSlidesProvider implements SlidesProvider {
 			+ "slides.pageElements.table.tableRows.tableCells.text.textElements.textRun.content";
 
 	/**
+	 * Field mask for the {@code presentations.get} used by {@link #trimEomDashboardSlides}: the slide order
+	 * and text of {@link #BREAKDOWN_FIELDS}, plus each page element's own {@code objectId} — the trim both
+	 * deletes whole slides (needing the slide ids) and deletes rows from tables it discovers by text
+	 * (needing the element ids); a mask returns nothing it does not name.
+	 */
+	private static final String EOM_TRIM_FIELDS =
+			"slides.objectId,"
+			+ "slides.pageElements.objectId,"
+			+ "slides.pageElements.shape.text.textElements.textRun.content,"
+			+ "slides.pageElements.table.tableRows.tableCells.text.textElements.textRun.content";
+
+	/**
 	 * Field mask for the {@code presentations.get} used by {@link #deleteMasterSlides}: only the slide
 	 * order ({@code objectId}) is needed to check which configured masters are present in the deck.
 	 */
@@ -781,10 +793,17 @@ public class RealSlidesProvider implements SlidesProvider {
 	}
 
 	/**
-	 * Deletes the EOM dashboard slides whose tactic slots the campaign never fills. The pacing-dashboard
-	 * and performance-vs-plan slides are each drawn for a fixed block of seven tactics, so a three-tactic
-	 * campaign leaves six of them showing raw {@code {{tactic 8 …}}} tokens. Nothing else is trimmed: an
-	 * EOM deck builds its tactic slides from masters, so it has no surplus drawn slides to remove.
+	 * Trims the EOM dashboards down to the tactics the campaign actually has.
+	 *
+	 * <p>Two things are surplus. Whole slides: the pacing-dashboard and performance-vs-plan slides are each
+	 * drawn for a fixed block of seven tactics, so a three-tactic campaign leaves six of them showing raw
+	 * {@code {{tactic 8 …}}} tokens. And, on the one block the tactic count lands inside, the table rows
+	 * above that count — a three-tactic campaign keeps the 1–7 slides but only three of their seven rows.
+	 * Both are removed in one batch: the slides deleted and the rows deleted belong to different objects,
+	 * so the order between them does not matter.
+	 *
+	 * <p>Nothing else is trimmed: an EOM deck builds its tactic slides from masters, so it has no surplus
+	 * drawn slides to remove.
 	 *
 	 * @param presentationId        the deck to trim
 	 * @param tacticCount           number of real tactics in the campaign
@@ -795,18 +814,19 @@ public class RealSlidesProvider implements SlidesProvider {
 		Slides slidesClient = asUser ? buildSlides(userGoogleAccessToken) : slides;
 		try {
 			Presentation deck = retrier.execute(
-					slidesClient.presentations().get(presentationId).setFields(BREAKDOWN_FIELDS),
+					slidesClient.presentations().get(presentationId).setFields(EOM_TRIM_FIELDS),
 					"trimEomDashboardSlides get " + presentationId);
 			List<String> surplus = eomSlideFinder.surplusTacticSlideIds(deck.getSlides(), tacticCount);
-			if (surplus.isEmpty()) {
-				return;
-			}
 			List<Request> requests = new ArrayList<>();
 			for (String objectId : surplus) {
 				addDeleteObject(requests, objectId);
 			}
-			log.info("[slides] EOM trim: dropping {} dashboard slide(s) above tactic {}", surplus.size(),
-					tacticCount);
+			requests.addAll(eomDashboardRowRequests(deck.getSlides(), tacticCount));
+			if (requests.isEmpty()) {
+				return;
+			}
+			log.info("[slides] EOM trim: dropping {} dashboard slide(s) above tactic {} and {} surplus "
+					+ "table row(s)", surplus.size(), tacticCount, requests.size() - surplus.size());
 			executeInChunks(slidesClient, presentationId, requests,
 					"trimEomDashboardSlides batchUpdate for " + presentationId);
 		} catch (IOException ex) {
@@ -814,6 +834,31 @@ public class RealSlidesProvider implements SlidesProvider {
 			throw new AppException(ErrorReason.C000,
 					"Google Slides trimEomDashboardSlides failed: " + ex.getMessage());
 		}
+	}
+
+	/**
+	 * Builds the row-delete requests for the dashboard tables of the last, partly filled block of tactics.
+	 *
+	 * <p>The tables are found by the tokens they print rather than by configured object id — the same reason
+	 * every other EOM lookup is — and then handed to the shared row trimmer, which locates the tactic rows by
+	 * reading the table (totals row last, the block's tactic rows directly above it) instead of assuming
+	 * fixed indices. Both dashboards of the block are trimmed, whether or not the table carries a totals row.
+	 *
+	 * @param pages       the deck's slides, from {@code presentations.get} with {@link #EOM_TRIM_FIELDS}
+	 * @param tacticCount number of real tactics in the campaign
+	 * @return the row-delete requests, bottom-up per table; empty when the last block is full
+	 */
+	List<Request> eomDashboardRowRequests(List<Page> pages, int tacticCount) {
+		List<Request> requests = new ArrayList<>();
+		int usedInLastBlock = tacticCount % TACTICS_PER_GROUP;
+		if (usedInLastBlock == 0) {
+			return requests;
+		}
+		for (String tableId : eomSlideFinder.partialBlockTableIds(pages, tacticCount, TACTICS_PER_GROUP)) {
+			requests.addAll(summaryTableRowTrimmer.deleteRowRequests(
+					pages, tableId, TACTICS_PER_GROUP, usedInLastBlock));
+		}
+		return requests;
 	}
 
 	/**

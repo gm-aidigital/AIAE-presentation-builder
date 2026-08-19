@@ -51,6 +51,9 @@ public class CampaignResolvers {
 	 */
 	private static final int THOUGHT_SLOTS = 5;
 
+	/** Pacing-dashboard takeaway slots the EOM template carries, one per dashboard slide. */
+	private static final int PACING_TAKEAWAY_SLOTS = 4;
+
 	/** Auto-derived label written next to the campaign-wide impressions pace. */
 	private static final String TOTAL_IMPS_PACE_AUTO_LABEL = "Total imps pace (auto: fact vs planned impressions)";
 
@@ -638,6 +641,42 @@ public class CampaignResolvers {
 				result.put(overKey, new Resolved("Strategic overview " + i + " (auto: Claude)", ci.overview(), "adj"));
 			} else {
 				result.put(overKey, new Resolved("Strategic overview " + i + ":", null, "not_found"));
+			}
+		}
+		return result;
+	}
+
+	/**
+	 * Resolves the four EOM pacing-dashboard takeaways ({@code {{pacing dash takeaway 1..4}}}), one per
+	 * dashboard slide, preferring a manual value and falling back to Claude's.
+	 *
+	 * <p>All four slots are emitted even when the campaign fills fewer of them: the dashboards above the
+	 * tactic count are deleted from the deck during the trim, and a slot that survives with no takeaway
+	 * renders as a dash rather than as a raw token.
+	 *
+	 * @param sheetRows Media Plan tab rows
+	 * @param adjRows   manual Adjustments tab rows (checked first)
+	 * @param claude    Claude's per-slide takeaways in slide order, used when no manual value exists
+	 *                  (may be {@code null})
+	 * @return a map keyed by {@code {{pacing dash takeaway N}}} to its {@link Resolved}; values may be
+	 * {@code "not_found"}
+	 */
+	public Map<String, Resolved> resolvePacingTakeaways(
+			List<List<String>> sheetRows, List<List<String>> adjRows, List<String> claude) {
+
+		Map<String, Resolved> result = new LinkedHashMap<>();
+		for (int i = 1; i <= PACING_TAKEAWAY_SLOTS; i++) {
+			String label = "Pacing dash takeaway " + i + ":";
+			String manual = coalesce(sheetUtils.findLabelValue(adjRows, label),
+					sheetUtils.findLabelValue(sheetRows, label));
+			String fromClaude = claude != null && claude.size() >= i ? claude.get(i - 1) : null;
+			String key = "{{pacing dash takeaway " + i + "}}";
+			if (manual != null) {
+				result.put(key, new Resolved(label, manual, "adj"));
+			} else if (notBlank(fromClaude)) {
+				result.put(key, new Resolved("Pacing dash takeaway " + i + " (auto: Claude)", fromClaude, "adj"));
+			} else {
+				result.put(key, new Resolved(label, null, "not_found"));
 			}
 		}
 		return result;

@@ -8,6 +8,7 @@ import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeSheetBatch;
 import com.aidigital.reportconstructor.service.reports.dto.GenerationTarget;
 import com.aidigital.reportconstructor.service.reports.dto.ProgressView;
+import com.aidigital.reportconstructor.service.reports.engine.EomPacingResolver;
 import com.aidigital.reportconstructor.service.reports.engine.Fmt;
 import com.aidigital.reportconstructor.service.reports.engine.ReportClaudeDefaults;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownSectionInputs;
@@ -125,7 +126,8 @@ class ReportGenerationServiceImplTest {
 		service = new ReportGenerationServiceImpl(
 				jobProgress, warnings, chartHelper, sheetHelper, publisherBreakdown, creativeBreakdown, geoBreakdown, audienceBreakdown, deviceBreakdown, placeholderReader, sheetCampaign, placeholders,
 				claudeClients, slides, userGoogleTokens, self, claudeDefaults, fileNamer,
-				new ReportNumberParserImpl(), new Fmt(), new SimpleAsyncTaskExecutor(),
+				new ReportNumberParserImpl(), new Fmt(),
+				new EomPacingResolver(new ReportNumberParserImpl(), new Fmt()), new SimpleAsyncTaskExecutor(),
 				new ClaudeUsageTrackerImpl(new NoOpClaudeUsageEventService()), new ClaudeFailureLogImpl(),
 				new BreakdownSelectionResolverImpl(), new BreakdownThoughtsGateImpl(),
 				new TacticConclusionAssemblerImpl(), sheetChartData, tacticExtraction,
@@ -379,7 +381,7 @@ class ReportGenerationServiceImplTest {
 		flat.put("{{reach_f}}", "5.383523093");
 
 		// When: the sheet tokens are aliased for the deck
-		service.aliasSheetTokens(flat, 0);
+		service.aliasSheetTokens(flat, 0, "EOC");
 
 		// Then: "Market Captured" ({{reach_f}}) is reclaimed from the Reach column, not the Frequency total,
 		// and the presentation-short reach tokens render it abbreviated

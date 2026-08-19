@@ -18,6 +18,8 @@ import java.util.List;
  *                          ({@code {{extended north star}}}); EOM only
  * @param horizon           when the campaign runs, for how long and with what delivery shape
  *                          ({@code {{horizon}}}); EOM only
+ * @param pacingTakeaways   one key takeaway per pacing-dashboard slide, in slide order
+ *                          ({@code {{pacing dash takeaway 1..4}}}); EOM only, empty on an end-of-campaign run
  */
 public record ClaudeStrategic(
 		String audienceAge,
@@ -26,8 +28,29 @@ public record ClaudeStrategic(
 		List<StrategicInsight> strategicInsights,
 		String northStar,
 		String extendedNorthStar,
-		String horizon
+		String horizon,
+		List<String> pacingTakeaways
 ) {
+
+	/**
+	 * Backward-compatible constructor for the calls that carry north-star copy but no pacing takeaways,
+	 * leaving the dashboard slots empty so they render as dashes.
+	 *
+	 * @param audienceAge       Claude-generated narrative describing the target audience's age profile
+	 * @param audienceSegments  Claude-generated description of the distinct audience segments
+	 * @param proposalOverview  Claude-generated high-level summary of the marketing proposal
+	 * @param strategicInsights ordered list of strategic insight items (may be {@code null})
+	 * @param northStar         the campaign's objective as one upper-cased headline
+	 * @param extendedNorthStar the same objective unpacked into geos, audiences and channels
+	 * @param horizon           when the campaign runs, for how long and with what delivery shape
+	 */
+	public ClaudeStrategic(
+			String audienceAge, String audienceSegments, String proposalOverview,
+			List<StrategicInsight> strategicInsights, String northStar, String extendedNorthStar,
+			String horizon) {
+		this(audienceAge, audienceSegments, proposalOverview, strategicInsights, northStar, extendedNorthStar,
+				horizon, List.of());
+	}
 
 	/**
 	 * Backward-compatible constructor for the calls that carry no north-star copy — every end-of-campaign
@@ -42,6 +65,6 @@ public record ClaudeStrategic(
 	public ClaudeStrategic(
 			String audienceAge, String audienceSegments, String proposalOverview,
 			List<StrategicInsight> strategicInsights) {
-		this(audienceAge, audienceSegments, proposalOverview, strategicInsights, null, null, null);
+		this(audienceAge, audienceSegments, proposalOverview, strategicInsights, null, null, null, List.of());
 	}
 }

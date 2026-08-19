@@ -655,4 +655,75 @@ class EomPromptBuilderTest {
 		assertThat(prompt).doesNotContain("MID-FLIGHT");
 		assertThat(prompt).doesNotContain("STILL RUNNING");
 	}
+
+	/**
+	 * Builds a campaign of {@code count} planned tactics, each with a plan and an actual for both spend and
+	 * impressions, so the pacing dashboard has something to be a verdict about.
+	 *
+	 * @param count how many tactics the campaign runs
+	 * @return the campaign data
+	 */
+	private CampaignData plannedCampaign(int count) {
+		Map<Integer, Tactic> tactics = new LinkedHashMap<>();
+		for (int n = 1; n <= count; n++) {
+			tactics.put(n, new Tactic(
+					"Tactic " + n, "Display", null,
+					9_000.0, 900_000.0, 0.0, 0.0, null, null, null, null,
+					10_000.0, 1_000_000.0, null, null, null, null, null, null, null, null, null, null));
+		}
+		return new CampaignData(
+				"Acme", "Spring Launch", "US", "Awareness", "Mar 1 - Mar 31",
+				null, "$500,000", "Reach", "Display", "25-44", "Auto intenders",
+				new Totals(0, 0, 0, 0, null, null), tactics, 2, 6, null);
+	}
+
+	@Test
+	void shouldAskForOnePacingTakeawayPerDashboardSlideTheDeckKeepsTest() {
+		// Given: three tactics — one dashboard slide, the other three deleted during the deck trim
+		// When:
+		String prompt = builder.strategicNarrativePrompt(plannedCampaign(3), "Drive awareness.", Map.of())
+				.orElseThrow();
+
+		// Then: exactly one takeaway is paid for, capped at what the slot prints
+		assertThat(prompt).contains("\"pacing_takeaways\": array");
+		assertThat(prompt).contains("EXACTLY 1 string(s)");
+		assertThat(prompt).contains("MAX 140 CHARACTERS EACH");
+	}
+
+	@Test
+	void shouldAskForOneTakeawayPerBlockOnAManyTacticCampaignTest() {
+		// Given: nine tactics — two dashboard slides survive the trim
+		// When:
+		String prompt = builder.strategicNarrativePrompt(plannedCampaign(9), "Drive awareness.", Map.of())
+				.orElseThrow();
+
+		// Then:
+		assertThat(prompt).contains("EXACTLY 2 string(s)");
+	}
+
+	@Test
+	void shouldGiveTheTakeawayThePacingTableBlockedLikeTheSlidesTest() {
+		// When: a campaign spanning two dashboard blocks
+		String prompt = builder.strategicNarrativePrompt(plannedCampaign(8), "Drive awareness.", Map.of())
+				.orElseThrow();
+
+		// Then: the plan-vs-actual table the verdict is written against, in the deck's own blocks
+		assertThat(prompt).contains("=== PACING DASHBOARD ===");
+		assertThat(prompt).contains("-- BLOCK 1 --");
+		assertThat(prompt).contains("-- BLOCK 2 --");
+		assertThat(prompt).contains("Tactic 1 — Tactic 1: budget plan $10,000 / actual $9,000 = 90%");
+		assertThat(prompt).contains("imps plan 1,000,000 / actual 900,000");
+		assertThat(prompt).contains("Campaign total: budget plan $80,000 / actual $72,000 = 90%");
+	}
+
+	@Test
+	void shouldLeaveOutThePacingTableWhenThePlanCarriesNoTargetsTest() {
+		// Given: the unplanned campaign the other tests use
+		// When:
+		String prompt = builder.strategicNarrativePrompt(campaign(2, 6), "Drive awareness.", Map.of())
+				.orElseThrow();
+
+		// Then: no dashboard block — there is no plan to pace against
+		assertThat(prompt).doesNotContain("=== PACING DASHBOARD ===");
+	}
 }

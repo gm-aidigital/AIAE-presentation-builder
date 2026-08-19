@@ -147,6 +147,87 @@ public class EomSlideFinder {
 	}
 
 	/**
+	 * Finds the dashboard tables whose surplus rows have to be deleted: the tables on the last block of
+	 * tactics the campaign only partly fills.
+	 *
+	 * <p>The pacing-dashboard and performance-vs-plan slides are drawn for fixed blocks of
+	 * {@code tacticsPerBlock} tactics. A block above the campaign's tactic count is dropped whole by
+	 * {@link #surplusTacticSlideIds}; the block the count lands inside keeps its slide but not all of its
+	 * rows, and those rows would otherwise ship printing raw {@code {{tactic 6 …}}} tokens.
+	 *
+	 * <p>Only tables carrying a numbered tactic token are returned, so a decorative table on the same slide
+	 * is left alone, and a master slide — numbered with the variable {@code n} — is never considered.
+	 *
+	 * @param pages           the deck's slides in order, from {@code presentations.get}
+	 * @param tacticCount     number of real tactics in the campaign
+	 * @param tacticsPerBlock tactic rows one dashboard slide draws
+	 * @return the object ids of the tables to trim, in deck order; empty when the last block is full
+	 */
+	public List<String> partialBlockTableIds(List<Page> pages, int tacticCount, int tacticsPerBlock) {
+		List<String> tables = new ArrayList<>();
+		if (pages == null || tacticCount <= 0 || tacticsPerBlock <= 0
+				|| tacticCount % tacticsPerBlock == 0) {
+			return tables;
+		}
+		int blockStart = (tacticCount - 1) / tacticsPerBlock * tacticsPerBlock + 1;
+		for (Page page : pages) {
+			if (lowestTacticNumber(page) != blockStart) {
+				continue;
+			}
+			tables.addAll(numberedTacticTableIds(page));
+		}
+		return tables;
+	}
+
+	/**
+	 * Lists the tables on one slide that print numbered tactic tokens.
+	 *
+	 * @param page the slide to inspect
+	 * @return the matching table object ids, in the order the slide carries them
+	 */
+	List<String> numberedTacticTableIds(Page page) {
+		List<String> tables = new ArrayList<>();
+		if (page == null || page.getPageElements() == null) {
+			return tables;
+		}
+		for (PageElement element : page.getPageElements()) {
+			Table table = element.getTable();
+			if (table == null || element.getObjectId() == null) {
+				continue;
+			}
+			Set<String> tokens = new LinkedHashSet<>();
+			collectTableTokens(table, tokens);
+			for (String token : tokens) {
+				if (NUMBERED_TACTIC.matcher(token).find()) {
+					tables.add(element.getObjectId());
+					break;
+				}
+			}
+		}
+		return tables;
+	}
+
+	/**
+	 * Collects every {@code {{…}}} token printed in a table's cells.
+	 *
+	 * @param table  the table to read
+	 * @param tokens the accumulating token set
+	 */
+	void collectTableTokens(Table table, Set<String> tokens) {
+		if (table.getTableRows() == null) {
+			return;
+		}
+		for (TableRow row : table.getTableRows()) {
+			if (row.getTableCells() == null) {
+				continue;
+			}
+			for (TableCell cell : row.getTableCells()) {
+				collectTokens(cell.getText(), tokens);
+			}
+		}
+	}
+
+	/**
 	 * Tells whether a slide carries at least one master token, i.e. a token spelling the tactic variable
 	 * {@code n} rather than a tactic number.
 	 *
@@ -199,16 +280,8 @@ public class EomSlideFinder {
 				collectTokens(element.getShape().getText(), tokens);
 			}
 			Table table = element.getTable();
-			if (table == null || table.getTableRows() == null) {
-				continue;
-			}
-			for (TableRow row : table.getTableRows()) {
-				if (row.getTableCells() == null) {
-					continue;
-				}
-				for (TableCell cell : row.getTableCells()) {
-					collectTokens(cell.getText(), tokens);
-				}
+			if (table != null) {
+				collectTableTokens(table, tokens);
 			}
 		}
 		return tokens;

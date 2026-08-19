@@ -38,6 +38,9 @@ public class ClaudeResponseNormalizer {
 	/** Characters the EOM horizon block fits. */
 	private static final int HORIZON_LIMIT = 150;
 
+	/** Characters one EOM pacing-dashboard key takeaway fits under its table. */
+	public static final int PACING_TAKEAWAY_LIMIT = 140;
+
 	/**
 	 * Function/connector words that read as unfinished when a sentence is cut right after them, so they are
 	 * trimmed from the tail of a hard word-boundary cut before a closing period is appended.
@@ -355,6 +358,17 @@ public class ClaudeResponseNormalizer {
 	 */
 	public String limitHorizon(String val) {
 		return normalizeC(val, HORIZON_LIMIT);
+	}
+
+	/**
+	 * Normalizes one EOM pacing-dashboard key takeaway with a {@link #PACING_TAKEAWAY_LIMIT}-character
+	 * budget via {@link #normalizeC}, so it reads as a finished sentence inside the slide's takeaway strip.
+	 *
+	 * @param val raw takeaway text from the model
+	 * @return the normalized, length-capped text, or {@code null} when blank
+	 */
+	public String limitPacingTakeaway(String val) {
+		return normalizeC(val, PACING_TAKEAWAY_LIMIT);
 	}
 
 	/**

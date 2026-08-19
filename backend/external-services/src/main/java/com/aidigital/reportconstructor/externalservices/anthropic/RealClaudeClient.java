@@ -67,6 +67,9 @@ public class RealClaudeClient implements ClaudeClient {
 	private static final int STRATEGIC_OVERVIEW_LIMIT = 240;
 	private static final int RESULTS_OVERVIEW_LIMIT = 380;
 	private static final int THOUGHT_LIMIT = 220;
+
+	/** Pacing-dashboard takeaway slots the EOM template carries, one per dashboard slide. */
+	private static final int PACING_TAKEAWAY_SLOTS = 4;
 	/**
 	 * Character budget of the closing story that fills the fifth thoughts slot, campaign-level
 	 * ({@code {{thoughts on the performance 5}}}) and per-tactic
@@ -692,10 +695,10 @@ public class RealClaudeClient implements ClaudeClient {
 		if (prompt.isEmpty()) {
 			return claudeDefaults.emptyStrategic();
 		}
-		// The reply carries the proposal, four insights and — on an end-of-month run — the three
-		// north-star fields, so the budget is the EOC one plus room for those without truncating the last
-		// field the model writes.
-		JsonNode parsed = messagesClient.callJsonObject(prompt.get(), 2600, 60, "BatchAStrategic", false);
+		// The reply carries the proposal, four insights and — on an end-of-month run — the three north-star
+		// fields plus up to four 140-character pacing takeaways, so the budget is the EOC one plus room for
+		// those without truncating the last field the model writes.
+		JsonNode parsed = messagesClient.callJsonObject(prompt.get(), 3000, 60, "BatchAStrategic", false);
 		if (parsed == null) {
 			return claudeDefaults.emptyStrategic();
 		}
@@ -728,9 +731,34 @@ public class RealClaudeClient implements ClaudeClient {
 		String extendedNorthStar =
 				normalizer.limitExtendedNorthStar(normalizer.textOrNull(parsed.get("extended_north_star")));
 		String horizon = normalizer.limitHorizon(normalizer.textOrNull(parsed.get("horizon")));
+		List<String> pacingTakeaways = readPacingTakeaways(parsed.get("pacing_takeaways"));
 
 		// Audience fields are intentionally null: the sheet flow already carries them from step 1.
-		return new ClaudeStrategic(null, null, overview, insights, northStar, extendedNorthStar, horizon);
+		return new ClaudeStrategic(null, null, overview, insights, northStar, extendedNorthStar, horizon,
+				pacingTakeaways);
+	}
+
+	/**
+	 * Reads the EOM {@code pacing_takeaways} array: one key takeaway per pacing-dashboard slide, capped and
+	 * normalized, in the order the slides print them.
+	 *
+	 * <p>Only the end-of-month prompt asks for the field, so on an end-of-campaign run it is absent and the
+	 * list comes back empty — which renders those tokens as dashes, exactly what an EOC deck (which has no
+	 * such slots) expects. A blank entry is kept in place rather than skipped, so one missing takeaway
+	 * dashes its own slide instead of shifting every later slide's copy up by one.
+	 *
+	 * @param node the parsed {@code pacing_takeaways} value (may be {@code null} or not an array)
+	 * @return the takeaways in slide order, empty when the reply carried none
+	 */
+	List<String> readPacingTakeaways(JsonNode node) {
+		if (node == null || !node.isArray()) {
+			return List.of();
+		}
+		List<String> takeaways = new ArrayList<>();
+		for (int i = 0; i < node.size() && i < PACING_TAKEAWAY_SLOTS; i++) {
+			takeaways.add(normalizer.limitPacingTakeaway(normalizer.textOrNull(node.get(i))));
+		}
+		return takeaways;
 	}
 
 	@Override
@@ -946,11 +974,12 @@ public class RealClaudeClient implements ClaudeClient {
 				? results.fStorytelling()
 				: firstNonBlank(normalizer.limitFStorytelling(compressed.get("f_storytelling")), results.fStorytelling());
 
-		// The north-star fields are carried through untouched: the alignment schema never asks for them, so
-		// re-deriving them here would blank the EOM slide the pass is supposed to leave alone.
+		// The north-star fields and the pacing takeaways are carried through untouched: the alignment schema
+		// never asks for them, so re-deriving them here would blank the EOM slides the pass leaves alone.
 		ClaudeStrategic alignedStrategic = new ClaudeStrategic(
 				strategic.audienceAge(), strategic.audienceSegments(), alignedProposal, alignedInsights,
-				strategic.northStar(), strategic.extendedNorthStar(), strategic.horizon());
+				strategic.northStar(), strategic.extendedNorthStar(), strategic.horizon(),
+				strategic.pacingTakeaways());
 		ClaudeResults alignedResults = new ClaudeResults(
 				alignedOverviews, alignedThoughts, results.tacticOverviews(), results.recommendations(),
 				fOpportunity, fFact, fStorytelling);
