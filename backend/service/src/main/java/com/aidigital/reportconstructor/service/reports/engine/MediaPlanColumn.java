@@ -32,7 +32,25 @@ public enum MediaPlanColumn {
 	FUNNEL(Set.of(
 			"goal", "goals", "funnel", "funnel stage", "funnel stages",
 			"objective", "objectives", "campaign objective", "campaign objectives",
-			"marketing objective", "marketing objectives", "stage", "stages"));
+			"marketing objective", "marketing objectives", "stage", "stages")),
+
+	/** The per-line-item flight start column, earliest value across the plan opens the campaign flight. */
+	FLIGHT_START(Set.of(
+			"start", "start date", "start dates", "flight start", "flight start date",
+			"begin", "begin date", "launch", "launch date", "from")),
+
+	/** The per-line-item flight end column, latest value across the plan closes the campaign flight. */
+	FLIGHT_END(Set.of(
+			"end", "end date", "end dates", "flight end", "flight end date",
+			"finish", "finish date", "thru", "through", "to")),
+
+	/**
+	 * A single column carrying the whole line-item flight as one cell (e.g. {@code "10/1/25 - 12/31/25"}),
+	 * used when the plan has no separate start/end columns.
+	 */
+	FLIGHT_RANGE(Set.of(
+			"flight", "flight dates", "flight date", "flight window", "dates", "date range",
+			"run dates", "timing"));
 
 	private final Set<String> synonyms;
 

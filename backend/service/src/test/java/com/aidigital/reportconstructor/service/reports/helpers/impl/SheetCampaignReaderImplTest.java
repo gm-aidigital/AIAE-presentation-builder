@@ -2,16 +2,19 @@ package com.aidigital.reportconstructor.service.reports.helpers.impl;
 
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
+import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
 import com.aidigital.reportconstructor.service.reports.dto.Tactic;
+import com.aidigital.reportconstructor.service.reports.engine.RatePlanCalculator;
 import org.junit.jupiter.api.Test;
 
+import java.time.LocalDate;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class SheetCampaignReaderImplTest {
 
-	private final SheetCampaignReaderImpl reader = new SheetCampaignReaderImpl(new ReportNumberParserImpl());
+	private final SheetCampaignReaderImpl reader = new SheetCampaignReaderImpl(new ReportNumberParserImpl(), new RatePlanCalculator());
 
 	@Test
 	void shouldReconstructCampaignContextFromPlaceholdersTest() {
@@ -115,5 +118,39 @@ class SheetCampaignReaderImplTest {
 		assertThat(freq.fact()).isNull();
 		assertThat(freq.reachFact()).isNull();
 		assertThat(freq.remainingAudience()).isNull();
+	}
+
+	@Test
+	void shouldRestoreTheReportingWindowAndFlightCadenceForAnEomRebuildTest() {
+		// Given: an EOM sheet whose cover cells state month 2 of a 3-month flight
+		Map<String, String> flat = Map.of(
+				"{{total imps}}", "250,000",
+				"{{mon no}}", "2",
+				"{{total mon no}}", "3");
+		FlightDates window = new FlightDates(LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 31));
+
+		// When:
+		CampaignData data = reader.read(flat, 0, "EOM", window);
+
+		// Then: the window dates the rebuild and the cover cadence survives the sheet round-trip
+		assertThat(data.flightTs()).isEqualTo(window);
+		assertThat(data.eomMonthNumber()).isEqualTo(1);
+		assertThat(data.eomFlightMonthsTotal()).isEqualTo(1);
+		assertThat(data.campaignMonthNumber()).isEqualTo(2);
+		assertThat(data.campaignMonthsTotal()).isEqualTo(3);
+	}
+
+	@Test
+	void shouldLeaveTheCadenceUnsetForAnEocRebuildTest() {
+		// Given: the same sheet read as an EOC report
+		Map<String, String> flat = Map.of("{{total imps}}", "250,000");
+
+		// When:
+		CampaignData data = reader.read(flat, 0, "EOC",
+				new FlightDates(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 8, 31)));
+
+		// Then: no EOM pacing token can switch itself on
+		assertThat(data.eomMonthNumber()).isNull();
+		assertThat(data.campaignMonthsTotal()).isNull();
 	}
 }

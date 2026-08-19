@@ -123,7 +123,7 @@ public class RatePlanCalculator {
 	 * @param end   last day of the range (inclusive)
 	 * @return the number of distinct calendar months the range touches, at least 1
 	 */
-	int monthsSpanned(LocalDate start, LocalDate end) {
+	public int monthsSpanned(LocalDate start, LocalDate end) {
 		return (int) ChronoUnit.MONTHS.between(start.withDayOfMonth(1), end.withDayOfMonth(1)) + 1;
 	}
 

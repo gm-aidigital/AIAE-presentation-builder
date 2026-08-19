@@ -44,6 +44,7 @@ public class CampaignDataCollector {
 	private final CampaignResolvers campaignResolvers;
 	private final RatePlanCalculator ratePlanCalculator;
 	private final EffectiveTacticsHelper effectiveTactics;
+	private final CampaignFlightResolver campaignFlight;
 
 	/**
 	 * Wires the collaborators used to scan the raw grids and resolve plan figures.
@@ -53,15 +54,18 @@ public class CampaignDataCollector {
 	 * @param campaignResolvers  shared resolver used to build the tactics-list summary
 	 * @param ratePlanCalculator EOM rate/budget-to-Plan-Units math
 	 * @param effectiveTactics   resolves which plan tactics the report actually covers
+	 * @param campaignFlight     resolves the whole booked flight and the reporting month's place in it
 	 */
 	public CampaignDataCollector(
 			SheetRowHelper sheetUtils, TacticExtractionHelper tacticExtraction, CampaignResolvers campaignResolvers,
-			RatePlanCalculator ratePlanCalculator, EffectiveTacticsHelper effectiveTactics) {
+			RatePlanCalculator ratePlanCalculator, EffectiveTacticsHelper effectiveTactics,
+			CampaignFlightResolver campaignFlight) {
 		this.sheetUtils = sheetUtils;
 		this.tacticExtraction = tacticExtraction;
 		this.campaignResolvers = campaignResolvers;
 		this.ratePlanCalculator = ratePlanCalculator;
 		this.effectiveTactics = effectiveTactics;
+		this.campaignFlight = campaignFlight;
 	}
 
 	private static final String[] STOP_WORDS = {"added value", "totals", "please note", "total:"};
@@ -288,6 +292,16 @@ public class CampaignDataCollector {
 		Integer eomMonthNumber = isEom && flightTs != null
 				? ratePlanCalculator.monthsSpanned(flightTs.start(), flightTs.end()) : null;
 		Integer eomFlightMonthsTotal = eomMonthNumber;
+		// The cover's "month N of M" counts against the whole booked flight, which outlives the reporting
+		// window: the media plan states it, and the raw-data range only stands in when the plan carries no
+		// dates at all.
+		FlightDates campaignFlightTs = isEom
+				? campaignFlight.resolveCampaignFlight(sheetRows, sheetUtils.detectDataDateRange(adjRows), flightTs)
+				: null;
+		String campaignFlightDates = campaignFlightTs == null ? null
+				: sheetUtils.formatFlightDates(campaignFlightTs.start(), campaignFlightTs.end());
+		Integer campaignMonthsTotal = campaignFlight.flightMonthsTotal(campaignFlightTs);
+		Integer campaignMonthNumber = campaignFlight.flightMonthNumber(campaignFlightTs, flightTs);
 		Map<Integer, double[]> estimatesPlan =
 				resolvePlanByTacticNum(tacticMap, mediaTactics, planToSlot, estimatesByTactic);
 		Map<Integer, double[]> planByTacticNum = isEom
@@ -341,6 +355,9 @@ public class CampaignDataCollector {
 				tacticsData,
 				eomMonthNumber,
 				isEom ? eomFlightMonthsTotal : null,
+				campaignFlightDates,
+				campaignMonthNumber,
+				campaignMonthsTotal,
 				audienceTabText
 		);
 	}

@@ -59,6 +59,10 @@ public final class ReportsEngineTestSupport {
 		return new RatePlanCalculator();
 	}
 
+	static CampaignFlightResolver campaignFlightResolver() {
+		return new CampaignFlightResolver(sheetRowHelper(), ratePlanCalculator());
+	}
+
 	static CampaignResolvers campaignResolvers() {
 		return new CampaignResolvers(sheetRowHelper(), fmt(), tacticExtractionHelper(), ratePlanCalculator());
 	}
@@ -83,7 +87,7 @@ public final class ReportsEngineTestSupport {
 
 	public static CampaignDataCollector campaignDataCollector() {
 		return new CampaignDataCollector(sheetRowHelper(), tacticExtractionHelper(), campaignResolvers(),
-				ratePlanCalculator(), effectiveTacticsHelper());
+				ratePlanCalculator(), effectiveTacticsHelper(), campaignFlightResolver());
 	}
 
 	public static ChartPivot chartPivot() {

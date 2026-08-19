@@ -110,4 +110,16 @@ public class Fmt {
 		}
 		return intGroup(v);
 	}
+
+	/**
+	 * Compact notation with an upper-case thousands suffix ({@code "74K"} rather than {@code "74k"}),
+	 * the spelling the EOM cover slide uses. Identical to {@link #compact(double)} in every other
+	 * respect, so both spellings truncate the same way and can never disagree on the digits.
+	 *
+	 * @param v the count to abbreviate
+	 * @return the compact string with a {@code M}/{@code K} suffix, or a grouped integer when below 1,000
+	 */
+	public String compactUpper(double v) {
+		return compact(v).replace("k", "K");
+	}
 }

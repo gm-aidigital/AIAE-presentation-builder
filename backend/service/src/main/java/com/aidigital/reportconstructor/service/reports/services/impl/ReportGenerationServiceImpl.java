@@ -444,7 +444,10 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		String changeLogContext = sheetChangeLog == null || sheetChangeLog.isBlank()
 				? payload.changeLog() : sheetChangeLog;
 		String briefSource = combineBriefWithChangeLog(briefContext, changeLogContext);
-		CampaignData data = sheetCampaign.read(sheetValues, tacticCount);
+		// The sheet has no date window of its own: the request's filter is what dated step 1, so it is what
+		// dates the cover here too — without it every EOM pacing and cover token rebuilds as a dash.
+		CampaignData data = sheetCampaign.read(sheetValues, tacticCount, payload.reportType(),
+				payload.dateFilter() == null ? null : payload.dateFilter().toWindow());
 		// Frequencies are reconstructed from the reviewed sheet — never the raw media plan — and without a
 		// fresh random reach uplift, so the Claude frequency narrative and the deck's frequency figures both
 		// match exactly what the user sees in the sheet.

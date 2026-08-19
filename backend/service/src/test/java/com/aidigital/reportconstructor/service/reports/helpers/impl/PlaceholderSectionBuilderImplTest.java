@@ -203,4 +203,54 @@ class PlaceholderSectionBuilderImplTest {
 				""
 		);
 	}
+
+	@Test
+	void shouldShowTheBookedFlightInFlightDatesAndTheSelectedWindowInTheReportingFilterTest() {
+		// Given: an EOM report covering August of an October–December booked flight
+		CampaignData data = new CampaignData(
+				null, null, null, null, "Aug 1 – Aug 31, 2026",
+				new FlightDates(java.time.LocalDate.of(2026, 8, 1), java.time.LocalDate.of(2026, 8, 31)),
+				null, null, null, null, null,
+				new Totals(0, 0, 0, 0, null, null), Map.of(), 1, 1,
+				"Oct 1, 2025 – Dec 31, 2025", 2, 3, null);
+
+		// When:
+		List<PreviewSection> sections = builder.buildSections(
+				minimalPayload(), data,
+				claudeDefaults.emptyStrategic(), claudeDefaults.emptyTactical(), claudeDefaults.emptyResults(),
+				null, null, null, null, null,
+				new CampaignFrequencies(null, null, null, null), 1);
+
+		// Then: the two dates no longer say the same thing
+		Map<String, String> start = valuesOf(sections.get(0));
+		assertThat(start).containsEntry("{{flight_dates}}", "Oct 1, 2025 – Dec 31, 2025");
+		assertThat(start).containsEntry("{{reporting filter}}", "Aug 1 – Aug 31, 2026");
+	}
+
+	@Test
+	void shouldKeepFlightDatesOnTheConfirmedWindowWhenTheFlightIsUnknownTest() {
+		// Given: an EOC report, where no media-plan flight is resolved
+		CampaignData data = new CampaignData(
+				null, null, null, null, "Jan 1 – Dec 31, 2025", null, null, null, null, null, null,
+				new Totals(0, 0, 0, 0, null, null), Map.of(), null);
+
+		// When:
+		List<PreviewSection> sections = builder.buildSections(
+				minimalPayload(), data,
+				claudeDefaults.emptyStrategic(), claudeDefaults.emptyTactical(), claudeDefaults.emptyResults(),
+				null, null, null, null, null,
+				new CampaignFrequencies(null, null, null, null), 1);
+
+		// Then: the token behaves exactly as it did before the split
+		Map<String, String> start = valuesOf(sections.get(0));
+		assertThat(start).containsEntry("{{flight_dates}}", "Jan 1 – Dec 31, 2025");
+		assertThat(start).containsEntry("{{reporting filter}}", "Jan 1 – Dec 31, 2025");
+	}
+
+	/** The section's {@code token → value} pairs. */
+	private Map<String, String> valuesOf(PreviewSection section) {
+		return section.placeholders().stream()
+				.filter(p -> p.value() != null)
+				.collect(java.util.stream.Collectors.toMap(Placeholder::key, Placeholder::value));
+	}
 }

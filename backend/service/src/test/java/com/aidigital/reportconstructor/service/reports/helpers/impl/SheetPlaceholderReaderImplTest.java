@@ -275,4 +275,24 @@ class SheetPlaceholderReaderImplTest {
 				.containsEntry("{{tactic 1 spend}}", "$10,000")
 				.doesNotContainKey("{{tactic 2 spend}}");
 	}
+
+	@Test
+	void shouldReadTheEomCoverCadenceFromTheInfoBlockTest() {
+		// Given: the Info block's second label/value pair, written without trailing colons
+		List<List<String>> grid = List.of(
+				List.of("Client name:", "Acme", "Reporting dates", "Aug 1 - Aug 31, 2026"),
+				List.of("Campaign name:", "Q3 Push", "Reporting month", "August 2026"),
+				List.of("Flight dates:", "Oct 1, 2025 - Dec 31, 2025", "Campaign duration (months)", "3"),
+				List.of("Tactics list:", "CTV, Display", "Reporting month no.", "2"));
+
+		// When:
+		Map<String, String> out = reader.readPlaceholders(grid);
+
+		// Then: both columns of the block are read, and the flight and the reporting window stay distinct
+		assertThat(out).containsEntry("{{reporting filter}}", "Aug 1 - Aug 31, 2026");
+		assertThat(out).containsEntry("{{reporting month}}", "August 2026");
+		assertThat(out).containsEntry("{{total mon no}}", "3");
+		assertThat(out).containsEntry("{{mon no}}", "2");
+		assertThat(out).containsEntry("{{flight_dates}}", "Oct 1, 2025 - Dec 31, 2025");
+	}
 }

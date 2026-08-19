@@ -345,7 +345,7 @@ class ReportGenerationServiceImplTest {
 		service.run(11L, payload, "clerk-1", "user@x.com", GenerationTarget.SLIDES_FROM_SHEET);
 
 		// Then: it reconstructs campaign context from the sheet, then merges narrative UNDER the sheet values
-		verify(sheetCampaign).read(sheetValues, 2);
+		verify(sheetCampaign).read(sheetValues, 2, "standard", null);
 		ArgumentCaptor<Map<String, String>> deckMap = ArgumentCaptor.forClass(Map.class);
 		verify(slides).createDeck(eq("11"), eq("deck-file"), deckMap.capture(), any(), isNull());
 		assertThat(deckMap.getValue())

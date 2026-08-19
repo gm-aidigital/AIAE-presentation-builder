@@ -2,8 +2,10 @@ package com.aidigital.reportconstructor.service.reports.helpers.impl;
 
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
+import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
 import com.aidigital.reportconstructor.service.reports.dto.Tactic;
 import com.aidigital.reportconstructor.service.reports.dto.Totals;
+import com.aidigital.reportconstructor.service.reports.engine.RatePlanCalculator;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportNumberParser;
 import com.aidigital.reportconstructor.service.reports.helpers.SheetCampaignReader;
 import lombok.RequiredArgsConstructor;
@@ -32,10 +34,22 @@ public class SheetCampaignReaderImpl implements SheetCampaignReader {
 	private static final String UNRESOLVED_DASH = "—";
 
 	private final ReportNumberParser numbers;
+	private final RatePlanCalculator pacing;
 
 	@Override
 	public CampaignData read(Map<String, String> flat, int tacticCount) {
+		return read(flat, tacticCount, null, null);
+	}
+
+	@Override
+	public CampaignData read(Map<String, String> flat, int tacticCount, String reportType,
+	                         FlightDates reportingWindow) {
 		int count = Math.clamp(tacticCount, 0, MAX_TACTICS);
+		// The EOM pacing tokens are gated on this pair being present; the reporting window the request
+		// carried in step 1 is the only source for it once the flow runs off the reviewed sheet.
+		Integer eomMonths = "EOM".equals(reportType) && reportingWindow != null
+				&& reportingWindow.start() != null && reportingWindow.end() != null
+				? pacing.monthsSpanned(reportingWindow.start(), reportingWindow.end()) : null;
 		Map<Integer, Tactic> tactics = new LinkedHashMap<>();
 		for (int n = 1; n <= count; n++) {
 			tactics.put(n, readTactic(flat, n));
@@ -52,8 +66,11 @@ public class SheetCampaignReaderImpl implements SheetCampaignReader {
 				str(flat, "{{Campaign_name}}"),
 				str(flat, "{{geo_locations}}"),
 				str(flat, "{{funnel_stages}}"),
-				str(flat, "{{flight_dates}}"),
-				null,
+				// The prompts read this as "the period this report covers", so it stays the reporting window
+				// even now that {{flight_dates}} carries the whole booked flight. Older sheets have no
+				// {{reporting filter}} cell, and there the two were the same value anyway.
+				coalesce(str(flat, "{{reporting filter}}"), str(flat, "{{flight_dates}}")),
+				reportingWindow,
 				str(flat, "{{total_investment}}"),
 				str(flat, "{{primary_kpis}}"),
 				str(flat, "{{tactics_list}}"),
@@ -61,7 +78,37 @@ public class SheetCampaignReaderImpl implements SheetCampaignReader {
 				str(flat, "{{audience_segments}}"),
 				totals,
 				tactics,
+				eomMonths,
+				eomMonths,
+				eomMonths == null ? null : str(flat, "{{flight_dates}}"),
+				intOrNull(flat, "{{mon no}}"),
+				intOrNull(flat, "{{total mon no}}"),
 				null);
+	}
+
+	/**
+	 * Returns the first of two sheet values that carries text, so a token absent from an older workbook
+	 * falls through to the one that replaced it.
+	 *
+	 * @param preferred the value to use when present
+	 * @param fallback  the value to use otherwise
+	 * @return the first non-blank value, or {@code null} when neither carries text
+	 */
+	String coalesce(String preferred, String fallback) {
+		return preferred == null || preferred.isBlank() ? fallback : preferred;
+	}
+
+	/**
+	 * Reads a whole-number placeholder back off the sheet, tolerating the em-dash an unresolved cell
+	 * carries and any thousands grouping.
+	 *
+	 * @param flat the placeholder map
+	 * @param key  the token to read
+	 * @return the parsed integer, or {@code null} when the cell is absent, dashed or not a number
+	 */
+	Integer intOrNull(Map<String, String> flat, String key) {
+		Double parsed = nullableNum(flat, key);
+		return parsed == null ? null : (int) Math.round(parsed);
 	}
 
 	@Override

@@ -78,6 +78,7 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 			start.put("{{report_type}}", campaignResolvers.resolve(sheet, adj, "Report type:"));
 		}
 		start.put("{{flight_dates}}", flightDatesResolved(data));
+		start.put("{{reporting filter}}", reportingFilterResolved(data));
 		start.put("{{total_investment}}", campaignResolvers.resolveTotalInvestment(sheet, adj, data));
 		start.put("{{primary_kpis}}", campaignResolvers.resolvePrimaryKpis(sheet, adj, primaryKpis));
 		start.put("{{audience_age}}", campaignResolvers.resolveAudienceAge(sheet, adj, ccA.audienceAge()));
@@ -140,6 +141,15 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 			totals.put("{{eom_report_month}}", campaignResolvers.resolveEomReportMonth(sheet, adj, data));
 			totals.put("{{eom_next_month_number}}", campaignResolvers.resolveEomNextMonthNumber(sheet, adj, data));
 			totals.put("{{eom_next_report_month}}", campaignResolvers.resolveEomNextReportMonth(sheet, adj, data));
+			// Cover slide of the EOM template: the reporting period spelled out, where that period sits in
+			// the booked flight, and the plan/fact impressions abbreviated for the headline figures.
+			totals.put("{{reporting month}}", campaignResolvers.resolveReportingMonth(sheet, adj, data));
+			totals.put("{{total mon no}}", campaignResolvers.resolveCampaignMonthsTotal(sheet, adj, data));
+			totals.put("{{mon no}}", campaignResolvers.resolveCampaignMonthNumber(sheet, adj, data));
+			totals.put("{{planned total impressions short}}",
+					campaignResolvers.resolveTotalPlannedImpsShort(sheet, adj, data));
+			totals.put("{{fact total impressions short}}",
+					campaignResolvers.resolveTotalFactImpsShort(sheet, adj, data));
 		}
 		sections.add(buildPreviewSection("Summary Metrics", totals));
 
@@ -335,11 +345,35 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 	 * @return a resolved flight-date entry sourced from the raw data, or a {@code not_found} entry
 	 */
 	Resolved flightDatesResolved(CampaignData data) {
+		// An EOM report's flight is the whole booked run, which outlives the month being reported on: the
+		// media plan states it and the collector has already resolved it. Only when there is no such flight
+		// (every EOC report, and an EOM plan that states no dates) does this fall back to the confirmed
+		// raw-data window, which is what this token has always shown.
+		String campaignFlight = data == null ? null : data.campaignFlightDates();
+		if (campaignFlight != null && !campaignFlight.isBlank()) {
+			return new Resolved("Media-plan flight dates", campaignFlight, "sheet");
+		}
 		String value = data == null ? null : data.flightDates();
 		if (value == null || value.isBlank()) {
 			return new Resolved("Raw-data date range (confirmed)", null, "not_found");
 		}
 		return new Resolved("Raw-data date range (confirmed)", value, "adj");
+	}
+
+	/**
+	 * Builds the {@code {{reporting filter}}} value: the date window the user picked on the matching
+	 * screen, which is what the report actually covers. This is the figure {@code {{flight_dates}}}
+	 * carried before the flight and the reporting period were split apart.
+	 *
+	 * @param data the collected campaign data carrying the formatted reporting window
+	 * @return a resolved reporting-window entry, or a {@code not_found} entry
+	 */
+	Resolved reportingFilterResolved(CampaignData data) {
+		String value = data == null ? null : data.flightDates();
+		if (value == null || value.isBlank()) {
+			return new Resolved("Reporting date filter (confirmed)", null, "not_found");
+		}
+		return new Resolved("Reporting date filter (confirmed)", value, "adj");
 	}
 
 	PreviewSection buildPreviewSection(String title, Map<String, Resolved> entries) {

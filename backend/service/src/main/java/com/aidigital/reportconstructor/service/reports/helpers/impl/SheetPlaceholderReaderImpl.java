@@ -66,7 +66,23 @@ public class SheetPlaceholderReaderImpl implements SheetPlaceholderReader {
 			Map.entry("Geo:", "{{geo_locations}}"),
 			Map.entry("Funnel:", "{{funnel_stages}}"),
 			Map.entry("Audience age:", "{{audience_age}}"),
-			Map.entry("Segments:", "{{audience_segments}}"));
+			Map.entry("Segments:", "{{audience_segments}}"),
+			// EOM cover cadence. These cells are the only place the cover's dates survive into the
+			// slides-from-sheet step, which never sees the media plan again — and they double as the user's
+			// override, since whatever the sheet says wins over anything recomputed here. Each token is
+			// registered under every label spelling the workbook has used, because a miss is silent: the
+			// cover would simply print a dash.
+			// The workbook writes these four without a trailing colon, unlike the labels above it; both
+			// spellings are registered so a later tidy-up of the template cannot silently break the read.
+			Map.entry("Reporting dates", "{{reporting filter}}"),
+			Map.entry("Reporting dates:", "{{reporting filter}}"),
+			Map.entry("Reporting month", "{{reporting month}}"),
+			Map.entry("Reporting month:", "{{reporting month}}"),
+			Map.entry("Campaign duration (months)", "{{total mon no}}"),
+			Map.entry("Campaign duration (months):", "{{total mon no}}"),
+			Map.entry("Reporting month no.", "{{mon no}}"),
+			Map.entry("Reporting month no.:", "{{mon no}}"),
+			Map.entry("Reporting month no:", "{{mon no}}"));
 
 	/** Info-block header whose value sits in the cell <em>below</em> it. */
 	private static final String RFP_HEADER = "RFP Input";

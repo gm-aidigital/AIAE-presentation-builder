@@ -2,12 +2,14 @@ package com.aidigital.reportconstructor.service.reports.engine;
 
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
+import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
 import com.aidigital.reportconstructor.service.reports.dto.Recommendation;
 import com.aidigital.reportconstructor.service.reports.dto.Tactic;
 import com.aidigital.reportconstructor.service.reports.dto.Totals;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -568,9 +570,157 @@ class CampaignResolversTest {
 				null, null, null, null, null, null, null);
 	}
 
+	/** A reported tactic carrying only planned impressions. */
+	private Tactic planImpsTactic(double planImps) {
+		return new Tactic("CTV", "CTV", null, 0, 0, 0, 0, null, null, null, null, null, planImps, null, null, null,
+				null, null, null, null, null, null, null);
+	}
+
 	/** A reported tactic carrying only planned reach. */
 	private Tactic planReachTactic(String name, double planReach) {
 		return new Tactic(name, name, null, 0, 0, 0, 0, null, null, null, null, null, null, null, null, null,
 				null, null, null, null, null, null, planReach);
+	}
+
+	@Test
+	void shouldRenderTheImpressionsPaceAsASignedLiftWhenOverPlanTest() {
+		// Given: 255,323 delivered against a 250,000 tactic plan
+		CampaignData data = new CampaignData(
+				null, null, null, null, null, null, null, null, null, null, null,
+				new Totals(0, 255_323, 0, 0, null, null),
+				Map.of(1, planImpsTactic(250_000d)), null);
+
+		// When:
+		Resolved r = resolvers.resolveTotalImpsPace(List.of(), List.of(), data);
+
+		// Then:
+		assertThat(r.value()).isEqualTo("+2%");
+		assertThat(r.source()).isEqualTo("adj");
+	}
+
+	@Test
+	void shouldRenderTheImpressionsPaceAsAShareOfPlanWhenAtOrBelowPlanTest() {
+		// Given: 245,000 delivered against a 250,000 tactic plan
+		CampaignData data = new CampaignData(
+				null, null, null, null, null, null, null, null, null, null, null,
+				new Totals(0, 245_000, 0, 0, null, null),
+				Map.of(1, planImpsTactic(250_000d)), null);
+
+		// When:
+		Resolved r = resolvers.resolveTotalImpsPace(List.of(), List.of(), data);
+
+		// Then: a shortfall reads as the share of plan delivered, never as a negative number
+		assertThat(r.value()).isEqualTo("98%");
+	}
+
+	@Test
+	void shouldRenderTheImpressionsPaceAsExactlyOneHundredPercentOnPlanTest() {
+		// Given: delivery exactly on plan
+		CampaignData data = new CampaignData(
+				null, null, null, null, null, null, null, null, null, null, null,
+				new Totals(0, 250_000, 0, 0, null, null),
+				Map.of(1, planImpsTactic(250_000d)), null);
+
+		// When:
+		Resolved r = resolvers.resolveTotalImpsPace(List.of(), List.of(), data);
+
+		// Then:
+		assertThat(r.value()).isEqualTo("100%");
+	}
+
+	@Test
+	void shouldNameASingleReportingMonthWithItsYearTest() {
+		// Given: a reporting window covering August 2026 only
+		CampaignData data = campaignDataWithWindow(LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 31));
+
+		// When:
+		Resolved r = resolvers.resolveReportingMonth(List.of(), List.of(), data);
+
+		// Then:
+		assertThat(r.value()).isEqualTo("August 2026");
+		assertThat(r.source()).isEqualTo("adj");
+	}
+
+	@Test
+	void shouldNameATwoMonthReportingWindowAsARangeTest() {
+		// Given: a reporting window spanning July and August of the same year
+		CampaignData data = campaignDataWithWindow(LocalDate.of(2026, 7, 1), LocalDate.of(2026, 8, 31));
+
+		// When:
+		Resolved r = resolvers.resolveReportingMonth(List.of(), List.of(), data);
+
+		// Then: the year is stated once, at the end
+		assertThat(r.value()).isEqualTo("July - August 2026");
+	}
+
+	@Test
+	void shouldNameAReportingWindowCrossingTheYearBoundaryWithBothYearsTest() {
+		// Given: a reporting window running from December into January
+		CampaignData data = campaignDataWithWindow(LocalDate.of(2025, 12, 1), LocalDate.of(2026, 1, 31));
+
+		// When:
+		Resolved r = resolvers.resolveReportingMonth(List.of(), List.of(), data);
+
+		// Then:
+		assertThat(r.value()).isEqualTo("December 2025 - January 2026");
+	}
+
+	@Test
+	void shouldReadTheFlightMonthTokensFromTheCampaignFlightFieldsTest() {
+		// Given: the second month of a three-month flight
+		CampaignData data = new CampaignData(
+				null, null, null, null, null, null, null, null, null, null, null,
+				new Totals(0, 0, 0, 0, null, null), Map.of(), 1, 1, null, 2, 3, null);
+
+		// When:
+		Resolved number = resolvers.resolveCampaignMonthNumber(List.of(), List.of(), data);
+		Resolved total = resolvers.resolveCampaignMonthsTotal(List.of(), List.of(), data);
+
+		// Then:
+		assertThat(number.value()).isEqualTo("2");
+		assertThat(total.value()).isEqualTo("3");
+	}
+
+	@Test
+	void shouldAbbreviateThePlannedAndDeliveredImpressionsForTheCoverTest() {
+		// Given: a 1,150,000 plan against 987,000 delivered
+		CampaignData data = new CampaignData(
+				null, null, null, null, null, null, null, null, null, null, null,
+				new Totals(0, 987_000, 0, 0, null, null),
+				Map.of(1, planImpsTactic(1_150_000d)), null);
+
+		// When:
+		Resolved planned = resolvers.resolveTotalPlannedImpsShort(List.of(), List.of(), data);
+		Resolved fact = resolvers.resolveTotalFactImpsShort(List.of(), List.of(), data);
+
+		// Then: upper-case suffixes, truncated rather than rounded
+		assertThat(planned.value()).isEqualTo("1.1M");
+		assertThat(fact.value()).isEqualTo("987K");
+	}
+
+	@Test
+	void shouldPreferAManualOverrideForEveryCoverTokenTest() {
+		// Given: the Adjustments tab restating each cover figure by hand
+		List<List<String>> adj = List.of(
+				List.of("Reporting month:", "September 2026"),
+				List.of("Flight months total:", "6"),
+				List.of("Flight month number:", "4"),
+				List.of("Planned total impressions short:", "2.0M"),
+				List.of("Fact total impressions short:", "1.9M"));
+		CampaignData data = campaignDataWithWindow(LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 31));
+
+		// When-Then:
+		assertThat(resolvers.resolveReportingMonth(List.of(), adj, data).value()).isEqualTo("September 2026");
+		assertThat(resolvers.resolveCampaignMonthsTotal(List.of(), adj, data).value()).isEqualTo("6");
+		assertThat(resolvers.resolveCampaignMonthNumber(List.of(), adj, data).value()).isEqualTo("4");
+		assertThat(resolvers.resolveTotalPlannedImpsShort(List.of(), adj, data).value()).isEqualTo("2.0M");
+		assertThat(resolvers.resolveTotalFactImpsShort(List.of(), adj, data).value()).isEqualTo("1.9M");
+	}
+
+	/** Campaign data carrying only the reporting window the cover's month label reads. */
+	private CampaignData campaignDataWithWindow(LocalDate start, LocalDate end) {
+		return new CampaignData(
+				null, null, null, null, null, new FlightDates(start, end), null, null, null, null, null,
+				new Totals(0, 0, 0, 0, null, null), Map.of(), null);
 	}
 }

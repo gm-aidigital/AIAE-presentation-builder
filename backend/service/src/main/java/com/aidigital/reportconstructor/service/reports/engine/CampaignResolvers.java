@@ -51,6 +51,26 @@ public class CampaignResolvers {
 	 */
 	private static final int THOUGHT_SLOTS = 5;
 
+	/** Auto-derived label written next to the campaign-wide impressions pace. */
+	private static final String TOTAL_IMPS_PACE_AUTO_LABEL = "Total imps pace (auto: fact vs planned impressions)";
+
+	/** Auto-derived label written next to the cover's reporting-period name. */
+	private static final String REPORTING_MONTH_AUTO_LABEL = "Reporting month (auto: selected date window)";
+
+	/** Auto-derived label written next to the booked flight's month count. */
+	private static final String FLIGHT_MONTHS_TOTAL_AUTO_LABEL = "Flight months total (auto: media-plan flight dates)";
+
+	/** Auto-derived label written next to the reporting month's position in the flight. */
+	private static final String FLIGHT_MONTH_NUMBER_AUTO_LABEL =
+			"Flight month number (auto: reporting month within flight)";
+
+	/** Auto-derived label written next to the abbreviated planned impressions. */
+	private static final String PLANNED_IMPS_SHORT_AUTO_LABEL =
+			"Planned total impressions short (auto: sum of tactic plans)";
+
+	/** Auto-derived label written next to the abbreviated delivered impressions. */
+	private static final String FACT_IMPS_SHORT_AUTO_LABEL = "Fact total impressions short (auto: delivered totals)";
+
 	private final SheetRowHelper sheetUtils;
 	private final Fmt fmt;
 	private final TacticExtractionHelper tacticExtraction;
@@ -946,13 +966,13 @@ public class CampaignResolvers {
 	}
 
 	/**
-	 * Resolves the campaign-wide impressions pacing variance of the to-date actual against the prorated
-	 * to-date goal, preferring a manual override.
+	 * Resolves the campaign-wide impressions pace of the actual against the plan, preferring a manual
+	 * override. See {@link #impsPace} for the formula.
 	 *
 	 * @param sheetRows Media Plan tab rows
 	 * @param adjRows   manual Adjustments tab rows (checked first)
-	 * @param data      aggregated campaign data providing the plan, the to-date actual and the elapsed/total month counts
-	 * @return a {@link Resolved} pacing variance, or a null-valued {@code "not_found"} when unavailable
+	 * @param data      aggregated campaign data providing the summed plan and the actual impressions
+	 * @return a {@link Resolved} pace figure, or a null-valued {@code "not_found"} when unavailable
 	 */
 	public Resolved resolveTotalImpsPace(List<List<String>> sheetRows, List<List<String>> adjRows,
 	                                     CampaignData data) {
@@ -964,15 +984,11 @@ public class CampaignResolvers {
 		if (fromSheet != null) {
 			return new Resolved("Total imps pace:", fromSheet, "sheet");
 		}
-		int[] months = elapsedAndTotalMonths(data);
 		Double totalPlan = totalPlanImps(data);
-		if (months == null || totalPlan == null || data.totals() == null) {
-			return new Resolved("Total imps pace (auto: to-date actual vs prorated goal)", null, "not_found");
+		if (totalPlan == null || totalPlan <= 0 || data == null || data.totals() == null) {
+			return new Resolved(TOTAL_IMPS_PACE_AUTO_LABEL, null, "not_found");
 		}
-		double planCtd = pacing.planCtd(totalPlan, months[0], months[1]);
-		String variance = pacing.paceVariance(data.totals().imps(), planCtd, false);
-		return new Resolved("Total imps pace (auto: to-date actual vs prorated goal)", variance,
-				variance == null ? "not_found" : "adj");
+		return new Resolved(TOTAL_IMPS_PACE_AUTO_LABEL, impsPace(data.totals().imps(), totalPlan), "adj");
 	}
 
 	/**
@@ -1819,5 +1835,172 @@ public class CampaignResolvers {
 			return "";
 		}
 		return cell(row, idx);
+	}
+
+	/**
+	 * Formats the campaign-wide impressions pace two different ways, matching how the cover reads it.
+	 * Over-delivery is a signed lift against the plan ({@code (fact / plan - 1) × 100}, e.g.
+	 * {@code "+2%"}); anything at or below plan is instead the share of the plan actually delivered
+	 * ({@code fact / plan × 100}, e.g. {@code "98%"}, and exactly {@code "100%"} on plan), so a shortfall
+	 * never shows up as a bare negative number on the cover.
+	 *
+	 * @param fact the delivered impressions
+	 * @param plan the planned impressions (must be positive)
+	 * @return the formatted pace string
+	 */
+	String impsPace(double fact, double plan) {
+		double liftPct = (fact / plan - 1) * 100;
+		if (liftPct > 0) {
+			return "+" + Math.round(liftPct) + "%";
+		}
+		return Math.round(fact / plan * 100) + "%";
+	}
+
+	/**
+	 * Resolves the reporting period's calendar label for the cover — {@code "August 2026"} for a
+	 * single-month window, {@code "July - August 2026"} when the window spans two months of one year,
+	 * and {@code "December 2025 - January 2026"} across a year boundary — preferring a manual override.
+	 *
+	 * @param sheetRows Media Plan tab rows
+	 * @param adjRows   manual Adjustments tab rows (checked first)
+	 * @param data      aggregated campaign data providing the reporting window
+	 * @return a {@link Resolved} month label, or a null-valued {@code "not_found"} when no window is set
+	 */
+	public Resolved resolveReportingMonth(List<List<String>> sheetRows, List<List<String>> adjRows,
+	                                      CampaignData data) {
+		String fromAdj = sheetUtils.findLabelValue(adjRows, "Reporting month:");
+		if (fromAdj != null) {
+			return new Resolved("Reporting month:", fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, "Reporting month:");
+		if (fromSheet != null) {
+			return new Resolved("Reporting month:", fromSheet, "sheet");
+		}
+		if (data == null || data.flightTs() == null
+				|| data.flightTs().start() == null || data.flightTs().end() == null) {
+			return new Resolved(REPORTING_MONTH_AUTO_LABEL, null, "not_found");
+		}
+		return new Resolved(REPORTING_MONTH_AUTO_LABEL,
+				reportingMonthLabel(data.flightTs().start(), data.flightTs().end()), "adj");
+	}
+
+	/**
+	 * Builds the reporting-period label from its boundaries, collapsing to a single month when both
+	 * ends sit in the same calendar month and dropping the repeated year when both ends share one.
+	 *
+	 * @param start first day of the reporting window
+	 * @param end   last day of the reporting window
+	 * @return the label, e.g. {@code "August 2026"} or {@code "July - August 2026"}
+	 */
+	String reportingMonthLabel(LocalDate start, LocalDate end) {
+		if (start.getYear() == end.getYear() && start.getMonth() == end.getMonth()) {
+			return pacing.monthLabel(end);
+		}
+		if (start.getYear() == end.getYear()) {
+			return pacing.monthNameOnly(start) + " - " + pacing.monthLabel(end);
+		}
+		return pacing.monthLabel(start) + " - " + pacing.monthLabel(end);
+	}
+
+	/**
+	 * Resolves how many calendar months the whole booked flight spans ({@code {{total mon no}}}),
+	 * preferring a manual override.
+	 *
+	 * @param sheetRows Media Plan tab rows
+	 * @param adjRows   manual Adjustments tab rows (checked first)
+	 * @param data      aggregated campaign data providing {@code campaignMonthsTotal()}
+	 * @return a {@link Resolved} month count, or a null-valued {@code "not_found"} when unavailable
+	 */
+	public Resolved resolveCampaignMonthsTotal(List<List<String>> sheetRows, List<List<String>> adjRows,
+	                                           CampaignData data) {
+		String fromAdj = sheetUtils.findLabelValue(adjRows, "Flight months total:");
+		if (fromAdj != null) {
+			return new Resolved("Flight months total:", fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, "Flight months total:");
+		if (fromSheet != null) {
+			return new Resolved("Flight months total:", fromSheet, "sheet");
+		}
+		if (data == null || data.campaignMonthsTotal() == null) {
+			return new Resolved(FLIGHT_MONTHS_TOTAL_AUTO_LABEL, null, "not_found");
+		}
+		return new Resolved(FLIGHT_MONTHS_TOTAL_AUTO_LABEL, String.valueOf(data.campaignMonthsTotal()), "adj");
+	}
+
+	/**
+	 * Resolves the reporting month's 1-based position inside the booked flight ({@code {{mon no}}}),
+	 * preferring a manual override.
+	 *
+	 * @param sheetRows Media Plan tab rows
+	 * @param adjRows   manual Adjustments tab rows (checked first)
+	 * @param data      aggregated campaign data providing {@code campaignMonthNumber()}
+	 * @return a {@link Resolved} month index, or a null-valued {@code "not_found"} when unavailable
+	 */
+	public Resolved resolveCampaignMonthNumber(List<List<String>> sheetRows, List<List<String>> adjRows,
+	                                           CampaignData data) {
+		String fromAdj = sheetUtils.findLabelValue(adjRows, "Flight month number:");
+		if (fromAdj != null) {
+			return new Resolved("Flight month number:", fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, "Flight month number:");
+		if (fromSheet != null) {
+			return new Resolved("Flight month number:", fromSheet, "sheet");
+		}
+		if (data == null || data.campaignMonthNumber() == null) {
+			return new Resolved(FLIGHT_MONTH_NUMBER_AUTO_LABEL, null, "not_found");
+		}
+		return new Resolved(FLIGHT_MONTH_NUMBER_AUTO_LABEL, String.valueOf(data.campaignMonthNumber()), "adj");
+	}
+
+	/**
+	 * Resolves the abbreviated planned impressions for the cover ({@code "1.1M"}, {@code "100K"}),
+	 * preferring a manual override. Abbreviates the same figure the pacing tokens plan against.
+	 *
+	 * @param sheetRows Media Plan tab rows
+	 * @param adjRows   manual Adjustments tab rows (checked first)
+	 * @param data      aggregated campaign data whose tactics carry the planned impressions
+	 * @return a {@link Resolved} abbreviated figure, or a null-valued {@code "not_found"} when unavailable
+	 */
+	public Resolved resolveTotalPlannedImpsShort(List<List<String>> sheetRows, List<List<String>> adjRows,
+	                                             CampaignData data) {
+		String fromAdj = sheetUtils.findLabelValue(adjRows, "Planned total impressions short:");
+		if (fromAdj != null) {
+			return new Resolved("Planned total impressions short:", fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, "Planned total impressions short:");
+		if (fromSheet != null) {
+			return new Resolved("Planned total impressions short:", fromSheet, "sheet");
+		}
+		Double totalPlan = totalPlanImps(data);
+		if (totalPlan == null) {
+			return new Resolved(PLANNED_IMPS_SHORT_AUTO_LABEL, null, "not_found");
+		}
+		return new Resolved(PLANNED_IMPS_SHORT_AUTO_LABEL, fmt.compactUpper(totalPlan), "adj");
+	}
+
+	/**
+	 * Resolves the abbreviated delivered impressions for the cover ({@code "1.1M"}, {@code "100K"}),
+	 * preferring a manual override. Abbreviates the same actual the {@code {{total imps}}} token shows
+	 * in full.
+	 *
+	 * @param sheetRows Media Plan tab rows
+	 * @param adjRows   manual Adjustments tab rows (checked first)
+	 * @param data      aggregated campaign data providing the delivered totals
+	 * @return a {@link Resolved} abbreviated figure, or a null-valued {@code "not_found"} when unavailable
+	 */
+	public Resolved resolveTotalFactImpsShort(List<List<String>> sheetRows, List<List<String>> adjRows,
+	                                          CampaignData data) {
+		String fromAdj = sheetUtils.findLabelValue(adjRows, "Fact total impressions short:");
+		if (fromAdj != null) {
+			return new Resolved("Fact total impressions short:", fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, "Fact total impressions short:");
+		if (fromSheet != null) {
+			return new Resolved("Fact total impressions short:", fromSheet, "sheet");
+		}
+		if (data == null || data.totals() == null) {
+			return new Resolved(FACT_IMPS_SHORT_AUTO_LABEL, null, "not_found");
+		}
+		return new Resolved(FACT_IMPS_SHORT_AUTO_LABEL, fmt.compactUpper(data.totals().imps()), "adj");
 	}
 }
