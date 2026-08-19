@@ -53,10 +53,11 @@ public interface SlidesProvider {
 	 *
 	 * @param presentationId        the deck to trim
 	 * @param tacticCount           number of real tactics (clamped 1..28)
+	 * @param reportType            report template code ({@code "EOC"}/{@code "EOM"}); selects the slide model
 	 * @param userGoogleAccessToken optional signed-in user's Google OAuth token;
 	 *                              falls back to the service account when blank
 	 */
-	void trimTactics(String presentationId, int tacticCount, String userGoogleAccessToken);
+	void trimTactics(String presentationId, int tacticCount, String reportType, String userGoogleAccessToken);
 
 	/**
 	 * Builds the deck's main tactic slides from a single master slide: the master is duplicated once per
@@ -83,11 +84,12 @@ public interface SlidesProvider {
 	 * @param tacticCount           number of real tactics (clamped 1..28 by the caller)
 	 * @param placeholderMap        resolved {@code {{token}}} → value pairs; a master token whose renumbered
 	 *                              form is absent from the map is only renumbered
+	 * @param reportType            report template code ({@code "EOC"}/{@code "EOM"}); selects the slide model
 	 * @param userGoogleAccessToken optional signed-in user's Google OAuth token; falls back to the
 	 *                              service account when blank
 	 */
 	void addTacticSlides(
-			String presentationId, int tacticCount, Map<String, String> placeholderMap,
+			String presentationId, int tacticCount, Map<String, String> placeholderMap, String reportType,
 			String userGoogleAccessToken);
 
 	/**
@@ -113,12 +115,13 @@ public interface SlidesProvider {
 	 * @param enabledByTactic       1-based tactic number → the breakdown sections that tactic enabled
 	 * @param breakdownValues       renumbered token (e.g. {@code {{publisher_3.1}}}) → value to write;
 	 *                              tokens absent from the map are only renumbered
+	 * @param reportType            report template code ({@code "EOC"}/{@code "EOM"}); selects the slide model
 	 * @param userGoogleAccessToken optional signed-in user's Google OAuth token; falls back to the
 	 *                              service account when blank
 	 */
 	void addBreakdownSlides(
 			String presentationId, Map<Integer, Set<BreakdownType>> enabledByTactic,
-			Map<String, String> breakdownValues, String userGoogleAccessToken);
+			Map<String, String> breakdownValues, String reportType, String userGoogleAccessToken);
 
 	/**
 	 * Removes the breakdown master slides (Top Publishers, Creative, Geo, Audience, Device), the
@@ -133,7 +136,7 @@ public interface SlidesProvider {
 	 * @param userGoogleAccessToken optional signed-in user's Google OAuth token; falls back to the
 	 *                              service account when blank
 	 */
-	void deleteMasterSlides(String presentationId, String userGoogleAccessToken);
+	void deleteMasterSlides(String presentationId, String reportType, String userGoogleAccessToken);
 
 	/**
 	 * Removes the slides that the given report type must never ship. The EOM deck is a copy of the EOC

@@ -211,18 +211,19 @@ public class ReportGenerationChartHelperImpl implements ReportGenerationChartHel
 	@Override
 	public void trimUnusedTactics(String slideUrl, GeneratePayload payload, String userGoogleToken) {
 		int tacticCount = Math.clamp(effectiveTactics.effectiveTacticCount(payload.sheetRows(), payload.lineItemMapping()), 1, MAX_TACTICS);
-		trimUnusedTactics(slideUrl, tacticCount, userGoogleToken);
+		trimUnusedTactics(slideUrl, tacticCount, payload.reportType(), userGoogleToken);
 	}
 
 	@Override
-	public void trimUnusedTactics(String slideUrl, int tacticCount, String userGoogleToken) {
+	public void trimUnusedTactics(
+			String slideUrl, int tacticCount, String reportType, String userGoogleToken) {
 		String presentationId = extractPresentationId(slideUrl);
 		if (presentationId == null) {
 			return;
 		}
 		int clamped = Math.clamp(tacticCount, 1, MAX_TACTICS);
 		try {
-			slides.trimTactics(presentationId, clamped, userGoogleToken);
+			slides.trimTactics(presentationId, clamped, reportType, userGoogleToken);
 		} catch (RuntimeException ex) {
 			log.warn("[slides] trimTactics failed for {} (non-fatal): {}", presentationId, ex.getMessage());
 		}
@@ -230,14 +231,15 @@ public class ReportGenerationChartHelperImpl implements ReportGenerationChartHel
 
 	@Override
 	public List<String> addTacticSlides(
-			String slideUrl, int tacticCount, Map<String, String> flatReplacements, String userGoogleToken) {
+			String slideUrl, int tacticCount, Map<String, String> flatReplacements, String reportType,
+			String userGoogleToken) {
 		String presentationId = extractPresentationId(slideUrl);
 		if (presentationId == null) {
 			return List.of();
 		}
 		int clamped = Math.clamp(tacticCount, 1, MAX_TACTICS);
 		try {
-			slides.addTacticSlides(presentationId, clamped, flatReplacements, userGoogleToken);
+			slides.addTacticSlides(presentationId, clamped, flatReplacements, reportType, userGoogleToken);
 			return List.of();
 		} catch (RuntimeException ex) {
 			log.warn("[slides] addTacticSlides failed for {} (non-fatal): {}", presentationId, ex.getMessage());
@@ -269,20 +271,21 @@ public class ReportGenerationChartHelperImpl implements ReportGenerationChartHel
 			return;
 		}
 		try {
-			slides.addBreakdownSlides(presentationId, enabledByTactic, breakdownValues, userGoogleToken);
+			slides.addBreakdownSlides(
+					presentationId, enabledByTactic, breakdownValues, payload.reportType(), userGoogleToken);
 		} catch (RuntimeException ex) {
 			log.warn("[slides] addBreakdownSlides failed for {} (non-fatal): {}", presentationId, ex.getMessage());
 		}
 	}
 
 	@Override
-	public void deleteMasterSlides(String slideUrl, String userGoogleToken) {
+	public void deleteMasterSlides(String slideUrl, String reportType, String userGoogleToken) {
 		String presentationId = extractPresentationId(slideUrl);
 		if (presentationId == null) {
 			return;
 		}
 		try {
-			slides.deleteMasterSlides(presentationId, userGoogleToken);
+			slides.deleteMasterSlides(presentationId, reportType, userGoogleToken);
 		} catch (RuntimeException ex) {
 			log.warn("[slides] deleteMasterSlides failed for {} (non-fatal): {}", presentationId, ex.getMessage());
 		}

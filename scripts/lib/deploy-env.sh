@@ -41,3 +41,12 @@ unset _deploy_var _deploy_src
 # With it blank, ClerkJwtClaimsValidator matches AUTH_AUTHORIZED_PARTIES exactly.
 export AUTH_AUTHORIZED_PARTY_PATTERNS=""
 echo "[deploy-env] AUTH_AUTHORIZED_PARTY_PATTERNS cleared (exact azp match only)"
+
+# The EOM deck template is being migrated: the new template is switched on in the Replit workspace only,
+# and the published app must keep building EOM decks from the EOC template until that work is signed off.
+# The workspace and the published app share this environment, so a value set for testing would otherwise
+# reach production on the next deploy. Clear it unconditionally — the same treatment
+# AUTH_AUTHORIZED_PARTY_PATTERNS gets above — instead of relying on nobody setting it.
+# To roll the new EOM template out to production, delete these two lines deliberately.
+export EOM_SLIDES_TEMPLATE_ID=""
+echo "[deploy-env] EOM_SLIDES_TEMPLATE_ID cleared (published app keeps the EOC-based EOM deck)"

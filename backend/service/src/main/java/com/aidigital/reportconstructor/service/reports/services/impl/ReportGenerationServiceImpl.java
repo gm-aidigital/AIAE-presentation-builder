@@ -343,11 +343,12 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 			// Main tactic slides from the single master, same as the sheet flow above; a no-op on the legacy
 			// 28-slot template, where the trim below removes the surplus slots instead.
 			List<String> tacticSlideWarnings =
-					chartHelper.addTacticSlides(slideUrl, flatTacticCount, flatReplacements, userGoogleToken);
+					chartHelper.addTacticSlides(
+							slideUrl, flatTacticCount, flatReplacements, payload.reportType(), userGoogleToken);
 			chartHelper.trimUnusedTactics(slideUrl, payload, userGoogleToken);
 			// Template master slides must never ship. This flow inserts no breakdowns, but it does duplicate the
 			// tactic master above, and the master itself would otherwise arrive full of raw {{tactic n …}} tokens.
-			chartHelper.deleteMasterSlides(slideUrl, userGoogleToken);
+			chartHelper.deleteMasterSlides(slideUrl, payload.reportType(), userGoogleToken);
 			// EOC-only story slides the EOM deck inherited from the template it was copied from.
 			chartHelper.deleteReportTypeSlides(slideUrl, payload.reportType(), userGoogleToken);
 
@@ -622,8 +623,9 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		// is duplicated into exactly `tacticCount` filled slides here. Runs before the breakdowns, which anchor
 		// their copies after each tactic's main slide, and before the trim, which then has no tactic slides
 		// left to delete. A no-op on the legacy 28-slot template.
-		jobWarnings.addAll(chartHelper.addTacticSlides(slideUrl, tacticCount, flatReplacements, userGoogleToken));
-		chartHelper.trimUnusedTactics(slideUrl, tacticCount, userGoogleToken);
+		jobWarnings.addAll(chartHelper.addTacticSlides(
+				slideUrl, tacticCount, flatReplacements, payload.reportType(), userGoogleToken));
+		chartHelper.trimUnusedTactics(slideUrl, tacticCount, payload.reportType(), userGoogleToken);
 		// Per-tactic breakdown + thoughts slides: duplicate the selected masters, fill their tokens (already in
 		// breakdownValues, including the {{thoughts on tactic n performance}} tokens for the > 2-breakdown
 		// tactics), and place them after the tactic's main slide. Non-fatal — the deck still ships on failure.
@@ -636,7 +638,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		// Remove the breakdown/thoughts master template slides. Unconditional and independent of whether any
 		// breakdown slides were inserted — the masters must never ship, even when Step 3 selected no
 		// breakdowns. Runs after the charts so every copy has finished duplicating from the masters.
-		chartHelper.deleteMasterSlides(slideUrl, userGoogleToken);
+		chartHelper.deleteMasterSlides(slideUrl, payload.reportType(), userGoogleToken);
 		// Slides an EOM deck must never ship (the frequency & velocity play, the awareness / market-share
 		// slide): the EOM template is a copy of the EOC one, so they arrive with it and are deleted here.
 		chartHelper.deleteReportTypeSlides(slideUrl, payload.reportType(), userGoogleToken);

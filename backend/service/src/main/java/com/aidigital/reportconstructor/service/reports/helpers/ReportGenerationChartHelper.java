@@ -67,7 +67,7 @@ public interface ReportGenerationChartHelper {
 	 * @param tacticCount     number of active tactics (clamped 1..28)
 	 * @param userGoogleToken OAuth token for Google Slides API, or null when unavailable
 	 */
-	void trimUnusedTactics(String slideUrl, int tacticCount, String userGoogleToken);
+	void trimUnusedTactics(String slideUrl, int tacticCount, String reportType, String userGoogleToken);
 
 	/**
 	 * Builds the deck's main tactic slides from the template's single master tactic slide — one copy per
@@ -86,12 +86,14 @@ public interface ReportGenerationChartHelper {
 	 * @param slideUrl         URL of the generated Google Slides deck
 	 * @param tacticCount      number of active tactics (clamped 1..28)
 	 * @param flatReplacements resolved placeholder values keyed by token, used to fill each copy
+	 * @param reportType       report template code ({@code "EOC"}/{@code "EOM"}); selects the slide model
 	 * @param userGoogleToken  OAuth token for Google Slides API, or null when unavailable
 	 * @return the warnings to attach to the job; empty when the slides were inserted (or the template has no
 	 *         master and the step does not apply)
 	 */
 	List<String> addTacticSlides(
-			String slideUrl, int tacticCount, Map<String, String> flatReplacements, String userGoogleToken);
+			String slideUrl, int tacticCount, Map<String, String> flatReplacements, String reportType,
+			String userGoogleToken);
 
 	/**
 	 * Inserts the Step-3 per-tactic breakdown slides into the built deck for the "Slides from Sheet"
@@ -138,9 +140,10 @@ public interface ReportGenerationChartHelper {
 	 * failure is logged and the deck is delivered with the masters still present.
 	 *
 	 * @param slideUrl        URL of the generated Google Slides deck
+	 * @param reportType      report template code ({@code "EOC"}/{@code "EOM"}); selects the slide model
 	 * @param userGoogleToken OAuth token for Google Slides API, or null when unavailable
 	 */
-	void deleteMasterSlides(String slideUrl, String userGoogleToken);
+	void deleteMasterSlides(String slideUrl, String reportType, String userGoogleToken);
 
 	/**
 	 * Removes the slides the given report type must never ship. The EOM deck is built from a copy of the

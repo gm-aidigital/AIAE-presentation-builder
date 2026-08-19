@@ -351,7 +351,7 @@ class ReportGenerationServiceImplTest {
 		assertThat(deckMap.getValue())
 				.containsEntry("{{client_name}}", "Acme")
 				.containsEntry("{{recommendation 1}}", "Do X");
-		verify(chartHelper).trimUnusedTactics("http://deck", 2, null);
+		verify(chartHelper).trimUnusedTactics("http://deck", 2, "standard", null);
 		verify(chartHelper).buildChartsFromSheet(eq("http://deck"), eq(grid), any(), eq(2), isNull());
 		verify(jobProgress).markJobDone(11L, "http://deck", "[]");
 		// And: the raw-grid collection and the offline Claude batches never run — no duplicate work

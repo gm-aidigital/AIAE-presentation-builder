@@ -27,32 +27,8 @@ public class GoogleProperties {
 	 */
 	private String slidesTemplateId = "";
 
-	/**
-	 * Source deck copied for EOM reports. Blank falls back to {@link #slidesTemplateId} (safe no-op
-	 * until the EOM deck template is configured), same convention as the other blank-disables-feature
-	 * template ids in this class.
-	 */
-	private String eomSlidesTemplateId = "";
 
-	/**
-	 * Object ids of the slides that must never ship in an EOM deck. This is the reliable way to name them:
-	 * object ids survive the Drive copy the deck is made from, so they cannot drift the way a title can when
-	 * the template's wording is edited. Ids may be pasted straight from the Slides editor's
-	 * {@code #slide=id.…} URL fragment — the {@code id.} prefix is stripped. Ids configured but absent from
-	 * the deck are skipped. Slides not covered here fall back to {@link #eomDropSlideTitles}.
-	 */
-	private List<String> eomDropSlideObjectIds = List.of();
 
-	/**
-	 * Title phrases of the slides that must never ship in an EOM deck. The fallback for slides not named by
-	 * {@link #eomDropSlideObjectIds}, and less robust: an edit to the template's wording silently stops the
-	 * match. The EOM template is a copy of the
-	 * EOC deck and therefore still carries a few EOC-only story slides; after the deck is built, every
-	 * slide whose text contains one of these phrases is deleted. Matched case- and punctuation-insensitively
-	 * (both sides are reduced to letters and digits), so {@code "&"} in the template must be spelled
-	 * {@code "&"} here too — an {@code "and"} spelling would not match. Empty disables the pass (safe no-op).
-	 */
-	private List<String> eomDropSlideTitles = List.of();
 
 	/**
 	 * Optional Drive folder the generated deck + chart copies are placed in.
@@ -161,62 +137,11 @@ public class GoogleProperties {
 		this.slidesTemplateId = slidesTemplateId;
 	}
 
-	/**
-	 * Returns the EOM deck template id, or a blank string when unconfigured (callers fall back to
-	 * {@link #getSlidesTemplateId()}).
-	 *
-	 * @return the EOM Google Slides template id, or blank when unconfigured
-	 */
-	public String getEomSlidesTemplateId() {
-		return eomSlidesTemplateId;
-	}
 
-	/**
-	 * Sets the EOM deck template id, defaulting to a blank string when null.
-	 *
-	 * @param eomSlidesTemplateId the EOM Google Slides template id (may be null)
-	 */
-	public void setEomSlidesTemplateId(String eomSlidesTemplateId) {
-		this.eomSlidesTemplateId = eomSlidesTemplateId == null ? "" : eomSlidesTemplateId;
-	}
 
-	/**
-	 * Returns the object ids of the EOC-only slides deleted from an EOM deck.
-	 *
-	 * @return the configured slide object ids, or an empty list when none are configured
-	 */
-	public List<String> getEomDropSlideObjectIds() {
-		return eomDropSlideObjectIds;
-	}
 
-	/**
-	 * Sets the object ids of the EOC-only slides deleted from an EOM deck, defaulting to an empty list
-	 * when null.
-	 *
-	 * @param eomDropSlideObjectIds the slide object ids to delete (may be null)
-	 */
-	public void setEomDropSlideObjectIds(List<String> eomDropSlideObjectIds) {
-		this.eomDropSlideObjectIds = eomDropSlideObjectIds == null ? List.of() : List.copyOf(eomDropSlideObjectIds);
-	}
 
-	/**
-	 * Returns the title phrases of the EOC-only slides deleted from an EOM deck.
-	 *
-	 * @return the configured title phrases, or an empty list when the pass is disabled
-	 */
-	public List<String> getEomDropSlideTitles() {
-		return eomDropSlideTitles;
-	}
 
-	/**
-	 * Sets the title phrases of the EOC-only slides deleted from an EOM deck, defaulting to an empty
-	 * list when null.
-	 *
-	 * @param eomDropSlideTitles the title phrases to match (may be null)
-	 */
-	public void setEomDropSlideTitles(List<String> eomDropSlideTitles) {
-		this.eomDropSlideTitles = eomDropSlideTitles == null ? List.of() : List.copyOf(eomDropSlideTitles);
-	}
 
 	public String getSlidesTargetFolderId() {
 		return slidesTargetFolderId;

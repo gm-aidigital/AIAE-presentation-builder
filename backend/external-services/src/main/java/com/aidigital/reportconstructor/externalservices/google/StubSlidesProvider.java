@@ -21,6 +21,7 @@ import java.util.Set;
 public class StubSlidesProvider implements SlidesProvider {
 
 	private final GoogleProperties props;
+	private final EomDeckPolicy eomDeckPolicy;
 
 	@Override
 	public boolean isLive() {
@@ -31,20 +32,19 @@ public class StubSlidesProvider implements SlidesProvider {
 	public String createDeck(
 			String jobId, String fileName, Map<String, String> placeholderMap, String reportType,
 			String userGoogleAccessToken) {
-		String eomTemplateId = props.getEomSlidesTemplateId();
-		String templateId = "EOM".equals(reportType) && eomTemplateId != null && !eomTemplateId.isBlank()
-				? eomTemplateId : props.getSlidesTemplateId();
+		String templateId = eomDeckPolicy.templateIdOr(reportType, props.getSlidesTemplateId());
 		return "https://docs.google.com/presentation/d/" + templateId + "/edit?stub=" + jobId;
 	}
 
 	@Override
-	public void trimTactics(String presentationId, int tacticCount, String userGoogleAccessToken) {
+	public void trimTactics(
+			String presentationId, int tacticCount, String reportType, String userGoogleAccessToken) {
 		// No-op: the stub never clones a real deck, so there are no slides to trim.
 	}
 
 	@Override
 	public void addTacticSlides(
-			String presentationId, int tacticCount, Map<String, String> placeholderMap,
+			String presentationId, int tacticCount, Map<String, String> placeholderMap, String reportType,
 			String userGoogleAccessToken) {
 		// No-op: the stub never clones a real deck, so there is no master tactic slide to duplicate.
 	}
@@ -52,12 +52,12 @@ public class StubSlidesProvider implements SlidesProvider {
 	@Override
 	public void addBreakdownSlides(
 			String presentationId, Map<Integer, Set<BreakdownType>> enabledByTactic,
-			Map<String, String> breakdownValues, String userGoogleAccessToken) {
+			Map<String, String> breakdownValues, String reportType, String userGoogleAccessToken) {
 		// No-op: the stub never clones a real deck, so there are no master slides to duplicate.
 	}
 
 	@Override
-	public void deleteMasterSlides(String presentationId, String userGoogleAccessToken) {
+	public void deleteMasterSlides(String presentationId, String reportType, String userGoogleAccessToken) {
 		// No-op: the stub never clones a real deck, so there are no master slides to delete.
 	}
 

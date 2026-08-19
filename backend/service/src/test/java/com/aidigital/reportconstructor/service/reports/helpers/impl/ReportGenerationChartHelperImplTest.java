@@ -83,16 +83,16 @@ class ReportGenerationChartHelperImplTest {
 		// Given: a provider that fails, and a tactic count above the template ceiling
 		Map<String, String> values = Map.of("{{tactic 1}}", "Display");
 		doThrow(new IllegalStateException("slides down"))
-				.when(slides).addTacticSlides("pres-1", 28, values, "token");
+				.when(slides).addTacticSlides("pres-1", 28, values, "EOC", "token");
 
 		// When: the deck's tactic slides are built
 		List<String> warnings =
-				helper.addTacticSlides("https://docs.google.com/presentation/d/pres-1/edit", 99, values, "token");
+				helper.addTacticSlides("https://docs.google.com/presentation/d/pres-1/edit", 99, values, "EOC", "token");
 
 		// Then: the count reached the provider clamped to 28, and the failure did not propagate — the deck
 		// still ships, missing tactic slides rather than nothing at all — but it is reported as a job warning
 		// carrying the provider's reason, not swallowed into the server log
-		verify(slides).addTacticSlides("pres-1", 28, values, "token");
+		verify(slides).addTacticSlides("pres-1", 28, values, "EOC", "token");
 		assertThat(warnings).hasSize(1);
 		assertThat(warnings.getFirst()).contains("28 tactic(s)").contains("slides down");
 	}
@@ -101,7 +101,7 @@ class ReportGenerationChartHelperImplTest {
 	void shouldReportNoWarningWhenTacticSlidesAreBuiltTest() {
 		// Given-When: a provider that inserts the slides without failing
 		List<String> warnings = helper.addTacticSlides(
-				"https://docs.google.com/presentation/d/pres-1/edit", 2, Map.of(), "token");
+				"https://docs.google.com/presentation/d/pres-1/edit", 2, Map.of(), "EOC", "token");
 
 		// Then: nothing is reported on the job
 		assertThat(warnings).isEmpty();
@@ -110,10 +110,10 @@ class ReportGenerationChartHelperImplTest {
 	@Test
 	void shouldSkipAddingTacticSlidesWhenTheSlideUrlCarriesNoPresentationIdTest() {
 		// Given-When: a slide url the presentation id cannot be parsed out of
-		List<String> warnings = helper.addTacticSlides("not-a-slides-url", 3, Map.of(), "token");
+		List<String> warnings = helper.addTacticSlides("not-a-slides-url", 3, Map.of(), "EOC", "token");
 
 		// Then: the provider is never called with a bogus deck id
-		verify(slides, never()).addTacticSlides(any(), anyInt(), any(), any());
+		verify(slides, never()).addTacticSlides(any(), anyInt(), any(), any(), any());
 		assertThat(warnings).isEmpty();
 	}
 
@@ -128,7 +128,7 @@ class ReportGenerationChartHelperImplTest {
 		helper.addBreakdownSlides("https://docs.google.com/presentation/d/pres-1/edit", payload, 5, Map.of(), "token");
 
 		// Then: the slides provider is never asked to add breakdown slides
-		verify(slides, never()).addBreakdownSlides(any(), any(), any(), any());
+		verify(slides, never()).addBreakdownSlides(any(), any(), any(), any(), any());
 	}
 
 	@Test
@@ -152,7 +152,7 @@ class ReportGenerationChartHelperImplTest {
 		// Then: only tactic 1 (within the active count) is passed to the provider; tactic 3 is dropped
 		Map<Integer, Set<BreakdownType>> expected = new LinkedHashMap<>();
 		expected.put(1, EnumSet.of(BreakdownType.TOP_PUBLISHERS));
-		verify(slides).addBreakdownSlides(eq("pres-1"), eq(expected), eq(Map.of()), eq("token"));
+		verify(slides).addBreakdownSlides(eq("pres-1"), eq(expected), eq(Map.of()), eq("standard"), eq("token"));
 	}
 
 	@Test
@@ -170,7 +170,7 @@ class ReportGenerationChartHelperImplTest {
 		helper.addBreakdownSlides("https://docs.google.com/presentation/d/pres-1/edit", payload, 2, Map.of(), "token");
 
 		// Then: nothing is inserted
-		verify(slides, never()).addBreakdownSlides(any(), any(), any(), any());
+		verify(slides, never()).addBreakdownSlides(any(), any(), any(), any(), any());
 	}
 
 	@Test
@@ -297,7 +297,7 @@ class ReportGenerationChartHelperImplTest {
 
 		helper.trimUnusedTactics("https://docs.google.com/presentation/d/deck-id/edit", payload, "token");
 
-		verify(slides).trimTactics(eq("deck-id"), eq(3), eq("token"));
+		verify(slides).trimTactics(eq("deck-id"), eq(3), eq("standard"), eq("token"));
 	}
 
 	@Test
@@ -305,10 +305,10 @@ class ReportGenerationChartHelperImplTest {
 		// Given: an explicit tactic count (the "Slides from Sheet" flow has no Media Plan)
 
 		// When: the deck is trimmed by explicit count
-		helper.trimUnusedTactics("https://docs.google.com/presentation/d/deck-id/edit", 2, "token");
+		helper.trimUnusedTactics("https://docs.google.com/presentation/d/deck-id/edit", 2, "EOC", "token");
 
 		// Then: the count is passed through, without consulting the Media Plan extractor
-		verify(slides).trimTactics(eq("deck-id"), eq(2), eq("token"));
+		verify(slides).trimTactics(eq("deck-id"), eq(2), eq("EOC"), eq("token"));
 		verifyNoInteractions(tacticExtraction);
 	}
 

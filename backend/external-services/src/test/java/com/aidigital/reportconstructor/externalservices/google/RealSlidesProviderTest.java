@@ -20,6 +20,7 @@ import com.google.api.services.slides.v1.model.Table;
 import com.google.api.services.slides.v1.model.TableCell;
 import com.google.api.services.slides.v1.model.TableRow;
 import com.google.api.services.slides.v1.model.TextContent;
+import com.google.api.services.slides.v1.model.UpdateSlidesPositionRequest;
 import com.google.api.services.slides.v1.model.TextElement;
 import com.google.api.services.slides.v1.model.TextRun;
 import org.junit.jupiter.api.Test;
@@ -55,8 +56,9 @@ class RealSlidesProviderTest {
 		when(creds.initializer()).thenReturn(request -> {
 		});
 		GoogleProperties props = Mockito.mock(GoogleProperties.class);
+		EomDeckProperties eomDeckProps = new EomDeckProperties();
+		eomDeckProps.setSlidesTemplateId("eom-template");
 		when(props.getSlidesTemplateId()).thenReturn("template");
-		when(props.getEomSlidesTemplateId()).thenReturn("eom-template");
 		when(props.getSlidesTargetFolderId()).thenReturn("");
 		when(props.getTacticSlideObjectIds()).thenReturn(tacticSlideObjectIds);
 		when(props.getThoughtsMasterSlideObjectId()).thenReturn(thoughtsMasterId);
@@ -66,7 +68,8 @@ class RealSlidesProviderTest {
 		DriveShareRecipients shareRecipients = Mockito.mock(DriveShareRecipients.class);
 		return new RealSlidesProvider(
 				creds, props, driveSharer, shareRecipients, retrier,
-				new BreakdownSlideNaming(), new BreakdownThoughtsGateImpl(), new SummaryTableRowTrimmer());
+				new BreakdownSlideNaming(), new BreakdownThoughtsGateImpl(), new SummaryTableRowTrimmer(),
+				new EomDeckPolicy(eomDeckProps), new EomSlideFinder());
 	}
 
 	private RealSlidesProvider newMasterTacticProvider(String tacticMasterId, String thoughtsMasterId) {
@@ -76,8 +79,9 @@ class RealSlidesProviderTest {
 		when(creds.initializer()).thenReturn(request -> {
 		});
 		GoogleProperties props = Mockito.mock(GoogleProperties.class);
+		EomDeckProperties eomDeckProps = new EomDeckProperties();
+		eomDeckProps.setSlidesTemplateId("eom-template");
 		when(props.getSlidesTemplateId()).thenReturn("template");
-		when(props.getEomSlidesTemplateId()).thenReturn("eom-template");
 		when(props.getSlidesTargetFolderId()).thenReturn("");
 		when(props.getTacticSlideObjectIds()).thenReturn(Map.of(1, "legacy1", 2, "legacy2"));
 		when(props.getTacticMasterSlideObjectId()).thenReturn(tacticMasterId);
@@ -88,7 +92,8 @@ class RealSlidesProviderTest {
 		when(props.getResultsSlideObjectIds()).thenReturn(Map.of());
 		return new RealSlidesProvider(
 				creds, props, Mockito.mock(DriveSharer.class), Mockito.mock(DriveShareRecipients.class),
-				Mockito.mock(GoogleRequestRetrier.class), new BreakdownSlideNaming(), new BreakdownThoughtsGateImpl(), new SummaryTableRowTrimmer());
+				Mockito.mock(GoogleRequestRetrier.class), new BreakdownSlideNaming(), new BreakdownThoughtsGateImpl(),
+				new SummaryTableRowTrimmer(), new EomDeckPolicy(eomDeckProps), new EomSlideFinder());
 	}
 
 	private RealSlidesProvider newTitleProvider(List<String> eomDropSlideTitles) {
@@ -102,17 +107,19 @@ class RealSlidesProviderTest {
 		when(creds.initializer()).thenReturn(request -> {
 		});
 		GoogleProperties props = Mockito.mock(GoogleProperties.class);
+		EomDeckProperties eomDeckProps = new EomDeckProperties();
+		eomDeckProps.setSlidesTemplateId("eom-template");
 		when(props.getSlidesTemplateId()).thenReturn("template");
-		when(props.getEomSlidesTemplateId()).thenReturn("eom-template");
 		when(props.getSlidesTargetFolderId()).thenReturn("");
 		when(props.getTacticSlideObjectIds()).thenReturn(Map.of());
 		when(props.getThoughtsMasterSlideObjectId()).thenReturn("");
 		when(props.getBreakdownMasterSlideObjectIds()).thenReturn(Map.of());
-		when(props.getEomDropSlideObjectIds()).thenReturn(eomDropSlideObjectIds);
-		when(props.getEomDropSlideTitles()).thenReturn(eomDropSlideTitles);
+		eomDeckProps.setDropSlideObjectIds(eomDropSlideObjectIds);
+		eomDeckProps.setDropSlideTitles(eomDropSlideTitles);
 		return new RealSlidesProvider(
 				creds, props, Mockito.mock(DriveSharer.class), Mockito.mock(DriveShareRecipients.class),
-				Mockito.mock(GoogleRequestRetrier.class), new BreakdownSlideNaming(), new BreakdownThoughtsGateImpl(), new SummaryTableRowTrimmer());
+				Mockito.mock(GoogleRequestRetrier.class), new BreakdownSlideNaming(), new BreakdownThoughtsGateImpl(),
+				new SummaryTableRowTrimmer(), new EomDeckPolicy(eomDeckProps), new EomSlideFinder());
 	}
 
 	private Page slide(String objectId) {
@@ -142,8 +149,9 @@ class RealSlidesProviderTest {
 		when(creds.initializer()).thenReturn(request -> {
 		});
 		GoogleProperties props = Mockito.mock(GoogleProperties.class);
+		EomDeckProperties eomDeckProps = new EomDeckProperties();
+		eomDeckProps.setSlidesTemplateId("eom-template");
 		when(props.getSlidesTemplateId()).thenReturn("template");
-		when(props.getEomSlidesTemplateId()).thenReturn("eom-template");
 		when(props.getSlidesTargetFolderId()).thenReturn("");
 		when(props.getTacticSlideObjectIds()).thenReturn(Map.of());
 		when(props.getSummaryTableObjectIds()).thenReturn(Map.of(1, "tbl1"));
@@ -154,7 +162,7 @@ class RealSlidesProviderTest {
 		RealSlidesProvider provider = new RealSlidesProvider(
 				creds, props, Mockito.mock(DriveSharer.class), Mockito.mock(DriveShareRecipients.class),
 				retrier, new BreakdownSlideNaming(), new BreakdownThoughtsGateImpl(),
-				new SummaryTableRowTrimmer());
+				new SummaryTableRowTrimmer(), new EomDeckPolicy(eomDeckProps), new EomSlideFinder());
 
 		List<TableRow> rows = new java.util.ArrayList<>();
 		rows.add(tableRow("Platforms"));
@@ -779,5 +787,113 @@ class RealSlidesProviderTest {
 		// Then: the stat tiles and the row carry the sheet's values
 		assertThat(values.get(provider.renumber("{{cr_live_n}}", 1))).isEqualTo("6");
 		assertThat(values.get(provider.renumber("{{tactic n.1 top creative imps}}", 1))).isEqualTo("144,070");
+	}
+
+	private RealSlidesProvider newEomProvider() {
+		GoogleCredentialsFactory creds = Mockito.mock(GoogleCredentialsFactory.class);
+		when(creds.transport()).thenReturn(new NetHttpTransport());
+		when(creds.jsonFactory()).thenReturn(GsonFactory.getDefaultInstance());
+		when(creds.initializer()).thenReturn(request -> {
+		});
+		GoogleProperties props = Mockito.mock(GoogleProperties.class);
+		EomDeckProperties eomDeckProps = new EomDeckProperties();
+		eomDeckProps.setSlidesTemplateId("eom-template");
+		when(props.getSlidesTemplateId()).thenReturn("template");
+		when(props.getSlidesTargetFolderId()).thenReturn("");
+		when(props.getTacticSlideObjectIds()).thenReturn(Map.of());
+		when(props.getThoughtsMasterSlideObjectId()).thenReturn("");
+		when(props.getBreakdownMasterSlideObjectIds()).thenReturn(Map.of());
+		return new RealSlidesProvider(
+				creds, props, Mockito.mock(DriveSharer.class), Mockito.mock(DriveShareRecipients.class),
+				Mockito.mock(GoogleRequestRetrier.class), new BreakdownSlideNaming(), new BreakdownThoughtsGateImpl(),
+				new SummaryTableRowTrimmer(), new EomDeckPolicy(eomDeckProps), new EomSlideFinder());
+	}
+
+	private Page eomSlide(String objectId, String... texts) {
+		List<PageElement> elements = new java.util.ArrayList<>();
+		for (String content : texts) {
+			elements.add(new PageElement().setShape(new Shape().setText(new TextContent().setTextElements(
+					List.of(new TextElement().setTextRun(new TextRun().setContent(content)))))));
+		}
+		return new Page().setObjectId(objectId).setPageElements(elements);
+	}
+
+	@Test
+	void buildEomTacticRequests_duplicatesEveryMasterPerTacticAndKeepsTheTacticsCopiesTogetherTest() {
+		// Given: an EOM deck whose two master slides sit next to each other, and a two-tactic campaign
+		RealSlidesProvider provider = newEomProvider();
+		List<Page> deck = List.of(
+				eomSlide("cover", "{{client_name}}"),
+				eomSlide("master-a", "{{tactic n}}", "{{tactic n imps}}"),
+				eomSlide("master-b", "{{tactic n planned imps}}"));
+
+		// When:
+		List<Request> requests = provider.buildEomTacticRequests(deck, 2, Map.of("{{tactic 1 imps}}", "1.2M"));
+
+		// Then: both masters are duplicated for both tactics, under per-master copy ids
+		List<String> duplicated = requests.stream()
+				.filter(r -> r.getDuplicateObject() != null)
+				.map(r -> r.getDuplicateObject().getObjectIds().values().iterator().next())
+				.toList();
+		assertThat(duplicated).containsExactlyInAnyOrder(
+				"eom_m0_t1", "eom_m0_t2", "eom_m1_t1", "eom_m1_t2");
+
+		// And: each tactic's copies move as one block, in master order, to where the first master sat
+		List<UpdateSlidesPositionRequest> moves = requests.stream()
+				.map(Request::getUpdateSlidesPosition)
+				.filter(java.util.Objects::nonNull)
+				.toList();
+		assertThat(moves).hasSize(2);
+		assertThat(moves.get(0).getSlideObjectIds()).containsExactly("eom_m0_t1", "eom_m1_t1");
+		assertThat(moves.get(0).getInsertionIndex()).isEqualTo(1);
+		assertThat(moves.get(1).getSlideObjectIds()).containsExactly("eom_m0_t2", "eom_m1_t2");
+		assertThat(moves.get(1).getInsertionIndex()).isEqualTo(3);
+	}
+
+	@Test
+	void buildEomTacticRequests_isNoopWhenTheDeckCarriesNoMasterTest() {
+		RealSlidesProvider provider = newEomProvider();
+		List<Page> deck = List.of(eomSlide("cover", "{{client_name}}"), eomSlide("static", "PACING DASHBOARD"));
+
+		assertThat(provider.buildEomTacticRequests(deck, 3, Map.of())).isEmpty();
+	}
+
+	@Test
+	void buildEomBreakdownRequests_anchorsACopyAfterBothOfTheTacticsMasterCopiesTest() {
+		// Given: a deck with two tactic masters and the publishers breakdown master
+		RealSlidesProvider provider = newEomProvider();
+		List<Page> deck = List.of(
+				eomSlide("eom_m0_t1", "{{tactic 1}}"),
+				eomSlide("eom_m1_t1", "{{tactic 1 planned imps}}"),
+				eomSlide("master-a", "{{tactic n}}", "{{tactic n imps}}"),
+				eomSlide("master-b", "{{tactic n planned imps}}"),
+				eomSlide("publishers-master", "{{publisher_n.1}}"));
+
+		// When: tactic 1 enables Top Publishers
+		List<Request> requests = provider.buildEomBreakdownRequests(
+				deck, Map.of(1, Set.of(BreakdownType.TOP_PUBLISHERS)), Map.of());
+
+		// Then: the copy is placed right after the tactic's SECOND master copy, never between the two
+		UpdateSlidesPositionRequest move = requests.stream()
+				.map(Request::getUpdateSlidesPosition)
+				.filter(java.util.Objects::nonNull)
+				.findFirst()
+				.orElseThrow();
+		assertThat(move.getInsertionIndex()).isEqualTo(2);
+	}
+
+	@Test
+	void buildEomMasterDeleteRequests_removesTacticAndBreakdownMastersButNotTheirCopiesTest() {
+		RealSlidesProvider provider = newEomProvider();
+		List<Page> deck = List.of(
+				eomSlide("eom_m0_t1", "{{tactic 1}}", "{{tactic 1 imps}}"),
+				eomSlide("master-a", "{{tactic n}}", "{{tactic n imps}}"),
+				eomSlide("publishers-master", "{{publisher_n.1}}"));
+
+		List<String> deleted = provider.buildEomMasterDeleteRequests(deck).stream()
+				.map(r -> r.getDeleteObject().getObjectId())
+				.toList();
+
+		assertThat(deleted).containsExactlyInAnyOrder("master-a", "publishers-master");
 	}
 }

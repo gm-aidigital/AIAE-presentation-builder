@@ -1,0 +1,943 @@
+
+=== ppt/slides/slide1.xml tbl=False pics=6
+{{client_name}}
+{{reporting month}} - {{flight_dates}}
+EOM REPORT - MONTH {{mon no}} OF {{total mon no}}
+Planned To Date
+{{planned total impressions short}}
+Delivered To Date
+{{fact total impressions short}}
+Pace
+{{total imps pace}}
+
+=== ppt/slides/slide2.xml tbl=False pics=1
+{{audience_segments}}
+{{extended north star}}
+EVERY CHANNEL WORKS TOWARD ONE GOAL
+{{our north star}}
+OUR NORTH STAR
+Audience
+Priority Markets
+Horizon
+{{horizon}}
+Awareness
+{{awareness channels}}
+Consideration & Engagement
+{{consideration channels}}
+CHANNELS BY FUNNEL STAGE
+{{geo_locations}}
+Conversions
+{{conversions channels}}
+
+=== ppt/slides/slide3.xml tbl=True pics=1
+CHANNEL
+PACING DASHBOARD
+AHEAD OF PACE
+Where we should be vs. where we are — campaign-to-date, every channel.
+{{tactic 1}}
+{{tactic 1 planned budget}}
+{{tactic 1 fact budget}}
+{{tactic 1 pacing}}
+{{tactic 1 planned imps}}
+{{tactic 1 fact imps}}
+✓
+{{tactic 2}}
+{{tactic 2 planned budget}}
+{{tactic 2 fact budget}}
+{{tactic 2 pacing}}
+{{tactic 2 planned imps}}
+{{tactic 2 fact imps}}
+✓
+{{tactic 3}}
+{{tactic 3 planned budget}}
+{{tactic 3 fact budget}}
+{{tactic 3 pacing}}
+{{tactic 3 planned imps}}
+{{tactic 3 fact imps}}
+✓
+{{tactic 4}}
+{{tactic 4 planned budget}}
+{{tactic 4 fact budget}}
+{{tactic 4 pacing}}
+{{tactic 4 planned imps}}
+{{tactic 4 fact imps}}
+✓
+{{tactic 5}}
+{{tactic 5 planned budget}}
+{{tactic 5 fact budget}}
+{{tactic 5 pacing}}
+{{tactic 5 planned imps}}
+{{tactic 5 fact imps}}
+✓
+{{tactic 6}}
+{{tactic 6 planned budget}}
+{{tactic 6 fact budget}}
+{{tactic 6 pacing}}
+{{tactic 6 planned imps}}
+{{tactic 6 fact imps}}
+✓
+{{tactic 7}}
+{{tactic 7 planned budget}}
+{{tactic 7 fact budget}}
+{{tactic 7 pacing}}
+{{tactic 7 planned imps}}
+{{tactic 7 fact imps}}
+✓
+Total
+{{total planned budget}}
+{{total fact budget}}
+{{total pacing}}
+{{total planned imps}}
+{{total fact imps}}
+✓
+MONTH {{mon no}} BUDGET PLANNED
+MONTH {{mon no}} BUDGET ACTUAL
+PACING
+MONTH {{mon no}} IMPR. GOAL
+MONTH {{mon no}} IMPR. DELIVERED
+{{pacing dash takeaway 1}}
+KEY TAKEAWAY
+
+=== ppt/slides/slide4.xml tbl=True pics=1
+CHANNEL
+PACING DASHBOARD
+AHEAD OF PACE
+Where we should be vs. where we are — campaign-to-date, every channel.
+{{tactic 8}}
+{{tactic 8 planned budget}}
+{{tactic 8 fact budget}}
+{{tactic 8 pacing}}
+{{tactic 8 planned imps}}
+{{tactic 8 fact imps}}
+✓
+{{tactic 9}}
+{{tactic 9 planned budget}}
+{{tactic 9 fact budget}}
+{{tactic 9 pacing}}
+{{tactic 9 planned imps}}
+{{tactic 9 fact imps}}
+✓
+{{tactic 10}}
+{{tactic 10 planned budget}}
+{{tactic 10 fact budget}}
+{{tactic 10 pacing}}
+{{tactic 10 planned imps}}
+{{tactic 10 fact imps}}
+✓
+{{tactic 11}}
+{{tactic 11 planned budget}}
+{{tactic 11 fact budget}}
+{{tactic 11 pacing}}
+{{tactic 11 planned imps}}
+{{tactic 11 fact imps}}
+✓
+{{tactic 12}}
+{{tactic 12 planned budget}}
+{{tactic 12 fact budget}}
+{{tactic 12 pacing}}
+{{tactic 12 planned imps}}
+{{tactic 12 fact imps}}
+✓
+{{tactic 13}}
+{{tactic 13 planned budget}}
+{{tactic 13 fact budget}}
+{{tactic 13 pacing}}
+{{tactic 13 planned imps}}
+{{tactic 13 fact imps}}
+✓
+{{tactic 14}}
+{{tactic 14 planned budget}}
+{{tactic 14 fact budget}}
+{{tactic 14 pacing}}
+{{tactic 14 planned imps}}
+{{tactic 14 fact imps}}
+✓
+Total
+{{total planned budget}}
+{{total fact budget}}
+{{total pacing}}
+{{total planned imps}}
+{{total fact imps}}
+✓
+MONTH {{mon no}} BUDGET PLANNED
+MONTH {{mon no}} BUDGET ACTUAL
+PACING
+MONTH {{mon no}} IMPR. GOAL
+MONTH {{mon no}} IMPR. DELIVERED
+{{pacing dash takeaway 2}}
+KEY TAKEAWAY
+
+=== ppt/slides/slide5.xml tbl=True pics=1
+CHANNEL
+PACING DASHBOARD
+AHEAD OF PACE
+Where we should be vs. where we are — campaign-to-date, every channel.
+{{tactic 15}}
+{{tactic 15 planned budget}}
+{{tactic 15 fact budget}}
+{{tactic 15 pacing}}
+{{tactic 15 planned imps}}
+{{tactic 15 fact imps}}
+✓
+{{tactic 16}}
+{{tactic 16 planned budget}}
+{{tactic 16 fact budget}}
+{{tactic 16 pacing}}
+{{tactic 16 planned imps}}
+{{tactic 16 fact imps}}
+✓
+{{tactic 17}}
+{{tactic 17 planned budget}}
+{{tactic 17 fact budget}}
+{{tactic 17 pacing}}
+{{tactic 17 planned imps}}
+{{tactic 17 fact imps}}
+✓
+{{tactic 18}}
+{{tactic 18 planned budget}}
+{{tactic 18 fact budget}}
+{{tactic 18 pacing}}
+{{tactic 18 planned imps}}
+{{tactic 18 fact imps}}
+✓
+{{tactic 19}}
+{{tactic 19 planned budget}}
+{{tactic 19 fact budget}}
+{{tactic 19 pacing}}
+{{tactic 19 planned imps}}
+{{tactic 19 fact imps}}
+✓
+{{tactic 20}}
+{{tactic 20 planned budget}}
+{{tactic 20 fact budget}}
+{{tactic 20 pacing}}
+{{tactic 20 planned imps}}
+{{tactic 20 fact imps}}
+✓
+{{tactic 21}}
+{{tactic 21 planned budget}}
+{{tactic 21 fact budget}}
+{{tactic 21 pacing}}
+{{tactic 21 planned imps}}
+{{tactic 21 fact imps}}
+✓
+Total
+{{total planned budget}}
+{{total fact budget}}
+{{total pacing}}
+{{total planned imps}}
+{{total fact imps}}
+✓
+MONTH {{mon no}} BUDGET PLANNED
+MONTH {{mon no}} BUDGET ACTUAL
+PACING
+MONTH {{mon no}} IMPR. GOAL
+MONTH {{mon no}} IMPR. DELIVERED
+{{pacing dash takeaway 3}}
+KEY TAKEAWAY
+
+=== ppt/slides/slide6.xml tbl=True pics=1
+CHANNEL
+PACING DASHBOARD
+AHEAD OF PACE
+Where we should be vs. where we are — campaign-to-date, every channel.
+{{tactic 22}}
+{{tactic 22 planned budget}}
+{{tactic 22 fact budget}}
+{{tactic 22 pacing}}
+{{tactic 22 planned imps}}
+{{tactic 22 fact imps}}
+✓
+{{tactic 23}}
+{{tactic 23 planned budget}}
+{{tactic 23 fact budget}}
+{{tactic 23 pacing}}
+{{tactic 23 planned imps}}
+{{tactic 23 fact imps}}
+✓
+{{tactic 24}}
+{{tactic 24 planned budget}}
+{{tactic 24 fact budget}}
+{{tactic 24 pacing}}
+{{tactic 24 planned imps}}
+{{tactic 24 fact imps}}
+✓
+{{tactic 25}}
+{{tactic 25 planned budget}}
+{{tactic 25 fact budget}}
+{{tactic 25 pacing}}
+{{tactic 25 planned imps}}
+{{tactic 25 fact imps}}
+✓
+{{tactic 26}}
+{{tactic 26 planned budget}}
+{{tactic 26 fact budget}}
+{{tactic 26 pacing}}
+{{tactic 26 planned imps}}
+{{tactic 26 fact imps}}
+✓
+{{tactic 27}}
+{{tactic 27 planned budget}}
+{{tactic 27 fact budget}}
+{{tactic 27 pacing}}
+{{tactic 27 planned imps}}
+{{tactic 27 fact imps}}
+✓
+{{tactic 28}}
+{{tactic 28 planned budget}}
+{{tactic 28 fact budget}}
+{{tactic 28 pacing}}
+{{tactic 28 planned imps}}
+{{tactic 28 fact imps}}
+✓
+Total
+{{total planned budget}}
+{{total fact budget}}
+{{total pacing}}
+{{total planned imps}}
+{{total fact imps}}
+✓
+MONTH {{mon no}} BUDGET PLANNED
+MONTH {{mon no}} BUDGET ACTUAL
+PACING
+MONTH {{mon no}} IMPR. GOAL
+MONTH {{mon no}} IMPR. DELIVERED
+{{pacing dash takeaway 4}}
+KEY TAKEAWAY
+
+=== ppt/slides/slide7.xml tbl=True pics=1
+CHANNEL
+PERFORMANCE VS. PLAN
+MONTH {{mon no}}
+Primary KPIs measured against benchmark and the month-to-date goal.
+{{tactic 1}} ({{tactic 1 KPI type}})
+{{tactic 1 KPI goal}}
+{{tactic 1 KPI}}
+{{tactic 1 vs goal}}
+✓
+{{tactic 2}} ({{tactic 2 KPI type}})
+{{tactic 2 KPI goal}}
+{{tactic 2 KPI}}
+{{tactic 2 vs goal}}
+✓
+{{tactic 3}} ({{tactic 3 KPI type}})
+{{tactic 3 KPI goal}}
+{{tactic 3 KPI}}
+{{tactic 3 vs goal}}
+✓
+{{tactic 4}} ({{tactic 4 KPI type}})
+{{tactic 4 KPI goal}}
+{{tactic 4 KPI}}
+{{tactic 4 vs goal}}
+✓
+{{tactic 5}} ({{tactic 5 KPI type}})
+{{tactic 5 KPI goal}}
+{{tactic 5 KPI}}
+{{tactic 5 vs goal}}
+✓
+{{tactic 6}} ({{tactic 6 KPI type}})
+{{tactic 6 KPI goal}}
+{{tactic 6 KPI}}
+{{tactic 6 vs goal}}
+✓
+{{tactic 7}} ({{tactic 7 KPI type}})
+{{tactic 7 KPI goal}}
+{{tactic 7 KPI}}
+{{tactic 7 vs goal}}
+✓
+GOAL
+MONTH {{mon no}} ACTUAL
+VS GOAL
+{{performance dash takeaway 1}}
+KEY TAKEAWAY
+
+=== ppt/slides/slide8.xml tbl=True pics=1
+CHANNEL
+PERFORMANCE VS. PLAN
+MONTH {{mon no}}
+Primary KPIs measured against benchmark and the month-to-date goal.
+{{tactic 8}} ({{tactic 8 KPI type}})
+{{tactic 8 KPI goal}}
+{{tactic 8 KPI}}
+{{tactic 8 vs goal}}
+✓
+{{tactic 9}} ({{tactic 9 KPI type}})
+{{tactic 9 KPI goal}}
+{{tactic 9 KPI}}
+{{tactic 9 vs goal}}
+✓
+{{tactic 10}} ({{tactic 10 KPI type}})
+{{tactic 10 KPI goal}}
+{{tactic 10 KPI}}
+{{tactic 10 vs goal}}
+✓
+{{tactic 11}} ({{tactic 11 KPI type}})
+{{tactic 11 KPI goal}}
+{{tactic 11 KPI}}
+{{tactic 11 vs goal}}
+✓
+{{tactic 12}} ({{tactic 12 KPI type}})
+{{tactic 12 KPI goal}}
+{{tactic 12 KPI}}
+{{tactic 12 vs goal}}
+✓
+{{tactic 13}} ({{tactic 13 KPI type}})
+{{tactic 13 KPI goal}}
+{{tactic 13 KPI}}
+{{tactic 13 vs goal}}
+✓
+{{tactic 14}} ({{tactic 14 KPI type}})
+{{tactic 14 KPI goal}}
+{{tactic 14 KPI}}
+{{tactic 14 vs goal}}
+✓
+GOAL
+MONTH {{mon no}} ACTUAL
+VS GOAL
+{{performance dash takeaway 2}}
+KEY TAKEAWAY
+
+=== ppt/slides/slide9.xml tbl=True pics=1
+CHANNEL
+PERFORMANCE VS. PLAN
+MONTH {{mon no}}
+Primary KPIs measured against benchmark and the month-to-date goal.
+{{tactic 15}} ({{tactic 15 KPI type}})
+{{tactic 15 KPI goal}}
+{{tactic 15 KPI}}
+{{tactic 15 vs goal}}
+✓
+{{tactic 16}} ({{tactic 16 KPI type}})
+{{tactic 16 KPI goal}}
+{{tactic 16 KPI}}
+{{tactic 16 vs goal}}
+✓
+{{tactic 17}} ({{tactic 17 KPI type}})
+{{tactic 17 KPI goal}}
+{{tactic 17 KPI}}
+{{tactic 17 vs goal}}
+✓
+{{tactic 18}} ({{tactic 18 KPI type}})
+{{tactic 18 KPI goal}}
+{{tactic 18 KPI}}
+{{tactic 18 vs goal}}
+✓
+{{tactic 19}} ({{tactic 19 KPI type}})
+{{tactic 19 KPI goal}}
+{{tactic 19 KPI}}
+{{tactic 19 vs goal}}
+✓
+{{tactic 20}} ({{tactic 20 KPI type}})
+{{tactic 20 KPI goal}}
+{{tactic 20 KPI}}
+{{tactic 20 vs goal}}
+✓
+{{tactic 21}} ({{tactic 21 KPI type}})
+{{tactic 21 KPI goal}}
+{{tactic 21 KPI}}
+{{tactic 21 vs goal}}
+✓
+GOAL
+MONTH {{mon no}} ACTUAL
+VS GOAL
+{{performance dash takeaway 3}}
+KEY TAKEAWAY
+
+=== ppt/slides/slide10.xml tbl=True pics=1
+CHANNEL
+PERFORMANCE VS. PLAN
+MONTH {{mon no}}
+Primary KPIs measured against benchmark and the month-to-date goal.
+{{tactic 22}} ({{tactic 22 KPI type}})
+{{tactic 22 KPI goal}}
+{{tactic 22 KPI}}
+{{tactic 22 vs goal}}
+✓
+{{tactic 23}} ({{tactic 23 KPI type}})
+{{tactic 23 KPI goal}}
+{{tactic 23 KPI}}
+{{tactic 23 vs goal}}
+✓
+{{tactic 24}} ({{tactic 24 KPI type}})
+{{tactic 24 KPI goal}}
+{{tactic 24 KPI}}
+{{tactic 24 vs goal}}
+✓
+{{tactic 25}} ({{tactic 25 KPI type}})
+{{tactic 25 KPI goal}}
+{{tactic 25 KPI}}
+{{tactic 25 vs goal}}
+✓
+{{tactic 26}} ({{tactic 26 KPI type}})
+{{tactic 26 KPI goal}}
+{{tactic 26 KPI}}
+{{tactic 26 vs goal}}
+✓
+{{tactic 27}} ({{tactic 27 KPI type}})
+{{tactic 27 KPI goal}}
+{{tactic 27 KPI}}
+{{tactic 27 vs goal}}
+✓
+{{tactic 28}} ({{tactic 28 KPI type}})
+{{tactic 28 KPI goal}}
+{{tactic 28 KPI}}
+{{tactic 28 vs goal}}
+✓
+GOAL
+MONTH {{mon no}} ACTUAL
+VS GOAL
+{{performance dash takeaway 4}}
+KEY TAKEAWAY
+
+=== ppt/slides/slide11.xml tbl=False pics=3
+CHANNEL-BY-CHANNEL
+BREAKDOWN
+EOM REPORT - MONTH {{mon no}} OF {{total mon no}}
+{{reporting month}} - Flight {{flight_dates}}
+{{tactic 1}}
+{{tactic 2}}
+{{tactic 3}}
+
+=== ppt/slides/slide12.xml tbl=False pics=5
+{{tactic n}}
+{{tactic n overview}}
+Impressions
+{{tactic n imps}}
+{{tactic n KPI type}}
+Spend
+{{tactic n spend}}
+Frequency
+{{tactic n f}}
+Reach
+{{tactic n reach}}
+Volume
+{{tactic n volume}}
+DAILY PACING AND CTR DYNAMIC
+MONTHLY IMPRESSIONS DISTRIBUTION
+WEIGHTED IMPRESSION CONTRIBUTION
+ENGAGEMENT TIME
+At Weekdays
+{{tactic n weekdays}}
+At Weekends
+{{tactic n weekends}}
+GENDER DISTRIBUTION
+Male
+{{tactic n male}}
+Female
+{{tactic n female}}
+TOP ENGAGEMENT CONTENT
+Impressions
+{{tactic n top creative imps}}
+Clicks
+{{tactic n top creative clicks}}
+Creative Name
+{{tactic n top creative name}}
+{{tactic n goal}}
+{{tactic n KPI}}
+{{tactic n}}: {{tactic n contr}}
+Other: {{tactic n other contr}}
+
+=== ppt/slides/slide13.xml tbl=True pics=1
+Recommended Action
+{{actions pacing n}}
+KEY TAKEAWAYS
+What Worked
+{{what worked pacing n}}
+Watch-Outs
+{{watch outs pacing n}}
+METRIC
+{{tactic n}}
+{{tactic n goal}}
+Impressions
+{{tactic n planned imps}}
+{{tactic n fact imps}}
+{{tactic n imps pacing}}
+{{tactic n eoc planned imps}}
+{{tactic n proj imps}}
+CTR
+{{tactic n ctr plan}}
+{{tactic n ctr}}
+{{tactic n ctr pacing}}
+{{tactic n ctr plan}}
+{{tactic n ctr proj}}
+Clicks
+{{tactic n clicks plan}}
+{{tactic n clicks}}
+{{tactic n clicks pacing}}
+{{tactic n clicks mp}}
+{{tactic n clicks proj}}
+Reach
+{{tactic n reach plan}}
+{{tactic n reach}}
+{{tactic n reach pacing}}
+{{tactic n reach plan eoc}}
+{{tactic n reach proj}}
+CPM
+{{tactic n planned cpm}}
+{{tactic n fact cpm}}
+{{tactic n cpm pacing}}
+{{tactic n planned cpm}}
+{{tactic n cpm proj}}
+Spend
+{{tactic n planned budget}}
+{{tactic n fact budget}}
+{{tactic n budget pacing}}
+{{tactic n spend plan}}
+{{tactic n spend proj}}
+MONTH {{mon no}}  GOAL
+MONTH {{mon no}} ACTUAL
+VS GOAL
+Month {{mon no}}  Impr. Goal
+{{tactic n planned imps short}}
+Delivered
+{{tactic n fact imps short}}
+Spend
+{{tactic n fact budget short}}
+EOC PROJ.
+EOC GOAL
+{{tactic n vs goal}} VS GOAL
+{{pacing n next month}}
+NEXT MONTH
+
+=== ppt/slides/slide14.xml tbl=False pics=3
+WHERE WE GO
+FROM HERE
+EOM REPORT - MONTH {{mon no}} OF {{total mon no}}
+Observation
+Expected Impact
+Action Taken
+
+=== ppt/slides/slide15.xml tbl=False pics=1
+{{observation 1}}
+{{observation 1 text}}
+WHAT WE DID THIS MONTH & WHY
+Observation → action → expected impact. The work that keeps us ahead of pace.
+{{observation 2}}
+{{observation 2 text}}
+{{observation 3}}
+{{observation 3 text}}
+OBSERVATION
+{{action 1}}
+{{action 1 text}}
+{{action 2}}
+{{action 2 text}}
+{{action 3}}
+{{action 3 text}}
+ACTION TAKEN
+{{impact 1}}
+{{impact 1 text}}
+{{impact 2}}
+{{impact 2 text}}
+{{impact 3}}
+{{impact 3 text}}
+EXPECTED IMPACT
+
+=== ppt/slides/slide16.xml tbl=False pics=1
+FOCUS - {{reporting month +1}}
+MONTH {{mon no +1}}
+Carry forward what works, pivot on the data, test one new idea.
+{{updated projection}}
+UPDATED PROJECTION
+CARRY FORWARD
+{{carry forward 1}}
+{{carry forward 2}}
+{{carry forward 3}}
+PIVOT
+{{pivot 1}}
+{{pivot 2}}
+{{pivot 3}}
+NEW TEST
+{{test 1}}
+{{test 2}}
+{{test 3}}
+
+=== ppt/slides/slide17.xml tbl=False pics=0
+SLIDES LIBRARY
+
+=== ppt/slides/slide18.xml tbl=True pics=1
+{{publishers_observation_n_3}}
+{{publishers_observation_n_1}}
+TOP 15 PUBLISHERS
+KEY TAKEAWAYS
+PUBLISHER
+IMPRESSIONS
+SHARE OF VOICE
+1
+{{publishers_observation_n_2}}
+2
+3
+{{publishers_observation_n_4}}
+4
+Delivery Breakdown – {{tactic n}}
+1
+{{publisher_n.1}}
+{{pub_imp_n.1}}
+{{pub_sov_n.1}}
+2
+{{publisher_n.2}}
+{{pub_imp_n.2}}
+{{pub_sov_n.2}}
+3
+{{publisher_n.3}}
+{{pub_imp_n.3}}
+{{pub_sov_n.3}}
+4
+{{publisher_n.4}}
+{{pub_imp_n.4}}
+{{pub_sov_n.4}}
+5
+{{publisher_n.5}}
+{{pub_imp_n.5}}
+{{pub_sov_n.5}}
+6
+{{publisher_n.6}}
+{{pub_imp_n.6}}
+{{pub_sov_n.6}}
+7
+{{publisher_n.7}}
+{{pub_imp_n.7}}
+{{pub_sov_n.7}}
+8
+{{publisher_n.8}}
+{{pub_imp_n.8}}
+{{pub_sov_n.8}}
+9
+{{publisher_n.9}}
+{{pub_imp_n.9}}
+{{pub_sov_n.9}}
+10
+{{publisher_n.10}}
+{{pub_imp_n.10}}
+{{pub_sov_n.10}}
+11
+{{publisher_n.11}}
+{{pub_imp_n.11}}
+{{pub_sov_n.11}}
+12
+{{publisher_n.12}}
+{{pub_imp_n.12}}
+{{pub_sov_n.12}}
+13
+{{publisher_n.13}}
+{{pub_imp_n.13}}
+{{pub_sov_n.13}}
+14
+{{publisher_n.14}}
+{{pub_imp_n.14}}
+{{pub_sov_n.14}}
+15
+{{publisher_n.15}}
+{{pub_imp_n.15}}
+{{pub_sov_n.15}}
+Total
+{{tactic n imps}}
+
+=== ppt/slides/slide19.xml tbl=True pics=1
+{{cr_takeaway_tactic n_3}}
+{{cr_takeaway_tactic n_4}}
+{{cr_takeaway_tactic n_2}}
+{{cr_takeaway_tactic n_1}}
+CREATIVE ANALYSIS
+Creatives Live
+{{cr_live_n}}
+Best CTR
+{{cr_bKPI_n}}
+Top Creo
+{{tactic n top creative name}}
+KEY TAKEAWAYS
+CREATIVE
+IMPRESSIONS
+CTR
+VCR
+SPEND
+Performance Deep-Dive – {{tactic n}}
+{{tactic n top creative name n.1}}
+{{tactic n}}
+{{tactic n.1 top creative imps}}
+{{tactic n.1 top creative ctr}}
+{{tactic n.1 top creative vcr}}
+{{tactic n.1 top creative spend}}
+{{tactic n top creative name n.2}}
+{{tactic n}}
+{{tactic n.2 top creative imps}}
+{{tactic n.2 top creative ctr}}
+{{tactic n.2 top creative vcr}}
+{{tactic n.2 top creative spend}}
+{{tactic n top creative name n.3}}
+{{tactic n}}
+{{tactic n.3 top creative imps}}
+{{tactic n.3 top creative ctr}}
+{{tactic n.3 top creative vcr}}
+{{tactic n.3 top creative spend}}
+{{tactic n top creative name n.4}}
+{{tactic n}}
+{{tactic n.4 top creative imps}}
+{{tactic n.4 top creative ctr}}
+{{tactic n.4 top creative vcr}}
+{{tactic n.4 top creative spend}}
+{{tactic n top creative name n.5}}
+{{tactic n}}
+{{tactic n.5 top creative imps}}
+{{tactic n.5 top creative ctr}}
+{{tactic n.5 top creative vcr}}
+{{tactic n.5 top creative spend}}
+
+=== ppt/slides/slide20.xml tbl=True pics=1
+{{geo_insight_n.3}}
+GEOGRAPHIC PERFORMANCE
+Markets Activated
+{{geo_n_amount}}
+Top Geo
+{{geo_n_topgeo}}
+WHAT THE MAP TELLS US
+{{geo_insight_n.1}}
+{{geo_insight_n.2}}
+MARKET (DMA)
+1
+{{geo_n.1}}
+{{geo_imp_n.1}}
+{{geo_kpi_n.1}}
+2
+{{geo_n.2}}
+{{geo_imp_n.2}}
+{{geo_kpi_n.2}}
+3
+{{geo_n.3}}
+{{geo_imp_n.3}}
+{{geo_kpi_n.3}}
+4
+{{geo_n.4}}
+{{geo_imp_n.4}}
+{{geo_kpi_n.4}}
+5
+{{geo_n.5}}
+{{geo_imp_n.5}}
+{{geo_kpi_n.5}}
+6
+{{geo_n.6}}
+{{geo_imp_n.6}}
+{{geo_kpi_n.6}}
+7
+{{geo_n.7}}
+{{geo_imp_n.7}}
+{{geo_kpi_n.7}}
+8
+{{geo_n.8}}
+{{geo_imp_n.8}}
+{{geo_kpi_n.8}}
+IMPRESSIONS
+{{tactic n KPI type}}
+Most Efficient  {{tactic n KPI type}}
+{{geo_n_topkpi}}
+Audience Footprint  – {{tactic n}}
+Recommendation: {{geo_n_reco}}
+
+=== ppt/slides/slide21.xml tbl=False pics=4
+Watch-Outs{{aud_n_flag}}
+AUDIENCE ANALYSIS
+AGE DISTRIBUTION
+{{age_n_gr}}
+GENDER DEMOGRAPHICS
+{{gender_n}}
+Top Segment
+KEY TAKEAWAYS
+{{aud_n_takeaway}}
+What Worked
+{{aud_n_worked}}
+{{aud_n_1}}
+{{aud_in_n_1}} INDEX
+Age Distribution
+Recommended Action{{aud_n_reco}}
+Gender Split
+Top Audience Segments
+Male
+Female
+{{tactic n male}}
+{{tactic n female}}
+Who We Reached – {{tactic n}}
+{{age_n_18}}
+{{age_n_25}}
+{{age_n_35}}
+{{age_n_45}}
+{{age_n_55}}
+{{age_n_65}}
+18–24
+25–34
+35–44
+45–54
+55–64
+65+
+{{aud_n_1}}
+{{aud_n_2}}
+{{aud_n_3}}
+{{aud_n_4}}
+{{aud_n_5}}
+Index 100 = campaign average. Higher = stronger over-index vs baseline.
+{{aud_in_n_1}}
+{{aud_in_n_2}}
+{{aud_in_n_3}}
+{{aud_in_n_4}}
+{{aud_in_n_5}}
+
+=== ppt/slides/slide22.xml tbl=True pics=2
+DEVICE BREAKDOWN
+Highest Ctr
+{{dev_n_ctr}}
+Best Completion
+{{dev_n_vcr}}
+Devices Tracked
+{{dev_n_amount}}
+Top Segment
+KEY TAKEAWAYS
+{{dev_n_takeaway}}
+What Worked
+{{dev_n_worked}}
+Watch-Outs{{dev_n_flag}}
+{{top_dev_n}}
+{{dev_proc_imps_n}} OF IMPRESSIONS
+Device Distribution
+Recommended Action{{dev_n_reco}}
+Performance By Device
+Device
+Impressions
+CTR
+VCR
+Spend
+Mobile
+{{mobile_imps_n}}
+{{mobile_ctr_n}}
+{{mobile_vcr_n}}
+{{mobile_spend_n}}
+Connected TV
+{{ctv_imps_n}}
+-
+{{ctv_vcr_n}}
+{{ctv_spend_n}}
+Desktop
+{{desktop_imps_n}}
+{{desktop_ctr_n}}
+{{desktop_vcr_n}}
+{{desktop_spend_n}}
+Tablet
+{{tablet_imps_n}}
+{{tablet_ctr_n}}
+{{tablet_vcr_n}}
+{{tablet_spend_n}}
+CTR not applicable to Connected TV (non-clickable inventory).
+How Audiences Engaged  – {{tactic n}}
+Mobile
+CTV
+Desktop
+Tablet
+{{dev_n_mob}}
+{{dev_n_tv}}
+{{dev_n_desk}}
+{{dev_n_tab}}
+
+=== ppt/slides/slide23.xml tbl=False pics=6
+{{thoughts on tactic n performance 2}}
+THOUGHTS ON TACTIC PERFORMANCE
+{{thoughts on tactic n performance 1}}
+{{thoughts on tactic n performance 3}}
+{{thoughts on tactic n performance 5}}
+{{thoughts on tactic n performance 4}}

@@ -195,34 +195,6 @@ external:
     # an empty template id is what caused C000 "deck creation failed". Override
     # per-environment via env vars; the defaults keep generation working.
     slides-template-id: ${SLIDES_TEMPLATE_ID:11qzOC7mdbajjlrrVrC8Zv7W5P_SOHpgMV_eWSW56WI0}
-    # EOM (Tier 1&2) deck template. Deliberately blank: EOM decks are built from the EOC template
-    # (slides-template-id) above, minus the EOC-only story slides dropped below. Set a non-blank
-    # EOM_SLIDES_TEMPLATE_ID to point EOM deck builds at a separate template instead.
-    eom-slides-template-id: ${EOM_SLIDES_TEMPLATE_ID:}
-    # Slides an EOM deck must never ship (RealSlidesProvider#deleteReportTypeSlides). The EOM deck is built
-    # from the EOC template, so it carries these EOC-only story slides; they are deleted after the deck
-    # is built. Only applied when reportType = EOM.
-    #
-    # Preferred: name them by object id — ids survive the Drive copy the deck is made from, so unlike a title
-    # they cannot drift when the template's wording is edited. To collect an id, open the deck template
-    # (11qzOC7…), click the slide, and copy the "#slide=id.XXXX" part of the address bar; paste it with or
-    # without the "id." prefix. Ids configured but absent from the deck are skipped.
-    # Ids read from a presentations.get dump of the EOC template (11qzOC7…). If EOM is ever pointed at its
-    # own template again, a Drive copy keeps every object id — the same assumption tactic-slide-object-ids
-    # above already relies on.
-    # Comma-separated so the whole list can be swapped for another template's ids with one env var.
-    # New template (15ryPctw…): p17 (frequency) and p6 (awareness / market share).
-    eom-drop-slide-object-ids: ${EOM_DROP_SLIDE_OBJECT_IDS:g3ef28aa56c3_0_2486,g3ef28aa56c3_0_3106}
-    # Fallback for slides not matched by id: matched on the slide's text, reduced to letters + digits, so
-    # casing/spacing/punctuation don't matter — but "&" must stay "&" (an "and" spelling would not match).
-    # Less robust than the ids: re-wording the slide in the template silently stops the match. Phrases must
-    # be STATIC template text — this pass runs after the deck is filled, so a {{token}} is already gone.
-    # The frequency slide is matched on its "DATA SIGNAL" heading rather than its title, because the title
-    # is split across separate text boxes ("THE FREQUENCY" / "&" / "VELOCITY" / "PLAY") that do not
-    # concatenate into the phrase; "DATA SIGNAL" is unique to that slide in the template.
-    eom-drop-slide-titles:
-      - "DATA SIGNAL"
-      - "AWARENESS & MARKET SHARE DOMINANCE"
     slides-target-folder-id: ${SLIDES_TARGET_FOLDER_ID:}
     # Every generated file (deck AND EOC sheet) is auto-shared as a writer with
     # these emails, so an owner/admin keeps access even when a report is created
@@ -557,6 +529,42 @@ external:
         26: "g3f4bc4638d4_0_18"
         27: "g3f4bc4638d4_0_19"
         28: "g3f4bc4638d4_0_21"
+  # EOM deck. Its own top-level block, not a sub-key of external.google: an EOM deck is built from its own
+  # template with its own slide model, and keeping its settings apart from the EOC ones is what stops an
+  # EOM change from reaching the EOC deck. Bound by EomDeckProperties, read only through EomDeckPolicy.
+  eom-deck:
+    # THE switch for the whole EOM template migration. Blank = today's behaviour: an EOM deck is built from
+    # the EOC template (external.google.slides-template-id) minus the slides dropped below. Non-blank moves
+    # EOM decks onto their own template.
+    #
+    # The published app CLEARS this variable in scripts/lib/deploy-env.sh, so production cannot pick the new
+    # template up from a shared environment while it is still being tested in the Replit workspace. To roll
+    # the template out to production, that clearing line has to be removed deliberately.
+    slides-template-id: ${EOM_SLIDES_TEMPLATE_ID:}
+    # Slides an EOM deck must never ship. Applies to the CURRENT model, where the EOM deck is built from the
+    # EOC template and therefore carries these EOC-only story slides; they are deleted after the deck is
+    # built.
+    #
+    # Preferred: name them by object id — ids survive the Drive copy the deck is made from, so unlike a title
+    # they cannot drift when the template's wording is edited. To collect an id, open the deck template,
+    # click the slide, and copy the "#slide=id.XXXX" part of the address bar; paste it with or without the
+    # "id." prefix. Ids configured but absent from the deck are skipped.
+    # Comma-separated so the whole list can be swapped for another template's ids with one env var.
+    drop-slide-object-ids: ${EOM_DROP_SLIDE_OBJECT_IDS:g3ef28aa56c3_0_2486,g3ef28aa56c3_0_3106}
+    # Fallback for slides not matched by id: matched on the slide's text, reduced to letters + digits, so
+    # casing/spacing/punctuation don't matter — but "&" must stay "&" (an "and" spelling would not match).
+    # Less robust than the ids: re-wording the slide in the template silently stops the match. Phrases must
+    # be STATIC template text — this pass runs after the deck is filled, so a {{token}} is already gone.
+    # The frequency slide is matched on its "DATA SIGNAL" heading rather than its title, because the title
+    # is split across separate text boxes ("THE FREQUENCY" / "&" / "VELOCITY" / "PLAY") that do not
+    # concatenate into the phrase; "DATA SIGNAL" is unique to that slide in the template.
+    #
+    # NOTE for the new EOM template: it carries no EOC story slides, but it does carry a "SLIDES LIBRARY"
+    # divider in front of the breakdown masters. Switch the workspace over with
+    #   EOM_DROP_SLIDE_OBJECT_IDS=""  EOM_DROP_SLIDE_TITLES="SLIDES LIBRARY"
+    # The defaults below stay as they are, because production still builds EOM decks from the EOC template.
+    drop-slide-titles: ${EOM_DROP_SLIDE_TITLES:DATA SIGNAL,AWARENESS & MARKET SHARE DOMINANCE}
+
   anthropic:
     api-key: ${ANTHROPIC_API_KEY:}
     model: ${ANTHROPIC_MODEL:claude-sonnet-5}
