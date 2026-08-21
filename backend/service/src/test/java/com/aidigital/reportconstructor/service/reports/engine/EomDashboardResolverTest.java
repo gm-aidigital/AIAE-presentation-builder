@@ -220,4 +220,35 @@ class EomDashboardResolverTest {
 		assertThat(flat).doesNotContainKey("{{tactic 3 planned budget}}");
 		assertThat(flat).doesNotContainKey("{{tactic 3 KPI goal}}");
 	}
+
+	@Test
+	void fill_shouldDashTheDividerChipsTheCampaignHasNoTacticForTest() {
+		// Given: a two-tactic campaign, whose divider slide still carries three channel chips
+		Map<String, String> flat = twoTacticSheet();
+		flat.put("{{tactic 1}}", "CTV");
+		flat.put("{{tactic 2}}", "Display");
+
+		// When:
+		resolver.fill(flat, 2);
+
+		// Then: the third chip dashes instead of shipping as a raw token, and the real names stay put
+		assertThat(flat.get("{{tactic 1}}")).isEqualTo("CTV");
+		assertThat(flat.get("{{tactic 2}}")).isEqualTo("Display");
+		assertThat(flat.get("{{tactic 3}}")).isEqualTo("—");
+	}
+
+	@Test
+	void fill_shouldLeaveEveryDividerChipAloneWhenTheCampaignFillsThemTest() {
+		// Given: a three-tactic campaign, which needs every chip the divider prints
+		Map<String, String> flat = twoTacticSheet();
+		flat.put("{{tactic 1}}", "CTV");
+		flat.put("{{tactic 2}}", "Display");
+		flat.put("{{tactic 3}}", "Online Video");
+
+		// When:
+		resolver.fill(flat, 3);
+
+		// Then: no chip is dashed
+		assertThat(flat.get("{{tactic 3}}")).isEqualTo("Online Video");
+	}
 }

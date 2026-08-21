@@ -33,6 +33,13 @@ public class EomDashboardResolver {
 	/** Rendered when a figure is missing or a pacing ratio has no positive plan to divide by. */
 	static final String DASH = "—";
 
+	/**
+	 * How many {@code {{tactic n}}} name chips the channel-by-channel divider slide prints. The slide is a
+	 * fixed piece of template art with three chips on it, so a campaign with fewer tactics leaves the
+	 * surplus ones to be dashed.
+	 */
+	static final int DIVIDER_CHIP_SLOTS = 3;
+
 	/** Source token suffix carrying a tactic's planned spend. */
 	static final String SRC_SPEND_PLAN = " spend plan";
 
@@ -120,6 +127,8 @@ public class EomDashboardResolver {
 	 *
 	 * <p>Bounded to {@code tacticCount} on purpose: the slots above it belong to dashboard rows that are
 	 * deleted during the deck trim, and filling them would only put figures on rows that are about to go.
+	 * The divider slide's channel chips are the one exception — no trim removes them, so the surplus ones
+	 * are dashed here.
 	 *
 	 * @param flat        the placeholder map to fill, mutated in place; a {@code null} map is ignored
 	 * @param tacticCount number of real tactics in the campaign
@@ -133,6 +142,28 @@ public class EomDashboardResolver {
 			fillPerformance(flat, n);
 		}
 		fillTotals(flat, tacticCount);
+		fillDividerChips(flat, tacticCount);
+	}
+
+	/**
+	 * Dashes the channel chips of the divider slide that the campaign has no tactic for.
+	 *
+	 * <p>The divider prints {@code {{tactic 1}}}..{@code {{tactic 3}}} as channel chips, but the
+	 * placeholder map is bounded to the real tactic count and the deck trim only touches the dashboard
+	 * slides — so on a one- or two-tactic campaign the surplus chips would ship as raw tokens. Only
+	 * absent or blank slots are written, so a real tactic name is never overwritten.
+	 *
+	 * @param flat        the placeholder map to fill, mutated in place
+	 * @param tacticCount number of real tactics in the campaign
+	 */
+	void fillDividerChips(Map<String, String> flat, int tacticCount) {
+		for (int n = tacticCount + 1; n <= DIVIDER_CHIP_SLOTS; n++) {
+			String token = "{{tactic " + n + "}}";
+			String name = flat.get(token);
+			if (name == null || name.isBlank()) {
+				flat.put(token, DASH);
+			}
+		}
 	}
 
 	/**
