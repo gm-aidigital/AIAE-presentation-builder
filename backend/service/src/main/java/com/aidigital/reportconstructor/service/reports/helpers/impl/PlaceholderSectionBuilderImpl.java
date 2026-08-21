@@ -12,6 +12,7 @@ import com.aidigital.reportconstructor.service.reports.dto.PlanTactic;
 import com.aidigital.reportconstructor.service.reports.dto.TacticFunnelEntry;
 import com.aidigital.reportconstructor.service.reports.dto.PreviewSection;
 import com.aidigital.reportconstructor.service.reports.engine.CampaignResolvers;
+import com.aidigital.reportconstructor.service.reports.engine.ChannelSlideResolvers;
 import com.aidigital.reportconstructor.service.reports.engine.Resolved;
 import com.aidigital.reportconstructor.service.reports.engine.FunnelChannelResolver;
 import com.aidigital.reportconstructor.service.reports.engine.SoWhatResolver;
@@ -42,6 +43,7 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 
 	private final CampaignResolvers campaignResolvers;
 	private final TacticResolvers tacticResolvers;
+	private final ChannelSlideResolvers channelSlideResolvers;
 	private final SoWhatResolver soWhatResolver;
 	private final FunnelChannelResolver funnelChannelResolver;
 	private final TacticExtractionHelper tacticExtraction;
@@ -356,6 +358,49 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		m.put("{{tactic " + n + " cpm plan ctd}}", tacticResolvers.resolveTacticCpmPlanCtd(n, sheet, adj, data));
 		m.put("{{tactic " + n + " cpm proj}}", tacticResolvers.resolveTacticCpmProj(n, sheet, adj, data));
 		m.put("{{tactic " + n + " cpm vs goal}}", tacticResolvers.resolveTacticCpmVsGoal(n, sheet, adj, data));
+		m.putAll(buildChannelSlideSection(n, sheet, adj, data));
+		return m;
+	}
+
+	/**
+	 * Builds the EOM channel slide's metric-table tokens for tactic {@code n} — the six rows against the
+	 * month's goal, the month's actual, the variance, the end-of-campaign goal and the projection.
+	 *
+	 * <p>Written into the workbook rather than derived at deck time, because the table faces a slide the
+	 * user reviews in the sheet first; the deck step reads these very cells back. Three tokens
+	 * ({@code ctr proj}, {@code reach proj}, {@code cpm proj}) are resolved here rather than by the
+	 * pacing section above, which registered them first: this table defines them its own way, and they
+	 * appear nowhere else in the EOM workbook or template.
+	 *
+	 * @param n     one-based tactic index
+	 * @param sheet Media Plan grid rows
+	 * @param adj   manual Adjustments grid rows
+	 * @param data  aggregated campaign data
+	 * @return the channel-slide token-to-{@link Resolved} map for this tactic
+	 */
+	Map<String, Resolved> buildChannelSlideSection(int n, List<List<String>> sheet, List<List<String>> adj,
+	                                               CampaignData data) {
+		Map<String, Resolved> m = new LinkedHashMap<>();
+		m.put("{{tactic " + n + " imps pacing}}", channelSlideResolvers.resolveImpsPacing(n, sheet, adj, data));
+		m.put("{{tactic " + n + " eoc planned imps}}",
+				channelSlideResolvers.resolveEocPlannedImps(n, sheet, adj, data));
+		m.put("{{tactic " + n + " proj imps}}", channelSlideResolvers.resolveProjImps(n, sheet, adj, data));
+		m.put("{{tactic " + n + " ctr pacing}}", channelSlideResolvers.resolveCtrPacing(n, sheet, adj, data));
+		m.put("{{tactic " + n + " ctr proj}}", channelSlideResolvers.resolveCtrProj(n, sheet, adj, data));
+		m.put("{{tactic " + n + " clicks pacing}}", channelSlideResolvers.resolveClicksPacing(n, sheet, adj, data));
+		m.put("{{tactic " + n + " clicks mp}}", channelSlideResolvers.resolveClicksMp(n, sheet, adj, data));
+		m.put("{{tactic " + n + " clicks proj}}", channelSlideResolvers.resolveClicksProj(n, sheet, adj, data));
+		m.put("{{tactic " + n + " reach plan}}", channelSlideResolvers.resolveReachPlan(n, sheet, adj, data));
+		m.put("{{tactic " + n + " reach pacing}}", channelSlideResolvers.resolveReachPacing(n, sheet, adj, data));
+		m.put("{{tactic " + n + " reach plan eoc}}", channelSlideResolvers.resolveReachPlanEoc(n, sheet, adj, data));
+		m.put("{{tactic " + n + " reach proj}}", channelSlideResolvers.resolveReachProj(n, sheet, adj, data));
+		m.put("{{tactic " + n + " planned cpm}}", channelSlideResolvers.resolvePlannedCpm(n, sheet, adj, data));
+		m.put("{{tactic " + n + " fact cpm}}", channelSlideResolvers.resolveFactCpm(n, sheet, adj, data));
+		m.put("{{tactic " + n + " cpm pacing}}", channelSlideResolvers.resolveCpmPacing(n, sheet, adj, data));
+		m.put("{{tactic " + n + " cpm proj}}", channelSlideResolvers.resolveCpmProj(n, sheet, adj, data));
+		m.put("{{tactic " + n + " budget pacing}}", channelSlideResolvers.resolveBudgetPacing(n, sheet, adj, data));
+		m.put("{{tactic " + n + " spend plan eoc}}", channelSlideResolvers.resolveSpendPlanEoc(n, sheet, adj, data));
+		m.put("{{tactic " + n + " spend proj}}", channelSlideResolvers.resolveSpendProj(n, sheet, adj, data));
 		return m;
 	}
 

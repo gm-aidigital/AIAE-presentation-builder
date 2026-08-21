@@ -315,4 +315,103 @@ class SheetPlaceholderReaderImplTest {
 		assertThat(out).containsEntry("{{mon no}}", "2");
 		assertThat(out).containsEntry("{{flight_dates}}", "Oct 1, 2025 - Dec 31, 2025");
 	}
+
+	@Test
+	void shouldReadTheMetricTableUnderTheChannelSlideTokensTest() {
+		// Given: one tactic's workbook band — the "Main slide" detail block that numbers it, and beneath it
+		// the metric table that faces the deck's channel slide, with the reporting month in two headers
+		List<List<String>> grid = List.of(
+				List.of("CTV", "", "", "", "", ""),
+				List.of("Main slide 3", "", "", "", "", ""),
+				List.of("Tactic Goal", "Awareness", "", "", "", ""),
+				List.of("", "", "", "", "", ""),
+				List.of("CTV", "", "", "", "", ""),
+				List.of("METRIC", "MONTH 2  GOAL", "MONTH 2 ACTUAL", "VS GOAL", "EOC GOAL", "EOC PROJ."),
+				List.of("Impressions", "500,000", "512,300", "+2.5%", "1,500,000", "1,536,900"),
+				List.of("CTR", "0.12%", "0.15%", "+25%", "0.12%", "0.14%"),
+				List.of("Clicks", "600", "769", "+28%", "1,800", "2,300"),
+				List.of("Reach", "120,000", "131,000", "+9%", "360,000", "393,000"),
+				List.of("CPM", "$12.00", "$11.70", "-2.5%", "$12.00", "$11.80"),
+				List.of("Spend", "$6,000", "$5,994", "-0.1%", "$18,000", "$18,135"));
+
+		// When: the placeholders are read
+		Map<String, String> out = reader.readPlaceholders(grid);
+
+		// Then: every cell comes back under the token the channel slide prints, for the block's own tactic
+		assertThat(out)
+				.containsEntry("{{tactic 3 planned imps}}", "500,000")
+				.containsEntry("{{tactic 3 fact imps}}", "512,300")
+				.containsEntry("{{tactic 3 imps pacing}}", "+2.5%")
+				.containsEntry("{{tactic 3 eoc planned imps}}", "1,500,000")
+				.containsEntry("{{tactic 3 proj imps}}", "1,536,900")
+				.containsEntry("{{tactic 3 ctr plan}}", "0.12%")
+				.containsEntry("{{tactic 3 ctr}}", "0.15%")
+				.containsEntry("{{tactic 3 ctr pacing}}", "+25%")
+				.containsEntry("{{tactic 3 ctr proj}}", "0.14%")
+				.containsEntry("{{tactic 3 clicks plan}}", "600")
+				.containsEntry("{{tactic 3 clicks}}", "769")
+				.containsEntry("{{tactic 3 clicks pacing}}", "+28%")
+				.containsEntry("{{tactic 3 clicks mp}}", "1,800")
+				.containsEntry("{{tactic 3 clicks proj}}", "2,300")
+				.containsEntry("{{tactic 3 reach plan}}", "120,000")
+				.containsEntry("{{tactic 3 reach}}", "131,000")
+				.containsEntry("{{tactic 3 reach pacing}}", "+9%")
+				.containsEntry("{{tactic 3 reach plan eoc}}", "360,000")
+				.containsEntry("{{tactic 3 reach proj}}", "393,000")
+				.containsEntry("{{tactic 3 planned cpm}}", "$12.00")
+				.containsEntry("{{tactic 3 fact cpm}}", "$11.70")
+				.containsEntry("{{tactic 3 cpm pacing}}", "-2.5%")
+				.containsEntry("{{tactic 3 cpm proj}}", "$11.80")
+				.containsEntry("{{tactic 3 planned budget}}", "$6,000")
+				.containsEntry("{{tactic 3 fact budget}}", "$5,994")
+				.containsEntry("{{tactic 3 budget pacing}}", "-0.1%")
+				.containsEntry("{{tactic 3 spend plan eoc}}", "$18,000")
+				.containsEntry("{{tactic 3 spend proj}}", "$18,135");
+	}
+
+	@Test
+	void shouldKeepSummaryTableFiguresOverRepeatedMetricTableCellsTest() {
+		// Given: a summary table and, below it, a metric table repeating six of the same tokens — the
+		// workbook fills both from the same resolver, so they differ only when a user edits one of them
+		List<List<String>> grid = new ArrayList<>();
+		grid.add(List.of("Tactic name", "CTR Fact", "CTR Plan", "Clicks Fact", "Reach", "Spend Plan"));
+		grid.add(List.of("CTV", "0.15%", "0.12%", "769", "131,000", "$18,000"));
+		grid.add(List.of("Total", "", "", "", "", ""));
+		grid.add(List.of("Main slide 1", "", "", "", "", ""));
+		grid.add(List.of("METRIC", "MONTH 2  GOAL", "MONTH 2 ACTUAL", "VS GOAL", "EOC GOAL", "EOC PROJ."));
+		grid.add(List.of("CTR", "0.99%", "0.99%", "+25%", "0.99%", "0.14%"));
+		grid.add(List.of("Clicks", "600", "999", "+28%", "1,800", "2,300"));
+		grid.add(List.of("Reach", "120,000", "999,000", "+9%", "360,000", "393,000"));
+		grid.add(List.of("Spend", "$6,000", "$5,994", "-0.1%", "$99,000", "$18,135"));
+
+		// When:
+		Map<String, String> out = reader.readPlaceholders(grid);
+
+		// Then: the shared tokens keep the summary table's figures, while the tokens only the metric table
+		// carries still come through
+		assertThat(out)
+				.containsEntry("{{tactic 1 ctr}}", "0.15%")
+				.containsEntry("{{tactic 1 ctr plan}}", "0.12%")
+				.containsEntry("{{tactic 1 clicks}}", "769")
+				.containsEntry("{{tactic 1 reach}}", "131,000")
+				.containsEntry("{{tactic 1 spend plan}}", "$18,000")
+				.containsEntry("{{tactic 1 spend plan eoc}}", "$99,000")
+				.containsEntry("{{tactic 1 clicks pacing}}", "+28%")
+				.containsEntry("{{tactic 1 reach plan eoc}}", "360,000");
+	}
+
+	@Test
+	void shouldIgnoreAMetricTableWithNoDetailBlockAboveItTest() {
+		// Given: a metric table that no "Main slide N" anchor numbers — the workbook shape a stray copy of
+		// the block would have, and nothing tells which tactic it belongs to
+		List<List<String>> grid = List.of(
+				List.of("METRIC", "MONTH 2  GOAL", "MONTH 2 ACTUAL", "VS GOAL", "EOC GOAL", "EOC PROJ."),
+				List.of("Impressions", "500,000", "512,300", "+2.5%", "1,500,000", "1,536,900"));
+
+		// When:
+		Map<String, String> out = reader.readPlaceholders(grid);
+
+		// Then: nothing is emitted rather than guessed onto tactic 1
+		assertThat(out).isEmpty();
+	}
 }

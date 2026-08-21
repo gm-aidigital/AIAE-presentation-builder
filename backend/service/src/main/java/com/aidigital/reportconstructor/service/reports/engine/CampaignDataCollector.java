@@ -483,7 +483,11 @@ public class CampaignDataCollector {
 			double views = unboxed(targets.completions());
 			log.info("[eom-plan] tacticNum={} rateType={} unitPrice={} monthlyBudget={} imps={} clicks={} views={}",
 					num, m.rateType(), m.unitPrice(), m.monthlyBudget(), imps, clicks, views);
-			out.putIfAbsent(num, new double[]{spend, imps, ctr, vcr, maxFreq, clicks, views, weeklyFreq, reach});
+			// Slots 0/1 now hold the reporting month's plan, so the Estimates tab's own flight cost,
+			// impressions and clicks ride along untouched in the last three slots — the channel slide's
+			// end-of-campaign column is the only place they survive into an EOM report.
+			out.putIfAbsent(num, new double[]{spend, imps, ctr, vcr, maxFreq, clicks, views, weeklyFreq, reach,
+					planSlot(estimates, 9), planSlot(estimates, 10), planSlot(estimates, 11)});
 		}
 		return out;
 	}
@@ -794,7 +798,10 @@ public class CampaignDataCollector {
 					plan != null && plan.length > 5 ? nan(plan[5]) : null,
 					plan != null && plan.length > 6 ? nan(plan[6]) : null,
 					plan != null && plan.length > 7 ? nan(plan[7]) : null,
-					plan != null && plan.length > 8 ? nan(plan[8]) : null
+					plan != null && plan.length > 8 ? nan(plan[8]) : null,
+					plan != null ? nan(planSlot(plan, 9)) : null,
+					plan != null ? nan(planSlot(plan, 10)) : null,
+					plan != null ? nan(planSlot(plan, 11)) : null
 			));
 		}
 
@@ -829,10 +836,13 @@ public class CampaignDataCollector {
 
 	/**
 	 * Parses the Estimates tab into planned figures per tactic, preserving media-plan order. Each Media-column
-	 * name maps to a FIFO queue of {@code {spend, imps, ctr, vcr, maxFreq, NaN, NaN, weeklyFreq, reach}} rows (NaN
-	 * where blank), one entry per line item in top-to-bottom order. Slots 5/6 stay empty here so a plan row
-	 * keeps one shape across both report types: EOM fills them with its rate-derived Plan Units in
-	 * {@link #resolveEomPlanByTacticNum}. A name repeated across line items (e.g. "Meta" appearing several
+	 * name maps to a FIFO queue of
+	 * {@code {spend, imps, ctr, vcr, maxFreq, NaN, NaN, weeklyFreq, reach, flightSpend, flightImps, flightClicks}}
+	 * rows (NaN where blank), one entry per line item in top-to-bottom order. Slots 5/6 stay empty here so a plan
+	 * row keeps one shape across both report types: EOM fills them with its rate-derived Plan Units in
+	 * {@link #resolveEomPlanByTacticNum}. The last three slots repeat the tab's own cost/impressions/clicks
+	 * untouched, because an EOM report overwrites slots 0/1 with the reporting month's plan and the channel
+	 * slide's end-of-campaign column still needs the flight figures the plan was booked on. A name repeated across line items (e.g. "Meta" appearing several
 	 * times with different budgets) therefore keeps every occurrence's own numbers instead of collapsing to a
 	 * single row, so the tactic loop can assign the N-th occurrence its N-th planned line item.
 	 *
@@ -849,6 +859,7 @@ public class CampaignDataCollector {
 		int eMediaCol = -1;
 		int eCostCol = -1;
 		int eImpsCol = -1;
+		int eClicksCol = -1;
 		int eCtrCol = -1;
 		int eVcrCol = -1;
 		int eFreqCol = -1;
@@ -863,6 +874,7 @@ public class CampaignDataCollector {
 			int media = -1;
 			int cost = -1;
 			int imps = -1;
+			int clicks = -1;
 			int ctr = -1;
 			int vcr = -1;
 			int freq = -1;
@@ -879,6 +891,9 @@ public class CampaignDataCollector {
 				}
 				if (v.equals("impressions") || v.equals("imps")) {
 					imps = j;
+				}
+				if (v.equals("clicks")) {
+					clicks = j;
 				}
 				if (v.equals("ctr")) {
 					ctr = j;
@@ -903,6 +918,7 @@ public class CampaignDataCollector {
 				eMediaCol = media;
 				eCostCol = cost;
 				eImpsCol = imps;
+				eClicksCol = clicks;
 				eCtrCol = ctr;
 				eVcrCol = vcr;
 				eFreqCol = freq;
@@ -939,6 +955,7 @@ public class CampaignDataCollector {
 
 			double spend = parseNumericCell(cellAt(row, eCostCol), eCostCol, true);
 			double imps = parseNumericCell(cellAt(row, eImpsCol), eImpsCol, false);
+			double clicks = parseNumericCell(cellAt(row, eClicksCol), eClicksCol, false);
 			double ctr = parseNumericCell(cellAt(row, eCtrCol), eCtrCol, false);
 			double vcr = parseNumericCell(cellAt(row, eVcrCol), eVcrCol, false);
 			double freq = parseNumericCell(cellAt(row, eFreqCol), eFreqCol, false);
@@ -946,9 +963,21 @@ public class CampaignDataCollector {
 			double reachVal = parseNumericCell(cellAt(row, eReachCol), eReachCol, false);
 
 			out.computeIfAbsent(mediaVal.toLowerCase(Locale.ROOT), k -> new ArrayDeque<>())
-					.add(new double[]{spend, imps, ctr, vcr, freq, Double.NaN, Double.NaN, weeklyFreq, reachVal});
+					.add(new double[]{spend, imps, ctr, vcr, freq, Double.NaN, Double.NaN, weeklyFreq, reachVal,
+							spend, imps, clicks});
 		}
 		return out;
+	}
+
+	/**
+	 * Reads one slot of a planned-figures row, tolerating rows written before that slot existed.
+	 *
+	 * @param plan the planned-figures row (may be {@code null})
+	 * @param slot the slot index to read
+	 * @return the slot's value, or {@code NaN} when the row is absent or too short
+	 */
+	double planSlot(double[] plan, int slot) {
+		return plan != null && plan.length > slot ? plan[slot] : Double.NaN;
 	}
 
 	/**
