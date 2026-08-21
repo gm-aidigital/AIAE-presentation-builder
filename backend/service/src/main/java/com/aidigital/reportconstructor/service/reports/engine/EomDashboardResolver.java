@@ -104,6 +104,15 @@ public class EomDashboardResolver {
 	/** Dashboard token suffix for the pacing column. */
 	static final String OUT_PACING = " pacing";
 
+	/** Channel-slide tile token suffix for the month's impressions goal, abbreviated. */
+	static final String OUT_PLANNED_IMPS_SHORT = " planned imps short";
+
+	/** Channel-slide tile token suffix for the month's delivered impressions, abbreviated. */
+	static final String OUT_FACT_IMPS_SHORT = " fact imps short";
+
+	/** Channel-slide tile token suffix for the month's spend, abbreviated. */
+	static final String OUT_FACT_BUDGET_SHORT = " fact budget short";
+
 	/** Totals-row token for the planned budget. */
 	static final String TOTAL_PLANNED_BUDGET = "{{total planned budget}}";
 
@@ -219,7 +228,8 @@ public class EomDashboardResolver {
 
 	/**
 	 * Fills one tactic's row of the pacing dashboard: the four figures copied from the summary-table tokens
-	 * and the pacing computed between the two spend figures.
+	 * and the pacing computed between the two spend figures. The channel slide's three headline tiles are
+	 * filled from the same three figures, abbreviated.
 	 *
 	 * @param flat the placeholder map to fill, mutated in place
 	 * @param n    the 1-based tactic number
@@ -227,11 +237,42 @@ public class EomDashboardResolver {
 	void fillTactic(Map<String, String> flat, int n) {
 		String plannedBudget = value(flat, tacticToken(n, SRC_SPEND_PLAN));
 		String factBudget = value(flat, tacticToken(n, SRC_SPEND));
+		String plannedImps = value(flat, tacticToken(n, SRC_IMPS_PLAN));
+		String factImps = value(flat, tacticToken(n, SRC_IMPS));
 		flat.put(tacticToken(n, OUT_PLANNED_BUDGET), display(plannedBudget));
 		flat.put(tacticToken(n, OUT_FACT_BUDGET), display(factBudget));
-		flat.put(tacticToken(n, OUT_PLANNED_IMPS), display(value(flat, tacticToken(n, SRC_IMPS_PLAN))));
-		flat.put(tacticToken(n, OUT_FACT_IMPS), display(value(flat, tacticToken(n, SRC_IMPS))));
+		flat.put(tacticToken(n, OUT_PLANNED_IMPS), display(plannedImps));
+		flat.put(tacticToken(n, OUT_FACT_IMPS), display(factImps));
 		flat.put(tacticToken(n, OUT_PACING), pacing(factBudget, plannedBudget));
+		flat.put(tacticToken(n, OUT_PLANNED_IMPS_SHORT), compactCount(plannedImps));
+		flat.put(tacticToken(n, OUT_FACT_IMPS_SHORT), compactCount(factImps));
+		flat.put(tacticToken(n, OUT_FACT_BUDGET_SHORT), compactMoney(factBudget));
+	}
+
+	/**
+	 * Abbreviates a count already formatted for a table cell ({@code "1,240,918"} → {@code "1.2M"}), for
+	 * the channel slide's headline tiles, which are drawn too small for a grouped figure.
+	 *
+	 * <p>Read back from the figure the table prints rather than recomputed from the campaign data, for the
+	 * same reason the dashboard row is: on the two-step flow that figure is whatever the user reviewed in
+	 * the workbook, and a tile derived from anything else can disagree with the table beside it.
+	 *
+	 * @param value the formatted count, or {@code null} when the source carries none
+	 * @return the abbreviated count, or a dash when there is no figure to abbreviate
+	 */
+	String compactCount(String value) {
+		return value == null ? DASH : fmt.compactUpper(numbers.parseReportNumber(value));
+	}
+
+	/**
+	 * Abbreviates a monetary amount already formatted for a table cell ({@code "$482,193"} →
+	 * {@code "$482K"}), for the channel slide's headline tiles.
+	 *
+	 * @param value the formatted amount, or {@code null} when the source carries none
+	 * @return the abbreviated amount, or a dash when there is no figure to abbreviate
+	 */
+	String compactMoney(String value) {
+		return value == null ? DASH : fmt.moneyCompact(numbers.parseReportNumber(value));
 	}
 
 	/**

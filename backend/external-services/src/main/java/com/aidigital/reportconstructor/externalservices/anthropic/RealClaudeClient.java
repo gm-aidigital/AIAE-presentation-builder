@@ -19,6 +19,8 @@ import com.aidigital.reportconstructor.service.reports.dto.StrategicInsight;
 import com.aidigital.reportconstructor.service.reports.dto.TacticConclusion;
 import com.aidigital.reportconstructor.service.reports.dto.TacticInsight;
 import com.aidigital.reportconstructor.service.reports.dto.TacticNarrativeDigest;
+import com.aidigital.reportconstructor.service.reports.dto.TacticPacing;
+import com.aidigital.reportconstructor.service.reports.dto.TacticPacingInput;
 import com.aidigital.reportconstructor.service.reports.dto.TacticThoughts;
 import com.aidigital.reportconstructor.service.reports.dto.TacticThoughtsInput;
 import com.aidigital.reportconstructor.service.reports.dto.WhatWeDidStep;
@@ -238,6 +240,21 @@ public class RealClaudeClient implements ClaudeClient {
 	private static final String STORY_FIELD_KEY = "_story";
 	/** Short tag identifying the Step-3 per-tactic thoughts call in logs and on the report's failure card. */
 	private static final String THOUGHTS_LABEL = "BatchTacticThoughts";
+
+	/** Log/warning label of the channel-slide pacing narrative call. */
+	private static final String PACING_LABEL = "TacticPacingNarrative";
+
+	/** Characters one of the channel slide's three key takeaways fits above the METRIC table. */
+	private static final int PACING_TAKEAWAY_LIMIT = 230;
+
+	/** Characters the channel slide's month-ahead directive fits on its one line. */
+	private static final int PACING_NEXT_MONTH_LIMIT = 140;
+
+	/**
+	 * Output ceiling for one pacing-narrative call: three ~230-character takeaways plus a 140-character
+	 * directive, with room for the JSON scaffolding around them.
+	 */
+	private static final int TACTIC_PACING_MAX_TOKENS = 900;
 	/**
 	 * Output budget for one tactic's thoughts call: four ~220-char thoughts, the ~470-char story and the JSON
 	 * overhead need roughly a quarter of this, and the headroom is deliberate. A reply that opens with a
@@ -1548,6 +1565,79 @@ public class RealClaudeClient implements ClaudeClient {
 		}
 		thoughts.add(normalizer.normalizeC(compressed.get(input.tacticNum() + STORY_FIELD_KEY), STORY_LIMIT));
 		return new TacticThoughts(input.tacticNum(), thoughts);
+	}
+
+	@Override
+	public TacticPacing tacticPacing(TacticPacingInput input, String brief) {
+		if (input == null) {
+			return null;
+		}
+		var prompt = promptBuilder.buildTacticPacingPrompt(
+				input, brief, PACING_TAKEAWAY_LIMIT, PACING_NEXT_MONTH_LIMIT);
+		if (prompt.isEmpty()) {
+			return null;
+		}
+		JsonNode parsed = messagesClient.callJsonObject(
+				prompt.get(), TACTIC_PACING_MAX_TOKENS, BREAKDOWN_TIMEOUT_SEC, PACING_LABEL, true);
+		if (parsed == null) {
+			return null;
+		}
+		return pacingFrom(input.tacticNum(), parsed);
+	}
+
+	/**
+	 * Turns one pacing-narrative reply into its DTO: compress each of the four fields that ran over budget,
+	 * then normalize to the slide's own limits. A reply carrying no non-blank field at all is rejected
+	 * ({@code null}) so the caller dashes the slide's tokens instead of writing four empty strings over
+	 * them; a reply that filled some fields ships those and dashes the rest, which beats losing a good
+	 * takeaway because a sibling field came back blank.
+	 *
+	 * @param tacticNum the 1-based tactic number the reply belongs to
+	 * @param parsed    the reply's JSON object
+	 * @return the tactic's narrative, or {@code null} when the reply carried nothing usable
+	 */
+	TacticPacing pacingFrom(int tacticNum, JsonNode parsed) {
+		List<ClaudeCompressionField> fields = List.of(
+				pacingField(tacticNum, "what_worked", parsed, PACING_TAKEAWAY_LIMIT),
+				pacingField(tacticNum, "watch_outs", parsed, PACING_TAKEAWAY_LIMIT),
+				pacingField(tacticNum, "actions", parsed, PACING_TAKEAWAY_LIMIT),
+				pacingField(tacticNum, "next_month", parsed, PACING_NEXT_MONTH_LIMIT));
+		if (fields.stream().allMatch(field -> field.text() == null || field.text().isBlank())) {
+			rejectSection(PACING_LABEL, tacticNum, "reply carried none of the four pacing fields");
+			return null;
+		}
+		Map<String, String> compressed = compressionService.compress(fields, PACING_LABEL);
+		return new TacticPacing(
+				tacticNum,
+				normalizer.normalizeC(compressed.get(pacingKey(tacticNum, "what_worked")), PACING_TAKEAWAY_LIMIT),
+				normalizer.normalizeC(compressed.get(pacingKey(tacticNum, "watch_outs")), PACING_TAKEAWAY_LIMIT),
+				normalizer.normalizeC(compressed.get(pacingKey(tacticNum, "actions")), PACING_TAKEAWAY_LIMIT),
+				normalizer.normalizeC(compressed.get(pacingKey(tacticNum, "next_month")), PACING_NEXT_MONTH_LIMIT));
+	}
+
+	/**
+	 * Reads one field of a pacing-narrative reply into a compression field under its per-tactic key.
+	 *
+	 * @param tacticNum the 1-based tactic number, part of the key so tactics dispatched together never
+	 *                  collide in the compression batch
+	 * @param field     the reply's JSON field name
+	 * @param parsed    the reply's JSON object
+	 * @param limit     the field's character budget
+	 * @return the compression field, carrying an empty string when the reply omitted the field
+	 */
+	ClaudeCompressionField pacingField(int tacticNum, String field, JsonNode parsed, int limit) {
+		return new ClaudeCompressionField(pacingKey(tacticNum, field), parsed.path(field).asText("").trim(), limit);
+	}
+
+	/**
+	 * Builds the compression-batch key of one tactic's pacing field.
+	 *
+	 * @param tacticNum the 1-based tactic number
+	 * @param field     the reply's JSON field name
+	 * @return the key the compressed value is read back under
+	 */
+	String pacingKey(int tacticNum, String field) {
+		return tacticNum + "_pacing_" + field;
 	}
 
 	/**

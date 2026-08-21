@@ -32,6 +32,34 @@ class EomDashboardResolverTest {
 	}
 
 	@Test
+	void fill_shouldAbbreviateTheChannelSlideTilesFromTheSameFiguresTest() {
+		// Given: a reviewed workbook's summary table
+		Map<String, String> flat = twoTacticSheet();
+
+		// When:
+		resolver.fill(flat, 2);
+
+		// Then: the tiles carry the table's own figures, abbreviated
+		assertThat(flat.get("{{tactic 1 planned imps short}}")).isEqualTo("1.5M");
+		assertThat(flat.get("{{tactic 1 fact imps short}}")).isEqualTo("1.6M");
+		assertThat(flat.get("{{tactic 1 fact budget short}}")).isEqualTo("$12K");
+		assertThat(flat.get("{{tactic 2 fact imps short}}")).isEqualTo("890K");
+	}
+
+	@Test
+	void fill_shouldDashAChannelSlideTileWhoseFigureIsMissingTest() {
+		// Given: a workbook whose spend cell was never filled
+		Map<String, String> flat = twoTacticSheet();
+		flat.put("{{tactic 1 spend}}", "");
+
+		// When:
+		resolver.fill(flat, 2);
+
+		// Then: the tile dashes rather than printing a zero
+		assertThat(flat.get("{{tactic 1 fact budget short}}")).isEqualTo("—");
+	}
+
+	@Test
 	void fill_shouldCopyTheSummaryFiguresOntoTheDashboardTokensTest() {
 		// Given: a reviewed workbook's summary table
 		Map<String, String> flat = twoTacticSheet();

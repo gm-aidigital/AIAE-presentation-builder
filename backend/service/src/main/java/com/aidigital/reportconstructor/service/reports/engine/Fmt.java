@@ -122,4 +122,16 @@ public class Fmt {
 	public String compactUpper(double v) {
 		return compact(v).replace("k", "K");
 	}
+
+	/**
+	 * Dollar-prefixed compact notation ({@code "$1.2M"}, {@code "$74K"}), for the headline tiles that have
+	 * room for a figure but not for a grouped one. Shares {@link #compactUpper(double)} so a tile and the
+	 * table cell beside it can never round the same amount two ways.
+	 *
+	 * @param v the monetary amount to abbreviate
+	 * @return the amount as a dollar-prefixed compact string
+	 */
+	public String moneyCompact(double v) {
+		return "$" + compactUpper(v);
+	}
 }

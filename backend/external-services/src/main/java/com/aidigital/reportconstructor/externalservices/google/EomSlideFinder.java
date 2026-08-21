@@ -61,23 +61,37 @@ public class EomSlideFinder {
 			BreakdownType.DEVICE, "{{dev_n_ctr}}");
 
 	/**
-	 * Finds the deck's master tactic slides: the slides carrying {@code n}-variable tokens that are not
-	 * breakdown masters. The EOM template has two of them (the EOC-style tactic slide and the EOM
-	 * channel slide), and both are duplicated for every tactic, so the result keeps the template's own
-	 * order — that is the order each tactic's block is built in.
+	 * Token that identifies the "Thoughts on tactic performance" master slide. Like the breakdown markers
+	 * it is unique to that slide and carries the {@code n} variable, so the slide is recognised for what
+	 * it is instead of being mistaken for a tactic master. That distinction matters: a tactic master is
+	 * duplicated for every tactic, while this slide is duplicated only for the tactics that pass the
+	 * ">2 breakdowns" gate — its text is written by the Step-3 Claude call, which runs for those tactics
+	 * only, so a copy made for any other tactic would ship five raw tokens.
+	 */
+	static final String THOUGHTS_MARKER = "{{thoughts on tactic n performance 1}}";
+
+	/**
+	 * Finds the deck's master tactic slides: the slides carrying {@code n}-variable tokens that are
+	 * neither breakdown masters nor the thoughts master. The EOM template has two of them (the channel
+	 * slide and the channel pacing slide), and both are duplicated for every tactic, so the result keeps
+	 * the template's own order — that is the order each tactic's block is built in.
 	 *
 	 * @param pages the deck's slides in order, from {@code presentations.get}
 	 * @return the master tactic slide object ids in deck order, empty when the deck carries none
 	 */
 	public List<String> tacticMasterSlideIds(List<Page> pages) {
 		List<String> masters = new ArrayList<>();
-		Set<String> breakdownIds = new LinkedHashSet<>(breakdownMasterSlideIds(pages).values());
+		Set<String> excluded = new LinkedHashSet<>(breakdownMasterSlideIds(pages).values());
+		String thoughtsId = thoughtsMasterSlideId(pages);
+		if (thoughtsId != null) {
+			excluded.add(thoughtsId);
+		}
 		if (pages == null) {
 			return masters;
 		}
 		for (Page page : pages) {
 			String objectId = page.getObjectId();
-			if (objectId == null || breakdownIds.contains(objectId)) {
+			if (objectId == null || excluded.contains(objectId)) {
 				continue;
 			}
 			if (hasMasterToken(page)) {
@@ -112,6 +126,25 @@ public class EomSlideFinder {
 			}
 		}
 		return found;
+	}
+
+	/**
+	 * Finds the deck's "Thoughts on tactic performance" master slide by the marker token it carries.
+	 *
+	 * @param pages the deck's slides in order, from {@code presentations.get}
+	 * @return the thoughts master slide object id, or {@code null} when the deck carries none
+	 */
+	public String thoughtsMasterSlideId(List<Page> pages) {
+		if (pages == null) {
+			return null;
+		}
+		for (Page page : pages) {
+			String objectId = page.getObjectId();
+			if (objectId != null && tokensOf(page).contains(THOUGHTS_MARKER)) {
+				return objectId;
+			}
+		}
+		return null;
 	}
 
 	/**

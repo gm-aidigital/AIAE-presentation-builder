@@ -65,6 +65,26 @@ class EomSlideFinderTest {
 	}
 
 	@Test
+	void thoughtsMasterIsFoundAndKeptOutOfTheTacticMasters() {
+		List<Page> deck = List.of(
+				shapeSlide("channel-master", "{{tactic n}}", "{{tactic n overview}}"),
+				shapeSlide("pacing-master", "{{tactic n planned imps}}", "{{pacing n next month}}"),
+				shapeSlide("thoughts", "THOUGHTS ON TACTIC PERFORMANCE",
+						"{{thoughts on tactic n performance 1}}", "{{thoughts on tactic n performance 2}}"));
+
+		assertThat(finder.thoughtsMasterSlideId(deck)).isEqualTo("thoughts");
+		assertThat(finder.tacticMasterSlideIds(deck)).containsExactly("channel-master", "pacing-master");
+	}
+
+	@Test
+	void reportsNoThoughtsMasterWhenTheDeckCarriesNone() {
+		List<Page> deck = List.of(shapeSlide("channel-master", "{{tactic n}}", "{{tactic n overview}}"));
+
+		assertThat(finder.thoughtsMasterSlideId(deck)).isNull();
+		assertThat(finder.tacticMasterSlideIds(deck)).containsExactly("channel-master");
+	}
+
+	@Test
 	void breakdownMastersAreNotMistakenForTacticMasters() {
 		List<Page> deck = List.of(
 				shapeSlide("tactic-master", "{{tactic n}}", "{{tactic n imps}}"),

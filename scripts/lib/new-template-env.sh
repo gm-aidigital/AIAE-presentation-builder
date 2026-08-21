@@ -55,9 +55,23 @@ export SUMMARY_TABLE_OBJECT_ID_2="${SUMMARY_TABLE_OBJECT_ID_2:-g3f6fd96d9b2_1_14
 export SUMMARY_TABLE_OBJECT_ID_3="${SUMMARY_TABLE_OBJECT_ID_3:-g3f6fd96d9b2_1_157}"
 export SUMMARY_TABLE_OBJECT_ID_4="${SUMMARY_TABLE_OBJECT_ID_4:-g3f6fd96d9b2_1_171}"
 
-# Slides an EOM deck must never ship: the frequency play and the awareness /
-# market-share slide.
-export EOM_DROP_SLIDE_OBJECT_IDS="${EOM_DROP_SLIDE_OBJECT_IDS:-p17,p6}"
+# The EOM deck template. Non-blank moves EOM reports off the EOC template and
+# onto their own deck; the published app clears this in lib/deploy-env.sh, so it
+# cannot reach production from a shared environment.
+export EOM_SLIDES_TEMPLATE_ID="${EOM_SLIDES_TEMPLATE_ID:-1zQOMfuHDqfJedcQl4IzHonRpBfPtMdLtivwlxWV9Yjo}"
+
+# Deliberately empty while the EOM template above is in play. The two ids this
+# used to carry (p17, p6 - the frequency play and the awareness / market-share
+# slide) are EOC-template ids: the EOM deck no longer carries those slides at
+# all, and p6/p17 exist in the EOM template as unrelated slides, so keeping them
+# here would delete two arbitrary slides from every EOM deck.
+export EOM_DROP_SLIDE_OBJECT_IDS="${EOM_DROP_SLIDE_OBJECT_IDS:-}"
+
+# The one slide the EOM template carries that must never ship: the "SLIDES
+# LIBRARY" divider standing in front of the breakdown masters. Matched by text
+# rather than id because it has no token to key on. This replaces the EOC story
+# slides the production default names, which the EOM template does not carry.
+export EOM_DROP_SLIDE_TITLES="${EOM_DROP_SLIDE_TITLES:-SLIDES LIBRARY}"
 
 # Per-tactic breakdown charts, keyed by series. The audience slide carries two
 # charts, so aud (age) and aud-seg (top segments) each get their own workbook.

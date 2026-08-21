@@ -14,6 +14,8 @@ import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
 import com.aidigital.reportconstructor.service.reports.dto.TacticConclusion;
 import com.aidigital.reportconstructor.service.reports.dto.TacticNarrativeDigest;
+import com.aidigital.reportconstructor.service.reports.dto.TacticPacing;
+import com.aidigital.reportconstructor.service.reports.dto.TacticPacingInput;
 import com.aidigital.reportconstructor.service.reports.dto.TacticThoughts;
 import com.aidigital.reportconstructor.service.reports.dto.TacticThoughtsInput;
 import com.aidigital.reportconstructor.service.reports.engine.Pivot;
@@ -110,6 +112,12 @@ public class StubClaudeClient implements ClaudeClient {
 			CampaignData data, List<Integer> tacticNums, String brief, Map<Integer, Pivot> dailyPivots) {
 		// No live model: no conclusions to generate, so every tactic falls back to sheet values.
 		return List.of();
+	}
+
+	@Override
+	public TacticPacing tacticPacing(TacticPacingInput input, String brief) {
+		// The stub writes no narrative: a dry run's channel slides show the dash the sweep leaves behind.
+		return null;
 	}
 
 	@Override

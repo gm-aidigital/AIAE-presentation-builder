@@ -2,6 +2,7 @@ package com.aidigital.reportconstructor.service.reports.ports;
 
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownType;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -151,6 +152,23 @@ public interface SlidesProvider {
 	 *                              service account when blank
 	 */
 	void deleteReportTypeSlides(String presentationId, String reportType, String userGoogleAccessToken);
+
+	/**
+	 * Replaces every {@code {{token}}} still standing in a finished deck with a dash, so a token the
+	 * pipeline had no value for reads as "no figure" instead of shipping its own name to the client.
+	 *
+	 * <p>Runs last, once every pass that writes text has finished. Scoped to the decks built from the EOM
+	 * template: the deck a token belongs to is the one place that knows whether it was meant to be filled,
+	 * and the EOM template is the one still gaining slides — an EOC deck's raw token is a defect to fix in
+	 * the template, not something to paper over here.
+	 *
+	 * @param presentationId        the finished deck to sweep
+	 * @param reportType            report template code ({@code "EOC"}/{@code "EOM"}), may be {@code null}
+	 * @param userGoogleAccessToken optional signed-in user's Google OAuth token; falls back to the
+	 *                              service account when blank
+	 * @return the tokens that were dashed, in deck order, so the caller can surface them as job warnings
+	 */
+	List<String> dashUnresolvedTokens(String presentationId, String reportType, String userGoogleAccessToken);
 
 	/**
 	 * Counts the slides a finished deck contains. Called once the surplus template slides have been

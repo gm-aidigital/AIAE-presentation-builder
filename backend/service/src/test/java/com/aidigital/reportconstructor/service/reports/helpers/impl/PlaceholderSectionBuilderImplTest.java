@@ -267,6 +267,49 @@ class PlaceholderSectionBuilderImplTest {
 		assertThat(start).containsEntry("{{reporting filter}}", "Jan 1 – Dec 31, 2025");
 	}
 
+	/**
+	 * Builds the same payload as {@link #minimalPayload()} but typed as an end-of-month report, which is
+	 * what opens the EOM-only block of the Summary Metrics section.
+	 *
+	 * @return an EOM generate payload
+	 */
+	private static GeneratePayload eomPayload() {
+		return new GeneratePayload(
+				"brief", "EOM", "",
+				List.of(List.of("Media", "Comments"), List.of("Programmatic Display", "")),
+				List.of(), List.of(), List.of(), List.of(), List.of(), null, "", null, null, null);
+	}
+
+	@Test
+	void shouldCarryTheReportingMonthNumberSoTheWorkbooksMetricHeadersAreFilledTest() {
+		// Given: an EOM report on month 2 of a 3-month flight. The workbook prints this number 57 times —
+		// once in its own "Reporting month no." cell and once in each METRIC block's two column headers
+		// ("MONTH {{mon no}} GOAL" / "MONTH {{mon no}} ACTUAL") — and every one of them is filled by this
+		// single token, so it must never be absent from the map.
+		CampaignData data = new CampaignData(
+				null, null, null, null, "Aug 1 – Aug 31, 2026",
+				new FlightDates(java.time.LocalDate.of(2026, 8, 1), java.time.LocalDate.of(2026, 8, 31)),
+				null, null, null, null, null,
+				new Totals(0, 0, 0, 0, null, null), Map.of(), 1, 1,
+				"Oct 1, 2025 – Dec 31, 2025", 2, 3, null);
+
+		// When:
+		List<PreviewSection> sections = builder.buildSections(
+				eomPayload(), data,
+				claudeDefaults.emptyStrategic(), claudeDefaults.emptyTactical(), claudeDefaults.emptyResults(),
+				null, null, null, null, null,
+				new CampaignFrequencies(null, null, null, null), 1);
+
+		// Then: the month and the flight length both travel, so a header can never read "MONTH  GOAL"
+		Map<String, String> totals = sections.stream()
+				.filter(section -> "Summary Metrics".equals(section.title()))
+				.findFirst()
+				.map(this::valuesOf)
+				.orElseThrow();
+		assertThat(totals).containsEntry("{{mon no}}", "2");
+		assertThat(totals).containsEntry("{{total mon no}}", "3");
+	}
+
 	/** The section's {@code token → value} pairs. */
 	private Map<String, String> valuesOf(PreviewSection section) {
 		return section.placeholders().stream()

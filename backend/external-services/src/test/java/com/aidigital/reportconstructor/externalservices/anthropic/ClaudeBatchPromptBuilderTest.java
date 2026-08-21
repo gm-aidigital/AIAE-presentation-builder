@@ -12,6 +12,8 @@ import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationI
 import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
 import com.aidigital.reportconstructor.service.reports.dto.Tactic;
 import com.aidigital.reportconstructor.service.reports.dto.TacticNarrativeDigest;
+import com.aidigital.reportconstructor.service.reports.dto.TacticPacingInput;
+import com.aidigital.reportconstructor.service.reports.dto.TacticPacingMetric;
 import com.aidigital.reportconstructor.service.reports.dto.TacticThoughtsInput;
 import com.aidigital.reportconstructor.service.reports.dto.Totals;
 import com.aidigital.reportconstructor.service.reports.engine.Fmt;
@@ -298,6 +300,44 @@ class ClaudeBatchPromptBuilderTest {
 		// And: the fifth slot is asked for as a narrative under its own budget, not as a fifth bullet
 		assertThat(prompt).contains(
 				"Then write ONE closing narrative — \"story\" — of at most 376 characters");
+	}
+
+	@Test
+	void shouldBuildThePacingNarrativePromptFromTheSlidesOwnMetricTableTest() {
+		TacticPacingInput input = new TacticPacingInput(1, "CTV", "VCR", List.of(
+				new TacticPacingMetric("Impressions", "1,575,000", "1,602,341", "102%", "6,300,000", "6,409,364"),
+				new TacticPacingMetric("Reach", null, null, null, null, null),
+				new TacticPacingMetric("Spend", "$11,812.50", "$12,167.88", "103%", "$47,250", "$48,671")));
+
+		String prompt = builder.buildTacticPacingPrompt(input, "Drive incremental reach.", 230, 140).orElseThrow();
+
+		assertThat(prompt).contains("channel_1 \u2014 CTV");
+		assertThat(prompt).contains("PRIMARY KPI: VCR");
+		assertThat(prompt).contains("Impressions | 1,575,000 | 1,602,341 | 102% | 6,300,000 | 6,409,364");
+		assertThat(prompt).contains("Spend | $11,812.50 | $12,167.88 | 103% | $47,250 | $48,671");
+		// A row with nothing in it is left out rather than shipped as five "n/a" columns
+		assertThat(prompt).doesNotContain("Reach |");
+		assertThat(prompt).contains("Drive incremental reach.");
+	}
+
+	@Test
+	void shouldSkipThePacingNarrativePromptWhenTheTableIsEmptyTest() {
+		TacticPacingInput input = new TacticPacingInput(2, "Meta", null, List.of(
+				new TacticPacingMetric("Impressions", null, "\u2014", " ", null, null)));
+
+		assertThat(builder.buildTacticPacingPrompt(input, "brief", 230, 140)).isEmpty();
+		assertThat(builder.buildTacticPacingPrompt(null, "brief", 230, 140)).isEmpty();
+	}
+
+	@Test
+	void shouldQuoteTheBufferedBudgetsForEachPacingFieldTest() {
+		TacticPacingInput input = new TacticPacingInput(1, "CTV", "VCR", List.of(
+				new TacticPacingMetric("Impressions", "1", "2", "3", "4", "5")));
+
+		String prompt = builder.buildTacticPacingPrompt(input, "brief", 230, 140).orElseThrow();
+
+		assertThat(prompt).contains("\"what_worked\" (at most 184 characters)");
+		assertThat(prompt).contains("\"next_month\" (at most 112 characters)");
 	}
 
 }

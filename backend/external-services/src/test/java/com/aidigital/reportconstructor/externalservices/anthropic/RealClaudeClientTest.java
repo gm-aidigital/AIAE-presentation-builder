@@ -12,6 +12,9 @@ import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
 import com.aidigital.reportconstructor.service.reports.dto.Tactic;
 import com.aidigital.reportconstructor.service.reports.dto.TacticConclusion;
 import com.aidigital.reportconstructor.service.reports.dto.TacticNarrativeDigest;
+import com.aidigital.reportconstructor.service.reports.dto.TacticPacing;
+import com.aidigital.reportconstructor.service.reports.dto.TacticPacingInput;
+import com.aidigital.reportconstructor.service.reports.dto.TacticPacingMetric;
 import com.aidigital.reportconstructor.service.reports.dto.TacticThoughts;
 import com.aidigital.reportconstructor.service.reports.dto.TacticThoughtsInput;
 import com.aidigital.reportconstructor.service.reports.dto.WhatWeDidStep;
@@ -1697,4 +1700,80 @@ class RealClaudeClientTest {
 		assertThat(conclusions).extracting(TacticConclusion::overview).containsExactly(
 				"Tactic 1 overview.", "Tactic 2 overview.", "Tactic 3 overview.", "Tactic 4 overview.");
 	}
+
+	@Test
+	void tacticPacingParsesTheFourNamedFieldsTest() throws Exception {
+		// Given: a reply carrying all four pacing fields, and identity compression
+		ClaudeResponseNormalizer normalizer = new ClaudeResponseNormalizer();
+		ClaudeBatchPromptBuilder promptBuilder = new ClaudeBatchPromptBuilder(normalizer, new Fmt());
+		RealClaudeClient client = new RealClaudeClient(
+				messagesClient, promptBuilder, normalizer, compressionService, new ReportClaudeDefaults(),
+				new WorkbookGeoFilter(), new PromptTokenEstimator(), new ClaudeFailureLogImpl(),
+				new AnthropicProperties());
+		TacticPacingInput input = new TacticPacingInput(1, "CTV", "VCR", List.of(
+				new TacticPacingMetric("Impressions", "1,575,000", "1,602,341", "102%", "6,300,000", "6,409,364")));
+		JsonNode response = json.readTree("""
+				{"what_worked": "Living-room inventory carried completion.",
+				 "watch_outs": "Frequency is climbing on the top decile.",
+				 "actions": "Capping frequency at three per week.",
+				 "next_month": "Hold CTV weight to reach the 40% goal."}
+				""");
+		when(messagesClient.callJsonObject(
+				eq(promptBuilder.buildTacticPacingPrompt(input, "brief", 230, 140).orElseThrow()),
+				eq(900), eq(90), eq("TacticPacingNarrative"), eq(true)))
+				.thenReturn(response);
+		when(compressionService.compress(org.mockito.ArgumentMatchers.anyList(), eq("TacticPacingNarrative")))
+				.thenAnswer(invocation -> {
+					List<ClaudeCompressionField> fields = invocation.getArgument(0);
+					Map<String, String> out = new LinkedHashMap<>();
+					for (ClaudeCompressionField field : fields) {
+						out.put(field.key(), field.text());
+					}
+					return out;
+				});
+
+		// When:
+		TacticPacing pacing = client.tacticPacing(input, "brief");
+
+		// Then:
+		assertThat(pacing).isNotNull();
+		assertThat(pacing.tacticNum()).isEqualTo(1);
+		assertThat(pacing.whatWorked()).isEqualTo("Living-room inventory carried completion.");
+		assertThat(pacing.watchOuts()).isEqualTo("Frequency is climbing on the top decile.");
+		assertThat(pacing.actions()).isEqualTo("Capping frequency at three per week.");
+		assertThat(pacing.nextMonth()).isEqualTo("Hold CTV weight to reach the 40% goal.");
+	}
+
+	@Test
+	void tacticPacingRejectsAReplyThatCarriesNoneOfTheFourFieldsTest() throws Exception {
+		// Given: a well-formed but empty reply — the shape that would otherwise blank the slide silently
+		ClaudeResponseNormalizer normalizer = new ClaudeResponseNormalizer();
+		ClaudeBatchPromptBuilder promptBuilder = new ClaudeBatchPromptBuilder(normalizer, new Fmt());
+		RealClaudeClient client = new RealClaudeClient(
+				messagesClient, promptBuilder, normalizer, compressionService, new ReportClaudeDefaults(),
+				new WorkbookGeoFilter(), new PromptTokenEstimator(), new ClaudeFailureLogImpl(),
+				new AnthropicProperties());
+		TacticPacingInput input = new TacticPacingInput(3, "Meta", null, List.of(
+				new TacticPacingMetric("Spend", "$8,000", "$7,200", "90%", "$32,000", "$28,800")));
+		when(messagesClient.callJsonObject(
+				org.mockito.ArgumentMatchers.anyString(), eq(900), eq(90), eq("TacticPacingNarrative"), eq(true)))
+				.thenReturn(json.readTree("{\"what_worked\": \"  \"}"));
+
+		// When / Then: nothing usable, so the caller dashes the tokens instead of writing blanks over them
+		assertThat(client.tacticPacing(input, "brief")).isNull();
+		verifyNoInteractions(compressionService);
+	}
+
+	@Test
+	void tacticPacingIsANoopWithoutAnInputTest() {
+		ClaudeResponseNormalizer normalizer = new ClaudeResponseNormalizer();
+		RealClaudeClient client = new RealClaudeClient(
+				messagesClient, new ClaudeBatchPromptBuilder(normalizer, new Fmt()), normalizer,
+				compressionService, new ReportClaudeDefaults(), new WorkbookGeoFilter(),
+				new PromptTokenEstimator(), new ClaudeFailureLogImpl(), new AnthropicProperties());
+
+		assertThat(client.tacticPacing(null, "brief")).isNull();
+		verifyNoInteractions(messagesClient);
+	}
+
 }

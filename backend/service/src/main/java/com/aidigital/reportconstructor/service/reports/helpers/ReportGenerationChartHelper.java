@@ -146,6 +146,20 @@ public interface ReportGenerationChartHelper {
 	void deleteMasterSlides(String slideUrl, String reportType, String userGoogleToken);
 
 	/**
+	 * Dashes every {@code {{token}}} still standing in the finished deck, and reports what was dashed as
+	 * job warnings so a token the pipeline has no resolver for is visible without reading the deck.
+	 *
+	 * <p>Runs last, after every pass that writes text. Non-fatal: a deck that cannot be swept is delivered
+	 * exactly as it would have been without this pass.
+	 *
+	 * @param slideUrl        the finished deck's URL
+	 * @param reportType      report template code ({@code "EOC"}/{@code "EOM"}), may be {@code null}
+	 * @param userGoogleToken optional signed-in user's Google OAuth token
+	 * @return one warning per dashed token, empty when the deck was fully filled
+	 */
+	List<String> dashUnresolvedTokens(String slideUrl, String reportType, String userGoogleToken);
+
+	/**
 	 * Removes the slides the given report type must never ship. The EOM deck is built from a copy of the
 	 * EOC template and still carries EOC-only story slides (the frequency &amp; velocity play, the awareness
 	 * / market-share slide), which are located by their title text and deleted. A no-op for every other

@@ -22,6 +22,8 @@ import com.aidigital.reportconstructor.service.reports.dto.PublisherRow;
 import com.aidigital.reportconstructor.service.reports.dto.StrategicInsight;
 import com.aidigital.reportconstructor.service.reports.dto.Tactic;
 import com.aidigital.reportconstructor.service.reports.dto.TacticNarrativeDigest;
+import com.aidigital.reportconstructor.service.reports.dto.TacticPacingInput;
+import com.aidigital.reportconstructor.service.reports.dto.TacticPacingMetric;
 import com.aidigital.reportconstructor.service.reports.dto.TacticThoughtsInput;
 import com.aidigital.reportconstructor.service.reports.dto.Totals;
 import com.aidigital.reportconstructor.service.reports.engine.Fmt;
@@ -1634,6 +1636,161 @@ public class ClaudeBatchPromptBuilder {
 		for (String bullet : nonBlank) {
 			block.append("- ").append(bullet).append('\n');
 		}
+	}
+
+	/**
+	 * Builds the channel-slide pacing narrative prompt for one tactic, or empty when the tactic's METRIC
+	 * table carries no figure to reason over.
+	 *
+	 * <p>The instruction and brief sit before the {@link AnthropicMessagesClient#CACHE_BREAKPOINT} so they
+	 * are cached once and re-read cheaply on every following per-tactic call; only the tactic's own table
+	 * follows the marker.
+	 *
+	 * @param input          the tactic's name, KPI type and METRIC table
+	 * @param brief          free-text campaign brief the narrative must stay faithful to
+	 * @param takeawayLimit  the character budget of each of the three key takeaways
+	 * @param nextMonthLimit the character budget of the month-ahead directive
+	 * @return the prompt requesting the four named fields, or empty when there is nothing to reason over
+	 */
+	public Optional<String> buildTacticPacingPrompt(
+			TacticPacingInput input, String brief, int takeawayLimit, int nextMonthLimit) {
+		if (input == null) {
+			return Optional.empty();
+		}
+		String dataBlock = tacticPacingDataBlock(input);
+		if (dataBlock.isBlank()) {
+			return Optional.empty();
+		}
+		String prompt = tacticPacingRole()
+				+ tacticPacingFieldsSpec(bufferedLimit(takeawayLimit), bufferedLimit(nextMonthLimit))
+				+ tacticPacingOutputRules()
+				+ "=== CAMPAIGN BRIEF ===\n" + (brief == null ? "" : brief) + "\n\n"
+				+ AnthropicMessagesClient.CACHE_BREAKPOINT + "=== CHANNEL PERFORMANCE VS PLAN ===\n" + dataBlock;
+		return Optional.of(prompt);
+	}
+
+	/**
+	 * States who is writing and what the slide is, for the channel-slide pacing narrative call.
+	 *
+	 * @return the role paragraph, ending in a blank line
+	 */
+	String tacticPacingRole() {
+		return "You are a senior digital media analyst writing the key-takeaways column of ONE channel's "
+				+ "\"performance vs. plan\" slide in an end-of-month report. The slide shows that channel's "
+				+ "month-to-date figures against the month's goal and against the full flight, and your copy sits "
+				+ "directly above that table. You write on behalf of the team running the campaign, so the tone is "
+				+ "confident about our own delivery and specific about what we are doing next.\n\n";
+	}
+
+	/**
+	 * The spec for the four fields of the pacing narrative: what question each one answers and how long it
+	 * is. Split out so an end-of-month flavour can restate a question without copying the assembly.
+	 *
+	 * @param takeawayLimit  the buffered budget quoted for each of the three takeaways
+	 * @param nextMonthLimit the buffered budget quoted for the month-ahead directive
+	 * @return the fields spec, ending in a blank line
+	 */
+	String tacticPacingFieldsSpec(int takeawayLimit, int nextMonthLimit) {
+		return "Write four fields about THIS channel, each one or two sentences, present tense, "
+				+ "client-friendly:\n"
+				+ "\"what_worked\" (at most " + takeawayLimit + " characters) — what worked best in this channel "
+				+ "and carried the current result: which inventory, targeting or format is behind the metrics "
+				+ "beating or holding plan. Name the driver, not the number alone.\n"
+				+ "\"watch_outs\" (at most " + takeawayLimit + " characters) — the strategic read of the same "
+				+ "figures: the bottleneck, the fatigue risk, or the strength this channel holds inside the wider "
+				+ "mix. A conclusion, not a caveat about the data.\n"
+				+ "\"actions\" (at most " + takeawayLimit + " characters) — the concrete optimisation the buying "
+				+ "team is running inside this channel right now to hold or fix those metrics.\n"
+				+ "\"next_month\" (at most " + nextMonthLimit + " characters) — ONE sentence: this channel's role "
+				+ "and main directive next month, stated against the campaign's overall goal.\n\n";
+	}
+
+	/**
+	 * The closing output rules for the pacing narrative call. Carries the same "the JSON is the entire
+	 * reply" and "never complain about the data" demands as the other per-tactic calls, for the same
+	 * reason: a preamble eats the output budget and truncates the last field.
+	 *
+	 * @return the rules block, ending in a blank line
+	 */
+	String tacticPacingOutputRules() {
+		return "Ground every field in the table given; never invent a metric and never quote a figure the table "
+				+ "does not carry. Analyst tone, no bullet characters, no markdown.\n\n"
+				+ "Return ONLY a JSON object: {\"what_worked\": \"...\", \"watch_outs\": \"...\", "
+				+ "\"actions\": \"...\", \"next_month\": \"...\"} — write NO preamble, analysis, working-out, "
+				+ "reasoning or commentary before or after it; do NOT refuse and do NOT flag data problems — if a "
+				+ "row looks unusual, mislabelled or incomplete, still write the best analyst copy you can from "
+				+ "whatever is given, and never replace a field with a complaint about the data.\n\n";
+	}
+
+	/**
+	 * Renders one tactic's METRIC table as prompt context: the channel header, the KPI it is judged on, and
+	 * one line per metric row carrying the five columns the slide prints. Rows whose every column is
+	 * missing are omitted, and a table left with no row at all yields a blank block so the caller skips
+	 * the call rather than paying for a narrative about nothing.
+	 *
+	 * @param input the tactic's name, KPI type and METRIC table
+	 * @return the tactic's table block (blank when it carries no figure)
+	 */
+	String tacticPacingDataBlock(TacticPacingInput input) {
+		StringBuilder rows = new StringBuilder();
+		if (input.metrics() != null) {
+			for (TacticPacingMetric metric : input.metrics()) {
+				appendPacingMetric(rows, metric);
+			}
+		}
+		if (rows.isEmpty()) {
+			return "";
+		}
+		StringBuilder block = new StringBuilder();
+		block.append("channel_").append(input.tacticNum());
+		if (input.tacticName() != null && !input.tacticName().isBlank()) {
+			block.append(" \u2014 ").append(input.tacticName().trim());
+		}
+		block.append('\n');
+		if (input.kpiType() != null && !input.kpiType().isBlank()) {
+			block.append("PRIMARY KPI: ").append(input.kpiType().trim()).append('\n');
+		}
+		block.append("METRIC | MONTH GOAL | MONTH ACTUAL | VS GOAL | EOC GOAL | EOC PROJECTION\n");
+		return block.append(rows).toString();
+	}
+
+	/**
+	 * Appends one METRIC row to a pacing-narrative context block, skipping a row that carries no figure in
+	 * any of its five columns.
+	 *
+	 * @param block  the block being built
+	 * @param metric the row to append (may be {@code null})
+	 */
+	void appendPacingMetric(StringBuilder block, TacticPacingMetric metric) {
+		if (metric == null || metric.label() == null || metric.label().isBlank()) {
+			return;
+		}
+		List<String> columns = List.of(
+				pacingCell(metric.monthGoal()), pacingCell(metric.monthActual()), pacingCell(metric.vsGoal()),
+				pacingCell(metric.eocGoal()), pacingCell(metric.eocProjection()));
+		if (columns.stream().allMatch(String::isEmpty)) {
+			return;
+		}
+		block.append(metric.label().trim());
+		for (String column : columns) {
+			block.append(" | ").append(column.isEmpty() ? "n/a" : column);
+		}
+		block.append('\n');
+	}
+
+	/**
+	 * Reduces one METRIC cell to prompt text, treating a blank cell and a dashed one alike as "no figure"
+	 * so a dash never reaches the model as if it were data.
+	 *
+	 * @param value the cell as the slide prints it (may be {@code null})
+	 * @return the trimmed cell, or an empty string when it carries no figure
+	 */
+	String pacingCell(String value) {
+		if (value == null) {
+			return "";
+		}
+		String trimmed = value.trim();
+		return trimmed.equals("\u2014") || trimmed.equals("-") ? "" : trimmed;
 	}
 
 	/**

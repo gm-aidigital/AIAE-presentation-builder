@@ -14,6 +14,8 @@ import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationI
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownBullets;
 import com.aidigital.reportconstructor.service.reports.dto.TacticConclusion;
 import com.aidigital.reportconstructor.service.reports.dto.TacticNarrativeDigest;
+import com.aidigital.reportconstructor.service.reports.dto.TacticPacing;
+import com.aidigital.reportconstructor.service.reports.dto.TacticPacingInput;
 import com.aidigital.reportconstructor.service.reports.dto.TacticThoughts;
 import com.aidigital.reportconstructor.service.reports.dto.TacticThoughtsInput;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
@@ -43,6 +45,7 @@ import com.aidigital.reportconstructor.service.reports.helpers.CreativeBreakdown
 import com.aidigital.reportconstructor.service.reports.helpers.DeviceBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.GeoBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ImpressionContributionHelper;
+import com.aidigital.reportconstructor.service.reports.helpers.PacingNarrativeAssembler;
 import com.aidigital.reportconstructor.service.reports.helpers.PublisherBreakdownHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportSheetHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.BreakdownSelectionResolver;
@@ -172,6 +175,8 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	private final ReportResumeStateHelper resumeState;
 	/** Counts the tactics a reviewed workbook reports, shared with the adopt-a-sheet flow. */
 	private final SheetTacticCountHelper tacticCounter;
+	/** Builds the EOM channel slides' pacing-narrative inputs from the placeholder map, and writes the replies back. */
+	private final PacingNarrativeAssembler pacingNarrative;
 
 	/**
 	 * Validates the brief, then enqueues the job and launches the build through the
@@ -340,6 +345,11 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 			// The EOM pacing dashboard, derived here for the same reason and in the same place: the workbook
 			// carries no such columns, so these tokens are deck-only.
 			fillEomDashboards(flatReplacements, flatTacticCount, payload.reportType());
+			// The EOM channel slides' key takeaways, written last of all: they reason over the METRIC table
+			// the two lines above have just finished filling, so the copy cannot contradict the figures it
+			// sits on.
+			fillPacingNarrative(claude, flatReplacements, flatTacticCount, payload.reportType(), live,
+					usageScope, brief);
 
 			jobProgress.markJobRunningAtStep(jobId, 6, "Building slide deck");
 			String slideUrl = slides.createDeck(
@@ -363,6 +373,10 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 
 			List<String> deckWarnings = new ArrayList<>(tacticSlideWarnings);
 			deckWarnings.addAll(chartWarnings);
+			// Last pass over the finished deck: any token still standing had no value anywhere in the
+			// pipeline, and shipping its own name is worse than shipping a dash.
+			deckWarnings.addAll(
+					chartHelper.dashUnresolvedTokens(slideUrl, payload.reportType(), userGoogleToken));
 
 			jobProgress.recordArtifact(jobId, fileName, payload.sheetUrl());
 			recordSlideCount(jobId, slideUrl, userGoogleToken);
@@ -621,6 +635,9 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		// The tactic slide's contribution legend, derived last so it reads the same impressions the deck
 		// prints — which on this flow are the ones the user reviewed on the sheet, not the parsed originals.
 		contributions.fillContributions(flatReplacements, tacticCount);
+		// The EOM channel slides' key takeaways, written last of all: they reason over the METRIC table the
+		// map now carries, so the copy cannot contradict the figures it sits on.
+		fillPacingNarrative(claude, flatReplacements, tacticCount, payload.reportType(), live, usageScope, brief);
 
 		jobProgress.markJobRunningAtStep(jobId, 6, "Building slide deck");
 		String fileName = fileNamer.buildFileName(
@@ -657,6 +674,9 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 
 		jobWarnings.addAll(breakdownChartWarnings);
 		jobWarnings.addAll(chartWarnings);
+		// Last pass over the finished deck: any token still standing had no value anywhere in the pipeline,
+		// and shipping its own name is worse than shipping a dash.
+		jobWarnings.addAll(chartHelper.dashUnresolvedTokens(slideUrl, payload.reportType(), userGoogleToken));
 
 		// Every reply Claude sent that the pipeline could not use, in the order it happened: the parse failure
 		// or the wrong item count that left a slide blank, verbatim enough to act on without the server log.
@@ -777,6 +797,82 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 					applicationTaskExecutor));
 		}
 		return futures;
+	}
+
+	/**
+	 * Generates and writes the EOM channel slides' pacing narrative: one Claude call per tactic, dispatched
+	 * together on the shared executor so they run in parallel, then written onto the placeholder map.
+	 *
+	 * <p>Runs last among the text passes and reads the map rather than the campaign data, so every takeaway
+	 * is written against the very figures the slide will print — on the two-step flow, the ones the user
+	 * reviewed in the workbook. End-of-month only: no EOC slide carries these tokens, and the calls would be
+	 * paid for and thrown away.
+	 *
+	 * <p>A dry run, or a tactic whose call comes back unusable, leaves that tactic's four tokens dashed
+	 * rather than raw.
+	 *
+	 * @param claude      the run's report-type-specific Claude client
+	 * @param flat        the resolved placeholder map, mutated in place
+	 * @param tacticCount number of real tactics in the campaign
+	 * @param reportType  report template code ({@code "EOC"}/{@code "EOM"}), may be {@code null}
+	 * @param live        whether this run calls Claude at all
+	 * @param usageScope  the usage scope each call is billed to
+	 * @param brief       free-text campaign brief passed through to every call
+	 */
+	void fillPacingNarrative(
+			ClaudeClient claude, Map<String, String> flat, int tacticCount, String reportType, boolean live,
+			ClaudeUsageScope usageScope, String brief) {
+		if (!EOM_REPORT_TYPE.equals(reportType)) {
+			return;
+		}
+		List<TacticPacing> narratives = List.of();
+		if (live) {
+			List<TacticPacingInput> inputs = pacingNarrative.toInputs(flat, tacticCount);
+			narratives = joinPacing(dispatchPacing(claude, inputs, usageScope, brief));
+		}
+		pacingNarrative.write(flat, tacticCount, narratives);
+	}
+
+	/**
+	 * Dispatches one pacing-narrative call per tactic on the shared virtual-thread executor, under the same
+	 * usage and failure scopes as every other per-tactic call, and returns the running futures without
+	 * joining so the tactics run in parallel.
+	 *
+	 * @param claude     the run's report-type-specific Claude client
+	 * @param inputs     one input per tactic, in slide order
+	 * @param usageScope the usage scope to run each call under so its tokens are billed to this job
+	 * @param brief      free-text campaign brief passed through to every call
+	 * @return the running futures, in input order
+	 */
+	List<CompletableFuture<TacticPacing>> dispatchPacing(
+			ClaudeClient claude, List<TacticPacingInput> inputs, ClaudeUsageScope usageScope, String brief) {
+		List<CompletableFuture<TacticPacing>> futures = new ArrayList<>();
+		ClaudeFailureScope failureScope = failureLog.current();
+		for (TacticPacingInput input : inputs) {
+			futures.add(CompletableFuture.supplyAsync(
+					usageTracker.inScope(usageScope, failureLog.inScope(failureScope,
+							() -> claude.tacticPacing(input, brief))),
+					applicationTaskExecutor));
+		}
+		return futures;
+	}
+
+	/**
+	 * Joins the dispatched pacing-narrative futures, dropping the tactics whose call produced no usable
+	 * reply so the writer dashes their tokens.
+	 *
+	 * @param futures the running futures from {@link #dispatchPacing}, in input order
+	 * @return one entry per tactic that produced a usable reply, in input order
+	 */
+	List<TacticPacing> joinPacing(List<CompletableFuture<TacticPacing>> futures) {
+		List<TacticPacing> narratives = new ArrayList<>();
+		for (CompletableFuture<TacticPacing> future : futures) {
+			TacticPacing value = future.join();
+			if (value != null) {
+				narratives.add(value);
+			}
+		}
+		return narratives;
 	}
 
 	/**

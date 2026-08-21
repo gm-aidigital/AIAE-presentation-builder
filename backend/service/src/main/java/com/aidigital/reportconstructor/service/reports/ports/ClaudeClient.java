@@ -14,6 +14,8 @@ import com.aidigital.reportconstructor.service.reports.dto.ClaudeStrategic;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeTactical;
 import com.aidigital.reportconstructor.service.reports.dto.TacticConclusion;
 import com.aidigital.reportconstructor.service.reports.dto.TacticNarrativeDigest;
+import com.aidigital.reportconstructor.service.reports.dto.TacticPacing;
+import com.aidigital.reportconstructor.service.reports.dto.TacticPacingInput;
 import com.aidigital.reportconstructor.service.reports.dto.TacticThoughts;
 import com.aidigital.reportconstructor.service.reports.dto.TacticThoughtsInput;
 
@@ -207,6 +209,23 @@ public interface ClaudeClient {
 	 * @return the tactic's thoughts, or {@code null} when the call produced no usable reply
 	 */
 	TacticThoughts tacticThoughts(TacticThoughtsInput input, String brief);
+
+	/**
+	 * The channel-slide pacing narrative for ONE tactic: the three key-takeaway paragraphs above the slide's
+	 * METRIC table and the one-line directive for the month ahead. End-of-month only — no EOC slide carries
+	 * these tokens.
+	 *
+	 * <p>Reasons over the slide's own figures, handed over as the assembled METRIC table, so the copy cannot
+	 * contradict the numbers printed directly beneath it. One tactic per call, for the same reason as
+	 * {@link #tacticThoughts}: a 28-tactic reply does not fit the output budget and drifts out of position.
+	 * A tactic whose call fails or comes back unusable returns {@code null}, and its four tokens are dashed
+	 * rather than filled with invented copy.
+	 *
+	 * @param input the tactic's name, KPI type and METRIC table
+	 * @param brief free-text campaign brief the narrative must stay faithful to
+	 * @return the tactic's pacing narrative, or {@code null} when the call produced no usable reply
+	 */
+	TacticPacing tacticPacing(TacticPacingInput input, String brief);
 
 	/**
 	 * Step 4 of the restructured slides-from-sheet flow — the campaign-level results call. It fills the

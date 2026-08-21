@@ -5,6 +5,7 @@ import com.aidigital.reportconstructor.service.reports.ports.SlidesProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -64,6 +65,13 @@ public class StubSlidesProvider implements SlidesProvider {
 	@Override
 	public void deleteReportTypeSlides(String presentationId, String reportType, String userGoogleAccessToken) {
 		// No-op: the stub never clones a real deck, so there are no report-type slides to delete.
+	}
+
+	@Override
+	public List<String> dashUnresolvedTokens(
+			String presentationId, String reportType, String userGoogleAccessToken) {
+		// No-op: the stub never clones a real deck, so there are no tokens left standing in one.
+		return List.of();
 	}
 
 	@Override

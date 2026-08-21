@@ -93,6 +93,29 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 	private static final int MAIN_SLIDE_TITLE_ROWS_UP = 1;
 
 	/**
+	 * Labels the anchor cell of each per-tactic METRIC block — the channel slide's performance-vs-plan
+	 * table. Unlike {@code "Main slide N"} the label carries no tactic number (every block says just
+	 * "METRIC"), so the block's owner is read from the tokens inside it.
+	 */
+	private static final Pattern METRIC_LABEL = Pattern.compile("(?i)^metric$");
+
+	/** Matches a tactic-numbered token inside a METRIC block, capturing the tactic number. */
+	private static final Pattern METRIC_BLOCK_TACTIC = Pattern.compile("\\{\\{tactic\\s+(\\d{1,2})[\\s}]");
+
+	/**
+	 * Per-tactic METRIC block size below/right of its {@code "METRIC"} anchor cell: the six metric rows
+	 * (Impressions, CTR, Clicks, Reach, CPM, Spend) and the five value columns beside their labels.
+	 */
+	private static final int METRIC_ROWS_DOWN = 6;
+	private static final int METRIC_COLS_RIGHT = 5;
+
+	/**
+	 * Rows above a {@code "METRIC"} anchor holding the block's {@code {{tactic N}}} heading, cleared with
+	 * the block for the same reason as {@link #MAIN_SLIDE_TITLE_ROWS_UP}.
+	 */
+	private static final int METRIC_TITLE_ROWS_UP = 1;
+
+	/**
 	 * Max tactics the EOC template carries — summary rows and "Main slide" blocks are numbered 1..28.
 	 */
 	private static final int MAX_TACTICS = 28;
@@ -406,6 +429,7 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 			List<Request> requests = new ArrayList<>();
 			requests.addAll(summaryRowDashRequests(grid, sheetId, tacticCount));
 			requests.addAll(mainSlideClearRequests(grid, sheetId, tacticCount));
+			requests.addAll(metricBlockClearRequests(grid, sheetId, tacticCount));
 
 			if (requests.isEmpty()) {
 				return;
@@ -1494,6 +1518,80 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 					anchor[1], anchor[1] + MAIN_SLIDE_COLS_RIGHT + 1));
 		}
 		return requests;
+	}
+
+	/**
+	 * Builds the clear requests for the METRIC blocks of the tactics the campaign does not have — the
+	 * channel slide's performance-vs-plan table, repeated once per tactic slot on a 7×4 grid.
+	 *
+	 * <p>The same treatment the {@code "Main slide N"} blocks get, and for the same reason: an unused slot
+	 * would otherwise sit in the reviewed workbook full of raw {@code {{tactic 17 …}}} tokens, and there is
+	 * no later pass that would notice. Each block is cleared together with the {@code {{tactic N}}} heading
+	 * directly above it.
+	 *
+	 * <p>A block is matched by its {@code "METRIC"} corner cell and attributed to a tactic by the tokens
+	 * inside it, because the label carries no number of its own. A block whose tokens have already been
+	 * replaced by figures is left alone: it belongs to a tactic that was filled.
+	 *
+	 * @param grid        the workbook tab, read as trimmed cell strings
+	 * @param sheetId     the tab's sheet id
+	 * @param tacticCount number of real tactics in the campaign
+	 * @return one clear request per unused block, empty when the tab carries none
+	 */
+	List<Request> metricBlockClearRequests(List<List<String>> grid, int sheetId, int tacticCount) {
+		List<Request> requests = new ArrayList<>();
+		for (int[] anchor : findMetricAnchors(grid)) {
+			int tacticNum = metricBlockTactic(grid, anchor[0], anchor[1]);
+			if (tacticNum <= tacticCount) {
+				continue;
+			}
+			int startRow = Math.max(0, anchor[0] - METRIC_TITLE_ROWS_UP);
+			requests.add(clearRequest(sheetId,
+					startRow, anchor[0] + METRIC_ROWS_DOWN + 1,
+					anchor[1], anchor[1] + METRIC_COLS_RIGHT + 1));
+		}
+		return requests;
+	}
+
+	/**
+	 * Finds every METRIC block's anchor cell on the tab.
+	 *
+	 * @param grid the workbook tab, read as trimmed cell strings
+	 * @return {@code {row, column}} of each {@code "METRIC"} cell, in reading order
+	 */
+	List<int[]> findMetricAnchors(List<List<String>> grid) {
+		List<int[]> anchors = new ArrayList<>();
+		for (int r = 0; r < grid.size(); r++) {
+			List<String> row = grid.get(r);
+			for (int c = 0; c < row.size(); c++) {
+				if (METRIC_LABEL.matcher(row.get(c)).matches()) {
+					anchors.add(new int[] {r, c});
+				}
+			}
+		}
+		return anchors;
+	}
+
+	/**
+	 * Reads which tactic a METRIC block belongs to from the first tactic-numbered token inside it.
+	 *
+	 * @param grid      the workbook tab, read as trimmed cell strings
+	 * @param anchorRow the block's anchor row
+	 * @param anchorCol the block's anchor column
+	 * @return the 1-based tactic number, or {@code 0} when the block carries no such token (a filled block,
+	 *         which must never be cleared)
+	 */
+	int metricBlockTactic(List<List<String>> grid, int anchorRow, int anchorCol) {
+		for (int r = anchorRow; r <= anchorRow + METRIC_ROWS_DOWN && r < grid.size(); r++) {
+			List<String> row = grid.get(r);
+			for (int c = anchorCol; c <= anchorCol + METRIC_COLS_RIGHT && c < row.size(); c++) {
+				Matcher m = METRIC_BLOCK_TACTIC.matcher(row.get(c));
+				if (m.find()) {
+					return Integer.parseInt(m.group(1));
+				}
+			}
+		}
+		return 0;
 	}
 
 	/**

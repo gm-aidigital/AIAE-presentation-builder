@@ -292,6 +292,28 @@ public class ReportGenerationChartHelperImpl implements ReportGenerationChartHel
 	}
 
 	@Override
+	public List<String> dashUnresolvedTokens(String slideUrl, String reportType, String userGoogleToken) {
+		String presentationId = extractPresentationId(slideUrl);
+		if (presentationId == null) {
+			return List.of();
+		}
+		try {
+			List<String> dashed = slides.dashUnresolvedTokens(presentationId, reportType, userGoogleToken);
+			if (dashed.isEmpty()) {
+				return List.of();
+			}
+			return List.of("The deck carried " + dashed.size() + " placeholder(s) the pipeline has no value "
+					+ "for; they were replaced with a dash: " + String.join(", ", dashed)
+					+ ". Either the template marks a cell the report does not fill yet, or the token was "
+					+ "renamed on one side only.");
+		} catch (RuntimeException ex) {
+			log.warn("[slides] dashUnresolvedTokens failed for {} (non-fatal): {}",
+					presentationId, ex.getMessage());
+			return List.of();
+		}
+	}
+
+	@Override
 	public void deleteReportTypeSlides(String slideUrl, String reportType, String userGoogleToken) {
 		String presentationId = extractPresentationId(slideUrl);
 		if (presentationId == null) {

@@ -100,6 +100,68 @@ class RealSheetDeckProviderTest {
 		assertThat(requests).isEmpty();
 	}
 
+	/**
+	 * Builds a tab holding two METRIC blocks side by side, laid out as the EOM workbook lays them out: a
+	 * {@code {{tactic N}}} heading row, the {@code "METRIC"} corner cell with its five column headers, then
+	 * the six metric rows.
+	 *
+	 * @return the tab as trimmed cell strings
+	 */
+	private List<List<String>> twoMetricBlocksGrid() {
+		List<List<String>> grid = new java.util.ArrayList<>();
+		for (int r = 0; r < 3; r++) {
+			grid.add(List.of("", "", "", "", "", "", "", "", "", "", "", ""));
+		}
+		grid.add(List.of("{{tactic 1}}", "", "", "", "", "", "{{tactic 2}}", "", "", "", "", ""));
+		grid.add(List.of("METRIC", "MONTH 2  GOAL", "MONTH 2 ACTUAL", "VS GOAL", "EOC GOAL", "EOC PROJ.",
+				"METRIC", "MONTH 2  GOAL", "MONTH 2 ACTUAL", "VS GOAL", "EOC GOAL", "EOC PROJ."));
+		for (String metric : List.of("Impressions", "CTR", "Clicks", "Reach", "CPM", "Spend")) {
+			grid.add(List.of(metric, "1,575,000", "1,602,341", "102%", "6,300,000", "6,409,364",
+					metric, "{{tactic 2 planned imps}}", "{{tactic 2 fact imps}}", "{{tactic 2 imps pacing}}",
+					"{{tactic 2 eoc planned imps}}", "{{tactic 2 proj imps}}"));
+		}
+		return grid;
+	}
+
+	@Test
+	void metricBlockClearRequests_clearsTheBlocksOfTacticsTheCampaignDoesNotHaveTest() {
+		// Given: a one-tactic campaign, and a tab whose second METRIC block still carries tactic 2's tokens
+		RealSheetDeckProvider provider = newProvider();
+
+		// When:
+		List<Request> requests = provider.metricBlockClearRequests(twoMetricBlocksGrid(), 7, 1);
+
+		// Then: only the unused block is cleared, heading row included, and the filled one is left alone
+		assertThat(requests).hasSize(1);
+		GridRange range = requests.get(0).getRepeatCell().getRange();
+		assertThat(range.getSheetId()).isEqualTo(7);
+		assertThat(range.getStartRowIndex()).isEqualTo(3);
+		assertThat(range.getEndRowIndex()).isEqualTo(11);
+		assertThat(range.getStartColumnIndex()).isEqualTo(6);
+		assertThat(range.getEndColumnIndex()).isEqualTo(12);
+	}
+
+	@Test
+	void metricBlockClearRequests_leavesEveryBlockAloneWhenAllTacticsAreUsedTest() {
+		RealSheetDeckProvider provider = newProvider();
+
+		assertThat(provider.metricBlockClearRequests(twoMetricBlocksGrid(), 7, 2)).isEmpty();
+	}
+
+	@Test
+	void metricBlockClearRequests_neverClearsABlockWhoseTokensAreAlreadyFilledTest() {
+		// Given: a tab where BOTH blocks are filled with figures, so neither can be attributed to a tactic
+		RealSheetDeckProvider provider = newProvider();
+		List<List<String>> grid = new java.util.ArrayList<>();
+		grid.add(List.of("METRIC", "a", "b", "c", "d", "e"));
+		for (String metric : List.of("Impressions", "CTR", "Clicks", "Reach", "CPM", "Spend")) {
+			grid.add(List.of(metric, "1", "2", "3", "4", "5"));
+		}
+
+		// When / Then: a filled block belongs to a real tactic — clearing it would delete delivered figures
+		assertThat(provider.metricBlockClearRequests(grid, 7, 1)).isEmpty();
+	}
+
 	@Test
 	void breakdownClearRequests_clearsOnlyUnselectedSectionsPerTacticTest() {
 		// Given: a "Breakdowns" tab with two 18-row tactic blocks (headers at rows 0 and 18), each carrying

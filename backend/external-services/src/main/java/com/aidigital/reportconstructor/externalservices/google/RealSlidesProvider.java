@@ -139,6 +139,9 @@ public class RealSlidesProvider implements SlidesProvider {
 	/** Matches a whole {@code {{…}}} placeholder token (no nested braces). */
 	private static final Pattern TOKEN = Pattern.compile("\\{\\{[^{}]*\\}\\}");
 
+	/** What an unresolved token is replaced with by the final sweep: the deck's own "no figure" mark. */
+	private static final String DASH = "\u2014";
+
 	/**
 	 * Matches the standalone tactic variable {@code n} inside a token: a single {@code n} or {@code N}
 	 * bounded on both sides by a token delimiter ({@code _}, {@code .}, whitespace, or a brace), so the
@@ -637,6 +640,29 @@ public class RealSlidesProvider implements SlidesProvider {
 			List<Page> slides, Map<BreakdownType, String> masterIds,
 			Map<Integer, Set<BreakdownType>> enabledByTactic, Map<String, String> breakdownValues,
 			Map<Integer, String> anchorSlideByTactic) {
+		return buildBreakdownRequests(
+				slides, masterIds, enabledByTactic, breakdownValues, anchorSlideByTactic, thoughtsMasterId);
+	}
+
+	/**
+	 * Same as {@link #buildBreakdownRequests(List, Map, Map, Map, Map)}, with the thoughts master supplied
+	 * explicitly. An EOC deck names that slide by configured object id, while an EOM deck discovers it by
+	 * the token it carries, so the id cannot come from the same place for both.
+	 *
+	 * @param slides              the deck's slides in order (from {@code presentations.get})
+	 * @param masterIds           master slide object id per breakdown type
+	 * @param enabledByTactic     1-based tactic number → the breakdown sections that tactic enabled
+	 * @param breakdownValues     renumbered token → final value; a token absent from the map is only renumbered
+	 * @param anchorSlideByTactic 1-based tactic number → the slide its copies follow; empty falls back to
+	 *                            {@link #mainTacticSlideId(int)}
+	 * @param thoughtsMaster      the "Thoughts on tactic performance" master slide id; blank or {@code null}
+	 *                            disables that slide as a no-op
+	 * @return the ordered batchUpdate requests, or an empty list when there is nothing to insert
+	 */
+	List<Request> buildBreakdownRequests(
+			List<Page> slides, Map<BreakdownType, String> masterIds,
+			Map<Integer, Set<BreakdownType>> enabledByTactic, Map<String, String> breakdownValues,
+			Map<Integer, String> anchorSlideByTactic, String thoughtsMaster) {
 		List<Request> requests = new ArrayList<>();
 		if (slides == null || slides.isEmpty() || masterIds.isEmpty() || enabledByTactic.isEmpty()) {
 			return requests;
@@ -693,9 +719,10 @@ public class RealSlidesProvider implements SlidesProvider {
 		// The "Thoughts on tactic performance" master is one generic slide (not a breakdown type): it is
 		// duplicated once per tactic that passes the shared ">2 breakdowns" gate and appended after that
 		// tactic's breakdown copies. A blank or absent master disables it as a safe no-op.
-		boolean thoughtsEnabled = !thoughtsMasterId.isBlank() && indexById.containsKey(thoughtsMasterId);
+		boolean thoughtsEnabled = thoughtsMaster != null && !thoughtsMaster.isBlank()
+				&& indexById.containsKey(thoughtsMaster);
 		Set<String> thoughtsTokens = thoughtsEnabled
-				? extractRenumberableTokens(pageById.get(thoughtsMasterId)) : Set.of();
+				? extractRenumberableTokens(pageById.get(thoughtsMaster)) : Set.of();
 		for (Map.Entry<Integer, List<BreakdownType>> entry : orderedByTactic.entrySet()) {
 			int tacticNum = entry.getKey();
 			// Keyed by the master's own index in the deck, because a duplicate lands immediately after its
@@ -720,10 +747,10 @@ public class RealSlidesProvider implements SlidesProvider {
 			if (thoughtsEnabled && thoughtsGate.qualifies(enabledByTactic.get(tacticNum))) {
 				String thoughtsCopyId = breakdownSlideNaming.thoughtsSlideId(tacticNum);
 				requests.add(new Request().setDuplicateObject(new DuplicateObjectRequest()
-						.setObjectId(thoughtsMasterId)
-						.setObjectIds(Map.of(thoughtsMasterId, thoughtsCopyId))));
+						.setObjectId(thoughtsMaster)
+						.setObjectIds(Map.of(thoughtsMaster, thoughtsCopyId))));
 				emitRenumberedTokens(requests, thoughtsCopyId, tacticNum, thoughtsTokens, breakdownValues);
-				copiesByMasterIndex.put(indexById.get(thoughtsMasterId), thoughtsCopyId);
+				copiesByMasterIndex.put(indexById.get(thoughtsMaster), thoughtsCopyId);
 			}
 			copyIdsByTactic.put(tacticNum, new ArrayList<>(copiesByMasterIndex.values()));
 		}
@@ -746,6 +773,59 @@ public class RealSlidesProvider implements SlidesProvider {
 		// in a separate, unconditional pass, so masters are cleaned even when no breakdowns were selected
 		// (and this method returned early).
 		return requests;
+	}
+
+	@Override
+	public List<String> dashUnresolvedTokens(
+			String presentationId, String reportType, String userGoogleAccessToken) {
+		if (!eomDeck(reportType)) {
+			return List.of();
+		}
+		boolean asUser = userGoogleAccessToken != null && !userGoogleAccessToken.isBlank();
+		Slides slidesClient = asUser ? buildSlides(userGoogleAccessToken) : slides;
+		try {
+			Presentation deck = retrier.execute(
+					slidesClient.presentations().get(presentationId).setFields(BREAKDOWN_FIELDS),
+					"dashUnresolvedTokens get " + presentationId);
+			List<String> tokens = unresolvedTokens(deck.getSlides());
+			if (tokens.isEmpty()) {
+				return tokens;
+			}
+			log.warn("[slides] {} unresolved token(s) left in deck {} — dashing them: {}",
+					tokens.size(), presentationId, tokens);
+			List<Request> requests = new ArrayList<>(tokens.size());
+			for (String token : tokens) {
+				requests.add(new Request().setReplaceAllText(new ReplaceAllTextRequest()
+						.setContainsText(new SubstringMatchCriteria().setText(token).setMatchCase(true))
+						.setReplaceText(DASH)));
+			}
+			executeInChunks(slidesClient, presentationId, requests,
+					"dashUnresolvedTokens batchUpdate for " + presentationId);
+			return tokens;
+		} catch (IOException ex) {
+			// Non-fatal by design: the deck is already built and delivered, and a failed sweep leaves it
+			// exactly as it would have been without this pass.
+			log.warn("[slides] dashUnresolvedTokens failed for {} (non-fatal): {}",
+					presentationId, ex.getMessage());
+			return List.of();
+		}
+	}
+
+	/**
+	 * Collects every {@code {{…}}} token still present in a finished deck, deduplicated and in deck order.
+	 *
+	 * @param slides the deck's slides in order, from {@code presentations.get}
+	 * @return the tokens still standing, empty when the deck is fully filled
+	 */
+	List<String> unresolvedTokens(List<Page> slides) {
+		Set<String> tokens = new LinkedHashSet<>();
+		if (slides == null) {
+			return List.of();
+		}
+		for (Page page : slides) {
+			tokens.addAll(extractRenumberableTokens(page));
+		}
+		return new ArrayList<>(tokens);
 	}
 
 	@Override
@@ -1010,6 +1090,12 @@ public class RealSlidesProvider implements SlidesProvider {
 	 * Builds the EOM breakdown requests: the shared builder, given the deck's discovered breakdown masters
 	 * and an anchor per tactic pointing at that tactic's last master copy.
 	 *
+	 * <p>The thoughts master is discovered here too, rather than read from the EOC configuration, and is
+	 * handed to the shared builder so an EOM deck gets the same ">2 breakdowns" gate an EOC deck gets.
+	 * Without the gate that slide would be copied for every tactic while its text is written only for the
+	 * qualifying ones, and the rest would ship five raw {@code {{thoughts on tactic N performance …}}}
+	 * tokens.
+	 *
 	 * @param slides          the deck's slides in order, from {@code presentations.get}
 	 * @param enabledByTactic 1-based tactic number → the breakdown sections that tactic enabled
 	 * @param breakdownValues renumbered token → value to write
@@ -1029,7 +1115,8 @@ public class RealSlidesProvider implements SlidesProvider {
 				anchors.put(tacticNum, eomTacticSlideId(lastOrdinal, tacticNum));
 			}
 		}
-		return buildBreakdownRequests(slides, masterIds, enabledByTactic, breakdownValues, anchors);
+		return buildBreakdownRequests(slides, masterIds, enabledByTactic, breakdownValues, anchors,
+				eomSlideFinder.thoughtsMasterSlideId(slides));
 	}
 
 	/**
@@ -1060,9 +1147,9 @@ public class RealSlidesProvider implements SlidesProvider {
 	}
 
 	/**
-	 * Builds the delete requests for every EOM master slide present in the deck: the tactic masters and
-	 * the breakdown masters. Only slides still carrying the tactic variable {@code n} are matched, so the
-	 * copies — whose tokens were renumbered — are never at risk.
+	 * Builds the delete requests for every EOM master slide present in the deck: the tactic masters, the
+	 * breakdown masters and the thoughts master. Only slides still carrying the tactic variable {@code n}
+	 * are matched, so the copies — whose tokens were renumbered — are never at risk.
 	 *
 	 * @param slides the deck's slides in order, from {@code presentations.get}
 	 * @return the delete requests, or an empty list when no master is left in the deck
@@ -1071,6 +1158,10 @@ public class RealSlidesProvider implements SlidesProvider {
 		List<Request> requests = new ArrayList<>();
 		Set<String> masters = new LinkedHashSet<>(eomSlideFinder.tacticMasterSlideIds(slides));
 		masters.addAll(eomSlideFinder.breakdownMasterSlideIds(slides).values());
+		String thoughtsMaster = eomSlideFinder.thoughtsMasterSlideId(slides);
+		if (thoughtsMaster != null) {
+			masters.add(thoughtsMaster);
+		}
 		for (String objectId : masters) {
 			addDeleteObject(requests, objectId);
 		}

@@ -883,6 +883,33 @@ class RealSlidesProviderTest {
 	}
 
 	@Test
+	void unresolvedTokens_collectsWhatIsLeftStandingOnceAndInDeckOrderTest() {
+		RealSlidesProvider provider = newEomProvider();
+		List<Page> deck = List.of(
+				eomSlide("cover", "Acme — August 2026"),
+				eomSlide("tct_1", "1.2M", "{{what worked pacing 1}}", "{{actions pacing 1}}"),
+				eomSlide("tct_2", "{{what worked pacing 1}}", "{{pacing 2 next month}}"));
+
+		assertThat(provider.unresolvedTokens(deck)).containsExactly(
+				"{{what worked pacing 1}}", "{{actions pacing 1}}", "{{pacing 2 next month}}");
+	}
+
+	@Test
+	void unresolvedTokens_isEmptyForAFullyFilledDeckTest() {
+		RealSlidesProvider provider = newEomProvider();
+		List<Page> deck = List.of(eomSlide("cover", "Acme — August 2026"), eomSlide("tct_1", "1.2M", "$48K"));
+
+		assertThat(provider.unresolvedTokens(deck)).isEmpty();
+	}
+
+	@Test
+	void dashUnresolvedTokens_isANoopForAnEocDeckTest() {
+		RealSlidesProvider provider = newEomProvider();
+
+		assertThat(provider.dashUnresolvedTokens("deck-id", "EOC", null)).isEmpty();
+	}
+
+	@Test
 	void buildEomMasterDeleteRequests_removesTacticAndBreakdownMastersButNotTheirCopiesTest() {
 		RealSlidesProvider provider = newEomProvider();
 		List<Page> deck = List.of(
@@ -895,5 +922,49 @@ class RealSlidesProviderTest {
 				.toList();
 
 		assertThat(deleted).containsExactlyInAnyOrder("master-a", "publishers-master");
+	}
+
+	@Test
+	void buildEomMasterDeleteRequests_removesTheThoughtsMasterTooTest() {
+		RealSlidesProvider provider = newEomProvider();
+		List<Page> deck = List.of(
+				eomSlide("master-a", "{{tactic n}}", "{{tactic n imps}}"),
+				eomSlide("publishers-master", "{{publisher_n.1}}"),
+				eomSlide("thoughts-master", "{{thoughts on tactic n performance 1}}"));
+
+		List<String> deleted = provider.buildEomMasterDeleteRequests(deck).stream()
+				.map(r -> r.getDeleteObject().getObjectId())
+				.toList();
+
+		assertThat(deleted).containsExactlyInAnyOrder("master-a", "publishers-master", "thoughts-master");
+	}
+
+	@Test
+	void buildEomBreakdownRequests_copiesTheThoughtsSlideOnlyForTacticsPastTheGateTest() {
+		// Given: an EOM deck with one tactic master, three breakdown masters and the thoughts master
+		RealSlidesProvider provider = newEomProvider();
+		List<Page> deck = List.of(
+				eomSlide("eom_m0_t1", "{{tactic 1}}"),
+				eomSlide("eom_m0_t2", "{{tactic 2}}"),
+				eomSlide("master-a", "{{tactic n}}", "{{tactic n imps}}"),
+				eomSlide("publishers-master", "{{publisher_n.1}}"),
+				eomSlide("creative-master", "{{cr_live_n}}"),
+				eomSlide("geo-master", "{{geo_n.1}}"),
+				eomSlide("thoughts-master", "{{thoughts on tactic n performance 1}}"));
+
+		// When: tactic 1 enables three breakdowns (past the ">2" gate) and tactic 2 only one
+		List<Request> requests = provider.buildEomBreakdownRequests(
+				deck,
+				Map.of(1, Set.of(BreakdownType.TOP_PUBLISHERS, BreakdownType.CREATIVE, BreakdownType.GEO),
+						2, Set.of(BreakdownType.TOP_PUBLISHERS)),
+				Map.of());
+
+		// Then: only tactic 1 gets a thoughts copy — tactic 2 would have shipped raw thought tokens
+		List<String> duplicated = requests.stream()
+				.filter(r -> r.getDuplicateObject() != null)
+				.map(r -> r.getDuplicateObject().getObjectIds().values().iterator().next())
+				.filter(id -> id.contains("thoughts"))
+				.toList();
+		assertThat(duplicated).containsExactly("thoughts_1");
 	}
 }

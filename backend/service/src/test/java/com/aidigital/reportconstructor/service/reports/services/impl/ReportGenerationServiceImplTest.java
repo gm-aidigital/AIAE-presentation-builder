@@ -25,6 +25,7 @@ import com.aidigital.reportconstructor.service.reports.helpers.impl.SheetTacticC
 import com.aidigital.reportconstructor.service.reports.helpers.impl.BreakdownSelectionResolverImpl;
 import com.aidigital.reportconstructor.service.reports.helpers.impl.BreakdownThoughtsGateImpl;
 import com.aidigital.reportconstructor.service.reports.helpers.impl.ImpressionContributionHelperImpl;
+import com.aidigital.reportconstructor.service.reports.helpers.impl.PacingNarrativeAssemblerImpl;
 import com.aidigital.reportconstructor.service.reports.helpers.impl.ReportNumberParserImpl;
 import com.aidigital.reportconstructor.service.reports.helpers.impl.TacticConclusionAssemblerImpl;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportGenerationChartHelper;
@@ -133,7 +134,7 @@ class ReportGenerationServiceImplTest {
 				new BreakdownSelectionResolverImpl(), new BreakdownThoughtsGateImpl(),
 				new TacticConclusionAssemblerImpl(), sheetChartData, tacticExtraction,
 				new ImpressionContributionHelperImpl(new ReportNumberParserImpl(), new Fmt()), resumeState,
-				new SheetTacticCountHelperImpl());
+				new SheetTacticCountHelperImpl(), new PacingNarrativeAssemblerImpl());
 	}
 
 	@Test
