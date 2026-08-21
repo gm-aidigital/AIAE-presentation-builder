@@ -906,4 +906,59 @@ class EomPromptBuilderTest {
 		assertThat(prompt).contains("state it in past tense as something WE DID");
 		assertThat(prompt).doesNotContain("STILL RUNNING");
 	}
+
+	@Test
+	void shouldAskTheAlignmentPassToWriteTheWhatWeDidChainsTest() {
+		// Given: a draft the end-of-month alignment pass has something to align
+		ClaudeStrategic strategic = new ClaudeStrategic(
+				null, null, "We kept CTV and display running through July.", List.of());
+		ClaudeResults results = new ClaudeResults(
+				Map.of(1, "CTV paced to 101% of July's impression target."),
+				List.of("CTV led the month's pacing."), Map.of(), List.of(), null, null, null);
+
+		// When:
+		String prompt = builder
+				.alignPrompt(strategic, results, List.of("CTV — geo: Chicago leads on CTR."),
+						"Drive awareness.", "Jul 1 - Jul 31, 2026")
+				.orElseThrow();
+
+		// Then: the slide's three chains are asked for as one array of whole chains, to the slide's budgets,
+		// and the pass is told this one field is written rather than aligned
+		assertThat(prompt).contains("\"what_we_did\": array,           // EXACTLY 3 objects");
+		assertThat(prompt).contains("\"observation\": string, \"observation_text\": string");
+		assertThat(prompt).contains("MAX 60 CHARACTERS EACH, the three texts MAX 200 CHARACTERS EACH");
+		assertThat(prompt).contains("ONE field you WRITE rather than align");
+		assertThat(prompt).contains("ONE UNBROKEN CHAIN");
+	}
+
+	@Test
+	void shouldNotAskTheEndOfCampaignAlignmentForWhatWeDidTest() {
+		// Given: the same draft on an end-of-campaign run, whose template has no such slide
+		ClaudeStrategic strategic = new ClaudeStrategic(
+				null, null, "We ran CTV across auto intenders.", List.of());
+		ClaudeResults results = new ClaudeResults(
+				Map.of(1, "CTV delivered 101% of its impression plan."),
+				List.of(), Map.of(), List.of(), null, null, null);
+
+		// When:
+		String prompt = eoc.buildBatchDPrompt(strategic, results, List.of(), "Drive awareness.").orElseThrow();
+
+		// Then: neither the key nor an output allowance for it — the copy would print nowhere
+		assertThat(prompt).doesNotContain("what_we_did");
+		assertThat(eoc.alignExtraTokens()).isZero();
+		assertThat(builder.alignExtraTokens()).isPositive();
+	}
+
+	@Test
+	void shouldNotStartAnAlignmentCallJustToWriteWhatWeDidTest() {
+		// Given: an end-of-month run whose batches produced no campaign-level copy at all
+		ClaudeStrategic strategic = new ClaudeStrategic(null, null, null, List.of());
+		ClaudeResults results = new ClaudeResults(Map.of(), List.of(), Map.of(), List.of(), null, null, null);
+
+		// When:
+		var prompt = builder.alignPrompt(strategic, results, List.of(), "Drive awareness.", "Jul 2026");
+
+		// Then: no prompt — the chains are drawn from the draft, so with no draft there is nothing to pay for
+		assertThat(prompt).isEmpty();
+	}
 }

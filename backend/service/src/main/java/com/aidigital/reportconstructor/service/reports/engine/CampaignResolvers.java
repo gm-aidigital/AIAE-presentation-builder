@@ -5,6 +5,7 @@ import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
 import com.aidigital.reportconstructor.service.reports.dto.Recommendation;
 import com.aidigital.reportconstructor.service.reports.dto.StrategicInsight;
 import com.aidigital.reportconstructor.service.reports.dto.Tactic;
+import com.aidigital.reportconstructor.service.reports.dto.WhatWeDidStep;
 import com.aidigital.reportconstructor.service.reports.helpers.SheetRowHelper;
 import com.aidigital.reportconstructor.service.reports.helpers.TacticExtractionHelper;
 import org.springframework.stereotype.Component;
@@ -53,6 +54,9 @@ public class CampaignResolvers {
 
 	/** Dashboard takeaway slots the EOM template carries, one per dashboard slide, for each dashboard. */
 	private static final int PACING_TAKEAWAY_SLOTS = 4;
+
+	/** Columns the EOM "what we did this month" slide draws, one observation → action → impact chain each. */
+	private static final int WHAT_WE_DID_SLOTS = 3;
 
 	/** Auto-derived label written next to the campaign-wide impressions pace. */
 	private static final String TOTAL_IMPS_PACE_AUTO_LABEL = "Total imps pace (auto: fact vs planned impressions)";
@@ -718,6 +722,84 @@ public class CampaignResolvers {
 			}
 		}
 		return result;
+	}
+
+	/**
+	 * Resolves the eighteen "what we did this month" placeholders — {@code {{observation N}}},
+	 * {@code {{action N}}}, {@code {{impact N}}} and the {@code text} token under each, for N = 1..3 —
+	 * preferring a hand-entered value and falling back to the chain Claude wrote.
+	 *
+	 * <p>The whole column is resolved from one {@link WhatWeDidStep} so the slide keeps the chain intact:
+	 * observation 1, action 1 and impact 1 are one continuous argument, and taking each token from its own
+	 * source would let a hand-edited observation sit above an action that answers the one it replaced. A user
+	 * who rewrites one cell in the workbook still overrides only that cell, which is the point of the
+	 * workbook — but the fallback never splices two different chains together.
+	 *
+	 * @param sheetRows Media Plan tab rows
+	 * @param adjRows   manual Adjustments tab rows (checked first)
+	 * @param claude    Claude's chains in column order, used when no manual value exists (may be null)
+	 * @return a map keyed by placeholder to its {@link Resolved}; values may be {@code "not_found"}
+	 */
+	public Map<String, Resolved> resolveWhatWeDid(
+			List<List<String>> sheetRows, List<List<String>> adjRows, List<WhatWeDidStep> claude) {
+
+		Map<String, Resolved> result = new LinkedHashMap<>();
+		for (int i = 1; i <= WHAT_WE_DID_SLOTS; i++) {
+			WhatWeDidStep step = claude != null && claude.size() >= i ? claude.get(i - 1) : null;
+			putWhatWeDidPair(result, sheetRows, adjRows, "Observation", i,
+					step == null ? null : step.observation(), step == null ? null : step.observationText());
+			putWhatWeDidPair(result, sheetRows, adjRows, "Action", i,
+					step == null ? null : step.action(), step == null ? null : step.actionText());
+			putWhatWeDidPair(result, sheetRows, adjRows, "Impact", i,
+					step == null ? null : step.impact(), step == null ? null : step.impactText());
+		}
+		return result;
+	}
+
+	/**
+	 * Resolves one link of a "what we did" chain — its heading and the paragraph under it — into the two
+	 * tokens the slide prints them in.
+	 *
+	 * @param target  the map the two resolved tokens are written into
+	 * @param sheet   Media Plan tab rows
+	 * @param adj     manual Adjustments tab rows (checked first)
+	 * @param name    how the workbook labels this link, e.g. {@code "Observation"}
+	 * @param index   the chain's 1-based column on the slide
+	 * @param heading Claude's heading for this link (may be null)
+	 * @param text    Claude's paragraph for this link (may be null)
+	 */
+	void putWhatWeDidPair(
+			Map<String, Resolved> target, List<List<String>> sheet, List<List<String>> adj, String name,
+			int index, String heading, String text) {
+
+		String token = name.toLowerCase(Locale.ROOT) + " " + index;
+		target.put("{{" + token + "}}", resolveWhatWeDidSlot(sheet, adj, name + " " + index, heading));
+		target.put("{{" + token + " text}}",
+				resolveWhatWeDidSlot(sheet, adj, name + " " + index + " text", text));
+	}
+
+	/**
+	 * Resolves one "what we did" token: the manual value the user may have written into the workbook, else
+	 * Claude's, else nothing.
+	 *
+	 * @param sheet     Media Plan tab rows
+	 * @param adj       manual Adjustments tab rows (checked first)
+	 * @param name      how the workbook labels this slot, without its colon, e.g. {@code "Observation 1"}
+	 * @param fromClaude Claude's copy for the slot (may be null)
+	 * @return the {@link Resolved} slot, possibly {@code "not_found"}
+	 */
+	Resolved resolveWhatWeDidSlot(
+			List<List<String>> sheet, List<List<String>> adj, String name, String fromClaude) {
+
+		String label = name + ":";
+		String manual = coalesce(sheetUtils.findLabelValue(adj, label), sheetUtils.findLabelValue(sheet, label));
+		if (manual != null) {
+			return new Resolved(label, manual, "adj");
+		}
+		if (notBlank(fromClaude)) {
+			return new Resolved(name + " (auto: Claude)", fromClaude, "adj");
+		}
+		return new Resolved(label, null, "not_found");
 	}
 
 	/**

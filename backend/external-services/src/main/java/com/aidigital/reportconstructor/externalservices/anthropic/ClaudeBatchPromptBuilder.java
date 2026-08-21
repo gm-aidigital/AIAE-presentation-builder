@@ -2216,6 +2216,33 @@ public class ClaudeBatchPromptBuilder {
 	}
 
 	/**
+	 * The {@code what_we_did} field spec appended to the alignment schema, or an empty string when the
+	 * flavour's deck has no such slide.
+	 *
+	 * <p>Empty for end-of-campaign: the EOC template carries no "what we did this month" slide, so asking for
+	 * the chains would pay for copy nothing prints. {@link EomPromptBuilder} answers with the real spec.
+	 *
+	 * @return the field spec, newline-terminated, or an empty string
+	 */
+	String whatWeDidSchema() {
+		return "";
+	}
+
+	/**
+	 * Output tokens the alignment reply needs beyond the fields it is aligning, for the flavours whose
+	 * schema asks for copy the draft does not already carry.
+	 *
+	 * <p>Zero for end-of-campaign, whose alignment reply re-emits the draft and nothing else. The budget is a
+	 * per-flavour constant rather than something {@link RealClaudeClient} infers from the schema text, so the
+	 * one class that knows what it asked for is the one that sizes it.
+	 *
+	 * @return extra output tokens to allow, never negative
+	 */
+	int alignExtraTokens() {
+		return 0;
+	}
+
+	/**
 	 * Builds the Batch D (narrative alignment) prompt, or empty when there is nothing to align.
 	 *
 	 * <p>Unlike Batches A–C, this prompt sends Claude no raw plan or metric grid: it sends the copy those
@@ -2340,6 +2367,13 @@ public class ClaudeBatchPromptBuilder {
 
 		if (draft.isEmpty() || schema.isEmpty()) {
 			return Optional.empty();
+		}
+		// Asked for last, and only once the draft is known to carry copy: the "what we did" chains are the one
+		// field of this pass that is written rather than aligned, so they must never be the reason the call
+		// happens at all. End-of-campaign returns nothing here and the reply carries no such key.
+		String whatWeDid = whatWeDidSchema();
+		if (!whatWeDid.isBlank()) {
+			schema.add(whatWeDid);
 		}
 
 		StringBuilder context = new StringBuilder();

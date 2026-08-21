@@ -6,6 +6,7 @@ import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
 import com.aidigital.reportconstructor.service.reports.dto.Recommendation;
 import com.aidigital.reportconstructor.service.reports.dto.Tactic;
 import com.aidigital.reportconstructor.service.reports.dto.Totals;
+import com.aidigital.reportconstructor.service.reports.dto.WhatWeDidStep;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -768,5 +769,43 @@ class CampaignResolversTest {
 		// Then: four dashed slots, no exception
 		assertThat(out).hasSize(4);
 		assertThat(out.values()).allMatch(r -> r.value() == null);
+	}
+
+	@Test
+	void resolveWhatWeDid_keepsEachChainInItsOwnColumnTest() {
+		// Given: Claude wrote two of the three chains and the user rewrote the first observation by hand
+		List<List<String>> sheet = labelRow("Observation 1:", "Frequency ran hot");
+		List<WhatWeDidStep> claude = List.of(
+				new WhatWeDidStep("Audience fatigue", "CTR fell 18% in week 3.",
+						"Refreshed creative", "Swapped the two worn 300x250 units.",
+						"Efficiency restored", "Protects the remaining display budget."),
+				new WhatWeDidStep("Chicago pulling ahead", "Chicago delivers a 0.42% CTR.",
+						"Shifted budget", "Moved 15% of display spend into Chicago.",
+						"Scale the winner", "Lifts campaign CTR over the rest of the flight."));
+
+		// When:
+		Map<String, Resolved> out = resolvers.resolveWhatWeDid(sheet, List.of(), claude);
+
+		// Then: the sheet wins the one cell it fills, and the rest of chain 1 still comes from chain 1 —
+		// a hand-edited heading must never leave an action that answers a different observation
+		assertThat(out.get("{{observation 1}}").value()).isEqualTo("Frequency ran hot");
+		assertThat(out.get("{{observation 1 text}}").value()).isEqualTo("CTR fell 18% in week 3.");
+		assertThat(out.get("{{action 1 text}}").value()).isEqualTo("Swapped the two worn 300x250 units.");
+		assertThat(out.get("{{impact 1}}").value()).isEqualTo("Efficiency restored");
+		assertThat(out.get("{{action 2}}").value()).isEqualTo("Shifted budget");
+		assertThat(out.get("{{impact 2 text}}").value())
+				.isEqualTo("Lifts campaign CTR over the rest of the flight.");
+	}
+
+	@Test
+	void resolveWhatWeDid_dashesTheChainsClaudeDidNotWriteTest() {
+		// Given: the EOC flavour never asks for the field, so no chain comes back at all
+		// When:
+		Map<String, Resolved> out = resolvers.resolveWhatWeDid(List.of(), List.of(), List.of());
+
+		// Then: all eighteen slots resolve to a dash rather than shipping raw tokens on the slide
+		assertThat(out).hasSize(18);
+		assertThat(out.values()).allMatch(r -> r.value() == null);
+		assertThat(out.get("{{impact 3 text}}").source()).isEqualTo("not_found");
 	}
 }

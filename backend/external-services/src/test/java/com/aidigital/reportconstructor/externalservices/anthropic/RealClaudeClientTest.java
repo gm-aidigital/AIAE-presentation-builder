@@ -14,6 +14,7 @@ import com.aidigital.reportconstructor.service.reports.dto.TacticConclusion;
 import com.aidigital.reportconstructor.service.reports.dto.TacticNarrativeDigest;
 import com.aidigital.reportconstructor.service.reports.dto.TacticThoughts;
 import com.aidigital.reportconstructor.service.reports.dto.TacticThoughtsInput;
+import com.aidigital.reportconstructor.service.reports.dto.WhatWeDidStep;
 import com.aidigital.reportconstructor.service.reports.dto.Recommendation;
 import com.aidigital.reportconstructor.service.reports.dto.StrategicInsight;
 import com.aidigital.reportconstructor.service.reports.dto.Totals;
@@ -1013,6 +1014,81 @@ class RealClaudeClientTest {
 		assertThat(aligned.results().tacticOverviews()).containsEntry(1, "Tactic 1 stays untouched.");
 		assertThat(aligned.results().recommendations()).hasSize(1);
 		assertThat(aligned.results().recommendations().get(0).text()).isEqualTo("Rec text stays untouched.");
+	}
+
+	@Test
+	void batchAlignNarrativeWritesTheEndOfMonthWhatWeDidChainsTest() throws Exception {
+		// Given: the same alignment call on an end-of-month run, whose schema also asks for the three
+		// observation -> action -> expected impact chains the "what we did this month" slide prints
+		ClaudeResponseNormalizer normalizer = new ClaudeResponseNormalizer();
+		EomPromptBuilder promptBuilder = new EomPromptBuilder(normalizer, new Fmt());
+		ReportClaudeDefaults defaults = new ReportClaudeDefaults();
+		RealClaudeClient client = new RealClaudeClient(
+				messagesClient, promptBuilder, normalizer, compressionService, defaults,
+				new WorkbookGeoFilter(), new PromptTokenEstimator(), new ClaudeFailureLogImpl(),
+				new AnthropicProperties());
+
+		ClaudeStrategic strategic = new ClaudeStrategic(
+				"25-44", "Auto intenders", "Old proposal.", List.of(), "NORTH STAR", "Extended.", "Horizon.",
+				List.of("Pacing takeaway."), List.of("Performance takeaway."));
+		Map<Integer, String> origOverviews = new LinkedHashMap<>();
+		origOverviews.put(1, "Old results overview.");
+		ClaudeResults results = new ClaudeResults(
+				origOverviews, List.of(), Map.of(), List.of(), null, null, null);
+		String brief = "Drive awareness for the Spring Launch.";
+		String expectedPrompt = promptBuilder
+				.alignPrompt(strategic, results, List.of(), brief, "Jul 1 - Jul 31, 2026").orElseThrow();
+
+		JsonNode response = json.readTree("""
+				{
+				  "proposal_overview": "Aligned proposal copy.",
+				  "results_overviews": {"1": "Aligned results overview."},
+				  "what_we_did": [
+				    {"observation": "Audience fatigue", "observation_text": "CTR fell 18% in week 3.",
+				     "action": "Refreshed creative", "action_text": "Swapped the two worn display units.",
+				     "impact": "Efficiency restored", "impact_text": "Protects the rest of the display budget."},
+				    {"observation": "Chicago pulling ahead", "observation_text": "Chicago runs a 0.42% CTR.",
+				     "action": "Shifted budget", "action_text": "Moved 15% of display spend into Chicago.",
+				     "impact": "Scale the winner", "impact_text": "Lifts CTR over the remaining flight."},
+				    {"observation": "", "observation_text": "", "action": "", "action_text": "",
+				     "impact": "", "impact_text": ""}
+				  ]
+				}
+				""");
+		List<ClaudeCompressionField> expectedFields = List.of(
+				new ClaudeCompressionField("results_overview_1", "Aligned results overview.", 380),
+				new ClaudeCompressionField("proposal_overview", "Aligned proposal copy.", 400));
+		// 400 base + 220 proposal + 220 overview, plus the 900 the end-of-month chains add to the reply
+		int expectedBudget = 1740;
+		when(messagesClient.callJsonObject(
+				eq(expectedPrompt), eq(expectedBudget), eq(90), eq("AlignNarrative"), eq(true)))
+				.thenReturn(response);
+		when(compressionService.compress(eq(expectedFields), eq("BatchE-Align")))
+				.thenAnswer(invocation -> {
+					List<ClaudeCompressionField> fields = invocation.getArgument(0);
+					Map<String, String> out = new LinkedHashMap<>();
+					for (ClaudeCompressionField field : fields) {
+						out.put(field.key(), field.text());
+					}
+					return out;
+				});
+
+		// When:
+		ClaudeNarrative aligned = client.batchAlignNarrative(
+				strategic, results, List.of(), brief, "Jul 1 - Jul 31, 2026");
+
+		// Then: each chain lands whole and in the column it was written for, and the empty third chain is
+		// dropped rather than shipping a column of blank boxes
+		assertThat(aligned.strategic().whatWeDid()).hasSize(2);
+		WhatWeDidStep first = aligned.strategic().whatWeDid().get(0);
+		assertThat(first.observation()).isEqualTo("Audience fatigue");
+		assertThat(first.observationText()).isEqualTo("CTR fell 18% in week 3.");
+		assertThat(first.actionText()).isEqualTo("Swapped the two worn display units.");
+		assertThat(first.impact()).isEqualTo("Efficiency restored");
+		assertThat(aligned.strategic().whatWeDid().get(1).action()).isEqualTo("Shifted budget");
+		// And: the EOM copy the pass never asks about is still carried through untouched
+		assertThat(aligned.strategic().northStar()).isEqualTo("NORTH STAR");
+		assertThat(aligned.strategic().pacingTakeaways()).containsExactly("Pacing takeaway.");
 	}
 
 	@Test

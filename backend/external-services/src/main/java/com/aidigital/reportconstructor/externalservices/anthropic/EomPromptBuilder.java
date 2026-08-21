@@ -79,6 +79,16 @@ public class EomPromptBuilder extends ClaudeBatchPromptBuilder {
 	/** Pacing-dashboard slides the EOM template carries, covering tactics 1-7, 8-14, 15-21 and 22-28. */
 	static final int MAX_DASHBOARDS = 4;
 
+	/** Columns the "what we did this month" slide draws, one observation → action → impact chain each. */
+	static final int WHAT_WE_DID_STEPS = 3;
+
+	/**
+	 * Output tokens the {@code what_we_did} block adds to the alignment reply: three chains of three
+	 * headings and three paragraphs, sized off their character budgets at roughly four characters a token,
+	 * with headroom for the JSON scaffolding around them.
+	 */
+	static final int WHAT_WE_DID_TOKENS = 900;
+
 	/** Reply normaliser, kept alongside the parent's copy because the parent's field is private. */
 	private final ClaudeResponseNormalizer normalizer;
 
@@ -1011,5 +1021,66 @@ public class EomPromptBuilder extends ClaudeBatchPromptBuilder {
 	 */
 	double nullSafe(Double value) {
 		return value == null ? 0 : value;
+	}
+
+	/**
+	 * The {@code what_we_did} field spec: the three observation → action → expected impact chains the EOM
+	 * deck's "What we did this month &amp; why" slide is built from.
+	 *
+	 * <p>It rides on the alignment pass rather than on a call of its own because this is the only call that
+	 * sees everything the chains are drawn from at once — the aligned campaign storyline, the read-only
+	 * breakdown signals from every per-tactic slide, and the change log carried inside the brief. Asked
+	 * earlier, at Batch A, none of those conclusions exist yet; asked separately, all of that context is paid
+	 * for a second time.
+	 *
+	 * <p>It is the one field of this pass that is written rather than aligned, which is why the spec says so
+	 * outright: the surrounding rules forbid reanalysis, and without the exception the model returns the key
+	 * empty or refuses it. What it may not do is invent — every chain is a restatement of a signal the draft
+	 * or the digest already establishes, and where the change log records what we actually changed, the
+	 * action is that change rather than a plausible one.
+	 *
+	 * <p>The three columns are asked for as one array of objects, not as nine loose strings, because the
+	 * slide reads down each column: the action answers the observation above it and the impact is what that
+	 * action is bought for. Keyless positional objects keep each chain together and land it in the column the
+	 * deck prints it in.
+	 *
+	 * @return the field spec, newline-terminated
+	 */
+	@Override
+	String whatWeDidSchema() {
+		return "  \"what_we_did\": array,           // EXACTLY " + WHAT_WE_DID_STEPS + " objects {\"observation\": "
+				+ "string, \"observation_text\": string, \"action\": string, \"action_text\": string, "
+				+ "\"impact\": string, \"impact_text\": string}. The three headings MAX "
+				+ ClaudeResponseNormalizer.WHAT_WE_DID_HEADING_LIMIT + " CHARACTERS EACH, the three texts MAX "
+				+ ClaudeResponseNormalizer.WHAT_WE_DID_TEXT_LIMIT + " CHARACTERS EACH — HARD LIMITS, these are "
+				+ "fixed boxes on the slide.\n"
+				+ "                                // This is the ONE field you WRITE rather than align, and it "
+				+ "is expected of you: the slide it fills is the month's optimisation story and it has no draft. "
+				+ "Each object is ONE UNBROKEN CHAIN and the three links must never be split across objects: "
+				+ "\"observation_text\" is a specific signal THIS month's analytics surfaced (audience fatigue, "
+				+ "frequency running hot, a market or segment pulling ahead or falling behind, a creative or "
+				+ "placement outperforming); \"action_text\" is the tactical response WE ALREADY MADE to THAT "
+				+ "signal (budget moved, creative refreshed, targeting changed, a test launched); "
+				+ "\"impact_text\" is the business outcome THAT action is bought for (budget protected from "
+				+ "waste, a winning combination scaled, efficiency restored) — expected, still in flight, never "
+				+ "a settled result.\n"
+				+ "                                // Draw all three chains ONLY from the draft, the breakdown "
+				+ "signals and the change log in the brief — never invent a number, a market, an audience or a "
+				+ "creative that none of them names. Where the change log records what we actually changed this "
+				+ "month, the action IS that change. The three chains must be about three DIFFERENT signals, "
+				+ "and none of them may contradict the draft. Each heading labels its own paragraph in a few "
+				+ "words — no final period, never a restatement of the paragraph under it.\n";
+	}
+
+	/**
+	 * Widens the alignment reply's output budget by the {@code what_we_did} block this flavour adds to the
+	 * schema, so the three chains cannot run the reply out before it closes — which would cost the whole
+	 * pass, not just the slide, since a truncated reply parses as nothing and falls back to the draft.
+	 *
+	 * @return the extra output tokens the EOM alignment reply needs
+	 */
+	@Override
+	int alignExtraTokens() {
+		return WHAT_WE_DID_TOKENS;
 	}
 }

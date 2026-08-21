@@ -20,6 +20,7 @@ import com.aidigital.reportconstructor.service.reports.dto.TacticInsight;
 import com.aidigital.reportconstructor.service.reports.dto.TacticNarrativeDigest;
 import com.aidigital.reportconstructor.service.reports.dto.TacticThoughts;
 import com.aidigital.reportconstructor.service.reports.dto.TacticThoughtsInput;
+import com.aidigital.reportconstructor.service.reports.dto.WhatWeDidStep;
 import com.aidigital.reportconstructor.service.reports.engine.Pivot;
 import com.aidigital.reportconstructor.service.reports.engine.ReportClaudeDefaults;
 import com.aidigital.reportconstructor.service.reports.ports.ClaudeClient;
@@ -979,15 +980,55 @@ public class RealClaudeClient implements ClaudeClient {
 
 		// The north-star fields and both sets of dashboard takeaways are carried through untouched: the
 		// alignment schema never asks for them, so re-deriving them here would blank the EOM slides the pass
-		// leaves alone.
+		// leaves alone. The "what we did" chains are the exception — this pass is where they are written —
+		// and a reply that carries none of them leaves whatever the draft already held.
+		List<WhatWeDidStep> whatWeDid = readWhatWeDid(parsed.get("what_we_did"));
 		ClaudeStrategic alignedStrategic = new ClaudeStrategic(
 				strategic.audienceAge(), strategic.audienceSegments(), alignedProposal, alignedInsights,
 				strategic.northStar(), strategic.extendedNorthStar(), strategic.horizon(),
-				strategic.pacingTakeaways(), strategic.performanceTakeaways());
+				strategic.pacingTakeaways(), strategic.performanceTakeaways(),
+				whatWeDid.isEmpty() ? strategic.whatWeDid() : whatWeDid);
 		ClaudeResults alignedResults = new ClaudeResults(
 				alignedOverviews, alignedThoughts, results.tacticOverviews(), results.recommendations(),
 				fOpportunity, fFact, fStorytelling);
 		return new ClaudeNarrative(alignedStrategic, alignedResults);
+	}
+
+	/**
+	 * Reads the {@code what_we_did} array as one observation → action → expected impact chain per slide
+	 * column, capped and normalized, in the order the reply returned them.
+	 *
+	 * <p>Positional like every other keyless array in these replies: the deck prints chain 1 in the first
+	 * column, and a reply that returns fewer than the slide's columns simply leaves the rest dashed rather
+	 * than shifting a chain into a column it was not written for. A chain whose observation and action are
+	 * both blank is dropped entirely — an empty column reads as a template fault, a short slide does not.
+	 *
+	 * @param node the {@code what_we_did} node of the parsed reply (may be null or a non-array)
+	 * @return the chains in reply order, empty when the reply carried none
+	 */
+	List<WhatWeDidStep> readWhatWeDid(JsonNode node) {
+		List<WhatWeDidStep> steps = new ArrayList<>();
+		if (node == null || !node.isArray()) {
+			return steps;
+		}
+		for (JsonNode item : node) {
+			if (item == null || !item.isObject()) {
+				continue;
+			}
+			String observation = normalizer.limitWhatWeDidHeading(normalizer.textOrNull(item.get("observation")));
+			String observationText =
+					normalizer.limitWhatWeDidText(normalizer.textOrNull(item.get("observation_text")));
+			String action = normalizer.limitWhatWeDidHeading(normalizer.textOrNull(item.get("action")));
+			String actionText = normalizer.limitWhatWeDidText(normalizer.textOrNull(item.get("action_text")));
+			String impact = normalizer.limitWhatWeDidHeading(normalizer.textOrNull(item.get("impact")));
+			String impactText = normalizer.limitWhatWeDidText(normalizer.textOrNull(item.get("impact_text")));
+			if (observationText == null && actionText == null) {
+				continue;
+			}
+			steps.add(new WhatWeDidStep(
+					observation, observationText, action, actionText, impact, impactText));
+		}
+		return steps;
 	}
 
 	/**
@@ -1040,6 +1081,9 @@ public class RealClaudeClient implements ClaudeClient {
 		}
 		budget += ALIGN_TOKENS_PER_FREQUENCY_FIELD
 				* countNonBlank(results.fOpportunity(), results.fFact(), results.fStorytelling());
+		// Copy this pass writes rather than aligns — today the EOM "what we did" chains — has no draft field
+		// to be sized off, so the flavour that asked for it says how much room its reply needs.
+		budget += promptBuilder.alignExtraTokens();
 		return Math.min(ALIGN_MAX_TOKENS_CAP, budget);
 	}
 

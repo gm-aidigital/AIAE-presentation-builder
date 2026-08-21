@@ -42,6 +42,15 @@ public class ClaudeResponseNormalizer {
 	public static final int PACING_TAKEAWAY_LIMIT = 140;
 
 	/**
+	 * Characters one heading of the EOM "what we did this month" slide fits — the label above an
+	 * observation, an action or an expected impact.
+	 */
+	public static final int WHAT_WE_DID_HEADING_LIMIT = 60;
+
+	/** Characters one paragraph of the EOM "what we did this month" slide fits under its heading. */
+	public static final int WHAT_WE_DID_TEXT_LIMIT = 200;
+
+	/**
 	 * Function/connector words that read as unfinished when a sentence is cut right after them, so they are
 	 * trimmed from the tail of a hard word-boundary cut before a closing period is appended.
 	 */
@@ -369,6 +378,43 @@ public class ClaudeResponseNormalizer {
 	 */
 	public String limitPacingTakeaway(String val) {
 		return normalizeC(val, PACING_TAKEAWAY_LIMIT);
+	}
+
+	/**
+	 * Caps one heading of the EOM "what we did this month" slide at {@link #WHAT_WE_DID_HEADING_LIMIT}
+	 * characters.
+	 *
+	 * <p>Held to the same shape as the north-star headline rather than to {@link #normalizeC}: it is a label
+	 * above a paragraph, not a sentence, so it is cut back to a word boundary and never gains a closing
+	 * period. The upper-casing is not wanted here — the slide prints these headings in sentence case.
+	 *
+	 * @param val raw heading text from the model (may be null)
+	 * @return the trimmed heading, or {@code null} when blank
+	 */
+	public String limitWhatWeDidHeading(String val) {
+		if (val == null) {
+			return null;
+		}
+		String text = val.trim().replaceAll("\\s+", " ");
+		if (text.length() > WHAT_WE_DID_HEADING_LIMIT) {
+			String cut = text.substring(0, WHAT_WE_DID_HEADING_LIMIT);
+			int ls = cut.lastIndexOf(' ');
+			text = stripTrailingComma(ls > 0 ? cut.substring(0, ls).trim() : cut.trim());
+		}
+		text = stripTrailingPeriod(text);
+		return text.isEmpty() ? null : text;
+	}
+
+	/**
+	 * Normalizes one paragraph of the EOM "what we did this month" slide with a
+	 * {@link #WHAT_WE_DID_TEXT_LIMIT}-character budget via {@link #normalizeC}, so it reads as a finished
+	 * sentence inside its block.
+	 *
+	 * @param val raw paragraph text from the model
+	 * @return the normalized, length-capped text, or {@code null} when blank
+	 */
+	public String limitWhatWeDidText(String val) {
+		return normalizeC(val, WHAT_WE_DID_TEXT_LIMIT);
 	}
 
 	/**
