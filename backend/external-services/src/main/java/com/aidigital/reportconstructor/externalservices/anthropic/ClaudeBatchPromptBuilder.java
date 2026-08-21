@@ -1482,8 +1482,7 @@ public class ClaudeBatchPromptBuilder {
 		}
 		int promptLimit = Math.max(1, (int) (limit * COMPRESSION_PROMPT_BUFFER_RATIO));
 		String prompt = tacticThoughtsRole()
-				+ "Write EXACTLY 4 short analytical thoughts about THIS tactic's performance, each 1-2 sentences, "
-				+ "past tense, client-friendly, at most " + promptLimit + " characters.\n"
+				+ tacticThoughtsBulletsSpec(promptLimit)
 				+ tacticThoughtsAngles()
 				+ tacticThoughtsStorySpec(storyLimit)
 				+ tacticThoughtsOutputRules()
@@ -1513,6 +1512,24 @@ public class ClaudeBatchPromptBuilder {
 				+ "do NOT flag data problems — if the conclusions look unusual, mislabelled, incomplete or "
 				+ "inconsistent, still write the best analyst copy you can from whatever is given, and never "
 				+ "replace a thought with a complaint about the data.\n\n";
+	}
+
+	/**
+	 * The spec for the four analytical bullets of the Step-3 per-tactic thoughts call: how many there are,
+	 * how long each one is and what tense it is written in.
+	 *
+	 * <p>Split out of {@link #buildTacticThoughtsPrompt} as its own method for the same reason as
+	 * {@link #tacticThoughtsRole()}: the count and the character budget are the contract
+	 * {@link RealClaudeClient} parses against, but the tense is wording, and an end-of-month run needs the
+	 * bullets written about a tactic that is still delivering. Inline in the prompt it could not be changed
+	 * without copying the whole assembly.
+	 *
+	 * @param promptLimit the buffered character budget quoted for each bullet
+	 * @return the bullets spec, newline-terminated
+	 */
+	String tacticThoughtsBulletsSpec(int promptLimit) {
+		return "Write EXACTLY 4 short analytical thoughts about THIS tactic's performance, each 1-2 sentences, "
+				+ "past tense, client-friendly, at most " + promptLimit + " characters.\n";
 	}
 
 	/**

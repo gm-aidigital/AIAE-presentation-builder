@@ -502,8 +502,10 @@ class EomPromptBuilderTest {
 		assertThat(prompt).contains("(3) a watch-out or nuance; (4) the forward-looking opportunity");
 		assertThat(prompt).contains("Write EXACTLY 4 short analytical thoughts");
 		assertThat(prompt).contains("{\"thoughts\": [\"...\", \"...\", \"...\", \"...\"], \"story\": \"...\"}");
-		// and the closing story spec is inherited from the parent, unchanged for a live campaign
+		// and the closing story keeps its slot and its job, written for a tactic that has not finished
 		assertThat(prompt).contains("Then write ONE closing narrative");
+		assertThat(prompt).contains("how WE see this tactic so far");
+		assertThat(prompt).doesNotContain("start to finish");
 	}
 
 	@Test
@@ -725,5 +727,113 @@ class EomPromptBuilderTest {
 
 		// Then: no dashboard block — there is no plan to pace against
 		assertThat(prompt).doesNotContain("=== PACING DASHBOARD ===");
+	}
+
+	@Test
+	void shouldAskTheTacticThoughtsBulletsForDeliveryToDateNotPastTenseTest() {
+		// Given: the Step-3 call for one tactic
+		TacticThoughtsInput input = new TacticThoughtsInput(
+				1, "CTV", "CTV paced to 101% of the month's impression target.",
+				List.of("Hulu carried the largest share."), List.of(), List.of(), List.of(), List.of());
+
+		// When:
+		String prompt = builder.buildTacticThoughtsPrompt(input, "Drive awareness.", 200, 470).orElseThrow();
+
+		// Then: the bullets are asked for mid-flight, and the parent's past tense is gone
+		assertThat(prompt).contains("how THIS tactic is performing so far");
+		assertThat(prompt).contains("The tactic is STILL RUNNING");
+		assertThat(prompt).doesNotContain("past tense");
+		// and the count and the character budget the reply is parsed against are the parent's
+		assertThat(prompt).contains("Write EXACTLY 4 short analytical thoughts");
+		assertThat(prompt).contains("at most 160 characters");
+	}
+
+	@Test
+	void shouldLeaveTheEndOfCampaignTacticThoughtsBulletsAndStoryUntouchedTest() {
+		// Given: an EOC run of the same call
+		TacticThoughtsInput input = new TacticThoughtsInput(
+				1, "CTV", "CTV delivered 101% of its impression plan.",
+				List.of("Hulu carried the largest share."), List.of(), List.of(), List.of(), List.of());
+
+		// When:
+		String prompt = eoc.buildTacticThoughtsPrompt(input, "Drive awareness.", 200, 470).orElseThrow();
+
+		// Then: the frozen wording still goes out unchanged
+		assertThat(prompt).contains("each 1-2 sentences, past tense, client-friendly");
+		assertThat(prompt).contains("how WE see this tactic, start to finish");
+		assertThat(prompt).doesNotContain("STILL RUNNING");
+	}
+
+	@Test
+	void shouldAskTheCampaignStoryForWhereTheFlightStandsNotAClosingVerdictTest() {
+		// Given: the Step-4 call, reasoning over one tactic's digest
+		CampaignData data = campaign(1, 1);
+		List<TacticNarrativeDigest> digests = List.of(
+				new TacticNarrativeDigest(1, "CTV", "CTV paced to 101% of the month's impression target.",
+						List.of(), List.of()));
+
+		// When:
+		String prompt = builder
+				.buildCampaignResultsPrompt(data, "Drive awareness.", null, digests).orElseThrow();
+
+		// Then: the fifth slot of the thoughts slide closes on the remaining flight
+		assertThat(prompt).contains("how WE see this campaign so far");
+		assertThat(prompt).contains("close on where the flight stands");
+		assertThat(prompt).doesNotContain("start to finish");
+		// and the JSON key the reply is parsed on is the parent's
+		assertThat(prompt).contains("\"performance_story\": string");
+	}
+
+	@Test
+	void shouldLeaveTheEndOfCampaignCampaignStoryUntouchedTest() {
+		// Given: an EOC run of the same call
+		CampaignData data = campaign(null, null);
+		List<TacticNarrativeDigest> digests = List.of(
+				new TacticNarrativeDigest(1, "CTV", "CTV delivered 101% of its impression plan.",
+						List.of(), List.of()));
+
+		// When:
+		String prompt = eoc.buildCampaignResultsPrompt(data, "Drive awareness.", null, digests).orElseThrow();
+
+		// Then: the frozen wording still goes out unchanged
+		assertThat(prompt).contains("how WE see this campaign start to finish");
+		assertThat(prompt).doesNotContain("STILL RUNNING");
+	}
+
+	@Test
+	void shouldAskTheCreativeOptimisationAsAChangeStillInFlightTest() {
+		// Given: the creative section call for one tactic
+		CampaignData data = campaign(2, 6);
+		CreativeTable creativeTable = new CreativeTable("0.35%", "94.2%", "3", "VCR",
+				List.of(new CreativeRow("15s spot", "300,000", "", "94.2%", "$1,800")));
+
+		// When:
+		String prompt = builder
+				.buildCreativeSectionPrompt(new CreativeTakeawayInput(1, "CTV", "VCR", creativeTable), data, "Go.",
+						120, 140)
+				.orElseThrow();
+
+		// Then: the optimisation is ours, made this month, with the effect still running
+		assertThat(prompt).contains("WE ALREADY MADE on creative during this reporting month");
+		assertThat(prompt).contains("still in flight rather than as a settled outcome");
+		assertThat(prompt).doesNotContain("state it in past tense");
+	}
+
+	@Test
+	void shouldLeaveTheEndOfCampaignCreativeOptimisationUntouchedTest() {
+		// Given: an EOC run of the same call
+		CampaignData data = campaign(null, null);
+		CreativeTable creativeTable = new CreativeTable("0.35%", "94.2%", "3", "VCR",
+				List.of(new CreativeRow("15s spot", "300,000", "", "94.2%", "$1,800")));
+
+		// When:
+		String prompt = eoc
+				.buildCreativeSectionPrompt(new CreativeTakeawayInput(1, "CTV", "VCR", creativeTable), data, "Go.",
+						120, 140)
+				.orElseThrow();
+
+		// Then: the frozen wording still goes out unchanged
+		assertThat(prompt).contains("state it in past tense as something WE DID");
+		assertThat(prompt).doesNotContain("STILL RUNNING");
 	}
 }

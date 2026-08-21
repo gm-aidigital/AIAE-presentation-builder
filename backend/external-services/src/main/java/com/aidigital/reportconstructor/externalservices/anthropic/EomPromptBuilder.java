@@ -481,6 +481,32 @@ public class EomPromptBuilder extends ClaudeBatchPromptBuilder {
 	}
 
 	/**
+	 * Specifies the {@code performance_story} field — the fifth slot of the "Thoughts on the performance"
+	 * slide — for an end-of-month run.
+	 *
+	 * <p>The parent asks for the campaign "start to finish", closing on where the results leave the client.
+	 * That is the one field on the slide written as continuous prose, so a closing verdict there reads as the
+	 * report's last word on a campaign that has months left to run — and it sits directly under the four
+	 * mid-flight paragraphs {@link #thoughtsOnPerformanceSpec} already rewrote, which it would contradict.
+	 * The story keeps its shape: it still opens from the brief and still ties the paragraphs above it
+	 * together, but it closes on where the flight stands and where it is heading.
+	 *
+	 * <p>The JSON key and the character budget are the parent's, unchanged.
+	 *
+	 * @param storyLimit the buffered character budget of the story
+	 * @return the EOM field spec line, newline-terminated
+	 */
+	@Override
+	String performanceStorySpec(int storyLimit) {
+		return "  \"performance_story\": string, // ≤" + storyLimit + " chars, ONE narrative: how WE see this "
+				+ "campaign so far. Open from what the brief set out to achieve, carry it through what the "
+				+ "results above show is happening this month, close on where the flight stands and what the "
+				+ "remaining months are pointed at. Prose a client reads aloud — not a summary of the four "
+				+ "thoughts, never contradicting them, and never a closing verdict on a campaign that is still "
+				+ "running.\n";
+	}
+
+	/**
 	 * States what the alignment pass is editing, for the Step-5 final narrative alignment.
 	 *
 	 * <p>The parent calls the deliverable a campaign report and leaves the pass free to smooth the copy into a
@@ -594,6 +620,35 @@ public class EomPromptBuilder extends ClaudeBatchPromptBuilder {
 	}
 
 	/**
+	 * Specifies the creative section's fourth string — the optimisation already made on creative — for an
+	 * end-of-month run.
+	 *
+	 * <p>Everything the parent says about WHY this one string may be reconstructed rather than quoted, and
+	 * about which names and numbers it is held to, applies unchanged mid-flight. Only the tense moves: the
+	 * parent asks for it in past tense as a finished change, which on a live tactic reads as a completed
+	 * optimisation programme rather than a change still working. Asking for it as something we did during the
+	 * month and are still seeing the effect of keeps the slot filled without closing the tactic out.
+	 *
+	 * @param lead  how the instruction names the slot, e.g. {@code "String 4"} or {@code "Takeaway 4"}
+	 * @param limit character budget quoted to Claude for this string
+	 * @return the EOM optimisation instruction, newline-terminated
+	 */
+	@Override
+	String creativeOptimisationRule(String lead, int limit) {
+		return lead + " states an optimisation WE ALREADY MADE on creative during this reporting month and the "
+				+ "effect it is having, at most " + limit + " characters. The data carries NO change log, so this "
+				+ "ONE string is EXPECTED to be reconstructed rather than quoted: infer the most plausible "
+				+ "optimisation the numbers imply — shifting weight toward the strongest creative, retiring an "
+				+ "under-delivering size or format, refreshing worn creative, rebalancing spend across sizes — and "
+				+ "state it as something WE DID this month, with the effect described as still in flight rather "
+				+ "than as a settled outcome. That is expected here and is NOT a data problem: never hedge it, "
+				+ "never say the change log is missing, never leave it generic. Constraints: every creative you "
+				+ "name and every number you cite must come from the table (never invent a metric), the result you "
+				+ "claim must be consistent with the table's figures, and the action must obey the small-sample "
+				+ "and budget-shift rules above. Use the tactic's own KPI type for its lead metric.\n";
+	}
+
+	/**
 	 * States who is writing and what the report is, for the Step-3 per-tactic thoughts call.
 	 *
 	 * <p>Same reason as {@link #conclusionsRole()}: the parent's line calls it an end-of-campaign report, it
@@ -628,6 +683,52 @@ public class EomPromptBuilder extends ClaudeBatchPromptBuilder {
 				+ "one of them. Vary the 4 angles: (1) how the tactic is pacing this month and WHY; (2) what worked "
 				+ "best across its breakdowns (publishers / creative / geo / audience / device); (3) a watch-out or "
 				+ "nuance; (4) the forward-looking opportunity for this tactic.\n";
+	}
+
+	/**
+	 * Specifies the four analytical bullets of the Step-3 per-tactic thoughts call for an end-of-month run.
+	 *
+	 * <p>The parent asks for them in past tense. That single word outranks {@link #tacticThoughtsAngles()}
+	 * right above it — angle (1) asks how the tactic IS pacing, and the bullets still come back written as if
+	 * the tactic had finished. The count and the character budget are the parent's: {@link RealClaudeClient}
+	 * parses four bullets plus a story from both flavours with the same code.
+	 *
+	 * @param promptLimit the buffered character budget quoted for each bullet
+	 * @return the EOM bullets spec, newline-terminated
+	 */
+	@Override
+	String tacticThoughtsBulletsSpec(int promptLimit) {
+		return "Write EXACTLY 4 short analytical thoughts about how THIS tactic is performing so far, each 1-2 "
+				+ "sentences, client-friendly, at most " + promptLimit + " characters. The tactic is STILL "
+				+ "RUNNING: write about delivery to date and where it is heading, never as a verdict on a "
+				+ "finished tactic.\n";
+	}
+
+	/**
+	 * Specifies the closing {@code story} field — the tactic slide's fifth slot — for an end-of-month run.
+	 *
+	 * <p>Same defect as {@link #performanceStorySpec} one level down: the parent asks for the tactic "start to
+	 * finish" and closes on where that leaves it, which is a verdict on a tactic that is still delivering, and
+	 * it sits on the same slide as four bullets this class has just had rewritten mid-flight. The story keeps
+	 * its job — the through-line the bullets leave implicit, tied back to the brief — and closes on the
+	 * remaining flight instead.
+	 *
+	 * <p>The field name, its position after the four thoughts and its character budget are the parent's,
+	 * unchanged.
+	 *
+	 * @param storyLimit the story's character budget
+	 * @return the EOM story spec, ending in a blank line
+	 */
+	@Override
+	String tacticThoughtsStorySpec(int storyLimit) {
+		int promptLimit = bufferedLimit(storyLimit);
+		return "\nThen write ONE closing narrative — \"story\" — of at most " + promptLimit + " characters: how "
+				+ "WE see this tactic so far. Open from what the brief asked this tactic to do, carry it through "
+				+ "what the overview and the four thoughts above establish is happening, and close on where that "
+				+ "leaves the tactic for the rest of the flight. It is prose that a client reads aloud, not a "
+				+ "summary or a restatement of the four thoughts: it must add the through-line the bullets leave "
+				+ "implicit, it must not contradict any of them, and it must not read as a closing verdict on a "
+				+ "tactic that is still running.\n\n";
 	}
 
 	/**
