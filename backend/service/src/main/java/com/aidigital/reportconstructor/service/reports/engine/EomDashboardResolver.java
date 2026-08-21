@@ -9,23 +9,26 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Fills the EOM pacing-dashboard tokens — the ones slides 3–6 of the end-of-month template print — from
- * the figures the placeholder map already carries.
+ * Fills the EOM dashboard tokens — the ones slides 3–10 of the end-of-month template print — from the
+ * figures the placeholder map already carries.
  *
- * <p>The dashboard asks for the same five numbers per tactic that the report's summary table already
- * holds: planned and actual budget, planned and actual impressions, and the pacing between the two spend
- * figures. Rather than resolving them a second time from the media plan, they are derived here from the
- * tokens the summary table is built from, which on the sheet flow are the values the user reviewed and
- * corrected in the workbook. A number typed into the sheet therefore reaches the dashboard, which is the
- * whole point of the two-step flow — and no figure on the dashboard can disagree with the same figure
- * printed elsewhere in the deck.
+ * <p>Two dashboards, one row per tactic each. The pacing dashboard (slides 3–6) asks for the same five
+ * numbers the report's summary table already holds: planned and actual budget, planned and actual
+ * impressions, and the pacing between the two spend figures. The performance-vs-plan dashboard (slides
+ * 7–10) asks for three: the tactic's KPI goal, its actual KPI and the distance between them.
+ *
+ * <p>Rather than resolving any of it a second time from the media plan, every column is derived here from
+ * the tokens the summary table is built from, which on the sheet flow are the values the user reviewed and
+ * corrected in the workbook. A number typed into the sheet therefore reaches the dashboards, which is the
+ * whole point of the two-step flow — and no figure on them can disagree with the same figure printed
+ * elsewhere in the deck.
  *
  * <p>Every campaign-wide total prefers the workbook's own totals row and falls back to summing the tactic
  * rows, so a template (or a flow) that carries no totals token still prints a total rather than a dash.
  */
 @Component
 @RequiredArgsConstructor
-public class EomPacingResolver {
+public class EomDashboardResolver {
 
 	/** Rendered when a figure is missing or a pacing ratio has no positive plan to divide by. */
 	static final String DASH = "—";
@@ -41,6 +44,30 @@ public class EomPacingResolver {
 
 	/** Source token suffix carrying a tactic's actual impressions. */
 	static final String SRC_IMPS = " imps";
+
+	/** Source token suffix carrying which KPI the tactic is judged on, as the deck spells it. */
+	static final String SRC_KPI_TYPE = " KPI type";
+
+	/** Source token suffix carrying the tactic's actual KPI, already picked by KPI type. */
+	static final String SRC_KPI = " KPI";
+
+	/** Source token suffix carrying a tactic's planned click-through rate. */
+	static final String SRC_CTR_PLAN = " ctr plan";
+
+	/** Source token suffix carrying a tactic's planned completion rate. */
+	static final String SRC_VCR_PLAN = " vcr plan";
+
+	/** KPI type spelling that means the tactic is judged on its click-through rate. */
+	static final String KPI_TYPE_CTR = "CTR";
+
+	/** Percentage points below which a tactic is printed as sitting exactly on its goal. */
+	static final double ON_GOAL_TOLERANCE_PP = 0.005;
+
+	/** Performance-dashboard token suffix for the KPI-goal column. */
+	static final String OUT_KPI_GOAL = " KPI goal";
+
+	/** Performance-dashboard token suffix for the distance between the actual KPI and its goal. */
+	static final String OUT_VS_GOAL = " vs goal";
 
 	/** Dashboard token suffix for the planned-budget column. */
 	static final String OUT_PLANNED_BUDGET = " planned budget";
@@ -88,8 +115,8 @@ public class EomPacingResolver {
 	private final Fmt fmt;
 
 	/**
-	 * Fills every pacing-dashboard token for the campaign's real tactics and its totals row, overwriting
-	 * whatever the map held for them.
+	 * Fills every dashboard token for the campaign's real tactics and the pacing dashboard's totals row,
+	 * overwriting whatever the map held for them.
 	 *
 	 * <p>Bounded to {@code tacticCount} on purpose: the slots above it belong to dashboard rows that are
 	 * deleted during the deck trim, and filling them would only put figures on rows that are about to go.
@@ -103,13 +130,14 @@ public class EomPacingResolver {
 		}
 		for (int n = 1; n <= tacticCount; n++) {
 			fillTactic(flat, n);
+			fillPerformance(flat, n);
 		}
 		fillTotals(flat, tacticCount);
 	}
 
 	/**
-	 * Fills one tactic's row of the dashboard: the four figures copied from the summary-table tokens and
-	 * the pacing computed between the two spend figures.
+	 * Fills one tactic's row of the pacing dashboard: the four figures copied from the summary-table tokens
+	 * and the pacing computed between the two spend figures.
 	 *
 	 * @param flat the placeholder map to fill, mutated in place
 	 * @param n    the 1-based tactic number
@@ -122,6 +150,78 @@ public class EomPacingResolver {
 		flat.put(tacticToken(n, OUT_PLANNED_IMPS), display(value(flat, tacticToken(n, SRC_IMPS_PLAN))));
 		flat.put(tacticToken(n, OUT_FACT_IMPS), display(value(flat, tacticToken(n, SRC_IMPS))));
 		flat.put(tacticToken(n, OUT_PACING), pacing(factBudget, plannedBudget));
+	}
+
+	/**
+	 * Fills one tactic's row of the performance-vs-plan dashboard: the goal for the KPI the tactic is
+	 * judged on, and the distance the actual KPI stands from it.
+	 *
+	 * <p>The actual KPI itself is not written here — {@code {{tactic n KPI}}} already carries it, picked by
+	 * the same KPI type this row's goal is picked by, so the two columns can never end up describing
+	 * different metrics.
+	 *
+	 * @param flat the placeholder map to fill, mutated in place
+	 * @param n    the 1-based tactic number
+	 */
+	void fillPerformance(Map<String, String> flat, int n) {
+		String goal = kpiGoal(flat, n);
+		flat.put(tacticToken(n, OUT_KPI_GOAL), display(goal));
+		flat.put(tacticToken(n, OUT_VS_GOAL), pointsAgainst(value(flat, tacticToken(n, SRC_KPI)), goal));
+	}
+
+	/**
+	 * Reads the planned rate for whichever KPI the tactic is judged on: the planned CTR for a click-led
+	 * tactic, the planned completion rate for every other spelling of the KPI type.
+	 *
+	 * <p>The completion rate is the one metric the deck spells two ways — VCR for video, ACR for audio —
+	 * so the type is matched on the click-led spelling and everything else falls to the completion rate,
+	 * rather than listing the spellings and dashing the row when a new one appears. A tactic whose KPI type
+	 * is missing has no goal column at all: there is nothing to say which of the two planned rates the row
+	 * is about.
+	 *
+	 * @param flat the placeholder map being read
+	 * @param n    the 1-based tactic number
+	 * @return the planned rate as a display string, or {@code null} when the type or the rate is missing
+	 */
+	String kpiGoal(Map<String, String> flat, int n) {
+		String type = value(flat, tacticToken(n, SRC_KPI_TYPE));
+		if (type == null) {
+			return null;
+		}
+		String suffix = type.equalsIgnoreCase(KPI_TYPE_CTR) ? SRC_CTR_PLAN : SRC_VCR_PLAN;
+		return value(flat, tacticToken(n, suffix));
+	}
+
+	/**
+	 * Computes the performance dashboard's "vs goal" column: how far the actual rate stands from its goal,
+	 * in percentage points.
+	 *
+	 * <p>Both figures are rates the deck prints as percentages, so their distance is a percentage-point
+	 * delta rather than a ratio — 0.35% against a 0.25% goal is {@code "+0.10pp"}, not "+40%". It is
+	 * rendered signed and to two decimals with trailing zeros dropped, so a CTR delta keeps the precision
+	 * the metric is read at while a completion-rate delta of twenty points prints as {@code "+20pp"}. A
+	 * delta that rounds away to nothing prints as {@code "0pp"}, so the column never shows a signed zero.
+	 *
+	 * @param fact the actual rate as a display string (may be {@code null})
+	 * @param goal the goal rate as a display string (may be {@code null})
+	 * @return the signed percentage-point delta, or a dash when either figure is missing
+	 */
+	String pointsAgainst(String fact, String goal) {
+		if (fact == null || goal == null) {
+			return DASH;
+		}
+		double delta = numbers.parseReportNumber(fact) - numbers.parseReportNumber(goal);
+		if (Math.abs(delta) < ON_GOAL_TOLERANCE_PP) {
+			return "0pp";
+		}
+		String rounded = String.format(Locale.US, "%.2f", delta);
+		if (rounded.endsWith("0")) {
+			rounded = rounded.substring(0, rounded.length() - 1);
+		}
+		if (rounded.endsWith(".0")) {
+			rounded = rounded.substring(0, rounded.length() - 2);
+		}
+		return (delta > 0 ? "+" : "") + rounded + "pp";
 	}
 
 	/**

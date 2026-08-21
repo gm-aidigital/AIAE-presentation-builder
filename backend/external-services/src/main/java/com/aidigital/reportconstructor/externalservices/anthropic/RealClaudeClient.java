@@ -696,9 +696,9 @@ public class RealClaudeClient implements ClaudeClient {
 			return claudeDefaults.emptyStrategic();
 		}
 		// The reply carries the proposal, four insights and — on an end-of-month run — the three north-star
-		// fields plus up to four 140-character pacing takeaways, so the budget is the EOC one plus room for
-		// those without truncating the last field the model writes.
-		JsonNode parsed = messagesClient.callJsonObject(prompt.get(), 3000, 60, "BatchAStrategic", false);
+		// fields plus up to four 140-character pacing takeaways and four more performance takeaways, so the
+		// budget is the EOC one plus room for those without truncating the last field the model writes.
+		JsonNode parsed = messagesClient.callJsonObject(prompt.get(), 3400, 60, "BatchAStrategic", false);
 		if (parsed == null) {
 			return claudeDefaults.emptyStrategic();
 		}
@@ -732,22 +732,25 @@ public class RealClaudeClient implements ClaudeClient {
 				normalizer.limitExtendedNorthStar(normalizer.textOrNull(parsed.get("extended_north_star")));
 		String horizon = normalizer.limitHorizon(normalizer.textOrNull(parsed.get("horizon")));
 		List<String> pacingTakeaways = readPacingTakeaways(parsed.get("pacing_takeaways"));
+		List<String> performanceTakeaways = readPacingTakeaways(parsed.get("performance_takeaways"));
 
 		// Audience fields are intentionally null: the sheet flow already carries them from step 1.
 		return new ClaudeStrategic(null, null, overview, insights, northStar, extendedNorthStar, horizon,
-				pacingTakeaways);
+				pacingTakeaways, performanceTakeaways);
 	}
 
 	/**
-	 * Reads the EOM {@code pacing_takeaways} array: one key takeaway per pacing-dashboard slide, capped and
-	 * normalized, in the order the slides print them.
+	 * Reads one of the EOM dashboard-takeaway arrays — {@code pacing_takeaways} or
+	 * {@code performance_takeaways} — as one key takeaway per dashboard slide, capped and normalized, in
+	 * the order the slides print them. The two are read the same way because they are the same shape: one
+	 * 140-character line under a table, one per block of tactics.
 	 *
 	 * <p>Only the end-of-month prompt asks for the field, so on an end-of-campaign run it is absent and the
 	 * list comes back empty — which renders those tokens as dashes, exactly what an EOC deck (which has no
 	 * such slots) expects. A blank entry is kept in place rather than skipped, so one missing takeaway
 	 * dashes its own slide instead of shifting every later slide's copy up by one.
 	 *
-	 * @param node the parsed {@code pacing_takeaways} value (may be {@code null} or not an array)
+	 * @param node the parsed takeaway array (may be {@code null} or not an array)
 	 * @return the takeaways in slide order, empty when the reply carried none
 	 */
 	List<String> readPacingTakeaways(JsonNode node) {
@@ -974,12 +977,13 @@ public class RealClaudeClient implements ClaudeClient {
 				? results.fStorytelling()
 				: firstNonBlank(normalizer.limitFStorytelling(compressed.get("f_storytelling")), results.fStorytelling());
 
-		// The north-star fields and the pacing takeaways are carried through untouched: the alignment schema
-		// never asks for them, so re-deriving them here would blank the EOM slides the pass leaves alone.
+		// The north-star fields and both sets of dashboard takeaways are carried through untouched: the
+		// alignment schema never asks for them, so re-deriving them here would blank the EOM slides the pass
+		// leaves alone.
 		ClaudeStrategic alignedStrategic = new ClaudeStrategic(
 				strategic.audienceAge(), strategic.audienceSegments(), alignedProposal, alignedInsights,
 				strategic.northStar(), strategic.extendedNorthStar(), strategic.horizon(),
-				strategic.pacingTakeaways());
+				strategic.pacingTakeaways(), strategic.performanceTakeaways());
 		ClaudeResults alignedResults = new ClaudeResults(
 				alignedOverviews, alignedThoughts, results.tacticOverviews(), results.recommendations(),
 				fOpportunity, fFact, fStorytelling);

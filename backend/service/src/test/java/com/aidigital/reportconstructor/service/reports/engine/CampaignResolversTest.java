@@ -743,6 +743,23 @@ class CampaignResolversTest {
 	}
 
 	@Test
+	void resolvePerformanceTakeaways_fillsEverySlotUnderItsOwnLabelTest() {
+		// Given: Claude wrote a KPI takeaway per slide and the user rewrote the first one in the workbook
+		List<List<String>> sheet = labelRow("Performance dash takeaway 1:", "Reviewed by hand");
+		List<String> claude = List.of("Every channel is at goal.", "CTV is 4pp under its completion goal.");
+
+		// When:
+		Map<String, Resolved> out = resolvers.resolvePerformanceTakeaways(sheet, List.of(), claude);
+
+		// Then: the performance slides read their own tokens, never the pacing slides' copy
+		assertThat(out.get("{{performance dash takeaway 1}}").value()).isEqualTo("Reviewed by hand");
+		assertThat(out.get("{{performance dash takeaway 2}}").value())
+				.isEqualTo("CTV is 4pp under its completion goal.");
+		assertThat(out.get("{{performance dash takeaway 4}}").source()).isEqualTo("not_found");
+		assertThat(out).doesNotContainKey("{{pacing dash takeaway 1}}");
+	}
+
+	@Test
 	void resolvePacingTakeaways_emptyOnAnEndOfCampaignRunTest() {
 		// Given: the EOC flavour never asks for the field
 		// When:

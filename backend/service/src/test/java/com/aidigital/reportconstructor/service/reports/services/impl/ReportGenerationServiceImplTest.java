@@ -8,7 +8,7 @@ import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
 import com.aidigital.reportconstructor.service.reports.dto.ClaudeSheetBatch;
 import com.aidigital.reportconstructor.service.reports.dto.GenerationTarget;
 import com.aidigital.reportconstructor.service.reports.dto.ProgressView;
-import com.aidigital.reportconstructor.service.reports.engine.EomPacingResolver;
+import com.aidigital.reportconstructor.service.reports.engine.EomDashboardResolver;
 import com.aidigital.reportconstructor.service.reports.engine.Fmt;
 import com.aidigital.reportconstructor.service.reports.engine.ReportClaudeDefaults;
 import com.aidigital.reportconstructor.service.reports.dto.BreakdownSectionInputs;
@@ -127,7 +127,7 @@ class ReportGenerationServiceImplTest {
 				jobProgress, warnings, chartHelper, sheetHelper, publisherBreakdown, creativeBreakdown, geoBreakdown, audienceBreakdown, deviceBreakdown, placeholderReader, sheetCampaign, placeholders,
 				claudeClients, slides, userGoogleTokens, self, claudeDefaults, fileNamer,
 				new ReportNumberParserImpl(), new Fmt(),
-				new EomPacingResolver(new ReportNumberParserImpl(), new Fmt()), new SimpleAsyncTaskExecutor(),
+				new EomDashboardResolver(new ReportNumberParserImpl(), new Fmt()), new SimpleAsyncTaskExecutor(),
 				new ClaudeUsageTrackerImpl(new NoOpClaudeUsageEventService()), new ClaudeFailureLogImpl(),
 				new BreakdownSelectionResolverImpl(), new BreakdownThoughtsGateImpl(),
 				new TacticConclusionAssemblerImpl(), sheetChartData, tacticExtraction,

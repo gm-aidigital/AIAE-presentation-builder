@@ -127,6 +127,11 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		sections.add(buildPreviewSection("Pacing Dashboard Takeaways",
 				campaignResolvers.resolvePacingTakeaways(sheet, adj, ccA.pacingTakeaways())));
 
+		// The EOM performance-vs-plan slides' key takeaways, one per slide, on the same terms as the pacing
+		// takeaways above: written by the strategic call, rewritable in the sheet, dashed on an EOC run.
+		sections.add(buildPreviewSection("Performance Dashboard Takeaways",
+				campaignResolvers.resolvePerformanceTakeaways(sheet, adj, ccA.performanceTakeaways())));
+
 		Map<String, Resolved> totals = new LinkedHashMap<>();
 		// The reach the frequency was computed from, so every reach placeholder shows the same number.
 		totals.put("{{reach}}", campaignResolvers.resolveReach(payload.estimatesRows(), sheet, adj,

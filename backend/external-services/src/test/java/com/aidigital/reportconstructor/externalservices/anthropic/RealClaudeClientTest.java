@@ -810,7 +810,7 @@ class RealClaudeClientTest {
 				new ClaudeCompressionField("overview_2", "Evening dayparts.", 240),
 				new ClaudeCompressionField("point_3", "Efficiency", 22),
 				new ClaudeCompressionField("overview_3", "Strong CPM outcome.", 240));
-		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(2600), eq(60), eq("BatchAStrategic"), eq(false)))
+		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(3400), eq(60), eq("BatchAStrategic"), eq(false)))
 				.thenReturn(response);
 		when(compressionService.compress(eq(expectedFields), eq("BatchD-Strategic")))
 				.thenAnswer(invocation -> {
@@ -867,7 +867,7 @@ class RealClaudeClientTest {
 				  ]
 				}
 				""");
-		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(2600), eq(60), eq("BatchAStrategic"), eq(false)))
+		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(3400), eq(60), eq("BatchAStrategic"), eq(false)))
 				.thenReturn(response);
 		List<ClaudeCompressionField> expectedFields = List.of(
 				new ClaudeCompressionField("point_0", "Precision", 22),
@@ -896,6 +896,52 @@ class RealClaudeClientTest {
 				.isEqualTo("DEEP PENETRATION OF THE ECO-CONSCIOUS HOUSEHOLD DECISION-MAKER");
 		assertThat(strategic.extendedNorthStar()).startsWith("Across Orange County and LA");
 		assertThat(strategic.horizon()).startsWith("A continuous 30-day June flight");
+	}
+
+	@Test
+	void batchStrategicNarrativeParsesBothDashboardTakeawayArraysTest() throws Exception {
+		// Given: an end-of-month reply carrying one takeaway per dashboard slide, for both dashboards
+		ClaudeResponseNormalizer normalizer = new ClaudeResponseNormalizer();
+		EomPromptBuilder promptBuilder = new EomPromptBuilder(normalizer, new Fmt());
+		RealClaudeClient client = new RealClaudeClient(
+				messagesClient, promptBuilder, normalizer, compressionService, new ReportClaudeDefaults(),
+				new WorkbookGeoFilter(), new PromptTokenEstimator(), new ClaudeFailureLogImpl(),
+				new AnthropicProperties());
+
+		CampaignData data = new CampaignData(
+				"Acme", "Spring Launch", "Southern California", "Consideration", "Jun 1 - Jun 30, 2026",
+				null, "$500,000", "Reach", "Display, Video", "25+", "Eco-conscious parents",
+				new Totals(0, 0, 0, 0, null, null), Map.of(), null);
+		String brief = "Drive consideration for the Spring Launch.";
+		String expectedPrompt = promptBuilder.strategicNarrativePrompt(data, brief, Map.of()).orElseThrow();
+
+		JsonNode response = json.readTree("""
+				{
+				  "proposal_overview": "Throughout June we continued running Display and Video.",
+				  "pacing_takeaways": ["Every channel is within 5% of its budget."],
+				  "performance_takeaways": ["CTR is above goal on both channels."],
+				  "strategic_insights": []
+				}
+				""");
+		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(3400), eq(60), eq("BatchAStrategic"), eq(false)))
+				.thenReturn(response);
+		when(compressionService.compress(eq(List.of(
+				new ClaudeCompressionField("point_0", "", 22),
+				new ClaudeCompressionField("overview_0", "", 240),
+				new ClaudeCompressionField("point_1", "", 22),
+				new ClaudeCompressionField("overview_1", "", 240),
+				new ClaudeCompressionField("point_2", "", 22),
+				new ClaudeCompressionField("overview_2", "", 240),
+				new ClaudeCompressionField("point_3", "", 22),
+				new ClaudeCompressionField("overview_3", "", 240))), eq("BatchD-Strategic")))
+				.thenReturn(new LinkedHashMap<>());
+
+		// When:
+		ClaudeStrategic strategic = client.batchStrategicNarrative(data, brief, Map.of());
+
+		// Then: each dashboard's takeaways land in their own field, so neither slide prints the other's copy
+		assertThat(strategic.pacingTakeaways()).containsExactly("Every channel is within 5% of its budget.");
+		assertThat(strategic.performanceTakeaways()).containsExactly("CTR is above goal on both channels.");
 	}
 
 	@Test

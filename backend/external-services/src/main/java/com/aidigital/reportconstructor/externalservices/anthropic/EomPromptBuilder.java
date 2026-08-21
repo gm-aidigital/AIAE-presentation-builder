@@ -123,6 +123,10 @@ public class EomPromptBuilder extends ClaudeBatchPromptBuilder {
 		if (!dashboard.isEmpty()) {
 			context = context + "\n\n" + dashboard;
 		}
+		String performance = performanceDashboardBlock(data);
+		if (!performance.isEmpty()) {
+			context = context + "\n\n" + performance;
+		}
 
 		String prompt =
 				"You are a senior digital media strategist at an advertising agency writing a client-facing "
@@ -159,6 +163,7 @@ public class EomPromptBuilder extends ClaudeBatchPromptBuilder {
 						+ "completely.\n"
 						+ northStarSchema()
 						+ pacingTakeawaysSchema(dashboardCount(data))
+						+ performanceTakeawaysSchema(dashboardCount(data))
 						+ "  \"strategic_insights\": array    // Exactly 4 objects: {\"point\": string, "
 						+ "\"overview\": string}.\n"
 						+ "                                // CRITICAL for 'point': MAX 20 CHARACTERS ABSOLUTE HARD "
@@ -830,6 +835,102 @@ public class EomPromptBuilder extends ClaudeBatchPromptBuilder {
 				+ "and say in the same breath why it is a normal fluctuation of a live flight or what is being "
 				+ "done about it. Never a list of every channel, never a metric restated without a "
 				+ "consequence.\n";
+	}
+
+	/**
+	 * The {@code performance_takeaways} field spec: one key takeaway per performance-vs-plan slide, in
+	 * slide order.
+	 *
+	 * <p>The slide next to it is a KPI table — each tactic's goal rate, the rate it is actually running at
+	 * and the gap between them — so the takeaway is asked for as a verdict on KPI delivery specifically,
+	 * not on budget pacing, which the dashboard three slides earlier already has its own takeaway for.
+	 * Blocked the same way and asked for one per block, for the same reason.
+	 *
+	 * @param dashboards how many dashboard slides the deck keeps, one takeaway each
+	 * @return the field spec, newline-terminated
+	 */
+	String performanceTakeawaysSchema(int dashboards) {
+		return "  \"performance_takeaways\": array, // EXACTLY " + dashboards + " string(s), in order, one per "
+				+ "PERFORMANCE VS PLAN block below (same blocks as the pacing dashboard: block 1 = tactics 1-"
+				+ TACTICS_PER_DASHBOARD + ", and so on). MAX "
+				+ ClaudeResponseNormalizer.PACING_TAKEAWAY_LIMIT + " CHARACTERS EACH, HARD LIMIT — the slot is "
+				+ "one line under the table.\n"
+				+ "                                // Each string is the KPI verdict for THAT block and nothing "
+				+ "else — this is about the RATES (CTR / completion rate) against their goals, NOT about budget "
+				+ "or impression pacing. If every channel in the block is at or above its goal rate, say so and "
+				+ "say what is driving it; if one or two are below, NAME them, give the gap in percentage points "
+				+ "and say in the same breath why it is a normal fluctuation of a live flight or what is being "
+				+ "done about it. Never a list of every channel, never a rate restated without a "
+				+ "consequence.\n";
+	}
+
+	/**
+	 * Renders the performance-vs-plan dashboard as the slides print it — each tactic's goal rate against
+	 * the rate it is actually delivering — grouped into the same blocks the deck draws.
+	 *
+	 * <p>The shared context carries the delivered rates but no rate targets, so without this block there is
+	 * no goal for a KPI verdict to be about. Both rates are printed whenever the plan carries one: which of
+	 * them a given slide row prints is decided deck-side from the tactic's KPI type, and a takeaway written
+	 * against the rate that tactic is actually judged on is right either way.
+	 *
+	 * @param data parsed campaign plan and per-tactic performance
+	 * @return the performance context block, or an empty string when no tactic carries a planned rate
+	 */
+	String performanceDashboardBlock(CampaignData data) {
+		if (data == null || data.tactics() == null || data.tactics().isEmpty()) {
+			return "";
+		}
+		List<String> lines = new ArrayList<>();
+		boolean planned = false;
+		int block = 0;
+		for (Map.Entry<Integer, Tactic> entry : data.tactics().entrySet()) {
+			Tactic tactic = entry.getValue();
+			if (tactic == null) {
+				continue;
+			}
+			int tacticBlock = (entry.getKey() - 1) / TACTICS_PER_DASHBOARD + 1;
+			if (tacticBlock != block) {
+				block = tacticBlock;
+				lines.add("  -- BLOCK " + block + " --");
+			}
+			planned = planned || tactic.planCtr() != null || tactic.planVcr() != null;
+			lines.add("  Tactic " + entry.getKey() + " — " + tactic.name() + ": "
+					+ performanceLine(tactic));
+		}
+		if (!planned) {
+			return "";
+		}
+		return "=== PERFORMANCE VS PLAN ===\n"
+				+ "The rate KPIs per tactic — the goal and what is actually being delivered against it — blocked "
+				+ "exactly as the report's performance slides print it. A gap is read in percentage points.\n"
+				+ String.join("\n", lines);
+	}
+
+	/**
+	 * Renders one performance row: whichever rate KPIs the tactic carries, goal against actual.
+	 *
+	 * @param tactic the tactic whose rates are rendered
+	 * @return the formatted row, or a note that the tactic carries no rate KPI at all
+	 */
+	String performanceLine(Tactic tactic) {
+		List<String> parts = new ArrayList<>();
+		if (tactic.planCtr() != null || tactic.ctr() != null) {
+			parts.add("CTR goal " + rate(tactic.planCtr()) + " / actual " + rate(tactic.ctr()));
+		}
+		if (tactic.planVcr() != null || tactic.vcr() != null) {
+			parts.add("completion rate goal " + rate(tactic.planVcr()) + " / actual " + rate(tactic.vcr()));
+		}
+		return parts.isEmpty() ? "no rate KPI" : String.join(" | ", parts);
+	}
+
+	/**
+	 * Renders one rate for the performance block, as the percentage the deck prints.
+	 *
+	 * @param value the rate, already scaled to a percentage ({@code null} when the campaign carries none)
+	 * @return the rate with its percent sign, or {@code "n/a"} when there is none
+	 */
+	String rate(Double value) {
+		return value == null ? "n/a" : fmt.dec2(value) + "%";
 	}
 
 	/**

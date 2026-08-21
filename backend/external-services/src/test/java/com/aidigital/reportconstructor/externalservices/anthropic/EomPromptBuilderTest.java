@@ -729,6 +729,76 @@ class EomPromptBuilderTest {
 		assertThat(prompt).doesNotContain("=== PACING DASHBOARD ===");
 	}
 
+	/**
+	 * Builds a campaign of {@code count} tactics that carry rate KPIs — a goal CTR and the CTR actually
+	 * delivered — so the performance-vs-plan dashboard has something to be a verdict about.
+	 *
+	 * @param count how many tactics the campaign runs
+	 * @return the campaign data
+	 */
+	private CampaignData ratedCampaign(int count) {
+		Map<Integer, Tactic> tactics = new LinkedHashMap<>();
+		for (int n = 1; n <= count; n++) {
+			tactics.put(n, new Tactic(
+					"Tactic " + n, "Display", null,
+					9_000.0, 900_000.0, 3_150.0, 0.0, 0.35, null, null, null,
+					10_000.0, 1_000_000.0, 0.25, null, null, null, null, null, null, null, null, null));
+		}
+		return new CampaignData(
+				"Acme", "Spring Launch", "US", "Awareness", "Mar 1 - Mar 31",
+				null, "$500,000", "Reach", "Display", "25-44", "Auto intenders",
+				new Totals(0, 0, 0, 0, null, null), tactics, 2, 6, null);
+	}
+
+	@Test
+	void shouldAskForOnePerformanceTakeawayPerSlideTheDeckKeepsTest() {
+		// Given: nine tactics — two performance slides survive the trim, the other two are deleted
+		// When:
+		String prompt = builder.strategicNarrativePrompt(ratedCampaign(9), "Drive awareness.", Map.of())
+				.orElseThrow();
+
+		// Then: one takeaway per surviving slide, capped at what the slot prints, and about the rates
+		assertThat(prompt).contains("\"performance_takeaways\": array");
+		assertThat(prompt).contains("EXACTLY 2 string(s), in order, one per PERFORMANCE VS PLAN block");
+		assertThat(prompt).contains("NOT about budget or impression pacing");
+	}
+
+	@Test
+	void shouldGiveThePerformanceTakeawayTheKpiTableBlockedLikeTheSlidesTest() {
+		// When: a campaign spanning two performance blocks
+		String prompt = builder.strategicNarrativePrompt(ratedCampaign(8), "Drive awareness.", Map.of())
+				.orElseThrow();
+
+		// Then: the goal-vs-actual rates the verdict is written against, in the deck's own blocks
+		assertThat(prompt).contains("=== PERFORMANCE VS PLAN ===");
+		assertThat(prompt).contains("Tactic 1 — Tactic 1: CTR goal 0.25% / actual 0.35%");
+		assertThat(prompt).contains("-- BLOCK 2 --");
+	}
+
+	@Test
+	void shouldLeaveOutTheKpiTableWhenThePlanCarriesNoRateTargetsTest() {
+		// Given: the planned campaign the pacing tests use, which carries budgets but no rate goals
+		// When:
+		String prompt = builder.strategicNarrativePrompt(plannedCampaign(3), "Drive awareness.", Map.of())
+				.orElseThrow();
+
+		// Then: no performance block — there is no goal rate to measure against
+		assertThat(prompt).doesNotContain("=== PERFORMANCE VS PLAN ===");
+	}
+
+	@Test
+	void shouldLeaveTheEndOfCampaignStrategicNarrativeWithoutDashboardTakeawaysTest() {
+		// Given: the EOC template carries neither dashboard
+		// When:
+		String prompt = eoc.strategicNarrativePrompt(ratedCampaign(9), "Drive awareness.", Map.of())
+				.orElseThrow();
+
+		// Then: neither field is asked for, and neither table is paid for in context
+		assertThat(prompt).doesNotContain("performance_takeaways");
+		assertThat(prompt).doesNotContain("pacing_takeaways");
+		assertThat(prompt).doesNotContain("=== PERFORMANCE VS PLAN ===");
+	}
+
 	@Test
 	void shouldAskTheTacticThoughtsBulletsForDeliveryToDateNotPastTenseTest() {
 		// Given: the Step-3 call for one tactic

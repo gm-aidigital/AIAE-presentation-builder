@@ -28,7 +28,7 @@ import com.aidigital.reportconstructor.service.reports.dto.GeneratePayload;
 import com.aidigital.reportconstructor.service.reports.dto.GenerationTarget;
 import com.aidigital.reportconstructor.service.reports.dto.ProgressView;
 import com.aidigital.reportconstructor.service.reports.dto.SheetChartData;
-import com.aidigital.reportconstructor.service.reports.engine.EomPacingResolver;
+import com.aidigital.reportconstructor.service.reports.engine.EomDashboardResolver;
 import com.aidigital.reportconstructor.service.reports.engine.Fmt;
 import com.aidigital.reportconstructor.service.reports.engine.ReportClaudeDefaults;
 import com.aidigital.reportconstructor.service.reports.helpers.ReportFileNamer;
@@ -146,7 +146,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	private final ReportFileNamer fileNamer;
 	private final ReportNumberParser reportNumbers;
 	private final Fmt fmt;
-	private final EomPacingResolver eomPacing;
+	private final EomDashboardResolver eomDashboards;
 	/**
 	 * Shared virtual-thread executor (the {@code applicationTaskExecutor} bean) used to run the five
 	 * independent breakdown sections concurrently in {@link #runSlidesFromSheet}. Field name matches the
@@ -339,7 +339,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 			contributions.fillContributions(flatReplacements, flatTacticCount);
 			// The EOM pacing dashboard, derived here for the same reason and in the same place: the workbook
 			// carries no such columns, so these tokens are deck-only.
-			fillEomPacingDashboard(flatReplacements, flatTacticCount, payload.reportType());
+			fillEomDashboards(flatReplacements, flatTacticCount, payload.reportType());
 
 			jobProgress.markJobRunningAtStep(jobId, 6, "Building slide deck");
 			String slideUrl = slides.createDeck(
@@ -1128,12 +1128,12 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 		for (int n = 1; n <= tacticCount; n++) {
 			copyToken(flat, "{{tactic " + n + " complitions}}", "{{tactic " + n + " completions}}");
 		}
-		fillEomPacingDashboard(flat, tacticCount, reportType);
+		fillEomDashboards(flat, tacticCount, reportType);
 	}
 
 	/**
-	 * Derives the EOM pacing-dashboard figures once the reviewed sheet values are in the map, so slides 3–6
-	 * print the budgets and impressions the user signed off on rather than a recomputed second opinion.
+	 * Derives the EOM dashboard figures once the reviewed sheet values are in the map, so slides 3–10 print
+	 * the budgets, impressions and KPIs the user signed off on rather than a recomputed second opinion.
 	 *
 	 * <p>End-of-month only: the EOC template carries none of these slots, and every token added to the map
 	 * costs one more find-replace request on a deck write that has timed out before when the batch grew too
@@ -1143,9 +1143,9 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 	 * @param tacticCount the active tactic count
 	 * @param reportType  report template code ({@code "EOC"}/{@code "EOM"}), may be {@code null}
 	 */
-	void fillEomPacingDashboard(Map<String, String> flat, int tacticCount, String reportType) {
+	void fillEomDashboards(Map<String, String> flat, int tacticCount, String reportType) {
 		if (EOM_REPORT_TYPE.equals(reportType)) {
-			eomPacing.fill(flat, tacticCount);
+			eomDashboards.fill(flat, tacticCount);
 		}
 	}
 
