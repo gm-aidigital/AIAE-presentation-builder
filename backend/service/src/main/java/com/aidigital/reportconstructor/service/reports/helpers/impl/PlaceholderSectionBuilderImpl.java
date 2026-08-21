@@ -137,7 +137,7 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		// has read every conclusion the chains are drawn from. Rewritable in the sheet like any other copy,
 		// and dashed on an EOC run, whose template has no such slide.
 		sections.add(buildPreviewSection("What We Did This Month",
-				campaignResolvers.resolveWhatWeDid(sheet, adj, ccA.whatWeDid())));
+				campaignResolvers.resolveWhatWeDid(ccA.whatWeDid())));
 
 		// The EOM "focus next month" slide. The three columns come from the same alignment pass as the
 		// chains above — next month's plan is the answer to this month's signals — while the projection
@@ -145,8 +145,8 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 		// arithmetic over. Both dash on an EOC run.
 		Map<String, Resolved> focus = new LinkedHashMap<>();
 		focus.put("{{updated projection}}",
-				campaignResolvers.resolveUpdatedProjection(sheet, adj, ccA.updatedProjection()));
-		focus.putAll(campaignResolvers.resolveFocusNextMonth(sheet, adj, ccA.focusNextMonth()));
+				campaignResolvers.resolveUpdatedProjection(ccA.updatedProjection()));
+		focus.putAll(campaignResolvers.resolveFocusNextMonth(ccA.focusNextMonth()));
 		sections.add(buildPreviewSection("Focus Next Month", focus));
 
 		Map<String, Resolved> totals = new LinkedHashMap<>();
@@ -188,13 +188,6 @@ public class PlaceholderSectionBuilderImpl implements PlaceholderSectionBuilder 
 					campaignResolvers.resolveTotalPlannedImpsShort(sheet, adj, data));
 			totals.put("{{fact total impressions short}}",
 					campaignResolvers.resolveTotalFactImpsShort(sheet, adj, data));
-			// The "focus next month" slide's heading: the month after the one this report covers, and its
-			// position in the flight. Derived rather than dashed on the flight's last month — the slide
-			// prints the month as its own title, and the next calendar month is a fact either way.
-			totals.put("{{reporting month +1}}",
-					campaignResolvers.resolveNextReportingMonth(sheet, adj, data));
-			totals.put("{{mon no +1}}",
-					campaignResolvers.resolveNextCampaignMonthNumber(sheet, adj, data));
 		}
 		sections.add(buildPreviewSection("Summary Metrics", totals));
 

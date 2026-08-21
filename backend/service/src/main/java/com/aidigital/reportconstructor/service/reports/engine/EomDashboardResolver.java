@@ -4,6 +4,7 @@ import com.aidigital.reportconstructor.service.reports.helpers.ReportNumberParse
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -39,6 +40,18 @@ public class EomDashboardResolver {
 	 * surplus ones to be dashed.
 	 */
 	static final int DIVIDER_CHIP_SLOTS = 3;
+
+	/** Token carrying the month this report covers, as the cover prints it. */
+	static final String SRC_REPORTING_MONTH = "{{reporting month}}";
+
+	/** Token carrying the month the "focus next month" slide plans for. */
+	static final String DST_NEXT_REPORTING_MONTH = "{{reporting month +1}}";
+
+	/** Token carrying the reporting month's position in the flight, as the cover prints it. */
+	static final String SRC_MONTH_NUMBER = "{{mon no}}";
+
+	/** Token carrying that position plus one, for the "focus next month" slide. */
+	static final String DST_NEXT_MONTH_NUMBER = "{{mon no +1}}";
 
 	/** Source token suffix carrying a tactic's planned spend. */
 	static final String SRC_SPEND_PLAN = " spend plan";
@@ -120,6 +133,7 @@ public class EomDashboardResolver {
 
 	private final ReportNumberParser numbers;
 	private final Fmt fmt;
+	private final RatePlanCalculator pacing;
 
 	/**
 	 * Fills every dashboard token for the campaign's real tactics and the pacing dashboard's totals row,
@@ -143,6 +157,43 @@ public class EomDashboardResolver {
 		}
 		fillTotals(flat, tacticCount);
 		fillDividerChips(flat, tacticCount);
+		fillNextMonth(flat);
+	}
+
+	/**
+	 * Fills the "focus next month" slide's heading: the month after the one this report covers, and that
+	 * month's position in the flight.
+	 *
+	 * <p>Both are stepped off the tokens the cover prints rather than re-derived from the plan, for the same
+	 * reason as every figure above them: on the two-step flow the reporting month is whatever the user
+	 * reviewed in the workbook, and a heading derived from anything else can name a different month than the
+	 * cover two slides earlier. A month label the formatter cannot read, or a position that is not a number,
+	 * dashes its own token.
+	 *
+	 * @param flat the placeholder map to fill, mutated in place
+	 */
+	void fillNextMonth(Map<String, String> flat) {
+		LocalDate month = pacing.monthFromLabel(lastMonthOf(flat.get(SRC_REPORTING_MONTH)));
+		flat.put(DST_NEXT_REPORTING_MONTH, month == null ? DASH : pacing.monthLabel(month.plusMonths(1)));
+		// parseReportNumber answers 0 for a blank or unreadable cell, which would print "1" — the one month
+		// number that is never right on a report about a month already delivered.
+		long position = Math.round(numbers.parseReportNumber(flat.get(SRC_MONTH_NUMBER)));
+		flat.put(DST_NEXT_MONTH_NUMBER, position < 1 ? DASH : String.valueOf(position + 1));
+	}
+
+	/**
+	 * Takes the month a reporting-period label ends on, so a window spanning two months steps forward from
+	 * its last one: {@code "July - August 2026"} is followed by September, not by August.
+	 *
+	 * @param label the reporting-period label (may be null)
+	 * @return the trailing {@code "MMMM yyyy"} part of the label, or the label itself when it names one month
+	 */
+	String lastMonthOf(String label) {
+		if (label == null) {
+			return null;
+		}
+		int split = label.lastIndexOf(" - ");
+		return split < 0 ? label : label.substring(split + 3);
 	}
 
 	/**

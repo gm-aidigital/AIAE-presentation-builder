@@ -774,8 +774,7 @@ class CampaignResolversTest {
 
 	@Test
 	void resolveWhatWeDid_keepsEachChainInItsOwnColumnTest() {
-		// Given: Claude wrote two of the three chains and the user rewrote the first observation by hand
-		List<List<String>> sheet = labelRow("Observation 1:", "Frequency ran hot");
+		// Given: Claude wrote two of the three chains
 		List<WhatWeDidStep> claude = List.of(
 				new WhatWeDidStep("Audience fatigue", "CTR fell 18% in week 3.",
 						"Refreshed creative", "Swapped the two worn 300x250 units.",
@@ -785,11 +784,11 @@ class CampaignResolversTest {
 						"Scale the winner", "Lifts campaign CTR over the rest of the flight."));
 
 		// When:
-		Map<String, Resolved> out = resolvers.resolveWhatWeDid(sheet, List.of(), claude);
+		Map<String, Resolved> out = resolvers.resolveWhatWeDid(claude);
 
-		// Then: the sheet wins the one cell it fills, and the rest of chain 1 still comes from chain 1 —
-		// a hand-edited heading must never leave an action that answers a different observation
-		assertThat(out.get("{{observation 1}}").value()).isEqualTo("Frequency ran hot");
+		// Then: every token of a column comes from that column's own chain — the action must always answer
+		// the observation printed above it
+		assertThat(out.get("{{observation 1}}").value()).isEqualTo("Audience fatigue");
 		assertThat(out.get("{{observation 1 text}}").value()).isEqualTo("CTR fell 18% in week 3.");
 		assertThat(out.get("{{action 1 text}}").value()).isEqualTo("Swapped the two worn 300x250 units.");
 		assertThat(out.get("{{impact 1}}").value()).isEqualTo("Efficiency restored");
@@ -802,7 +801,7 @@ class CampaignResolversTest {
 	void resolveWhatWeDid_dashesTheChainsClaudeDidNotWriteTest() {
 		// Given: the EOC flavour never asks for the field, so no chain comes back at all
 		// When:
-		Map<String, Resolved> out = resolvers.resolveWhatWeDid(List.of(), List.of(), List.of());
+		Map<String, Resolved> out = resolvers.resolveWhatWeDid(List.of());
 
 		// Then: all eighteen slots resolve to a dash rather than shipping raw tokens on the slide
 		assertThat(out).hasSize(18);
@@ -811,57 +810,20 @@ class CampaignResolversTest {
 	}
 
 	@Test
-	void shouldNameTheMonthTheFocusSlidePlansForTest() {
-		// Given: a report covering August 2026, the second month of a three-month flight
-		CampaignData data = new CampaignData(
-				null, null, null, null, null,
-				new FlightDates(LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 31)),
-				null, null, null, null, null,
-				new Totals(0, 0, 0, 0, null, null), Map.of(), 1, 1, null, 2, 3, null);
-
-		// When:
-		Resolved month = resolvers.resolveNextReportingMonth(List.of(), List.of(), data);
-		Resolved number = resolvers.resolveNextCampaignMonthNumber(List.of(), List.of(), data);
-
-		// Then: the slide's own title names the next calendar month with its year, and the month after this
-		// report's position in the flight
-		assertThat(month.value()).isEqualTo("September 2026");
-		assertThat(number.value()).isEqualTo("3");
-	}
-
-	@Test
-	void shouldStillNameTheNextMonthOnTheFlightsLastMonthTest() {
-		// Given: the third month of a three-month flight — there is no fourth month booked
-		CampaignData data = new CampaignData(
-				null, null, null, null, null,
-				new FlightDates(LocalDate.of(2026, 12, 1), LocalDate.of(2026, 12, 31)),
-				null, null, null, null, null,
-				new Totals(0, 0, 0, 0, null, null), Map.of(), 3, 3, null, 3, 3, null);
-
-		// When:
-		Resolved month = resolvers.resolveNextReportingMonth(List.of(), List.of(), data);
-
-		// Then: the heading still names a month rather than a dash, year rolled over — the slide prints it
-		// as its own title, and a dash there reads as a broken template
-		assertThat(month.value()).isEqualTo("January 2027");
-	}
-
-	@Test
-	void resolveFocusNextMonth_keepsTheThreeColumnsApartAndPrefersTheSheetTest() {
-		// Given: Claude wrote all three columns and the user rewrote the first pivot in the workbook
-		List<List<String>> sheet = labelRow("Pivot 1:", "Reviewed by hand");
+	void resolveFocusNextMonth_keepsTheThreeColumnsApartTest() {
+		// Given: Claude wrote two lines in each of the three columns
 		FocusNextMonth claude = new FocusNextMonth(
 				List.of("Hold weight on PHI & CLT", "Keep YouTube on the CPM buy"),
 				List.of("Cap video frequency under 9.5x", "Rebalance budget to ATL & NJ"),
 				List.of("Test a romantic-getaway segment", "Launch smart bidding in SEM"));
 
 		// When:
-		Map<String, Resolved> out = resolvers.resolveFocusNextMonth(sheet, List.of(), claude);
+		Map<String, Resolved> out = resolvers.resolveFocusNextMonth(claude);
 
-		// Then: each column fills its own tokens, the sheet wins the one line it carries, and the third slot
-		// of every column dashes rather than borrowing a line from the column beside it
+		// Then: each column fills its own tokens, and the third slot of every column dashes rather than
+		// borrowing a line from the column beside it
 		assertThat(out.get("{{carry forward 1}}").value()).isEqualTo("Hold weight on PHI & CLT");
-		assertThat(out.get("{{pivot 1}}").value()).isEqualTo("Reviewed by hand");
+		assertThat(out.get("{{pivot 1}}").value()).isEqualTo("Cap video frequency under 9.5x");
 		assertThat(out.get("{{pivot 2}}").value()).isEqualTo("Rebalance budget to ATL & NJ");
 		assertThat(out.get("{{test 2}}").value()).isEqualTo("Launch smart bidding in SEM");
 		assertThat(out.get("{{carry forward 3}}").source()).isEqualTo("not_found");
@@ -870,18 +832,16 @@ class CampaignResolversTest {
 	}
 
 	@Test
-	void resolveUpdatedProjection_prefersTheHandWrittenAnswerTest() {
-		// Given: Claude projected the flight and the user rewrote the answer in the workbook
-		List<List<String>> adj = labelRow("Updated projection:", "We land at 12.4M, 3% over goal.");
-
+	void resolveUpdatedProjection_takesClaudesAnswerOrDashesTest() {
+		// Given: the projection is written after the workbook is reviewed and goes straight to the deck
 		// When:
-		Resolved fromSheet = resolvers.resolveUpdatedProjection(List.of(), adj, "Claude's projection.");
-		Resolved fromClaude = resolvers.resolveUpdatedProjection(List.of(), List.of(), "Claude's projection.");
-		Resolved neither = resolvers.resolveUpdatedProjection(List.of(), List.of(), null);
+		Resolved written = resolvers.resolveUpdatedProjection("We land at 12.4M, 3% over goal.");
+		Resolved blank = resolvers.resolveUpdatedProjection("  ");
+		Resolved none = resolvers.resolveUpdatedProjection(null);
 
 		// Then:
-		assertThat(fromSheet.value()).isEqualTo("We land at 12.4M, 3% over goal.");
-		assertThat(fromClaude.value()).isEqualTo("Claude's projection.");
-		assertThat(neither.source()).isEqualTo("not_found");
+		assertThat(written.value()).isEqualTo("We land at 12.4M, 3% over goal.");
+		assertThat(blank.source()).isEqualTo("not_found");
+		assertThat(none.source()).isEqualTo("not_found");
 	}
 }

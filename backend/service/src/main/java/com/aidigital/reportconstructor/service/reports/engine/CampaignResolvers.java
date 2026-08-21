@@ -59,6 +59,10 @@ public class CampaignResolvers {
 	/** Columns the EOM "what we did this month" slide draws, one observation → action → impact chain each. */
 	private static final int WHAT_WE_DID_SLOTS = 3;
 
+	/** Auto-derived label written next to the "focus next month" slide's projection block. */
+	private static final String UPDATED_PROJECTION_AUTO_LABEL =
+			"Updated projection (auto: Claude from pacing + performance)";
+
 	/** Lines each column of the EOM "focus next month" slide draws. */
 	private static final int FOCUS_SLOTS = 3;
 
@@ -67,14 +71,6 @@ public class CampaignResolvers {
 
 	/** Auto-derived label written next to the cover's reporting-period name. */
 	private static final String REPORTING_MONTH_AUTO_LABEL = "Reporting month (auto: selected date window)";
-
-	/** Auto-derived label written next to the month the "focus next month" slide plans for. */
-	private static final String NEXT_REPORTING_MONTH_AUTO_LABEL =
-			"Next reporting month (auto: reporting window + 1 month)";
-
-	/** Auto-derived label written next to that month's position in the flight. */
-	private static final String NEXT_FLIGHT_MONTH_NUMBER_AUTO_LABEL =
-			"Next flight month number (auto: flight month number + 1)";
 
 	/** Auto-derived label written next to the booked flight's month count. */
 	private static final String FLIGHT_MONTHS_TOTAL_AUTO_LABEL = "Flight months total (auto: media-plan flight dates)";
@@ -737,171 +733,84 @@ public class CampaignResolvers {
 	}
 
 	/**
-	 * Resolves the EOM "focus next month" slide's heading month ({@code {{reporting month +1}}}) — the
-	 * calendar month after the one this report covers — preferring a manual override.
+	 * Resolves the EOM "focus next month" slide's projection block ({@code {{updated projection}}}) — where
+	 * the campaign lands at the current pace and whether that clears the final KPI.
 	 *
-	 * <p>Unlike {@link #resolveEomNextReportMonth}, which is empty once the reporting month is the flight's
-	 * last, this one carries the year and is derived whenever the reporting window is known. The slide is the
-	 * plan for the month ahead and prints the month as its own title: a dash there reads as a broken
-	 * template, and the next calendar month is a fact about the calendar either way.
+	 * <p>Claude's answer or nothing: this slide is written after the workbook has been reviewed and goes
+	 * straight to the deck, so there is no {@code "Updated projection:"} row for a hand-entered value to
+	 * come from. The workbook still governs every figure the projection is reasoned over — it is those
+	 * reviewed numbers the strategic call projects forward.
 	 *
-	 * @param sheetRows Media Plan tab rows
-	 * @param adjRows   manual Adjustments tab rows (checked first)
-	 * @param data      aggregated campaign data providing the reporting window
-	 * @return a {@link Resolved} month label, e.g. {@code "November 2026"}, or a null-valued
-	 * {@code "not_found"} when the window is unknown
-	 */
-	public Resolved resolveNextReportingMonth(List<List<String>> sheetRows, List<List<String>> adjRows,
-	                                          CampaignData data) {
-		String fromAdj = sheetUtils.findLabelValue(adjRows, "Next reporting month:");
-		if (fromAdj != null) {
-			return new Resolved("Next reporting month:", fromAdj, "adj");
-		}
-		String fromSheet = sheetUtils.findLabelValue(sheetRows, "Next reporting month:");
-		if (fromSheet != null) {
-			return new Resolved("Next reporting month:", fromSheet, "sheet");
-		}
-		if (data == null || data.flightTs() == null || data.flightTs().end() == null) {
-			return new Resolved(NEXT_REPORTING_MONTH_AUTO_LABEL, null, "not_found");
-		}
-		return new Resolved(NEXT_REPORTING_MONTH_AUTO_LABEL,
-				pacing.monthLabel(data.flightTs().end().plusMonths(1)), "adj");
-	}
-
-	/**
-	 * Resolves the month number the "focus next month" slide plans for ({@code {{mon no +1}}}) — the
-	 * reporting month's position in the flight plus one — preferring a manual override.
-	 *
-	 * @param sheetRows Media Plan tab rows
-	 * @param adjRows   manual Adjustments tab rows (checked first)
-	 * @param data      aggregated campaign data providing {@code campaignMonthNumber()}
-	 * @return a {@link Resolved} month index, or a null-valued {@code "not_found"} when unavailable
-	 */
-	public Resolved resolveNextCampaignMonthNumber(List<List<String>> sheetRows, List<List<String>> adjRows,
-	                                               CampaignData data) {
-		String fromAdj = sheetUtils.findLabelValue(adjRows, "Next flight month number:");
-		if (fromAdj != null) {
-			return new Resolved("Next flight month number:", fromAdj, "adj");
-		}
-		String fromSheet = sheetUtils.findLabelValue(sheetRows, "Next flight month number:");
-		if (fromSheet != null) {
-			return new Resolved("Next flight month number:", fromSheet, "sheet");
-		}
-		if (data == null || data.campaignMonthNumber() == null) {
-			return new Resolved(NEXT_FLIGHT_MONTH_NUMBER_AUTO_LABEL, null, "not_found");
-		}
-		return new Resolved(NEXT_FLIGHT_MONTH_NUMBER_AUTO_LABEL,
-				String.valueOf(data.campaignMonthNumber() + 1), "adj");
-	}
-
-	/**
-	 * Resolves the EOM "focus next month" slide's projection block ({@code {{updated projection}}}) —
-	 * where the campaign lands at the current pace and whether that clears the final KPI — preferring a
-	 * hand-entered value.
-	 *
-	 * @param sheetRows  Media Plan tab rows
-	 * @param adjRows    manual Adjustments tab rows (checked first)
-	 * @param claudeText Claude-authored projection, used when no manual value exists (may be null)
+	 * @param claudeText Claude-authored projection (may be null)
 	 * @return a {@link Resolved} projection, or a null-valued {@code "not_found"}
 	 */
-	public Resolved resolveUpdatedProjection(List<List<String>> sheetRows, List<List<String>> adjRows,
-	                                         String claudeText) {
-		String fromAdj = sheetUtils.findLabelValue(adjRows, "Updated projection:");
-		if (fromAdj != null) {
-			return new Resolved("Updated projection:", fromAdj, "adj");
-		}
-		String fromSheet = sheetUtils.findLabelValue(sheetRows, "Updated projection:");
-		if (fromSheet != null) {
-			return new Resolved("Updated projection:", fromSheet, "sheet");
-		}
+	public Resolved resolveUpdatedProjection(String claudeText) {
 		if (notBlank(claudeText)) {
-			return new Resolved("Updated projection (auto: Claude from pacing + performance)", claudeText, "adj");
+			return new Resolved(UPDATED_PROJECTION_AUTO_LABEL, claudeText, "adj");
 		}
-		return new Resolved("Updated projection:", null, "not_found");
+		return new Resolved(UPDATED_PROJECTION_AUTO_LABEL, null, "not_found");
 	}
 
 	/**
 	 * Resolves the nine "focus next month" placeholders — {@code {{carry forward 1..3}}},
-	 * {@code {{pivot 1..3}}} and {@code {{test 1..3}}} — preferring hand-entered values.
+	 * {@code {{pivot 1..3}}} and {@code {{test 1..3}}} — from the columns Claude wrote.
 	 *
-	 * @param sheetRows Media Plan tab rows
-	 * @param adjRows   manual Adjustments tab rows (checked first)
-	 * @param claude    Claude's three columns in slot order, used where no manual value exists (may be null)
+	 * @param claude Claude's three columns in slot order (may be null)
 	 * @return a map keyed by placeholder to its {@link Resolved}; values may be {@code "not_found"}
 	 */
-	public Map<String, Resolved> resolveFocusNextMonth(
-			List<List<String>> sheetRows, List<List<String>> adjRows, FocusNextMonth claude) {
-
+	public Map<String, Resolved> resolveFocusNextMonth(FocusNextMonth claude) {
 		Map<String, Resolved> result = new LinkedHashMap<>();
-		result.putAll(resolveFocusColumn(sheetRows, adjRows, "Carry forward",
-				claude == null ? null : claude.carryForward()));
-		result.putAll(resolveFocusColumn(sheetRows, adjRows, "Pivot", claude == null ? null : claude.pivots()));
-		result.putAll(resolveFocusColumn(sheetRows, adjRows, "Test", claude == null ? null : claude.tests()));
+		result.putAll(resolveFocusColumn("Carry forward", claude == null ? null : claude.carryForward()));
+		result.putAll(resolveFocusColumn("Pivot", claude == null ? null : claude.pivots()));
+		result.putAll(resolveFocusColumn("Test", claude == null ? null : claude.tests()));
 		return result;
 	}
 
 	/**
-	 * Resolves one column of the "focus next month" slide: the manual lines the user may have written into
-	 * the workbook, else Claude's, else nothing.
+	 * Resolves one column of the "focus next month" slide from Claude's lines for it.
 	 *
 	 * <p>The three columns are resolved by the same code because they differ only in what their lines are
-	 * about: all three are one short line per slot, looked up under {@code "<name> N:"} and filling
-	 * {@code {{<lower-cased name> N}}}.
+	 * about: all three are one short line per slot, filling {@code {{<lower-cased name> N}}}.
 	 *
-	 * @param sheetRows Media Plan tab rows
-	 * @param adjRows   manual Adjustments tab rows (checked first)
-	 * @param name      how the workbook labels this column, e.g. {@code "Carry forward"}
-	 * @param claude    Claude's lines for the column in slot order (may be null)
+	 * @param name   how the preview labels this column, e.g. {@code "Carry forward"}
+	 * @param claude Claude's lines for the column in slot order (may be null)
 	 * @return a map keyed by the column's tokens to their {@link Resolved}
 	 */
-	Map<String, Resolved> resolveFocusColumn(
-			List<List<String>> sheetRows, List<List<String>> adjRows, String name, List<String> claude) {
-
+	Map<String, Resolved> resolveFocusColumn(String name, List<String> claude) {
 		Map<String, Resolved> result = new LinkedHashMap<>();
 		for (int i = 1; i <= FOCUS_SLOTS; i++) {
-			String label = name + " " + i + ":";
-			String manual = coalesce(sheetUtils.findLabelValue(adjRows, label),
-					sheetUtils.findLabelValue(sheetRows, label));
 			String fromClaude = claude != null && claude.size() >= i ? claude.get(i - 1) : null;
 			String key = "{{" + name.toLowerCase(Locale.ROOT) + " " + i + "}}";
-			if (manual != null) {
-				result.put(key, new Resolved(label, manual, "adj"));
-			} else if (notBlank(fromClaude)) {
-				result.put(key, new Resolved(name + " " + i + " (auto: Claude)", fromClaude, "adj"));
-			} else {
-				result.put(key, new Resolved(label, null, "not_found"));
-			}
+			String label = name + " " + i + " (auto: Claude)";
+			result.put(key, notBlank(fromClaude)
+					? new Resolved(label, fromClaude, "adj")
+					: new Resolved(label, null, "not_found"));
 		}
 		return result;
 	}
 
 	/**
 	 * Resolves the eighteen "what we did this month" placeholders — {@code {{observation N}}},
-	 * {@code {{action N}}}, {@code {{impact N}}} and the {@code text} token under each, for N = 1..3 —
-	 * preferring a hand-entered value and falling back to the chain Claude wrote.
+	 * {@code {{action N}}}, {@code {{impact N}}} and the {@code text} token under each, for N = 1..3 — from
+	 * the chains Claude wrote.
 	 *
-	 * <p>The whole column is resolved from one {@link WhatWeDidStep} so the slide keeps the chain intact:
-	 * observation 1, action 1 and impact 1 are one continuous argument, and taking each token from its own
-	 * source would let a hand-edited observation sit above an action that answers the one it replaced. A user
-	 * who rewrites one cell in the workbook still overrides only that cell, which is the point of the
-	 * workbook — but the fallback never splices two different chains together.
+	 * <p>Claude's chains or nothing, like the focus slide beside them: they are written by the alignment
+	 * pass, after the workbook has been reviewed, and go straight to the deck. The whole column is taken
+	 * from one {@link WhatWeDidStep} so the chain stays intact — observation 1, action 1 and impact 1 are
+	 * one continuous argument.
 	 *
-	 * @param sheetRows Media Plan tab rows
-	 * @param adjRows   manual Adjustments tab rows (checked first)
-	 * @param claude    Claude's chains in column order, used when no manual value exists (may be null)
+	 * @param claude Claude's chains in column order (may be null)
 	 * @return a map keyed by placeholder to its {@link Resolved}; values may be {@code "not_found"}
 	 */
-	public Map<String, Resolved> resolveWhatWeDid(
-			List<List<String>> sheetRows, List<List<String>> adjRows, List<WhatWeDidStep> claude) {
-
+	public Map<String, Resolved> resolveWhatWeDid(List<WhatWeDidStep> claude) {
 		Map<String, Resolved> result = new LinkedHashMap<>();
 		for (int i = 1; i <= WHAT_WE_DID_SLOTS; i++) {
 			WhatWeDidStep step = claude != null && claude.size() >= i ? claude.get(i - 1) : null;
-			putWhatWeDidPair(result, sheetRows, adjRows, "Observation", i,
+			putWhatWeDidPair(result, "Observation", i,
 					step == null ? null : step.observation(), step == null ? null : step.observationText());
-			putWhatWeDidPair(result, sheetRows, adjRows, "Action", i,
+			putWhatWeDidPair(result, "Action", i,
 					step == null ? null : step.action(), step == null ? null : step.actionText());
-			putWhatWeDidPair(result, sheetRows, adjRows, "Impact", i,
+			putWhatWeDidPair(result, "Impact", i,
 					step == null ? null : step.impact(), step == null ? null : step.impactText());
 		}
 		return result;
@@ -912,45 +821,31 @@ public class CampaignResolvers {
 	 * tokens the slide prints them in.
 	 *
 	 * @param target  the map the two resolved tokens are written into
-	 * @param sheet   Media Plan tab rows
-	 * @param adj     manual Adjustments tab rows (checked first)
-	 * @param name    how the workbook labels this link, e.g. {@code "Observation"}
+	 * @param name    how the preview labels this link, e.g. {@code "Observation"}
 	 * @param index   the chain's 1-based column on the slide
 	 * @param heading Claude's heading for this link (may be null)
 	 * @param text    Claude's paragraph for this link (may be null)
 	 */
 	void putWhatWeDidPair(
-			Map<String, Resolved> target, List<List<String>> sheet, List<List<String>> adj, String name,
-			int index, String heading, String text) {
+			Map<String, Resolved> target, String name, int index, String heading, String text) {
 
 		String token = name.toLowerCase(Locale.ROOT) + " " + index;
-		target.put("{{" + token + "}}", resolveWhatWeDidSlot(sheet, adj, name + " " + index, heading));
-		target.put("{{" + token + " text}}",
-				resolveWhatWeDidSlot(sheet, adj, name + " " + index + " text", text));
+		target.put("{{" + token + "}}", resolveWhatWeDidSlot(name + " " + index, heading));
+		target.put("{{" + token + " text}}", resolveWhatWeDidSlot(name + " " + index + " text", text));
 	}
 
 	/**
-	 * Resolves one "what we did" token: the manual value the user may have written into the workbook, else
-	 * Claude's, else nothing.
+	 * Resolves one "what we did" token from Claude's copy for it.
 	 *
-	 * @param sheet     Media Plan tab rows
-	 * @param adj       manual Adjustments tab rows (checked first)
-	 * @param name      how the workbook labels this slot, without its colon, e.g. {@code "Observation 1"}
+	 * @param name       how the preview labels this slot, e.g. {@code "Observation 1"}
 	 * @param fromClaude Claude's copy for the slot (may be null)
 	 * @return the {@link Resolved} slot, possibly {@code "not_found"}
 	 */
-	Resolved resolveWhatWeDidSlot(
-			List<List<String>> sheet, List<List<String>> adj, String name, String fromClaude) {
-
-		String label = name + ":";
-		String manual = coalesce(sheetUtils.findLabelValue(adj, label), sheetUtils.findLabelValue(sheet, label));
-		if (manual != null) {
-			return new Resolved(label, manual, "adj");
-		}
-		if (notBlank(fromClaude)) {
-			return new Resolved(name + " (auto: Claude)", fromClaude, "adj");
-		}
-		return new Resolved(label, null, "not_found");
+	Resolved resolveWhatWeDidSlot(String name, String fromClaude) {
+		String label = name + " (auto: Claude)";
+		return notBlank(fromClaude)
+				? new Resolved(label, fromClaude, "adj")
+				: new Resolved(label, null, "not_found");
 	}
 
 	/**

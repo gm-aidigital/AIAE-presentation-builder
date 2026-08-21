@@ -5,7 +5,9 @@ import com.aidigital.reportconstructor.service.reports.dto.RateType;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.Locale;
 
@@ -201,6 +203,28 @@ public class RatePlanCalculator {
 	 */
 	String monthLabel(LocalDate date) {
 		return date.format(MONTH_YEAR);
+	}
+
+	/**
+	 * Reads a month label back into the first day of the month it names, e.g. {@code "October 2025"} into
+	 * 2025-10-01.
+	 *
+	 * <p>The inverse of {@link #monthLabel}, so a month the deck has already printed can be stepped forward
+	 * without re-deriving it from the plan. A label the formatter cannot read — a hand-typed cell, a range,
+	 * an empty string — comes back {@code null} rather than throwing, and the caller dashes its token.
+	 *
+	 * @param label the {@code "MMMM yyyy"} label to read (may be null or blank)
+	 * @return the first day of the month named, or {@code null} when the label is not one
+	 */
+	LocalDate monthFromLabel(String label) {
+		if (label == null || label.isBlank()) {
+			return null;
+		}
+		try {
+			return YearMonth.parse(label.trim(), MONTH_YEAR).atDay(1);
+		} catch (DateTimeParseException ex) {
+			return null;
+		}
 	}
 
 	/**

@@ -10,7 +10,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class EomDashboardResolverTest {
 
-	private final EomDashboardResolver resolver = new EomDashboardResolver(new ReportNumberParserImpl(), new Fmt());
+	private final EomDashboardResolver resolver = new EomDashboardResolver(new ReportNumberParserImpl(), new Fmt(), new RatePlanCalculator());
 
 	/**
 	 * Builds the summary-table values a two-tactic workbook carries, in the exact display formatting the
@@ -250,5 +250,52 @@ class EomDashboardResolverTest {
 
 		// Then: no chip is dashed
 		assertThat(flat.get("{{tactic 3}}")).isEqualTo("Online Video");
+	}
+
+	@Test
+	void fill_shouldStepTheFocusSlidesHeadingOffTheMonthTheCoverPrintsTest() {
+		// Given: a reviewed workbook whose cover names August 2026, the second month of the flight
+		Map<String, String> flat = twoTacticSheet();
+		flat.put("{{reporting month}}", "August 2026");
+		flat.put("{{mon no}}", "2");
+
+		// When:
+		resolver.fill(flat, 2);
+
+		// Then: the "focus next month" slide names the month after the cover's, and the position after the
+		// cover's — derived from the reviewed values so the two slides can never name different months
+		assertThat(flat.get("{{reporting month +1}}")).isEqualTo("September 2026");
+		assertThat(flat.get("{{mon no +1}}")).isEqualTo("3");
+	}
+
+	@Test
+	void fill_shouldStepOffTheLastMonthOfATwoMonthWindowTest() {
+		// Given: a reporting window spanning two calendar months, and one crossing the year
+		Map<String, String> summer = twoTacticSheet();
+		summer.put("{{reporting month}}", "July - August 2026");
+		Map<String, String> winter = twoTacticSheet();
+		winter.put("{{reporting month}}", "December 2025 - January 2026");
+
+		// When:
+		resolver.fill(summer, 2);
+		resolver.fill(winter, 2);
+
+		// Then: the next month follows the window's END, and the year rolls with it
+		assertThat(summer.get("{{reporting month +1}}")).isEqualTo("September 2026");
+		assertThat(winter.get("{{reporting month +1}}")).isEqualTo("February 2026");
+	}
+
+	@Test
+	void fill_shouldDashTheFocusHeadingRatherThanGuessItTest() {
+		// Given: a workbook carrying neither the reporting month nor its position in the flight
+		Map<String, String> flat = twoTacticSheet();
+
+		// When:
+		resolver.fill(flat, 2);
+
+		// Then: both dash — an unreadable month number would otherwise print "1", the one position that is
+		// never right on a report about a month already delivered
+		assertThat(flat.get("{{reporting month +1}}")).isEqualTo("—");
+		assertThat(flat.get("{{mon no +1}}")).isEqualTo("—");
 	}
 }
