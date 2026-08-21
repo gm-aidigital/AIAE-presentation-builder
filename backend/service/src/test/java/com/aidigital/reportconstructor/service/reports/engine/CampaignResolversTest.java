@@ -3,6 +3,7 @@ package com.aidigital.reportconstructor.service.reports.engine;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
 import com.aidigital.reportconstructor.service.reports.dto.FlightDates;
+import com.aidigital.reportconstructor.service.reports.dto.FocusNextMonth;
 import com.aidigital.reportconstructor.service.reports.dto.Recommendation;
 import com.aidigital.reportconstructor.service.reports.dto.Tactic;
 import com.aidigital.reportconstructor.service.reports.dto.Totals;
@@ -807,5 +808,80 @@ class CampaignResolversTest {
 		assertThat(out).hasSize(18);
 		assertThat(out.values()).allMatch(r -> r.value() == null);
 		assertThat(out.get("{{impact 3 text}}").source()).isEqualTo("not_found");
+	}
+
+	@Test
+	void shouldNameTheMonthTheFocusSlidePlansForTest() {
+		// Given: a report covering August 2026, the second month of a three-month flight
+		CampaignData data = new CampaignData(
+				null, null, null, null, null,
+				new FlightDates(LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 31)),
+				null, null, null, null, null,
+				new Totals(0, 0, 0, 0, null, null), Map.of(), 1, 1, null, 2, 3, null);
+
+		// When:
+		Resolved month = resolvers.resolveNextReportingMonth(List.of(), List.of(), data);
+		Resolved number = resolvers.resolveNextCampaignMonthNumber(List.of(), List.of(), data);
+
+		// Then: the slide's own title names the next calendar month with its year, and the month after this
+		// report's position in the flight
+		assertThat(month.value()).isEqualTo("September 2026");
+		assertThat(number.value()).isEqualTo("3");
+	}
+
+	@Test
+	void shouldStillNameTheNextMonthOnTheFlightsLastMonthTest() {
+		// Given: the third month of a three-month flight — there is no fourth month booked
+		CampaignData data = new CampaignData(
+				null, null, null, null, null,
+				new FlightDates(LocalDate.of(2026, 12, 1), LocalDate.of(2026, 12, 31)),
+				null, null, null, null, null,
+				new Totals(0, 0, 0, 0, null, null), Map.of(), 3, 3, null, 3, 3, null);
+
+		// When:
+		Resolved month = resolvers.resolveNextReportingMonth(List.of(), List.of(), data);
+
+		// Then: the heading still names a month rather than a dash, year rolled over — the slide prints it
+		// as its own title, and a dash there reads as a broken template
+		assertThat(month.value()).isEqualTo("January 2027");
+	}
+
+	@Test
+	void resolveFocusNextMonth_keepsTheThreeColumnsApartAndPrefersTheSheetTest() {
+		// Given: Claude wrote all three columns and the user rewrote the first pivot in the workbook
+		List<List<String>> sheet = labelRow("Pivot 1:", "Reviewed by hand");
+		FocusNextMonth claude = new FocusNextMonth(
+				List.of("Hold weight on PHI & CLT", "Keep YouTube on the CPM buy"),
+				List.of("Cap video frequency under 9.5x", "Rebalance budget to ATL & NJ"),
+				List.of("Test a romantic-getaway segment", "Launch smart bidding in SEM"));
+
+		// When:
+		Map<String, Resolved> out = resolvers.resolveFocusNextMonth(sheet, List.of(), claude);
+
+		// Then: each column fills its own tokens, the sheet wins the one line it carries, and the third slot
+		// of every column dashes rather than borrowing a line from the column beside it
+		assertThat(out.get("{{carry forward 1}}").value()).isEqualTo("Hold weight on PHI & CLT");
+		assertThat(out.get("{{pivot 1}}").value()).isEqualTo("Reviewed by hand");
+		assertThat(out.get("{{pivot 2}}").value()).isEqualTo("Rebalance budget to ATL & NJ");
+		assertThat(out.get("{{test 2}}").value()).isEqualTo("Launch smart bidding in SEM");
+		assertThat(out.get("{{carry forward 3}}").source()).isEqualTo("not_found");
+		assertThat(out.get("{{test 3}}").value()).isNull();
+		assertThat(out).hasSize(9);
+	}
+
+	@Test
+	void resolveUpdatedProjection_prefersTheHandWrittenAnswerTest() {
+		// Given: Claude projected the flight and the user rewrote the answer in the workbook
+		List<List<String>> adj = labelRow("Updated projection:", "We land at 12.4M, 3% over goal.");
+
+		// When:
+		Resolved fromSheet = resolvers.resolveUpdatedProjection(List.of(), adj, "Claude's projection.");
+		Resolved fromClaude = resolvers.resolveUpdatedProjection(List.of(), List.of(), "Claude's projection.");
+		Resolved neither = resolvers.resolveUpdatedProjection(List.of(), List.of(), null);
+
+		// Then:
+		assertThat(fromSheet.value()).isEqualTo("We land at 12.4M, 3% over goal.");
+		assertThat(fromClaude.value()).isEqualTo("Claude's projection.");
+		assertThat(neither.source()).isEqualTo("not_found");
 	}
 }

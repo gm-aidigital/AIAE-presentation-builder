@@ -811,7 +811,7 @@ class RealClaudeClientTest {
 				new ClaudeCompressionField("overview_2", "Evening dayparts.", 240),
 				new ClaudeCompressionField("point_3", "Efficiency", 22),
 				new ClaudeCompressionField("overview_3", "Strong CPM outcome.", 240));
-		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(3400), eq(60), eq("BatchAStrategic"), eq(false)))
+		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(3500), eq(60), eq("BatchAStrategic"), eq(false)))
 				.thenReturn(response);
 		when(compressionService.compress(eq(expectedFields), eq("BatchD-Strategic")))
 				.thenAnswer(invocation -> {
@@ -868,7 +868,7 @@ class RealClaudeClientTest {
 				  ]
 				}
 				""");
-		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(3400), eq(60), eq("BatchAStrategic"), eq(false)))
+		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(3500), eq(60), eq("BatchAStrategic"), eq(false)))
 				.thenReturn(response);
 		List<ClaudeCompressionField> expectedFields = List.of(
 				new ClaudeCompressionField("point_0", "Precision", 22),
@@ -921,10 +921,11 @@ class RealClaudeClientTest {
 				  "proposal_overview": "Throughout June we continued running Display and Video.",
 				  "pacing_takeaways": ["Every channel is within 5% of its budget."],
 				  "performance_takeaways": ["CTR is above goal on both channels."],
+				  "updated_projection": "At this pace we close the flight at 12.4M impressions, 3% over goal.",
 				  "strategic_insights": []
 				}
 				""");
-		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(3400), eq(60), eq("BatchAStrategic"), eq(false)))
+		when(messagesClient.callJsonObject(eq(expectedPrompt), eq(3500), eq(60), eq("BatchAStrategic"), eq(false)))
 				.thenReturn(response);
 		when(compressionService.compress(eq(List.of(
 				new ClaudeCompressionField("point_0", "", 22),
@@ -943,6 +944,9 @@ class RealClaudeClientTest {
 		// Then: each dashboard's takeaways land in their own field, so neither slide prints the other's copy
 		assertThat(strategic.pacingTakeaways()).containsExactly("Every channel is within 5% of its budget.");
 		assertThat(strategic.performanceTakeaways()).containsExactly("CTR is above goal on both channels.");
+		// And: the focus slide's projection rides on this call too — it is the one that carries the tables
+		assertThat(strategic.updatedProjection())
+				.isEqualTo("At this pace we close the flight at 12.4M impressions, 3% over goal.");
 	}
 
 	@Test
@@ -1052,14 +1056,18 @@ class RealClaudeClientTest {
 				     "impact": "Scale the winner", "impact_text": "Lifts CTR over the remaining flight."},
 				    {"observation": "", "observation_text": "", "action": "", "action_text": "",
 				     "impact": "", "impact_text": ""}
-				  ]
+				  ],
+				  "carry_forward": ["Hold weight on PHI & CLT", "Keep video on the CPM buy"],
+				  "pivot": ["Cap video frequency under 9.5x"],
+				  "new_test": ["Test a romantic-getaway segment"]
 				}
 				""");
 		List<ClaudeCompressionField> expectedFields = List.of(
 				new ClaudeCompressionField("results_overview_1", "Aligned results overview.", 380),
 				new ClaudeCompressionField("proposal_overview", "Aligned proposal copy.", 400));
-		// 400 base + 220 proposal + 220 overview, plus the 900 the end-of-month chains add to the reply
-		int expectedBudget = 1740;
+		// 400 base + 220 proposal + 220 overview, plus the 1300 the end-of-month chains and the focus
+		// columns add to the reply
+		int expectedBudget = 2140;
 		when(messagesClient.callJsonObject(
 				eq(expectedPrompt), eq(expectedBudget), eq(90), eq("AlignNarrative"), eq(true)))
 				.thenReturn(response);
@@ -1086,6 +1094,13 @@ class RealClaudeClientTest {
 		assertThat(first.actionText()).isEqualTo("Swapped the two worn display units.");
 		assertThat(first.impact()).isEqualTo("Efficiency restored");
 		assertThat(aligned.strategic().whatWeDid().get(1).action()).isEqualTo("Shifted budget");
+		// And: next month's plan is written by the same call, each column filling its own slots
+		assertThat(aligned.strategic().focusNextMonth().carryForward())
+				.containsExactly("Hold weight on PHI & CLT", "Keep video on the CPM buy");
+		assertThat(aligned.strategic().focusNextMonth().pivots())
+				.containsExactly("Cap video frequency under 9.5x");
+		assertThat(aligned.strategic().focusNextMonth().tests())
+				.containsExactly("Test a romantic-getaway segment");
 		// And: the EOM copy the pass never asks about is still carried through untouched
 		assertThat(aligned.strategic().northStar()).isEqualTo("NORTH STAR");
 		assertThat(aligned.strategic().pacingTakeaways()).containsExactly("Pacing takeaway.");

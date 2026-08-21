@@ -26,6 +26,11 @@ import java.util.List;
  * @param whatWeDid         the observation → action → expected impact chains of the EOM "what we did this
  *                          month" slide, in column order ({@code {{observation 1..3}}} and their action and
  *                          impact pairs); EOM only, empty on an end-of-campaign run
+ * @param updatedProjection where the campaign lands at the end of the flight at the current pace, and
+ *                          whether that clears the final KPI ({@code {{updated projection}}}); EOM only,
+ *                          {@code null} on an end-of-campaign run
+ * @param focusNextMonth    the carry-forward / pivot / test columns of the EOM "focus next month" slide;
+ *                          EOM only, {@code null} on an end-of-campaign run
  */
 public record ClaudeStrategic(
 		String audienceAge,
@@ -37,14 +42,16 @@ public record ClaudeStrategic(
 		String horizon,
 		List<String> pacingTakeaways,
 		List<String> performanceTakeaways,
-		List<WhatWeDidStep> whatWeDid
+		List<WhatWeDidStep> whatWeDid,
+		String updatedProjection,
+		FocusNextMonth focusNextMonth
 ) {
 
 	/**
 	 * Backward-compatible constructor for the calls that carry both sets of dashboard takeaways but no
-	 * "what we did" chains — every call but the end-of-month alignment pass, which is the only one that has
-	 * the written conclusions those chains are drawn from — leaving those slots empty so they render as
-	 * dashes.
+	 * "what we did" chains and no forward-looking copy — every call but the end-of-month alignment pass,
+	 * which is the only one that has the written conclusions those are drawn from — leaving those slots
+	 * empty so they render as dashes.
 	 *
 	 * @param audienceAge          Claude-generated narrative describing the target audience's age profile
 	 * @param audienceSegments     Claude-generated description of the distinct audience segments
@@ -61,7 +68,7 @@ public record ClaudeStrategic(
 			List<StrategicInsight> strategicInsights, String northStar, String extendedNorthStar,
 			String horizon, List<String> pacingTakeaways, List<String> performanceTakeaways) {
 		this(audienceAge, audienceSegments, proposalOverview, strategicInsights, northStar, extendedNorthStar,
-				horizon, pacingTakeaways, performanceTakeaways, List.of());
+				horizon, pacingTakeaways, performanceTakeaways, List.of(), null, null);
 	}
 
 	/**
@@ -82,7 +89,7 @@ public record ClaudeStrategic(
 			List<StrategicInsight> strategicInsights, String northStar, String extendedNorthStar,
 			String horizon, List<String> pacingTakeaways) {
 		this(audienceAge, audienceSegments, proposalOverview, strategicInsights, northStar, extendedNorthStar,
-				horizon, pacingTakeaways, List.of(), List.of());
+				horizon, pacingTakeaways, List.of(), List.of(), null, null);
 	}
 
 	/**
@@ -102,7 +109,7 @@ public record ClaudeStrategic(
 			List<StrategicInsight> strategicInsights, String northStar, String extendedNorthStar,
 			String horizon) {
 		this(audienceAge, audienceSegments, proposalOverview, strategicInsights, northStar, extendedNorthStar,
-				horizon, List.of(), List.of(), List.of());
+				horizon, List.of(), List.of(), List.of(), null, null);
 	}
 
 	/**
@@ -119,6 +126,6 @@ public record ClaudeStrategic(
 			String audienceAge, String audienceSegments, String proposalOverview,
 			List<StrategicInsight> strategicInsights) {
 		this(audienceAge, audienceSegments, proposalOverview, strategicInsights, null, null, null, List.of(),
-				List.of(), List.of());
+				List.of(), List.of(), null, null);
 	}
 }

@@ -50,6 +50,12 @@ public class ClaudeResponseNormalizer {
 	/** Characters one paragraph of the EOM "what we did this month" slide fits under its heading. */
 	public static final int WHAT_WE_DID_TEXT_LIMIT = 200;
 
+	/** Characters the EOM "focus next month" slide's updated-projection block fits. */
+	public static final int UPDATED_PROJECTION_LIMIT = 250;
+
+	/** Characters one carry-forward, pivot or test line of the EOM "focus next month" slide fits. */
+	public static final int FOCUS_ITEM_LIMIT = 70;
+
 	/**
 	 * Function/connector words that read as unfinished when a sentence is cut right after them, so they are
 	 * trimmed from the tail of a hard word-boundary cut before a closing period is appended.
@@ -415,6 +421,42 @@ public class ClaudeResponseNormalizer {
 	 */
 	public String limitWhatWeDidText(String val) {
 		return normalizeC(val, WHAT_WE_DID_TEXT_LIMIT);
+	}
+
+	/**
+	 * Normalizes the EOM {@code updated_projection} copy with an {@link #UPDATED_PROJECTION_LIMIT}-character
+	 * budget via {@link #normalizeC}, so it reads as a finished answer inside its block.
+	 *
+	 * @param val raw projection text from the model
+	 * @return the normalized, length-capped text, or {@code null} when blank
+	 */
+	public String limitUpdatedProjection(String val) {
+		return normalizeC(val, UPDATED_PROJECTION_LIMIT);
+	}
+
+	/**
+	 * Caps one carry-forward, pivot or test line of the EOM "focus next month" slide at
+	 * {@link #FOCUS_ITEM_LIMIT} characters.
+	 *
+	 * <p>Held to the same shape as a heading rather than to {@link #normalizeC}: these are one-line action
+	 * items in a bulleted column ("hold weight on the top markets"), not sentences, so they are cut back to a
+	 * word boundary and never gain a closing period.
+	 *
+	 * @param val raw item text from the model (may be null)
+	 * @return the trimmed item, or {@code null} when blank
+	 */
+	public String limitFocusItem(String val) {
+		if (val == null) {
+			return null;
+		}
+		String text = val.trim().replaceAll("\\s+", " ");
+		if (text.length() > FOCUS_ITEM_LIMIT) {
+			String cut = text.substring(0, FOCUS_ITEM_LIMIT);
+			int ls = cut.lastIndexOf(' ');
+			text = stripTrailingComma(ls > 0 ? cut.substring(0, ls).trim() : cut.trim());
+		}
+		text = stripTrailingPeriod(text);
+		return text.isEmpty() ? null : text;
 	}
 
 	/**

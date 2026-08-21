@@ -82,12 +82,21 @@ public class EomPromptBuilder extends ClaudeBatchPromptBuilder {
 	/** Columns the "what we did this month" slide draws, one observation → action → impact chain each. */
 	static final int WHAT_WE_DID_STEPS = 3;
 
+	/** Lines each column of the "focus next month" slide draws — carry forward, pivot and new test alike. */
+	static final int FOCUS_ITEMS = 3;
+
 	/**
 	 * Output tokens the {@code what_we_did} block adds to the alignment reply: three chains of three
 	 * headings and three paragraphs, sized off their character budgets at roughly four characters a token,
 	 * with headroom for the JSON scaffolding around them.
 	 */
 	static final int WHAT_WE_DID_TOKENS = 900;
+
+	/**
+	 * Output tokens the {@code carry_forward} / {@code pivot} / {@code new_test} block adds to the alignment
+	 * reply: nine short lines sized off their character budget, with headroom for the JSON around them.
+	 */
+	static final int FOCUS_NEXT_MONTH_TOKENS = 400;
 
 	/** Reply normaliser, kept alongside the parent's copy because the parent's field is private. */
 	private final ClaudeResponseNormalizer normalizer;
@@ -174,6 +183,7 @@ public class EomPromptBuilder extends ClaudeBatchPromptBuilder {
 						+ northStarSchema()
 						+ pacingTakeawaysSchema(dashboardCount(data))
 						+ performanceTakeawaysSchema(dashboardCount(data))
+						+ updatedProjectionSchema()
 						+ "  \"strategic_insights\": array    // Exactly 4 objects: {\"point\": string, "
 						+ "\"overview\": string}.\n"
 						+ "                                // CRITICAL for 'point': MAX 20 CHARACTERS ABSOLUTE HARD "
@@ -1073,6 +1083,64 @@ public class EomPromptBuilder extends ClaudeBatchPromptBuilder {
 	}
 
 	/**
+	 * The {@code updated_projection} field spec: where the campaign lands at the end of the flight at the
+	 * pace it is running now, and whether that clears the final KPI.
+	 *
+	 * <p>It rides on this call rather than on the alignment pass the rest of the "focus next month" slide is
+	 * written by, because it is the one field on that slide that is an arithmetic claim rather than an
+	 * editorial one: the pacing dashboard and the performance-vs-plan table are printed in this prompt's
+	 * context, and they are the only place in the whole run where the plan, the delivery to date and the
+	 * rates against their goals sit together. Asked at the alignment pass, which sees only written copy, the
+	 * projection would be guesswork dressed as a number.
+	 *
+	 * @return the field spec, newline-terminated
+	 */
+	String updatedProjectionSchema() {
+		return "  \"updated_projection\": string,   // MAX " + ClaudeResponseNormalizer.UPDATED_PROJECTION_LIMIT
+				+ " chars. Where the campaign LANDS AT THE END OF THE FLIGHT if the current pace holds, and "
+				+ "whether that clears the final KPI. Use the pacing dashboard and the performance-vs-plan "
+				+ "figures below: project the delivery forward over the months left, name the figure you land "
+				+ "on, and say plainly whether the goal is met, beaten or short — with the one channel or rate "
+				+ "that decides it. Account for the corrections already in flight rather than assuming nothing "
+				+ "changes. Never a hedge, never \"we will continue to monitor\".\n";
+	}
+
+	/**
+	 * The {@code carry_forward} / {@code pivot} / {@code new_test} field specs: the three columns of the
+	 * "focus next month" slide.
+	 *
+	 * <p>They ride on the alignment pass for the same reason as the "what we did" chains, and they are asked
+	 * for in the same call as those chains deliberately: next month's plan is the answer to this month's
+	 * signals, so the pivot must correct something the observations actually found and the carry-forward must
+	 * be something the conclusions actually praise. Split across calls, the two slides drift apart.
+	 *
+	 * <p>The three columns answer one question three ways, so the spec's real work is keeping them distinct —
+	 * a pivot listed as a carry-forward, or a test that is this month's pivot restated, is the failure mode.
+	 *
+	 * @return the three field specs, each newline-terminated
+	 */
+	@Override
+	String focusNextMonthSchema() {
+		return "  \"carry_forward\": array,         // EXACTLY " + FOCUS_ITEMS + " strings, MAX "
+				+ ClaudeResponseNormalizer.FOCUS_ITEM_LIMIT + " CHARACTERS EACH, HARD LIMIT — one line each in a "
+				+ "narrow column. What ALREADY BEATS ITS BENCHMARK and keeps its budget UNCHANGED (or gets more): "
+				+ "a proven channel, format, market or audience pairing, named. Written as an instruction, e.g. "
+				+ "\"hold weight on the top two markets\" or \"keep video on the CPM buy\". Nothing here may be "
+				+ "something you are also changing.\n"
+				+ "  \"pivot\": array,                 // EXACTLY " + FOCUS_ITEMS + " strings, same budget. What "
+				+ "UNDERPERFORMED or shifted this month and how we RE-AIM it on the data — budget rebalanced, "
+				+ "frequency capped, creative refreshed on a worn segment, focus moved. Each pivot must correct "
+				+ "something the draft or the breakdown signals actually found; give the figure that justifies it "
+				+ "where there is one, e.g. \"cap video frequency under 9.5x\". These are directed corrections, "
+				+ "never experiments.\n"
+				+ "  \"new_test\": array,              // EXACTLY " + FOCUS_ITEMS + " strings, same budget. NEW "
+				+ "hypotheses to try next month on a small share of budget — a new targeting, segment, format, "
+				+ "placement or bidding mechanic that this campaign has NOT run yet, e.g. \"test a romantic-getaway "
+				+ "segment\". Each must be plausible for this campaign's channels and audience, and none may "
+				+ "restate a pivot above: a pivot fixes something running, a test tries something new.\n";
+	}
+
+	/**
 	 * Widens the alignment reply's output budget by the {@code what_we_did} block this flavour adds to the
 	 * schema, so the three chains cannot run the reply out before it closes — which would cost the whole
 	 * pass, not just the slide, since a truncated reply parses as nothing and falls back to the draft.
@@ -1081,6 +1149,6 @@ public class EomPromptBuilder extends ClaudeBatchPromptBuilder {
 	 */
 	@Override
 	int alignExtraTokens() {
-		return WHAT_WE_DID_TOKENS;
+		return WHAT_WE_DID_TOKENS + FOCUS_NEXT_MONTH_TOKENS;
 	}
 }

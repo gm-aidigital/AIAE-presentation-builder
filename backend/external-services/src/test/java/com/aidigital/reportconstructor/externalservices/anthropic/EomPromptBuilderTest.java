@@ -961,4 +961,64 @@ class EomPromptBuilderTest {
 		// Then: no prompt — the chains are drawn from the draft, so with no draft there is nothing to pay for
 		assertThat(prompt).isEmpty();
 	}
+
+	@Test
+	void shouldAskTheStrategicCallForTheUpdatedProjectionTest() {
+		// Given: an end-of-month run whose plan and delivery are both known
+		// When:
+		String prompt = builder.strategicNarrativePrompt(plannedCampaign(3), "Drive awareness.", Map.of())
+				.orElseThrow();
+
+		// Then: the projection is asked for on the call whose context prints the pacing and performance
+		// tables it is arithmetic over, to the slide's budget
+		assertThat(prompt).contains("\"updated_projection\": string,   // MAX 250 chars");
+		assertThat(prompt).contains("LANDS AT THE END OF THE FLIGHT");
+		assertThat(prompt).contains("=== PACING DASHBOARD ===");
+	}
+
+	@Test
+	void shouldAskTheAlignmentPassForTheThreeFocusColumnsTest() {
+		// Given: a draft the end-of-month alignment pass has something to align
+		ClaudeStrategic strategic = new ClaudeStrategic(
+				null, null, "We kept CTV and display running through July.", List.of());
+		ClaudeResults results = new ClaudeResults(
+				Map.of(1, "CTV paced to 101% of July's impression target."),
+				List.of("CTV led the month's pacing."), Map.of(), List.of(), null, null, null);
+
+		// When:
+		String prompt = builder
+				.alignPrompt(strategic, results, List.of("CTV — geo: Chicago leads on CTR."),
+						"Drive awareness.", "Jul 1 - Jul 31, 2026")
+				.orElseThrow();
+
+		// Then: three columns of three lines each, to the slide's budget, and each column is told what keeps
+		// it distinct from the other two
+		assertThat(prompt).contains("\"carry_forward\": array,         // EXACTLY 3 strings, MAX 70 CHARACTERS");
+		assertThat(prompt).contains("\"pivot\": array,");
+		assertThat(prompt).contains("\"new_test\": array,");
+		assertThat(prompt).contains("Nothing here may be something you are also changing.");
+		assertThat(prompt).contains("a pivot fixes something running, a test tries something new");
+		// And: it is asked for in the same call as this month's chains, so next month answers this month
+		assertThat(prompt).contains("\"what_we_did\": array");
+	}
+
+	@Test
+	void shouldNotAskTheEndOfCampaignRunForTheFocusSlideTest() {
+		// Given: the same two calls on an end-of-campaign run, whose deck has neither slide
+		CampaignData data = campaign(null, null);
+		ClaudeStrategic strategic = new ClaudeStrategic(
+				null, null, "We ran CTV across auto intenders.", List.of());
+		ClaudeResults results = new ClaudeResults(
+				Map.of(1, "CTV delivered 101% of its impression plan."),
+				List.of(), Map.of(), List.of(), null, null, null);
+
+		// When:
+		String batchA = eoc.strategicNarrativePrompt(data, "Drive awareness.", Map.of()).orElseThrow();
+		String batchD = eoc.buildBatchDPrompt(strategic, results, List.of(), "Drive awareness.").orElseThrow();
+
+		// Then: neither the projection nor the three columns are paid for
+		assertThat(batchA).doesNotContain("updated_projection");
+		assertThat(batchD).doesNotContain("carry_forward");
+		assertThat(batchD).doesNotContain("new_test");
+	}
 }

@@ -2,6 +2,7 @@ package com.aidigital.reportconstructor.service.reports.engine;
 
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
+import com.aidigital.reportconstructor.service.reports.dto.FocusNextMonth;
 import com.aidigital.reportconstructor.service.reports.dto.Recommendation;
 import com.aidigital.reportconstructor.service.reports.dto.StrategicInsight;
 import com.aidigital.reportconstructor.service.reports.dto.Tactic;
@@ -58,11 +59,22 @@ public class CampaignResolvers {
 	/** Columns the EOM "what we did this month" slide draws, one observation → action → impact chain each. */
 	private static final int WHAT_WE_DID_SLOTS = 3;
 
+	/** Lines each column of the EOM "focus next month" slide draws. */
+	private static final int FOCUS_SLOTS = 3;
+
 	/** Auto-derived label written next to the campaign-wide impressions pace. */
 	private static final String TOTAL_IMPS_PACE_AUTO_LABEL = "Total imps pace (auto: fact vs planned impressions)";
 
 	/** Auto-derived label written next to the cover's reporting-period name. */
 	private static final String REPORTING_MONTH_AUTO_LABEL = "Reporting month (auto: selected date window)";
+
+	/** Auto-derived label written next to the month the "focus next month" slide plans for. */
+	private static final String NEXT_REPORTING_MONTH_AUTO_LABEL =
+			"Next reporting month (auto: reporting window + 1 month)";
+
+	/** Auto-derived label written next to that month's position in the flight. */
+	private static final String NEXT_FLIGHT_MONTH_NUMBER_AUTO_LABEL =
+			"Next flight month number (auto: flight month number + 1)";
 
 	/** Auto-derived label written next to the booked flight's month count. */
 	private static final String FLIGHT_MONTHS_TOTAL_AUTO_LABEL = "Flight months total (auto: media-plan flight dates)";
@@ -708,6 +720,145 @@ public class CampaignResolvers {
 
 		Map<String, Resolved> result = new LinkedHashMap<>();
 		for (int i = 1; i <= PACING_TAKEAWAY_SLOTS; i++) {
+			String label = name + " " + i + ":";
+			String manual = coalesce(sheetUtils.findLabelValue(adjRows, label),
+					sheetUtils.findLabelValue(sheetRows, label));
+			String fromClaude = claude != null && claude.size() >= i ? claude.get(i - 1) : null;
+			String key = "{{" + name.toLowerCase(Locale.ROOT) + " " + i + "}}";
+			if (manual != null) {
+				result.put(key, new Resolved(label, manual, "adj"));
+			} else if (notBlank(fromClaude)) {
+				result.put(key, new Resolved(name + " " + i + " (auto: Claude)", fromClaude, "adj"));
+			} else {
+				result.put(key, new Resolved(label, null, "not_found"));
+			}
+		}
+		return result;
+	}
+
+	/**
+	 * Resolves the EOM "focus next month" slide's heading month ({@code {{reporting month +1}}}) — the
+	 * calendar month after the one this report covers — preferring a manual override.
+	 *
+	 * <p>Unlike {@link #resolveEomNextReportMonth}, which is empty once the reporting month is the flight's
+	 * last, this one carries the year and is derived whenever the reporting window is known. The slide is the
+	 * plan for the month ahead and prints the month as its own title: a dash there reads as a broken
+	 * template, and the next calendar month is a fact about the calendar either way.
+	 *
+	 * @param sheetRows Media Plan tab rows
+	 * @param adjRows   manual Adjustments tab rows (checked first)
+	 * @param data      aggregated campaign data providing the reporting window
+	 * @return a {@link Resolved} month label, e.g. {@code "November 2026"}, or a null-valued
+	 * {@code "not_found"} when the window is unknown
+	 */
+	public Resolved resolveNextReportingMonth(List<List<String>> sheetRows, List<List<String>> adjRows,
+	                                          CampaignData data) {
+		String fromAdj = sheetUtils.findLabelValue(adjRows, "Next reporting month:");
+		if (fromAdj != null) {
+			return new Resolved("Next reporting month:", fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, "Next reporting month:");
+		if (fromSheet != null) {
+			return new Resolved("Next reporting month:", fromSheet, "sheet");
+		}
+		if (data == null || data.flightTs() == null || data.flightTs().end() == null) {
+			return new Resolved(NEXT_REPORTING_MONTH_AUTO_LABEL, null, "not_found");
+		}
+		return new Resolved(NEXT_REPORTING_MONTH_AUTO_LABEL,
+				pacing.monthLabel(data.flightTs().end().plusMonths(1)), "adj");
+	}
+
+	/**
+	 * Resolves the month number the "focus next month" slide plans for ({@code {{mon no +1}}}) — the
+	 * reporting month's position in the flight plus one — preferring a manual override.
+	 *
+	 * @param sheetRows Media Plan tab rows
+	 * @param adjRows   manual Adjustments tab rows (checked first)
+	 * @param data      aggregated campaign data providing {@code campaignMonthNumber()}
+	 * @return a {@link Resolved} month index, or a null-valued {@code "not_found"} when unavailable
+	 */
+	public Resolved resolveNextCampaignMonthNumber(List<List<String>> sheetRows, List<List<String>> adjRows,
+	                                               CampaignData data) {
+		String fromAdj = sheetUtils.findLabelValue(adjRows, "Next flight month number:");
+		if (fromAdj != null) {
+			return new Resolved("Next flight month number:", fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, "Next flight month number:");
+		if (fromSheet != null) {
+			return new Resolved("Next flight month number:", fromSheet, "sheet");
+		}
+		if (data == null || data.campaignMonthNumber() == null) {
+			return new Resolved(NEXT_FLIGHT_MONTH_NUMBER_AUTO_LABEL, null, "not_found");
+		}
+		return new Resolved(NEXT_FLIGHT_MONTH_NUMBER_AUTO_LABEL,
+				String.valueOf(data.campaignMonthNumber() + 1), "adj");
+	}
+
+	/**
+	 * Resolves the EOM "focus next month" slide's projection block ({@code {{updated projection}}}) —
+	 * where the campaign lands at the current pace and whether that clears the final KPI — preferring a
+	 * hand-entered value.
+	 *
+	 * @param sheetRows  Media Plan tab rows
+	 * @param adjRows    manual Adjustments tab rows (checked first)
+	 * @param claudeText Claude-authored projection, used when no manual value exists (may be null)
+	 * @return a {@link Resolved} projection, or a null-valued {@code "not_found"}
+	 */
+	public Resolved resolveUpdatedProjection(List<List<String>> sheetRows, List<List<String>> adjRows,
+	                                         String claudeText) {
+		String fromAdj = sheetUtils.findLabelValue(adjRows, "Updated projection:");
+		if (fromAdj != null) {
+			return new Resolved("Updated projection:", fromAdj, "adj");
+		}
+		String fromSheet = sheetUtils.findLabelValue(sheetRows, "Updated projection:");
+		if (fromSheet != null) {
+			return new Resolved("Updated projection:", fromSheet, "sheet");
+		}
+		if (notBlank(claudeText)) {
+			return new Resolved("Updated projection (auto: Claude from pacing + performance)", claudeText, "adj");
+		}
+		return new Resolved("Updated projection:", null, "not_found");
+	}
+
+	/**
+	 * Resolves the nine "focus next month" placeholders — {@code {{carry forward 1..3}}},
+	 * {@code {{pivot 1..3}}} and {@code {{test 1..3}}} — preferring hand-entered values.
+	 *
+	 * @param sheetRows Media Plan tab rows
+	 * @param adjRows   manual Adjustments tab rows (checked first)
+	 * @param claude    Claude's three columns in slot order, used where no manual value exists (may be null)
+	 * @return a map keyed by placeholder to its {@link Resolved}; values may be {@code "not_found"}
+	 */
+	public Map<String, Resolved> resolveFocusNextMonth(
+			List<List<String>> sheetRows, List<List<String>> adjRows, FocusNextMonth claude) {
+
+		Map<String, Resolved> result = new LinkedHashMap<>();
+		result.putAll(resolveFocusColumn(sheetRows, adjRows, "Carry forward",
+				claude == null ? null : claude.carryForward()));
+		result.putAll(resolveFocusColumn(sheetRows, adjRows, "Pivot", claude == null ? null : claude.pivots()));
+		result.putAll(resolveFocusColumn(sheetRows, adjRows, "Test", claude == null ? null : claude.tests()));
+		return result;
+	}
+
+	/**
+	 * Resolves one column of the "focus next month" slide: the manual lines the user may have written into
+	 * the workbook, else Claude's, else nothing.
+	 *
+	 * <p>The three columns are resolved by the same code because they differ only in what their lines are
+	 * about: all three are one short line per slot, looked up under {@code "<name> N:"} and filling
+	 * {@code {{<lower-cased name> N}}}.
+	 *
+	 * @param sheetRows Media Plan tab rows
+	 * @param adjRows   manual Adjustments tab rows (checked first)
+	 * @param name      how the workbook labels this column, e.g. {@code "Carry forward"}
+	 * @param claude    Claude's lines for the column in slot order (may be null)
+	 * @return a map keyed by the column's tokens to their {@link Resolved}
+	 */
+	Map<String, Resolved> resolveFocusColumn(
+			List<List<String>> sheetRows, List<List<String>> adjRows, String name, List<String> claude) {
+
+		Map<String, Resolved> result = new LinkedHashMap<>();
+		for (int i = 1; i <= FOCUS_SLOTS; i++) {
 			String label = name + " " + i + ":";
 			String manual = coalesce(sheetUtils.findLabelValue(adjRows, label),
 					sheetUtils.findLabelValue(sheetRows, label));

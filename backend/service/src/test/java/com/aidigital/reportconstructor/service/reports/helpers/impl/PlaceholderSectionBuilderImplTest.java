@@ -24,7 +24,7 @@ class PlaceholderSectionBuilderImplTest {
 	private final ReportClaudeDefaults claudeDefaults = new ReportClaudeDefaults();
 
 	@Test
-	void shouldBuildThirtyEightSectionsWithExpectedTitlesTest() {
+	void shouldBuildThirtyNineSectionsWithExpectedTitlesTest() {
 		GeneratePayload payload = minimalPayload();
 		CampaignData data = emptyCampaignData();
 
@@ -35,9 +35,9 @@ class PlaceholderSectionBuilderImplTest {
 				new CampaignFrequencies(null, null, null, null), 28
 		);
 
-		// 7 lead sections + 28 per-tactic sections + Funnel Channels + Optimization Recommendations
-		// + Frequency Story = 38
-		assertThat(sections).hasSize(38);
+		// 8 lead sections + 28 per-tactic sections + Funnel Channels + Optimization Recommendations
+		// + Frequency Story = 39
+		assertThat(sections).hasSize(39);
 		assertThat(sections.get(0).title()).isEqualTo("Start");
 		assertThat(sections.get(1).title()).isEqualTo("Overview Slides");
 		assertThat(sections.get(2).title()).isEqualTo("Strategic Insights");
@@ -50,20 +50,27 @@ class PlaceholderSectionBuilderImplTest {
 						"{{action 1}}", "{{action 1 text}}",
 						"{{impact 1}}", "{{impact 1 text}}")
 				.endsWith("{{impact 3}}", "{{impact 3 text}}");
-		assertThat(sections.get(6).title()).isEqualTo("Summary Metrics");
-		assertThat(sections.get(7).title()).isEqualTo("Tactic 1");
-		assertThat(sections.get(34).title()).isEqualTo("Tactic 28");
-		assertThat(sections.get(35).title()).isEqualTo("Funnel Channels");
-		assertThat(sections.get(36).title()).isEqualTo("Optimization Recommendations");
-		assertThat(sections.get(36).placeholders())
+		assertThat(sections.get(6).title()).isEqualTo("Focus Next Month");
+		assertThat(sections.get(6).placeholders())
+				.extracting(Placeholder::key)
+				.startsWith("{{updated projection}}",
+						"{{carry forward 1}}", "{{carry forward 2}}", "{{carry forward 3}}",
+						"{{pivot 1}}", "{{pivot 2}}", "{{pivot 3}}")
+				.endsWith("{{test 1}}", "{{test 2}}", "{{test 3}}");
+		assertThat(sections.get(7).title()).isEqualTo("Summary Metrics");
+		assertThat(sections.get(8).title()).isEqualTo("Tactic 1");
+		assertThat(sections.get(35).title()).isEqualTo("Tactic 28");
+		assertThat(sections.get(36).title()).isEqualTo("Funnel Channels");
+		assertThat(sections.get(37).title()).isEqualTo("Optimization Recommendations");
+		assertThat(sections.get(37).placeholders())
 				.extracting(Placeholder::key)
 				.containsExactly(
 						"{{recommendation 1}}", "{{recommendation 1 text}}",
 						"{{recommendation 2}}", "{{recommendation 2 text}}",
 						"{{recommendation 3}}", "{{recommendation 3 text}}",
 						"{{recommendation 4}}", "{{recommendation 4 text}}");
-		assertThat(sections.get(37).title()).isEqualTo("Frequency Story");
-		assertThat(sections.get(37).placeholders())
+		assertThat(sections.get(38).title()).isEqualTo("Frequency Story");
+		assertThat(sections.get(38).placeholders())
 				.extracting(Placeholder::key)
 				.containsExactly("{{f_oppartunity}}", "{{f_fact}}", "{{f_storytelling}}");
 	}
@@ -80,8 +87,8 @@ class PlaceholderSectionBuilderImplTest {
 				new CampaignFrequencies(null, null, null, null), 28
 		);
 
-		assertThat(sections.get(7).placeholders()).hasSize(32);
-		assertThat(sections.get(7).placeholders())
+		assertThat(sections.get(8).placeholders()).hasSize(32);
+		assertThat(sections.get(8).placeholders())
 				.extracting(Placeholder::key)
 				.contains("{{tactic 1 volume}}", "{{tactic 1 top creative name}}", "{{so what 1}}");
 	}
@@ -98,8 +105,8 @@ class PlaceholderSectionBuilderImplTest {
 				new CampaignFrequencies(null, null, null, null), 28
 		);
 
-		assertThat(sections.get(13).placeholders()).hasSize(32);
-		assertThat(sections.get(13).placeholders())
+		assertThat(sections.get(14).placeholders()).hasSize(32);
+		assertThat(sections.get(14).placeholders())
 				.extracting(Placeholder::key)
 				.contains("{{tactic 7 volume}}", "{{tactic 7 top creative name}}",
 						"{{tactic 7 top creative imps}}", "{{tactic 7 top creative clicks}}", "{{so what 7}}");
@@ -117,13 +124,13 @@ class PlaceholderSectionBuilderImplTest {
 				new CampaignFrequencies(null, null, null, null), 2
 		);
 
-		// 7 lead sections + 2 per-tactic sections + Funnel Channels + Optimization Recommendations
-		// + Frequency Story = 12
-		assertThat(sections).hasSize(12);
-		assertThat(sections.get(7).title()).isEqualTo("Tactic 1");
-		assertThat(sections.get(8).title()).isEqualTo("Tactic 2");
-		assertThat(sections.get(9).title()).isEqualTo("Funnel Channels");
-		assertThat(sections.get(10).title()).isEqualTo("Optimization Recommendations");
+		// 8 lead sections + 2 per-tactic sections + Funnel Channels + Optimization Recommendations
+		// + Frequency Story = 13
+		assertThat(sections).hasSize(13);
+		assertThat(sections.get(8).title()).isEqualTo("Tactic 1");
+		assertThat(sections.get(9).title()).isEqualTo("Tactic 2");
+		assertThat(sections.get(10).title()).isEqualTo("Funnel Channels");
+		assertThat(sections.get(11).title()).isEqualTo("Optimization Recommendations");
 		assertThat(sections).noneMatch(s -> s.title().equals("Tactic 3"));
 	}
 
@@ -142,7 +149,7 @@ class PlaceholderSectionBuilderImplTest {
 		);
 
 		// Then: the four dayparting/gender tokens carry the Claude estimate
-		Map<String, String> tactic1 = tacticValues(sections.get(7));
+		Map<String, String> tactic1 = tacticValues(sections.get(8));
 		assertThat(tactic1.get("{{tactic 1 male}}")).isEqualTo("60%");
 		assertThat(tactic1.get("{{tactic 1 female}}")).isEqualTo("40%");
 		assertThat(tactic1.get("{{tactic 1 weekdays}}")).isEqualTo("Mon-Fri peak");
@@ -171,7 +178,7 @@ class PlaceholderSectionBuilderImplTest {
 		);
 
 		// Then: all four tokens are a dash, ignoring both the Claude estimate and the manual sheet value
-		Map<String, String> tactic1 = tacticValues(sections.get(7));
+		Map<String, String> tactic1 = tacticValues(sections.get(8));
 		assertThat(tactic1.get("{{tactic 1 male}}")).isEqualTo("—");
 		assertThat(tactic1.get("{{tactic 1 female}}")).isEqualTo("—");
 		assertThat(tactic1.get("{{tactic 1 weekdays}}")).isEqualTo("—");

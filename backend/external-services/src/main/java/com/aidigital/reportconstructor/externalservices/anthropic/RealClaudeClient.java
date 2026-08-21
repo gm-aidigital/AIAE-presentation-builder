@@ -5,6 +5,7 @@ import com.aidigital.reportconstructor.service.reports.dto.AudienceInsightInput;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignData;
 import com.aidigital.reportconstructor.service.reports.dto.CreativeTakeawayInput;
 import com.aidigital.reportconstructor.service.reports.dto.DeviceInsightInput;
+import com.aidigital.reportconstructor.service.reports.dto.FocusNextMonth;
 import com.aidigital.reportconstructor.service.reports.dto.GeoInsightInput;
 import com.aidigital.reportconstructor.service.reports.dto.PublisherObservationInput;
 import com.aidigital.reportconstructor.service.reports.dto.CampaignFrequencies;
@@ -71,6 +72,9 @@ public class RealClaudeClient implements ClaudeClient {
 
 	/** Pacing-dashboard takeaway slots the EOM template carries, one per dashboard slide. */
 	private static final int PACING_TAKEAWAY_SLOTS = 4;
+
+	/** Lines each column of the EOM "focus next month" slide draws — carry forward, pivot and test alike. */
+	private static final int FOCUS_SLOTS = 3;
 	/**
 	 * Character budget of the closing story that fills the fifth thoughts slot, campaign-level
 	 * ({@code {{thoughts on the performance 5}}}) and per-tactic
@@ -697,9 +701,10 @@ public class RealClaudeClient implements ClaudeClient {
 			return claudeDefaults.emptyStrategic();
 		}
 		// The reply carries the proposal, four insights and — on an end-of-month run — the three north-star
-		// fields plus up to four 140-character pacing takeaways and four more performance takeaways, so the
-		// budget is the EOC one plus room for those without truncating the last field the model writes.
-		JsonNode parsed = messagesClient.callJsonObject(prompt.get(), 3400, 60, "BatchAStrategic", false);
+		// fields plus up to four 140-character pacing takeaways, four more performance takeaways and the
+		// 250-character updated projection, so the budget is the EOC one plus room for those without
+		// truncating the last field the model writes.
+		JsonNode parsed = messagesClient.callJsonObject(prompt.get(), 3500, 60, "BatchAStrategic", false);
 		if (parsed == null) {
 			return claudeDefaults.emptyStrategic();
 		}
@@ -734,10 +739,15 @@ public class RealClaudeClient implements ClaudeClient {
 		String horizon = normalizer.limitHorizon(normalizer.textOrNull(parsed.get("horizon")));
 		List<String> pacingTakeaways = readPacingTakeaways(parsed.get("pacing_takeaways"));
 		List<String> performanceTakeaways = readPacingTakeaways(parsed.get("performance_takeaways"));
+		// The "focus next month" slide's projection. It is written here rather than by the alignment pass
+		// that writes the rest of that slide because this is the call whose context carries the pacing and
+		// performance tables the projection is arithmetic over.
+		String updatedProjection =
+				normalizer.limitUpdatedProjection(normalizer.textOrNull(parsed.get("updated_projection")));
 
 		// Audience fields are intentionally null: the sheet flow already carries them from step 1.
 		return new ClaudeStrategic(null, null, overview, insights, northStar, extendedNorthStar, horizon,
-				pacingTakeaways, performanceTakeaways);
+				pacingTakeaways, performanceTakeaways, List.of(), updatedProjection, null);
 	}
 
 	/**
@@ -983,11 +993,14 @@ public class RealClaudeClient implements ClaudeClient {
 		// leaves alone. The "what we did" chains are the exception — this pass is where they are written —
 		// and a reply that carries none of them leaves whatever the draft already held.
 		List<WhatWeDidStep> whatWeDid = readWhatWeDid(parsed.get("what_we_did"));
+		FocusNextMonth focus = readFocusNextMonth(parsed);
 		ClaudeStrategic alignedStrategic = new ClaudeStrategic(
 				strategic.audienceAge(), strategic.audienceSegments(), alignedProposal, alignedInsights,
 				strategic.northStar(), strategic.extendedNorthStar(), strategic.horizon(),
 				strategic.pacingTakeaways(), strategic.performanceTakeaways(),
-				whatWeDid.isEmpty() ? strategic.whatWeDid() : whatWeDid);
+				whatWeDid.isEmpty() ? strategic.whatWeDid() : whatWeDid,
+				strategic.updatedProjection(),
+				focus == null ? strategic.focusNextMonth() : focus);
 		ClaudeResults alignedResults = new ClaudeResults(
 				alignedOverviews, alignedThoughts, results.tacticOverviews(), results.recommendations(),
 				fOpportunity, fFact, fStorytelling);
@@ -1029,6 +1042,46 @@ public class RealClaudeClient implements ClaudeClient {
 					observation, observationText, action, actionText, impact, impactText));
 		}
 		return steps;
+	}
+
+	/**
+	 * Reads the three "focus next month" columns — {@code carry_forward}, {@code pivot} and
+	 * {@code new_test} — as one short line per slide slot, capped and normalized.
+	 *
+	 * <p>Positional within each column, and the three columns are read together so a reply that answers only
+	 * some of them still fills those: a slide with two of its three columns written beats one that dashes all
+	 * nine slots because the third was missing.
+	 *
+	 * @param parsed the parsed alignment reply
+	 * @return the three columns, or {@code null} when the reply carried none of them — which is every
+	 * end-of-campaign run, whose deck has no such slide
+	 */
+	FocusNextMonth readFocusNextMonth(JsonNode parsed) {
+		List<String> carryForward = readFocusColumn(parsed.get("carry_forward"));
+		List<String> pivots = readFocusColumn(parsed.get("pivot"));
+		List<String> tests = readFocusColumn(parsed.get("new_test"));
+		if (carryForward.isEmpty() && pivots.isEmpty() && tests.isEmpty()) {
+			return null;
+		}
+		return new FocusNextMonth(carryForward, pivots, tests);
+	}
+
+	/**
+	 * Reads one "focus next month" column as its slide slots, keeping a blank entry in place so one missing
+	 * line dashes its own slot instead of shifting every later line up by one.
+	 *
+	 * @param node the parsed column array (may be {@code null} or not an array)
+	 * @return the column's lines in slot order, empty when the reply carried none
+	 */
+	List<String> readFocusColumn(JsonNode node) {
+		if (node == null || !node.isArray()) {
+			return List.of();
+		}
+		List<String> items = new ArrayList<>();
+		for (int i = 0; i < node.size() && i < FOCUS_SLOTS; i++) {
+			items.add(normalizer.limitFocusItem(normalizer.textOrNull(node.get(i))));
+		}
+		return items;
 	}
 
 	/**

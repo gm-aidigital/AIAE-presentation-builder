@@ -2229,6 +2229,19 @@ public class ClaudeBatchPromptBuilder {
 	}
 
 	/**
+	 * The {@code carry_forward} / {@code pivot} / {@code new_test} field specs appended to the alignment
+	 * schema, or an empty string when the flavour's deck has no "focus next month" slide.
+	 *
+	 * <p>Empty for end-of-campaign, whose forward-looking copy is the recommendations slide the campaign
+	 * results batch already writes. {@link EomPromptBuilder} answers with the real specs.
+	 *
+	 * @return the field specs, each newline-terminated, or an empty string
+	 */
+	String focusNextMonthSchema() {
+		return "";
+	}
+
+	/**
 	 * Output tokens the alignment reply needs beyond the fields it is aligning, for the flavours whose
 	 * schema asks for copy the draft does not already carry.
 	 *
@@ -2374,6 +2387,13 @@ public class ClaudeBatchPromptBuilder {
 		String whatWeDid = whatWeDidSchema();
 		if (!whatWeDid.isBlank()) {
 			schema.add(whatWeDid);
+		}
+		// Next month's plan is asked for in the same call as this month's chains on purpose: a pivot has to
+		// correct something the observations found, and a carry-forward has to be something the conclusions
+		// praised. Asked separately, the two slides drift apart.
+		String focus = focusNextMonthSchema();
+		if (!focus.isBlank()) {
+			schema.add(focus);
 		}
 
 		StringBuilder context = new StringBuilder();
