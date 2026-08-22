@@ -338,6 +338,10 @@ public class RealSheetDeckProvider implements SheetDeckProvider {
 			String jobId, String fileName, Map<String, String> placeholderMap, String reportType,
 			String userGoogleAccessToken) {
 		String templateId = templateIdFor(reportType);
+		// Which template a run cloned is otherwise invisible: the artifact looks plausible either way, and a
+		// stale-or-swapped id has already cost one debugging session. Logged before the copy, so a failed
+		// copy still names the id it tried.
+		log.info("[sheets] job {} cloning {} template {}", jobId, reportType, templateId);
 		boolean asUser = userGoogleAccessToken != null && !userGoogleAccessToken.isBlank();
 		Drive driveClient = asUser ? buildDrive(userGoogleAccessToken) : drive;
 		Sheets sheetsClient = asUser ? buildSheets(userGoogleAccessToken) : sheets;

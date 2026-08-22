@@ -55,10 +55,20 @@ export SUMMARY_TABLE_OBJECT_ID_2="${SUMMARY_TABLE_OBJECT_ID_2:-g3f6fd96d9b2_1_14
 export SUMMARY_TABLE_OBJECT_ID_3="${SUMMARY_TABLE_OBJECT_ID_3:-g3f6fd96d9b2_1_157}"
 export SUMMARY_TABLE_OBJECT_ID_4="${SUMMARY_TABLE_OBJECT_ID_4:-g3f6fd96d9b2_1_171}"
 
-# The EOM deck template. Non-blank moves EOM reports off the EOC template and
-# onto their own deck; the published app clears this in lib/deploy-env.sh, so it
-# cannot reach production from a shared environment.
-export EOM_SLIDES_TEMPLATE_ID="${EOM_SLIDES_TEMPLATE_ID:-1zQOMfuHDqfJedcQl4IzHonRpBfPtMdLtivwlxWV9Yjo}"
+# The EOM deck template ("EOM_Report_template", 23 slides). Non-blank moves EOM
+# reports off the EOC template and onto their own deck; the published app clears
+# this in lib/deploy-env.sh, so it cannot reach production from a shared
+# environment. This is a PRESENTATION id — the workbook that feeds it is the
+# separate EOM_SHEETS_TEMPLATE_ID below. The two sat swapped for one commit,
+# which is why the Sheet step kept cloning the previous EOM workbook.
+export EOM_SLIDES_TEMPLATE_ID="${EOM_SLIDES_TEMPLATE_ID:-1ZUPEEEnKdbgehkSmyok6usc5onXO04YHkQelbsmJdC0}"
+
+# The workbook the EOM deck above is filled from ("EOM template": General +
+# Breakdowns tabs, 28 "Main slide N" blocks, one METRIC block per tactic). The
+# "Generate Sheet" step clones it for EOM runs; without it set here the backend
+# falls back to the application.yml default, which is the PREVIOUS EOM workbook
+# and does not carry the tables slides 3-8 of the new deck read.
+export EOM_SHEETS_TEMPLATE_ID="${EOM_SHEETS_TEMPLATE_ID:-1zQOMfuHDqfJedcQl4IzHonRpBfPtMdLtivwlxWV9Yjo}"
 
 # Deliberately empty while the EOM template above is in play. The two ids this
 # used to carry (p17, p6 - the frequency play and the awareness / market-share

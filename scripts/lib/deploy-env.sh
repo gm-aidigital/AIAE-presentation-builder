@@ -50,3 +50,12 @@ echo "[deploy-env] AUTH_AUTHORIZED_PARTY_PATTERNS cleared (exact azp match only)
 # To roll the new EOM template out to production, delete these two lines deliberately.
 export EOM_SLIDES_TEMPLATE_ID=""
 echo "[deploy-env] EOM_SLIDES_TEMPLATE_ID cleared (published app keeps the EOC-based EOM deck)"
+
+# The EOM workbook travels with the deck template: the new workbook's tables exist to feed the new
+# deck's slides, and the EOC-based EOM deck the published app still builds reads the previous one.
+# Pinned rather than cleared — clearing sends the published app's EOM Sheet step to the EOC workbook
+# (see RealSheetDeckProvider#templateIdFor: a blank EOM id falls back to sheets-template-id), which is
+# a worse regression than the stale template it is meant to prevent. Value = the application.yml
+# default; roll it out to production by deleting these two lines together with the two above.
+export EOM_SHEETS_TEMPLATE_ID="1YAZDnMQk2ya5rulTm1nnJaF4BTRgFJAGcbhgmeUW3AU"
+echo "[deploy-env] EOM_SHEETS_TEMPLATE_ID pinned to the previous EOM workbook (matches the EOC-based deck)"
